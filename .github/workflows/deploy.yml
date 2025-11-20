@@ -38,7 +38,6 @@ jobs:
         run: pnpm install
 
       - name: Generate Prisma Client (Dev)
-        # Updated script name
         run: pnpm db:dev:generate
 
       - name: Type Check (Build)
@@ -47,7 +46,7 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-  # 2. Deploy & Database Update (Runs ONLY on main)
+  # 2. Deploy to AWS (Runs ONLY on main)
   deploy:
     name: Deploy to AWS
     needs: ci-check
@@ -58,27 +57,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Node.js (For DB push)
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-          
-      - name: Install dependencies
-        run: pnpm install
-
-      # 2.1. Update Production Database Schema
-      - name: Update Production Database (Schema Push)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        # Uses the new prod schema location
-        run: pnpm db:prod:push
-
-      # 2.2. Docker Build & Push
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
