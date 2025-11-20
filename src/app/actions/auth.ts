@@ -5,7 +5,6 @@ import prisma from '@/app/lib/prisma';
 import { hashPassword, verifyPassword } from '@/app/lib/password';
 import { createSession, deleteSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -19,7 +18,7 @@ const registerSchema = z.object({
   phone: z.string().optional(),
 });
 
-export async function login(prevState: any, formData: FormData) {
+export async function login(prevState: unknown, formData: FormData) {
   const result = loginSchema.safeParse(Object.fromEntries(formData));
 
   if (!result.success) {
@@ -52,7 +51,7 @@ export async function login(prevState: any, formData: FormData) {
   }
 }
 
-export async function register(prevState: any, formData: FormData) {
+export async function register(prevState: unknown, formData: FormData) {
   const result = registerSchema.safeParse(Object.fromEntries(formData));
 
   if (!result.success) {

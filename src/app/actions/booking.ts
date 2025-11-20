@@ -10,6 +10,16 @@ const getSlotsSchema = z.object({
   serviceDuration: z.number(),
 });
 
+type CreateBookingInput = {
+  stylistId: string;
+  serviceId: string;
+  date: Date | string;
+  time: string;
+  userEmail: string;
+  userName: string;
+  userPhone?: string;
+};
+
 const createBookingSchema = z.object({
   stylistId: z.string(),
   serviceId: z.string(),
@@ -18,9 +28,9 @@ const createBookingSchema = z.object({
   userEmail: z.string().email(),
   userName: z.string().min(2),
   userPhone: z.string().optional(),
-});
+}) satisfies z.ZodType<CreateBookingInput>;
 
-export async function getAvailableSlotsAction(prevState: any, formData: FormData) {
+export async function getAvailableSlotsAction(prevState: unknown, formData: FormData) {
   const stylistId = formData.get('stylistId') as string;
   const dateStr = formData.get('date') as string;
   const serviceDuration = Number(formData.get('serviceDuration'));

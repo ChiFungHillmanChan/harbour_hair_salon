@@ -1,9 +1,7 @@
 import React from 'react';
-import Link from 'next/link';
 
 // Header is now a separate server component in ./Header.tsx
 // exporting Footer from here for backward compatibility or just use direct import
-// We will remove Header from here and update imports in Layout.tsx
 
 export function Footer() {
   return (

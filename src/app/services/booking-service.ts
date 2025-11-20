@@ -1,5 +1,5 @@
 import prisma from '@/app/lib/prisma';
-import { addMinutes, format, isSameDay, parse, setHours, setMinutes, startOfDay } from 'date-fns';
+import { addMinutes, format, setHours, setMinutes, startOfDay } from 'date-fns';
 
 export type TimeSlot = {
   time: string;
