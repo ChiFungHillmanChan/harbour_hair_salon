@@ -1,0 +1,221 @@
+---
+description: SDK initialization patterns for environment variable dependent clients
+alwaysApply: false
+---
+# SDK Client Initialization Guide
+
+## Purpose
+
+This rule defines the standard pattern for initializing SDK clients that depend on environment variables in Next.js applications. It prevents build-time errors caused by accessing environment variables at module level and ensures secure, runtime-only credential access.
+
+## Scope
+
+This rule applies to:
+- Any SDK or library that requires API keys, connection strings, or other environment variables
+- Client initialization code in Next.js applications
+- Service layer architecture for external API integrations
+
+## Guidelines
+
+### 1. Service File Structure
+
+Create a dedicated service file in `app/services/[sdk-name].ts`:
+
+```typescript
+'use server';
+
+import { SomeSDKClient } from 'some-sdk-package';
+
+export async function createSomeSDKClient() {
+    const apiKey = process.env.SOME_SDK_API_KEY;
+    
+    if (!apiKey) {
+        throw new Error('SOME_SDK_API_KEY environment variable is required');
+    }
+    
+    return new SomeSDKClient({ apiKey });
+}
+
+export async function getSomeSDKConfig() {
+    const config = process.env.SOME_SDK_CONFIG;
+    
+    if (!config) {
+        throw new Error('SOME_SDK_CONFIG environment variable is required');
+    }
+    
+    return config;
+}
+```
+
+### 2. Required Elements
+
+Every SDK service file must include:
+
+1. **`'use server'` directive** - Required at the top of the file
+2. **Async factory functions** - All exports must be async in server action files
+3. **Runtime environment variable access** - Never at module level
+4. **Proper error handling** - Clear error messages for missing variables
+5. **Descriptive function names** - Use `create[SDKName]Client()` pattern
+
+### 3. Consumer Code Pattern
+
+Update consuming code to use the async factory pattern:
+
+```typescript
+// ❌ OLD: Module-level client (causes build errors)
+import { someSDKClient } from '@/lib/some-sdk';
+
+// ✅ NEW: Runtime client creation
+import { createSomeSDKClient } from '@/app/services/some-sdk';
+
+export async function someAPIRoute() {
+    const client = await createSomeSDKClient();
+    const result = await client.someMethod();
+    return result;
+}
+```
+
+### 4. Common SDK Patterns
+
+#### OpenAI Pattern
+```typescript
+'use server';
+
+import OpenAI from 'openai';
+
+export async function createOpenAIClient() {
+    const apiKey = process.env.OPENAI_API_KEY;
+    
+    if (!apiKey) {
+        throw new Error('OPENAI_API_KEY environment variable is required');
+    }
+    
+    return new OpenAI({ apiKey });
+}
+```
+
+#### Azure Blob Storage Pattern
+```typescript
+'use server';
+
+import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
+
+export async function createAzureBlobClient() {
+    const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+    
+    if (!connectionString) {
+        throw new Error('AZURE_STORAGE_CONNECTION_STRING environment variable is required');
+    }
+    
+    return BlobServiceClient.fromConnectionString(connectionString);
+}
+
+export async function getAzureStorageCredentials() {
+    const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+    
+    if (!connectionString) {
+        throw new Error('AZURE_STORAGE_CONNECTION_STRING environment variable is required');
+    }
+    
+    const accountName = extractAccountName(connectionString);
+    const accountKey = extractAccountKey(connectionString);
+    
+    if (!accountName || !accountKey) {
+        throw new Error('Could not extract account credentials from connection string');
+    }
+    
+    return {
+        accountName,
+        accountKey,
+        connectionString,
+        sharedKeyCredential: new StorageSharedKeyCredential(accountName, accountKey)
+    };
+}
+
+export async function getAzureStorageContainerName(): Promise<string> {
+    return process.env.AZURE_STORAGE_CONTAINER_NAME || 'submissions';
+}
+```
+
+#### Database Connection Pattern
+```typescript
+'use server';
+
+import { DatabaseClient } from 'database-sdk';
+
+export async function createDatabaseClient() {
+    const connectionString = process.env.DATABASE_URL;
+    const username = process.env.DATABASE_USERNAME;
+    const password = process.env.DATABASE_PASSWORD;
+    
+    if (!connectionString || !username || !password) {
+        throw new Error('Database environment variables are required: DATABASE_URL, DATABASE_USERNAME, DATABASE_PASSWORD');
+    }
+    
+    return new DatabaseClient({
+        connectionString,
+        username,
+        password
+    });
+}
+```
+
+### 5. Migration Checklist
+
+When refactoring existing module-level SDK initialization:
+
+- [ ] Create new service file in `app/services/[sdk-name].ts`
+- [ ] Add `'use server'` directive
+- [ ] Move environment variable access into async functions
+- [ ] Add proper error handling for missing variables
+- [ ] Update all consuming code to use `await createClient()`
+- [ ] Remove module-level client initialization
+- [ ] Test build process to ensure no environment variable errors
+- [ ] Update imports throughout the codebase
+
+### 6. Benefits of This Pattern
+
+- **Build Safety**: Prevents build failures when environment variables aren't available
+- **Security**: Ensures credentials are only accessed server-side at runtime
+- **Flexibility**: Allows different configurations per environment
+- **Maintainability**: Centralizes SDK configuration in service layer
+- **Testability**: Makes it easier to mock clients in tests
+
+## Examples
+
+### Before (Problematic)
+```typescript
+// ❌ This causes build errors
+const API_KEY = process.env.OPENAI_API_KEY;
+const openai = new OpenAI({ apiKey: API_KEY });
+
+if (!API_KEY) {
+  throw new Error('API key required'); // Runs at build time!
+}
+
+export { openai };
+```
+
+### After (Correct)
+```typescript
+// ✅ This works correctly
+'use server';
+
+import OpenAI from 'openai';
+
+export async function createOpenAIClient() {
+    const apiKey = process.env.OPENAI_API_KEY;
+    
+    if (!apiKey) {
+        throw new Error('OPENAI_API_KEY environment variable is required');
+    }
+    
+    return new OpenAI({ apiKey });
+}
+```
+
+## References
+- [01.core-rules.mdc](mdc:01.core-rules.mdc)
+- [01.error-handling-rule.mdc](mdc:01.error-handling-rule.mdc)
+- [02.next-js-rule.mdc](mdc:02.next-js-rule.mdc)
+- [98.create-rules.mdc](mdc:98.create-rules.mdc)

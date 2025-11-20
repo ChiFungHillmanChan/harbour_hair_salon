@@ -1,0 +1,93 @@
+---
+description: 
+globs: *.tsx,*.js,*.ts,*.json
+alwaysApply: false
+---
+# JavaScript & TypeScript Rules
+
+## Purpose
+
+This rule provides general best practices for JavaScript and TypeScript development, applicable across all frameworks and environments. It builds on the abstract programming principles in [01.core-rules.mdc](mdc:01.core-rules.mdc) and the core error handling rule in [01.error-handling-rule.mdc](mdc:01.error-handling-rule.mdc).
+
+## Package Management
+- Use `pnpm` for package management in all JS/TS projects.
+
+## Variable Usage
+- Always use `const` for variables that aren't reassigned.
+- Use `let` only for variables that will be reassigned.
+- Avoid `var` completely.
+
+## Comments & Readability
+- Write comments for all functions and components.
+- Use clear, descriptive names for variables, functions, and classes.
+
+## Nullish Coalescing
+- Always use the nullish coalescing operator (`??`) instead of logical OR (`||`).
+
+## TypeScript Best Practices
+- **Strict Type Safety - No `any` in Controlled Code**: 
+  - **Never use `any`** when we maintain full control of the code (internal functions, components, utilities).
+  - Define proper interfaces or type aliases for all data structures we control.
+  - Use generics where appropriate to maintain type safety.
+  - Never use `// @ts-ignore` or `// eslint-disable-next-line` to bypass typechecking.
+  - Create utility types when needed for complex transformations.
+- **Strategic Use of `unknown`**: 
+  - Only use `unknown` when you're 100% sure the type cannot be known at compile time:
+    - External API responses from third-party services
+    - Data from third-party libraries without proper TypeScript definitions
+    - User input or file uploads where structure is truly unpredictable
+  - **Never use `unknown` as a lazy alternative to proper typing** for internal code.
+- **Proper Type Verification for `unknown`**:
+  - When `unknown` is used, always implement proper type guards or validation before casting.
+  - Use runtime validation libraries (e.g., Zod, Yup) to verify external data structure.
+  - Provide clear, actionable error messages when type verification fails:
+    ```typescript
+    // Good: Clear error with actionable information
+    if (!isValidUserResponse(response)) {
+      throw new Error(
+        `Unexpected API response structure from /api/users. ` +
+        `Expected UserResponse but received: ${JSON.stringify(response)}. ` +
+        `This may indicate API documentation is outdated or wrong endpoint was called.`
+      );
+    }
+    ```
+  - Always log the actual received data structure to help developers debug API changes.
+  - Include suggestions in error messages about checking API documentation or endpoint URLs.
+- **Maintain Consistent Type Signatures**:
+  - Ensure function parameter and return types are consistent across related functions.
+  - Use the same type definitions for similar data structures throughout the codebase.
+  - Extract shared types to dedicated type files if used across multiple components.
+- **Prefer Explicit Types**:
+  - Even when TypeScript can infer types, prefer explicitly typing function parameters and returns.
+  - Document complex types with comments explaining their purpose and constraints.
+
+## React/JS Hooks (if applicable)
+- Always include all variables from the outer scope that are used inside a hook's effect function.
+- Use the ESLint rule `react-hooks/exhaustive-deps` to catch missing dependencies.
+- When intentionally omitting a dependency, add a comment with `// eslint-disable-next-line react-hooks/exhaustive-deps` to explain why.
+- Always wrap functions used in effect dependencies with `useCallback`.
+- Always wrap objects and arrays used in effect dependencies with `useMemo`.
+- Use empty dependency arrays `[]` for values that should only be created once.
+- When a function depends on state or props, include those dependencies in the useCallback dependency array.
+- For event handlers that don't depend on props or state, use an empty dependency array.
+- Never update state unconditionally in useEffect without dependencies.
+- Always include all dependencies that the effect uses.
+- For effects that should run only once, use an empty dependency array `[]`.
+- For effects that depend on state or props, include those dependencies.
+- When creating custom hooks, follow the same dependency rules.
+- Return memoized functions and objects from custom hooks.
+- Use the "use" prefix for all custom hooks.
+
+## Component Best Practices (if using React or similar)
+- Split large components into smaller, focused components (see [01.core-rules.mdc](mdc:01.core-rules.mdc) for SRP).
+- Keep component files under 300 lines of code. If a file grows larger, extract logic into hooks or subcomponents.
+- Extract complex logic into custom hooks.
+- Use memoization (e.g., `React.memo`) for components that render often but with the same props.
+
+## Error Handling
+- All error handling must follow the [01.error-handling-rule.mdc](mdc:01.error-handling-rule.mdc).
+
+## References
+- [01.core-rules.mdc](mdc:01.core-rules.mdc)
+- [01.error-handling-rule.mdc](mdc:01.error-handling-rule.mdc)
+

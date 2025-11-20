@@ -1,0 +1,78 @@
+---
+description: 
+globs: *.mdc
+alwaysApply: false
+---
+# Rules Authoring Guide
+
+## Purpose
+
+This rule defines the conventions and best practices for creating new rules in this codebase. It ensures that all rules are clear, discoverable, and maintainable, and that they follow a consistent structure and naming scheme.
+
+## Rule Numbering & Naming Conventions
+
+- **01. Core Rules:** Apply to the entire codebase (e.g., security, architecture, component design, error handling). Prefix: `01.`
+- **02. Framework-Specific Rules:** For technology/framework-specific guidance (e.g., Next.js, React, Prisma). Prefix: `02.`
+- **03. UI/UX Rules:** For user interface, styling, accessibility, and design system guidance. Prefix: `03.`
+- **98. One-Time Operations:** For on-demand, user-triggered, or remediation operations (e.g., splitting large files, generating documentation). Prefix: `98.`
+- **99. Program Execution Rules:** For rules governing scripts, commands, or programmatic actions on the target computer. Prefix: `99.`
+
+- Use kebab-case for the rest of the filename, describing the rule's focus (e.g., `01.core-rules.mdc`, `02.next-js-rule.mdc`, `03.style-guide.mdc`, `98.func-split-large-files.mdc`).
+
+## When to Create a New Rule
+
+- When introducing a new architectural, process, or coding standard not covered by existing rules.
+- When a new framework, tool, or major feature is added to the codebase.
+- When a one-time or on-demand operation is needed (e.g., migration, refactor, documentation generation).
+- When a new class of scripts or programmatic actions is introduced.
+
+## Rule Structure
+
+Each rule should include:
+
+1. **Title:** A clear, descriptive heading.
+2. **Purpose:** What the rule governs and why it exists.
+3. **Scope:** Where and when the rule applies (entire codebase, specific framework, UI, etc.).
+4. **Guidelines/Steps:** Actionable, step-by-step instructions or principles.
+5. **Examples:** (Optional) Concrete examples or scenarios.
+6. **References:** (Optional) Links to related rules or files using `[filename.ext](mdc:filename.ext)`.
+
+## Referencing Other Rules or Files
+
+- Reference other rules or files using the format `[filename.ext](mdc:filename.ext)`.
+- When a rule depends on or extends another, clearly state the relationship in the Purpose or References section.
+
+## Best Practices
+
+- Write rules in clear, concise language. Avoid ambiguity.
+- Use numbered or bulleted lists for steps and principles.
+- Keep rules focused—split large or complex rules into smaller, related rules if needed.
+- Update rules when processes or technologies change.
+- Add a change log section for major updates (optional but recommended).
+- **Whenever you create a new rule or make a significant update to an existing rule, update the `readme/cursor-rules-guide.md` file to reflect the change. This ensures the guide remains accurate and up-to-date for all contributors.**
+
+## Example Rule Structure
+
+```
+# Example Rule Title
+
+## Purpose
+Describes what this rule governs and why.
+
+## Scope
+Where and when this rule applies.
+
+## Guidelines
+1. Step one
+2. Step two
+
+## References
+- [01.core-rules.mdc](mdc:01.core-rules.mdc)
+- [02.next-js-rule.mdc](mdc:02.next-js-rule.mdc)
+```
+
+## Additional Notes
+- Place all rules in the `.cursor/rules/` directory.
+- Do not edit rule file metadata; only update the content section.
+- Review existing rules for style and structure before authoring a new one.
+

@@ -1,0 +1,47 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Security Rule: Never Write Credentials to Source Code
+
+## Purpose
+To protect sensitive information and maintain best security practices, credentials (such as API keys, secrets, passwords, or private keys) must never be written directly into the source code or committed to the repository.
+
+## Guidelines
+1. **Never Write Credentials in Code:**
+   - Do not hardcode any credentials, secrets, or sensitive tokens in source files, configuration files, or scripts.
+   - Do not include example credentials or placeholder secrets in code comments or documentation.
+
+2. **Environment Variables:**
+   - Always use environment variables to access credentials at runtime.
+   - Reference environment variables in code (e.g., `process.env.MY_SECRET_KEY`), but never include the actual values.
+
+3. **Guiding Users:**
+   - When credentials are required, provide clear, step-by-step instructions for users to acquire the necessary credentials from the relevant provider (e.g., Google Cloud, OpenAI, AWS).
+   - Instruct users to place credentials in the appropriate environment file (e.g., `.env.local`, `.env`, or a secrets manager) and never in the codebase.
+   - Example steps:
+     1. Sign up for the required service (e.g., Google Cloud, OpenAI).
+     2. Generate or download the necessary API key, secret, or service account file from the provider's dashboard.
+     3. Open (or create) the `.env.local` file in the project root.
+     4. Add the required environment variable(s) in the format: `MY_SECRET_KEY=your-key-here`.
+     5. Save the file. Do not commit this file if it contains secrets.
+     6. Restart the application to load the new environment variables.
+
+4. **.env and Secrets Files:**
+   - Ensure `.env`, `.env.local`, and other secrets files are listed in `.gitignore` to prevent accidental commits.
+   - Provide an `env.example` file with variable names and instructions, but never with real or fake secrets.
+
+5. **Code Review and Automation:**
+   - PR reviewers must reject any code that includes credentials or secrets.
+   - Automated checks should be used to scan for accidental secret leaks.
+
+## Rationale
+Hardcoding credentials in source code is a major security risk and can lead to data breaches, unauthorized access, and compromised systems. Using environment variables and secure storage practices ensures sensitive information is protected and can be rotated or revoked without code changes.
+
+## Security rules
+
+always use NextAuth.js for authentication
+always use environment variables for sensitive data
+always use the NextAuth session provider at the root layout
+always use server components for data fetching where possible

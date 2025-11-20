@@ -1,0 +1,258 @@
+---
+description: Is used when performing  CRUD database operations
+alwaysApply: false
+---
+# CRUD Operations Rule
+
+## Purpose
+
+This rule defines best practices for Create, Read, Update, and Delete (CRUD) operations, with special emphasis on the critical differences between Create and Update operations when handling empty or null fields. This ensures data integrity and prevents unintended data loss during updates.
+
+## Scope
+
+This rule applies to all CRUD operations across the entire codebase, including:
+- Server actions and API endpoints
+- Database operations
+- Form handling and data validation
+- Client-server data transmission
+
+## Core Principles
+
+### 1. Create vs Update Field Handling
+
+**Create Operations:**
+- Can accept `undefined` or empty values for optional fields
+- Should provide sensible defaults for required fields
+- Empty strings can be converted to `null` or default values as appropriate
+
+**Update Operations:**
+- Must distinguish between "not provided" (`undefined`) and "intentionally cleared" (empty string)
+- Should only update fields that are explicitly provided
+- Must preserve existing values when fields are not included in the update payload
+
+### 2. Field Handling Guidelines
+
+#### Client-Side Form Handling
+```typescript
+// ❌ BAD: Converting empty strings to undefined loses user intent
+const createData = {
+  title: formData.title,
+  description: formData.description || undefined,  // Loses "clear field" intent
+  instructions: formData.instructions || undefined
+}
+
+// ✅ GOOD: Preserve user intent for updates
+const updateData = {
+  id: entityId,
+  title: formData.title,
+  description: formData.description,  // Send empty string if user cleared it
+  instructions: formData.instructions,
+  // Only include fields that should be updated
+  ...(shouldUpdateDueDate && { dueDate: formData.dueDate })
+}
+```
+
+#### Server-Side Action Handling
+```typescript
+// ✅ GOOD: Update operation respects user intent
+export async function updateEntity(data: UpdateEntityData) {
+  const updatePayload: Record<string, any> = {}
+  
+  // Only update fields that are explicitly provided
+  if (data.title !== undefined) updatePayload.title = data.title
+  if (data.description !== undefined) updatePayload.description = data.description || null
+  if (data.instructions !== undefined) updatePayload.instructions = data.instructions || null
+  
+  // For nullable fields, empty string becomes null
+  // For required fields, empty string stays as empty string or gets default value
+  
+  return await database.update({
+    where: { id: data.id },
+    data: updatePayload
+  })
+}
+
+// ✅ GOOD: Create operation with defaults
+export async function createEntity(data: CreateEntityData) {
+  return await database.create({
+    data: {
+      title: data.title,
+      description: data.description || null,  // Default for optional field
+      instructions: data.instructions || '',  // Default for required field
+      status: data.status || 'DRAFT',         // Sensible default
+      createdAt: new Date()
+    }
+  })
+}
+```
+
+### 3. Database Schema Considerations
+
+#### Field Nullability
+```sql
+-- Design schema to support clearing fields
+CREATE TABLE entities (
+  id UUID PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,           -- Required, cannot be null
+  description TEXT,                      -- Optional, can be null
+  instructions TEXT NOT NULL DEFAULT '', -- Required but can be empty
+  optional_field VARCHAR(100)            -- Optional, can be null
+);
+```
+
+#### Type Definitions
+```typescript
+// Distinguish between create and update data types
+interface CreateEntityData {
+  title: string
+  description?: string
+  instructions?: string
+}
+
+interface UpdateEntityData {
+  id: string
+  title?: string
+  description?: string | null  // Explicitly allow null for clearing
+  instructions?: string | null
+}
+```
+
+### 4. API Response Consistency
+
+```typescript
+// ✅ GOOD: Consistent response transformation
+function transformEntityResponse(entity: DatabaseEntity): EntityResponse {
+  return {
+    id: entity.id,
+    title: entity.title,
+    description: entity.description ?? undefined,  // Convert null to undefined for client
+    instructions: entity.instructions ?? undefined,
+    createdAt: entity.createdAt,
+    updatedAt: entity.updatedAt
+  }
+}
+```
+
+## Common Anti-Patterns to Avoid
+
+### 1. Losing User Intent
+```typescript
+// ❌ BAD: User cannot clear fields
+const updateData = {
+  field1: data.field1 || undefined,  // Empty string becomes undefined
+  field2: data.field2 || undefined   // Field won't be updated if empty
+}
+```
+
+### 2. Inconsistent Field Handling
+```typescript
+// ❌ BAD: Mixing update strategies
+if (data.title !== undefined) updatePayload.title = data.title
+updatePayload.description = data.description || undefined  // Inconsistent!
+```
+
+### 3. Not Validating Required Fields
+```typescript
+// ❌ BAD: No validation for required fields
+export async function updateEntity(data: UpdateEntityData) {
+  // What if title is provided as empty string but it's required?
+  return await database.update({
+    where: { id: data.id },
+    data: data  // Direct assignment without validation
+  })
+}
+```
+
+## Implementation Checklist
+
+### For Create Operations
+- [ ] Provide sensible defaults for optional fields
+- [ ] Validate required fields are not empty
+- [ ] Convert empty strings to appropriate defaults (null, empty string, or default value)
+- [ ] Handle file uploads and complex data types appropriately
+
+### For Update Operations
+- [ ] Only update fields that are explicitly provided (`!== undefined`)
+- [ ] Preserve user intent for clearing fields (empty string → null for nullable fields)
+- [ ] Validate that required fields are not being set to invalid values
+- [ ] Include updated fields in response transformation
+- [ ] Test both "update with value" and "clear field" scenarios
+
+### For Read Operations
+- [ ] Transform null values to undefined for client consumption
+- [ ] Include all relevant fields in response
+- [ ] Handle pagination and filtering consistently
+- [ ] Optimize queries to avoid N+1 problems
+
+### For Delete Operations
+- [ ] Implement soft delete where appropriate
+- [ ] Handle cascading deletes properly
+- [ ] Validate permissions before deletion
+- [ ] Clean up related resources (files, cache, etc.)
+
+## Testing Strategies
+
+### Update Operation Tests
+```typescript
+describe('Update Entity', () => {
+  it('should update provided fields only', async () => {
+    const original = await createEntity({ title: 'Original', description: 'Original desc' })
+    
+    const updated = await updateEntity({
+      id: original.id,
+      title: 'Updated'
+      // description not provided - should remain unchanged
+    })
+    
+    expect(updated.title).toBe('Updated')
+    expect(updated.description).toBe('Original desc')  // Unchanged
+  })
+  
+  it('should clear nullable fields when empty string provided', async () => {
+    const original = await createEntity({ title: 'Test', description: 'Some desc' })
+    
+    const updated = await updateEntity({
+      id: original.id,
+      description: ''  // User wants to clear this field
+    })
+    
+    expect(updated.description).toBeNull()  // Field was cleared
+  })
+})
+```
+
+## Error Handling
+
+```typescript
+// ✅ GOOD: Proper validation and error handling
+export async function updateEntity(data: UpdateEntityData) {
+  // Validate required fields if they're being updated
+  if (data.title !== undefined && !data.title.trim()) {
+    return { success: false, error: 'Title cannot be empty' }
+  }
+  
+  try {
+    const updatePayload: Record<string, any> = {}
+    
+    if (data.title !== undefined) updatePayload.title = data.title.trim()
+    if (data.description !== undefined) updatePayload.description = data.description || null
+    
+    const updated = await database.update({
+      where: { id: data.id },
+      data: updatePayload
+    })
+    
+    return { success: true, data: transformEntityResponse(updated) }
+  } catch (error) {
+    console.error('Update failed:', error)
+    return { success: false, error: 'Update operation failed' }
+  }
+}
+```
+
+## References
+
+- [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc) - Core programming principles
+- [01.error-handling-rule.mdc](mdc:.cursor/rules/01.error-handling-rule.mdc) - Error handling guidelines
+- [02.js-ts-rule.mdc](mdc:.cursor/rules/02.js-ts-rule.mdc) - TypeScript best practices
+

@@ -1,0 +1,74 @@
+---
+description: Standardize OpenAI Responses background (response id retrieval) to avoid timeouts
+globs: 
+alwaysApply: false
+---
+
+# OpenAI Responses Background Pattern (Response ID Retrieval)
+
+## Purpose
+Standardize how we run long-running OpenAI operations without holding HTTP requests by using the Responses API with background processing and retrieving results later via response ID.
+
+## Scope
+- Applies to all server-side features that call OpenAI models and may exceed platform timeouts (e.g., Azure App Service idle timeout)
+- Next.js App Router (server routes/actions)
+
+## Guidelines
+1. Use Responses API with `background: true` when calls can be long-running
+   - Required fields: `model`, `input`, and any output formatting (e.g., JSON Schema)
+   - MUST set strict model requirement if requested (e.g., use `gpt-5` only)
+2. Immediately persist the returned `response.id` and return 202 to clients
+   - Create a durable job record (e.g., Prisma model) with `status` and `openaiResponseId`
+   - Do NOT store sensitive payloads (e.g., raw base64 images) in job records
+3. Poll or webhook to retrieve results
+   - Polling: `openai.responses.retrieve(responseId)` until `status === 'completed'`
+   - If status is not `completed`, map to `FAILED` with clear error
+   - Webhook (optional): configure `webhook_url` and validate signatures
+4. Structured outputs
+   - Prefer JSON Schema with `text.format.type = json_schema` and `strict: true`
+   - Parse `response.output_text` or extract from `response.output` messages
+5. Token accounting and costs
+   - Deduct tokens or credits at job creation
+   - Use `response.usage` (input/output/total tokens) to compute cost after completion
+6. Error handling (see [01.error-handling-rule.mdc](mdc:01.error-handling-rule.mdc))
+   - Validate inputs and return 4xx for expected errors
+   - Let unexpected errors bubble to framework-level handler
+   - Do not mask errors; include actionable metadata in logs
+7. Observability
+   - Add structured logs for: job creation, OpenAI create OK, polling retrieval, completion/failure, durations
+   - Exclude sensitive data from logs
+
+## Example (Pseudocode)
+```ts
+// Create job
+const rsp = await openai.responses.create({
+  model: 'gpt-5',
+  input: [{ role: 'user', content }],
+  text: { format: { type: 'json_schema', name, schema, strict: true }, verbosity: 'low' },
+  reasoning: { effort: 'high' },
+  background: true,
+});
+await jobs.create({ status: 'IN_PROGRESS', openaiResponseId: rsp.id, inputJson });
+return 202 + { jobId };
+
+// Poll
+const r = await openai.responses.retrieve(openaiResponseId);
+if (r.status === 'completed') {
+  const output = r.output_text ?? extractFrom(r.output);
+  const data = JSON.parse(output);
+  const usage = r.usage;
+  await jobs.update({ status: 'COMPLETED', resultJson: { result: data, usage } });
+} else if (r.status === 'in_progress' || r.status === 'queued') {
+  return { status: 'IN_PROGRESS' };
+} else {
+  await jobs.update({ status: 'FAILED', errorJson: `status_${r.status}` });
+}
+```
+
+## References
+- OpenAI Background: `https://platform.openai.com/docs/guides/background`
+- [01.error-handling-rule.mdc](mdc:01.error-handling-rule.mdc)
+- [02.next-js-rule.mdc](mdc:02.next-js-rule.mdc)
+
+## Change Log
+- 2025-09-24: Initial rule added for Responses background pattern

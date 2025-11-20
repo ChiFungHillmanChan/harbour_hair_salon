@@ -1,0 +1,357 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Next.js Component Creation Rule
+
+## Purpose
+
+This rule ensures that new Next.js components are created with proper separation of concerns from the start, preventing the need for large file splits later. It integrates the principles from [98.split-large-files.mdc](mdc:.cursor/rules/98.split-large-files.mdc) and [02.state-management-rule.mdc](mdc:.cursor/rules/02.state-management-rule.mdc) into the initial component creation process.
+
+## Scope
+
+This rule applies to all new React/Next.js components, especially:
+- Page components with multiple responsibilities
+- Components that manage complex state
+- Components with multiple UI sections
+- Components that handle forms, data fetching, and display logic
+
+## Pre-Creation Analysis
+
+Before creating any component, analyze the requirements and identify:
+
+1. **Domain Concerns**: What distinct areas of functionality will this component handle?
+   - User management, data display, form handling, security, etc.
+2. **State Complexity**: Will this component need complex state management?
+   - Multiple forms, API calls, validation, UI toggles
+3. **UI Sections**: How many distinct UI sections will this component have?
+   - Headers, forms, lists, modals, sidebars
+4. **Reusability**: Which parts could be reused in other components?
+
+## Component Creation Structure
+
+### For Simple Components (< 200 lines expected)
+Create a single component file following standard patterns.
+
+### For Complex Components (> 200 lines expected)
+Use the **Domain-Driven Component Architecture** from the start:
+
+```
+feature-name/
+├── README.md                    # Component documentation
+├── FeaturePageClient.tsx        # Main component (composition only)
+├── types.ts                     # Shared interfaces
+├── utils.tsx                    # Pure utility functions
+├── hooks/                       # Custom hooks by domain
+│   ├── useFeatureManagement.ts  # Primary domain logic
+│   ├── useSecondaryFeature.ts   # Secondary domain logic
+│   └── useUtilityFeature.ts     # Utility domain logic
+└── components/                  # Standalone UI components
+    ├── PrimarySection.tsx       # Main feature UI
+    ├── SecondarySection.tsx     # Secondary feature UI
+    └── UtilitySection.tsx       # Utility feature UI
+```
+
+## Step-by-Step Creation Process
+
+### Step 1: Create Foundation Files
+
+#### `types.ts` - Define All Interfaces
+```typescript
+// Define all data structures used across the component
+export interface PrimaryData {
+  id: string;
+  name: string;
+  // ... other properties
+}
+
+export interface FormData {
+  field1: string;
+  field2: string;
+  // ... form fields
+}
+
+export interface ComponentProps {
+  data: PrimaryData;
+  // ... other props
+}
+```
+
+#### `utils.tsx` - Pure Utility Functions
+```typescript
+import { useTranslations } from 'next-intl';
+
+// Pure functions (no side effects)
+export const formatData = (data: string) => {
+  // formatting logic
+};
+
+// Custom hook for display utilities
+export const useFeatureUtils = () => {
+  const t = useTranslations('feature');
+  
+  const getStatusBadge = (status: string) => {
+    // status badge logic
+  };
+  
+  return { getStatusBadge };
+};
+```
+
+### Step 2: Create Custom Hooks by Domain
+
+#### Pattern for Domain Hooks
+```typescript
+// hooks/usePrimaryFeature.ts
+import { useState, useTransition } from 'react';
+import { useTranslations } from 'next-intl';
+
+export const usePrimaryFeature = (initialData: PrimaryData) => {
+  const t = useTranslations('feature.primary');
+  
+  // ALL state for this domain
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState(/* initial state */);
+  const [errors, setErrors] = useState<Record<string, string[]>>({});
+  const [isLoading, startTransition] = useTransition();
+  
+  // ALL handlers for this domain
+  const handleSubmit = async (e: React.FormEvent) => {
+    // complete submit logic
+  };
+  
+  const handleCancel = () => {
+    // complete cancel logic
+  };
+  
+  const startEditing = () => {
+    setIsEditing(true);
+  };
+  
+  return {
+    // State
+    isEditing,
+    formData,
+    errors,
+    isLoading,
+    
+    // Actions
+    handleSubmit,
+    handleCancel,
+    startEditing,
+  };
+};
+```
+
+### Step 3: Create Standalone UI Components
+
+#### Pattern for UI Components
+```typescript
+// components/PrimarySection.tsx
+'use client';
+
+import { useTranslations } from 'next-intl';
+import { usePrimaryFeature } from '../hooks/usePrimaryFeature';
+import type { PrimaryData } from '../types';
+
+interface PrimarySectionProps {
+  data: PrimaryData;
+}
+
+export default function PrimarySection({ data }: PrimarySectionProps) {
+  const t = useTranslations('feature.primary');
+  const primaryFeature = usePrimaryFeature(data);
+  
+  return (
+    <div>
+      {/* Complete UI for this domain */}
+      <div className="flex items-center justify-between mb-6">
+        <h2>{t('title')}</h2>
+        {!primaryFeature.isEditing && (
+          <button onClick={primaryFeature.startEditing}>
+            {t('edit')}
+          </button>
+        )}
+      </div>
+      
+      {/* Form or display logic */}
+      {primaryFeature.isEditing ? (
+        <form onSubmit={primaryFeature.handleSubmit}>
+          {/* Complete form implementation */}
+        </form>
+      ) : (
+        <div>
+          {/* Complete display implementation */}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Step 4: Create Main Component (Composition Only)
+
+#### Pattern for Main Component
+```typescript
+// FeaturePageClient.tsx
+'use client';
+
+import PrimarySection from './components/PrimarySection';
+import SecondarySection from './components/SecondarySection';
+import type { ComponentProps } from './types';
+
+export default function FeaturePageClient({ data }: ComponentProps) {
+  return (
+    <div className="space-y-6">
+      {/* Primary feature section */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <PrimarySection data={data} />
+      </div>
+      
+      {/* Secondary feature section */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <SecondarySection data={data} />
+      </div>
+    </div>
+  );
+}
+```
+
+### Step 5: Create Documentation
+
+#### `README.md` Pattern
+```markdown
+# Feature Component Architecture
+
+## Overview
+Brief description of the component and its responsibilities.
+
+## Architecture
+- **Domain 1**: Description and files involved
+- **Domain 2**: Description and files involved
+
+## File Structure
+```
+feature/
+├── FeaturePageClient.tsx    # Main component
+├── types.ts                 # Interfaces
+├── utils.tsx               # Utilities
+├── hooks/                  # Domain logic
+└── components/             # UI components
+```
+
+## Usage
+Examples of how to use the component and its hooks.
+```
+
+## State Management Guidelines
+
+### Use Custom Hooks When:
+- Managing complex form state with validation
+- Handling API calls with loading/error states
+- Managing multiple related UI toggles
+- Implementing domain-specific business logic
+
+### Keep Local State When:
+- Simple UI toggles (modal open/close)
+- Single input field values
+- Temporary UI state that doesn't need sharing
+
+### Hook Design Principles:
+1. **Complete Encapsulation**: Each hook manages ALL related state and operations
+2. **Clear Boundaries**: No shared state between different domain hooks
+3. **Actions Pattern**: Expose action functions, not raw setters
+4. **Single Responsibility**: Each hook handles one domain concern
+
+## Component Design Principles
+
+### Standalone Components:
+- Each component is completely self-contained
+- Accept data and handlers via props
+- Manage only their own internal UI state
+- Never access parent state directly
+
+### Main Component Rules:
+- **Composition only**: Import and use extracted components
+- **No business logic**: All logic should be in hooks or child components
+- **No duplicate state**: Use hooks, don't reimplement their logic
+- **Standard layout**: Follow `space-y-6` and white card patterns
+
+## Quality Checklist
+
+Before considering a component complete, verify:
+
+- [ ] **Main component < 100 lines**: Primarily composition and coordination
+- [ ] **Each hook handles complete domain**: No partial implementations
+- [ ] **Components are standalone**: Can be used independently
+- [ ] **No duplicate logic**: Between main component and hooks/components
+- [ ] **Clear file organization**: Easy to find specific functionality
+- [ ] **Proper TypeScript**: All interfaces defined in types.ts
+- [ ] **Documentation exists**: README.md explains architecture
+
+## Anti-Patterns to Avoid
+
+### ❌ Don't Create Monolithic Components
+```typescript
+// BAD: Everything in one file
+export default function FeatureComponent() {
+  // 500+ lines of mixed concerns
+  const [state1, setState1] = useState();
+  const [state2, setState2] = useState();
+  // ... lots of handlers and UI
+}
+```
+
+### ❌ Don't Create Incomplete Hooks
+```typescript
+// BAD: Hook only has some functions
+const { data } = useFeature();
+const handleEdit = () => { /* should be in hook */ };
+```
+
+### ❌ Don't Create Locally Implemented Components
+```typescript
+// BAD: Component defined inside main component
+function MainComponent() {
+  const LocalComponent = () => <div>...</div>; // Should be extracted!
+  return <LocalComponent />;
+}
+```
+
+## Examples
+
+### Simple Component (No Split Needed)
+For components under 200 lines with single responsibility:
+```typescript
+// SimpleComponent.tsx
+export default function SimpleComponent({ data }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  return (
+    <div>
+      <button onClick={() => setIsOpen(!isOpen)}>Toggle</button>
+      {isOpen && <div>{data.content}</div>}
+    </div>
+  );
+}
+```
+
+### Complex Component (Domain-Driven Split)
+For components over 200 lines or multiple responsibilities, use the full domain-driven structure shown above.
+
+## Integration with Existing Rules
+
+This rule implements:
+- **Proactive application** of [98.split-large-files.mdc](mdc:.cursor/rules/98.split-large-files.mdc) principles
+- **State management strategy** from [02.state-management-rule.mdc](mdc:.cursor/rules/02.state-management-rule.mdc)
+- **Core programming principles** from [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc)
+- **Next.js patterns** from [02.next-js-rule.mdc](mdc:.cursor/rules/02.next-js-rule.mdc)
+
+## References
+
+- [98.split-large-files.mdc](mdc:.cursor/rules/98.split-large-files.mdc) - Large file splitting methodology
+- [02.state-management-rule.mdc](mdc:.cursor/rules/02.state-management-rule.mdc) - State management philosophy  
+- [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc) - Core programming principles
+- [02.next-js-rule.mdc](mdc:.cursor/rules/02.next-js-rule.mdc) - Next.js specific patterns
+

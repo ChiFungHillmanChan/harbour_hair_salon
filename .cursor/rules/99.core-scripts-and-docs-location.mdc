@@ -1,0 +1,32 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Core Rule: Scripts and Documentation Location
+
+## Purpose
+To ensure a maintainable and discoverable codebase, all temporary or utility scripts must be created under the `scripts/` folder, and all documentation files must be created under the `readme/` folder.
+
+## Guidelines
+1. **Temporary/Utility Scripts:**
+   - Any script intended for one-off tasks, migrations, diagnostics, or developer utilities should be placed in the `scripts/debug/` directory at the project root.
+   - Scripts should not be placed at the root or in feature directories unless they are directly part of the application logic.
+   - Name scripts clearly to indicate their purpose (e.g., `fix-db-image-urls.js`, `prepare-migrations.js`).
+
+2. **Documentation Files:**
+   - All documentation, onboarding guides, technical deep-dives, and architectural notes should be placed in the `readme/` directory at the project root.
+   - This includes both high-level project documentation and function/component-level docs as described in [98.create-readme.mdc](mdc:.cursor/rules/98.create-readme.mdc).
+   - Do not place documentation files at the root or in feature directories unless explicitly required by another rule.
+
+3. **Automation and Enforcement:**
+   - AI and human contributors must follow this rule when creating new scripts or documentation.
+   - PR reviewers should check for compliance and request changes if files are not in the correct location.
+
+## References
+- [98.create-readme.mdc](mdc:.cursor/rules/98.create-readme.mdc)
+- [98.create-rules.mdc](mdc:.cursor/rules/98.create-rules.mdc)
+
+## Rationale
+Centralizing scripts and documentation improves project organization, reduces clutter, and makes it easier for contributors to find and maintain auxiliary code and docs. This is especially important as the project scales and more contributors join.
+

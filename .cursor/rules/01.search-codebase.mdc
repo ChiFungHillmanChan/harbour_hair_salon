@@ -1,0 +1,36 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Function and Component Search Rule
+
+## Purpose
+Prevent duplication and promote reuse by always searching for existing functions and components before creating new ones. Ensure the codebase remains maintainable and discoverable as it grows.
+
+## Scope
+This rule applies to all contributors (human and AI), for both backend (functions, services) and frontend (components, hooks, utilities) code.
+
+## Guidelines
+1. **Mandatory Structure File Check:**
+   - Before creating any new function or component, you must check `readme/structure.md` for an existing entry that matches the intended purpose.
+   - If the structure file does not exist or does not contain the needed information, use code navigation/search tools to look for existing logic.
+2. **No Duplication:**
+   - Only create a new function/component if no suitable existing one is found.
+3. **Mandatory Structure File Update:**
+   - Whenever a new function/component is created, you must update `readme/structure.md` to document its name, location, and purpose.
+   - This update is required for all code reviews and PRs.
+4. **Checklist for Contributors:**
+   - [ ] Checked `readme/structure.md` for existing logic
+   - [ ] Searched the codebase if not found in structure file
+   - [ ] Only created new logic if no suitable match exists
+   - [ ] Updated `readme/structure.md` with the new function/component
+   - [ ] Referenced this rule in the PR or code review
+5. **Automation Encouraged:**
+   - Where possible, automate these checks and updates in AI workflows and developer tooling.
+
+## References
+- [01.core-rules.mdc](mdc:01.core-rules.mdc)
+- [98.create-structure.mdc](mdc:.cursor/rules/98.create-structure.mdc)
+- [readme/cursor-rules-guide.md](mdc:readme/cursor-rules-guide.md)
+

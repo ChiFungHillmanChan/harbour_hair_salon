@@ -1,0 +1,152 @@
+---
+description: 
+globs: *.tsx,*.css,*.blazor,*.svelte
+alwaysApply: false
+---
+## Style guide
+
+Follow color scheme of "./public/logo.png", with button colors #174F7F as our primary color
+
+Always use TailwindCSS for styling.
+
+## Layout Consistency Rules
+
+### Page Structure Requirements
+All pages must follow a consistent layout structure to ensure uniform spacing and visual hierarchy across the entire application. Use the standard page pattern with proper content organization.
+
+### Required Page Structure Pattern
+Every page component should use this exact div structure:
+
+```tsx
+export default function YourPage() {
+  return (
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Page Title</h1>
+        <p className="text-gray-600">Page description</p>
+      </div>
+
+      {/* Additional content sections */}
+      <div className="bg-white shadow rounded-lg p-6">
+        {/* Content */}
+      </div>
+    </div>
+  )
+}
+```
+
+### Critical Layout Rules
+
+1. **Root Container**: Always use `<div className="space-y-6">` as the root container for page content
+2. **Content Cards**: Use `<div className="bg-white shadow rounded-lg p-6">` for content sections
+3. **No Additional Containers**: Never add extra container divs, padding, or margins to pages
+4. **Let MainLayout Handle Spacing**: The [MainLayout.tsx](mdc:server/app/components/MainLayout.tsx) component handles all page-level margins and padding
+
+### Forbidden Practices
+
+❌ **DO NOT** add these to any page:
+- Extra container divs with padding/margins
+- Custom margin or padding classes on the root page element
+- Any layout-related styling that conflicts with MainLayout
+- Page-specific spacing overrides
+
+❌ **DO NOT** modify MainLayout margin values:
+- The margin values in MainLayout.tsx have been carefully calibrated
+- Never attempt to change `ml-72`, `ml-20`, `mr-2`, `mx-2`, or `pt-20` values
+- These values ensure proper sidebar and navbar spacing
+
+### Layout Consistency Benefits
+
+✅ **Consistent Visual Hierarchy**: All pages have the same spacing and card structure
+✅ **Responsive Design**: MainLayout handles all responsive behavior
+✅ **Sidebar Integration**: Proper spacing for collapsed/expanded sidebar states
+✅ **Navbar Integration**: Correct top padding for fixed navbar
+✅ **Mobile Optimization**: Consistent mobile margins and spacing
+
+### Examples
+
+**✅ Correct Page Structure:**
+```tsx
+// Standard page pattern with proper structure
+export default function MyPage() {
+  return (
+    <div className="space-y-6">
+      <div className="bg-white shadow rounded-lg p-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">My Page</h1>
+      </div>
+    </div>
+  )
+}
+```
+
+**❌ Incorrect Page Structure:**
+```tsx
+// DO NOT DO THIS - adds unnecessary containers and spacing
+export default function MyPage() {
+  return (
+    <div className="container mx-auto p-6"> {/* ❌ Extra container */}
+      <div className="max-w-4xl mx-auto"> {/* ❌ Extra wrapper */}
+        <h1>My Page</h1>
+      </div>
+    </div>
+  )
+}
+```
+
+### Standard Page Patterns
+
+#### Basic Page with Header
+```tsx
+export default function BasicPage() {
+  return (
+    <div className="space-y-6">
+      {/* Page header with title and description */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Page Title</h1>
+        <p className="text-gray-600">Brief description of the page purpose</p>
+      </div>
+    </div>
+  )
+}
+```
+
+#### Page with Multiple Content Sections
+```tsx
+export default function MultiSectionPage() {
+  return (
+    <div className="space-y-6">
+      {/* Header section */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Page Title</h1>
+        <p className="text-gray-600">Page description</p>
+      </div>
+
+      {/* Stats or summary section */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h2 className="text-lg font-medium text-gray-900 mb-4">Statistics</h2>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Stat cards */}
+        </div>
+      </div>
+
+      {/* Main content section */}
+      <div className="bg-white shadow rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-medium text-gray-900">Main Content</h2>
+        </div>
+        <div className="p-6">
+          {/* Main content */}
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+### Implementation Guidelines
+- Use the standard page patterns as templates for new pages
+- Follow the root `space-y-6` container pattern consistently
+- Organize content into logical white card sections
+- Let MainLayout handle all page-level spacing and responsive behavior
+- Maintain visual consistency across all application pages

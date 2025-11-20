@@ -1,0 +1,207 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# One-Shot Large File Split Rule
+
+## Purpose
+
+This rule describes a one-time remediation process for splitting an already large, broken, or monolithic file into smaller, maintainable chunks. It is intended for use when a file has grown beyond maintainable size or has accumulated multiple responsibilities, violating DRY and SOLID principles. This is not an ongoing best practice, but a focused intervention to restore codebase health.
+
+## When to Apply
+
+- The file is excessively large (typically >400 lines) and difficult to navigate.
+- The file contains unrelated logic, repeated code, or multiple responsibilities.
+- The file is a "god file" or "dumping ground" for features, utilities, or components.
+
+## Critical Success Factors
+
+**⚠️ MOST IMPORTANT:** The main component must be completely rewritten to use the extracted hooks and components. Simply extracting code without integrating it properly will result in a failed split with duplicate logic and massive file sizes.
+
+### Component Extraction Principles
+
+1. **Extract by Concern, Not by Location:**
+   - Group related functionality (user management, class management, bulk operations)
+   - Each extracted component should handle ONE specific domain
+   - Avoid extracting arbitrary UI sections without their related logic
+
+2. **Always Create Standalone Components:**
+   - Never create locally implemented components within the main file
+   - Each component should be self-contained with its own file
+   - Components should accept props and manage their own internal state
+   - Example: `BulkImportDialog.tsx` should handle ALL bulk import UI logic
+
+3. **Custom Hooks Must Encapsulate Complete Logic:**
+   - Extract ALL related state and functions into the hook
+   - The main component should ONLY call hook functions, never duplicate them
+   - Hooks should return everything needed: state, handlers, loading states, errors
+   - Example: `useUserManagement` should handle all user CRUD operations
+
+## One-Shot Split Process
+
+1. **Analyze the File:**
+   - Identify all logical sections, features, or domains present in the file.
+   - List out major functions, classes, components, and repeated code blocks.
+   - Note dependencies between sections (shared state, utility functions, etc.).
+   - **Map out which UI sections belong with which business logic**
+
+2. **Plan the Split by Domain:**
+   - Group related logic into cohesive domains (by feature, not by file location)
+   - Plan extraction order: Types → Constants → Utils → Hooks → Components → Main Component
+   - Decide on new file/module names for each unit (use descriptive, kebab-case names).
+   - Plan for shared utilities or types to be extracted into their own files if needed.
+   - **Identify which components will be completely standalone vs. which need integration**
+
+3. **Execute the Split (Critical Order):**
+   
+   **Phase 1: Foundation**
+   - Extract types and interfaces first (`types.ts`)
+   - Extract constants and configuration (`constants.ts`)
+   - Extract pure utility functions (`utils.tsx` - use .tsx if returning JSX)
+
+   **Phase 2: Business Logic**
+   - Create custom hooks with complete state management (`hooks/useFeatureName.ts`)
+   - Each hook should encapsulate ALL related operations for its domain
+   - Hooks should handle their own data fetching, error states, and loading states
+
+   **Phase 3: UI Components**
+   - Extract complex UI sections as standalone components (`components/ComponentName.tsx`)
+   - Components should be completely self-contained
+   - Pass data and handlers via props, never access parent state directly
+   - Each component should manage its own internal UI state
+
+   **Phase 4: Main Component Rewrite (CRITICAL)**
+   - **Completely rewrite the main component from scratch**
+   - Import and use the extracted hooks (don't duplicate their logic)
+   - Import and use the extracted components (don't reimplement their UI)
+   - Remove ALL duplicate state declarations and function implementations
+   - The main component should be primarily composition and coordination
+
+4. **Integration Validation:**
+   - Verify the main component uses hooks properly (no duplicate state/functions)
+   - Ensure extracted components are truly standalone
+   - Check that no business logic remains in the main component
+   - Confirm the main component is dramatically smaller (target: ~400 lines max)
+
+5. **Document the Change:**
+   - Create or update a README in the `readme/` folder summarizing:
+     - The rationale for the split
+     - The new file/module structure
+     - Any key design or refactor decisions
+     - Reference this rule and [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc)
+
+6. **Test and Validate:**
+   - Run all relevant tests to ensure no regressions.
+   - Manually verify that the refactored code works as expected.
+   - **Verify the main component file size is dramatically reduced**
+
+## Common Pitfalls to Avoid
+
+### ❌ Failed Split Patterns
+
+1. **Extracting Code Without Integration:**
+   ```tsx
+   // BAD: Hook exists but main component duplicates its logic
+   const userManagement = useUserManagement();
+   const [users, setUsers] = useState([]); // Duplicate state!
+   const handleCreateUser = async () => { /* duplicate logic */ };
+   ```
+
+2. **Locally Implemented Components:**
+   ```tsx
+   // BAD: Component defined inside main component
+   function SchoolUsersManagement() {
+     const BulkImportSection = () => <div>...</div>; // Should be extracted!
+     return <div><BulkImportSection /></div>;
+   }
+   ```
+
+3. **Incomplete Hook Extraction:**
+   ```tsx
+   // BAD: Hook only has some functions, main component has others
+   const { users } = useUserManagement();
+   const handleUserEdit = () => { /* should be in hook */ };
+   ```
+
+### ✅ Successful Split Patterns
+
+1. **Complete Hook Integration:**
+   ```tsx
+   // GOOD: Main component only uses hook, no duplicate logic
+   const userManagement = useUserManagement(schoolId);
+   return (
+     <UsersList
+       users={userManagement.users}
+       onEditUser={userManagement.handleEditUser}
+       loading={userManagement.loading}
+     />
+   );
+   ```
+
+2. **Standalone Components:**
+   ```tsx
+   // GOOD: Component is completely self-contained
+   <BulkImportDialog
+     isOpen={bulkImport.isOpen}
+     onClose={bulkImport.close}
+     onImport={bulkImport.handleImport}
+   />
+   ```
+
+3. **Clean Main Component:**
+   ```tsx
+   // GOOD: Main component is primarily composition
+   export default function SchoolUsersManagement({ school }) {
+     const userManagement = useUserManagement(school.id);
+     const classManagement = useClassManagement(school.id);
+     
+     return (
+       <div>
+         <UsersList {...userManagement} />
+         <ClassesList {...classManagement} />
+       </div>
+     );
+   }
+   ```
+
+## Example Workflow
+
+- **Before:**
+  - `SchoolUsersManagement.tsx` (2219 lines): user management, class management, bulk import, UI rendering, utilities, state management.
+
+- **After:**
+  - `types.ts` (interfaces and types)
+  - `constants.ts` (configuration constants)
+  - `utils.tsx` (pure utility functions)
+  - `hooks/useUserManagement.ts` (complete user state and operations)
+  - `hooks/useClassManagement.ts` (complete class state and operations)
+  - `hooks/useBulkImport.ts` (complete bulk import logic)
+  - `components/BulkImportDialog.tsx` (standalone bulk import UI)
+  - `components/UsersList.tsx` (standalone users list UI)
+  - `components/ClassesList.tsx` (standalone classes list UI)
+  - `SchoolUsersManagement.tsx` (~400 lines: composition and coordination only)
+  - `README.md` (split documentation)
+
+## Success Metrics
+
+- **Main component reduced to ~400 lines or less**
+- **No duplicate state or function implementations**
+- **Each extracted file has a single, clear responsibility**
+- **Extracted components are completely standalone**
+- **Custom hooks encapsulate complete domain logic**
+- **All functionality works exactly as before**
+
+## Additional Guidance
+- Apply the Single Responsibility Principle (SRP) and separation of concerns as described in [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc)
+- Extract domain logic and state as described in [02.state-management-rule.mdc](mdc:.cursor/rules/02.state-management-rule.mdc)
+- Document the split thoroughly for future maintainers.
+- This process is for one-time remediation; ongoing best practices are covered in other rules.
+- **Remember: The goal is not just to extract code, but to properly integrate the extractions**
+
+## References
+- [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc)
+- [02.state-management-rule.mdc](mdc:.cursor/rules/02.state-management-rule.mdc)
+- [98.create-readme.mdc](mdc:.cursor/rules/98.create-readme.mdc)
+
+

@@ -1,0 +1,14 @@
+---
+description: Used when creating commands
+globs: 
+alwaysApply: false
+---
+# Library and Command Choices
+
+## Purpose
+
+This rule governs general library and command selection preferences for the codebase, especially for cross-cutting concerns and infrastructure. Framework- or style-specific commands are documented in their respective rules. Azure-specific rules are now in their own file.
+
+## OS Preferences
+- Always use a Windows Powershell command
+- Do not generate Linux command

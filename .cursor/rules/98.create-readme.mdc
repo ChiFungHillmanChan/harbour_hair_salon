@@ -1,0 +1,181 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Function README Documentation Rule
+
+## Purpose
+
+To ensure maintainability, discoverability, and knowledge transfer, every significant function (utility, hook, service, or server action) created or refactored in the codebase must be accompanied by a dedicated README file in the `readme/` folder. This README should summarize the function's purpose, design decisions, usage, and any relevant implementation notes, based on the summary of the chat or development session in which it was created.
+
+## File Location & Naming
+
+### Organized Folder Structure
+Place documentation files in the appropriate subdirectory within `readme/` based on the type of functionality:
+
+- **`readme/features/`** - Core platform features (assignments, exams, classes, user management, etc.)
+- **`readme/features/acurite/`** - Acurite-specific feature documentation (nested under features)
+- **`readme/infrastructure/`** - Core system infrastructure (authentication, permissions, i18n, etc.)
+- **`readme/ui-components/`** - UI/UX components and interface elements
+- **`readme/azure/`** - Azure cloud services and integrations
+- **`readme/development/`** - Development tools, structure documentation, and build processes
+- **`readme/mobile/`** - Mobile-specific documentation (Flutter/Dart)
+
+### Naming Conventions
+- Name files using kebab-case with a `.md` extension (e.g., `user-profile-service.md`, `assignment-grading.md`)
+- For grouped functionality, use descriptive names that reflect the feature area
+- Include the service/component type in the name when helpful (e.g., `azure-blob-storage-functions.md`)
+
+### Folder Selection Guidelines
+- **Features**: User-facing functionality and business logic
+- **Infrastructure**: Foundational systems that support multiple features
+- **UI Components**: Reusable interface elements and design system components
+- **Cloud Services**: External service integrations (Azure, GCP, AWS, etc.)
+- **Development**: Build tools, project structure, coding standards
+
+### Feature Organization Rules
+**Only massively big features (system-level) deserve their own folders.** Minor features should be grouped under existing system-level features.
+
+#### System-Level Features (deserve own folders):
+- Complete feature ecosystems with multiple sub-components
+- Features that could be standalone products or major modules
+- Examples: `assignment-system`, `exam-system`, `class-management`, `acurite` (complete analysis system)
+
+#### Minor Features (group under system-level):
+- Single-purpose functionality or enhancements
+- Sub-features that extend existing systems
+- Utilities or tools that support larger features
+- Examples: `image-upload-feature` → goes under relevant system, `grade-export` → goes under `assignment-system`
+
+#### Decision Framework:
+1. **Is this a complete system with multiple interconnected components?** → Own folder
+2. **Does this extend or enhance an existing system?** → Group under that system
+3. **Is this a standalone utility or single-purpose feature?** → Group under the most relevant system
+4. **When in doubt** → Ask the user for guidance on proper categorization
+
+#### Grouping Strategy:
+- Look for existing system-level features that this relates to
+- Consider the primary user workflow this feature supports
+- If no clear system exists, consider if this is big enough to warrant a new system folder
+
+## When to Create/Update
+
+- After implementing or refactoring a function, immediately create or update the corresponding README file.
+- The README should be based on a summary of what was done in the chat or development session, including key decisions, tradeoffs, and implementation details.
+- Update the README if the function is significantly changed in the future.
+
+## Content Guidelines
+
+Each function README should include the following sections:
+
+1. **Title**: The function or feature name as a heading.
+2. **Purpose**: A concise summary of what the function does and why it exists.
+3. **Usage**: Example usage, including parameters, return values, and any important edge cases.
+4. **Design & Implementation Notes**: Key design decisions, tradeoffs, and rationale. Reference any relevant chat summaries or architectural discussions.
+5. **Dependencies**: List any important dependencies (libraries, other functions, environment variables).
+6. **Testing & Validation**: How the function is tested, and any known limitations or gotchas.
+7. **Change Log**: Briefly note major changes or refactors, with dates if possible.
+
+## Example Structures
+
+### Infrastructure Function Example
+**File**: `readme/infrastructure/user-profile-service.md`
+
+```markdown
+# User Profile Service
+
+## Purpose
+Fetches and returns the user profile from the database, including roles and permissions. Used in authentication and profile display flows.
+
+## Usage
+```ts
+const profile = await getUserProfile(userId);
+```
+- **Parameters:** `userId` (string) - The user's unique identifier.
+- **Returns:** `UserProfile | null`
+- Throws if the user does not exist.
+
+## Design & Implementation Notes
+- Uses Prisma for database access.
+- Handles both system and organization roles.
+- See [chat summary 2024-05-01] for design tradeoffs regarding role resolution.
+
+## Dependencies
+- `@prisma/client`
+- Environment variable: `DATABASE_URL`
+
+## Testing & Validation
+- Unit tests in `app/utils/__tests__/getUserProfile.test.ts`
+- Validated against seed data in development.
+
+## Change Log
+- 2024-05-01: Initial implementation
+- 2024-06-10: Refactored to support organization roles
+```
+
+### Feature Function Example
+**File**: `readme/features/assignment-grading-system.md`
+
+```markdown
+# Assignment Grading System
+
+## Purpose
+Provides automated grading functionality for student assignments using AI analysis and rubric-based scoring.
+
+## Usage
+```ts
+const result = await gradeAssignment(submissionId, rubricId);
+```
+
+## Design & Implementation Notes
+- Integrates with OpenAI for content analysis
+- Supports multiple grading rubrics
+- Implements caching for performance optimization
+
+## Dependencies
+- OpenAI API
+- Prisma database models
+- Redis for caching
+```
+
+### Cloud Service Example
+**File**: `readme/azure/blob-storage-functions.md`
+
+```markdown
+# Azure Blob Storage Functions
+
+## Purpose
+Provides file upload, download, and management capabilities using Azure Blob Storage with runtime-only environment variable access.
+
+## Design & Implementation Notes
+- Uses service layer pattern to prevent build-time errors
+- Optimized for minimal API calls through helper functions
+- Implements SAS URL generation for secure access
+```
+
+## Benefits of Organized Structure
+
+### Improved Discoverability
+- **By Domain**: Developers can quickly find documentation related to specific areas (features, infrastructure, etc.)
+- **Logical Grouping**: Related functionality is co-located (e.g., all Acurite features in one place)
+- **Scalable Organization**: New cloud services, features, and components have clear homes
+
+### Better Maintenance
+- **Focused Updates**: Changes to infrastructure vs. features are clearly separated
+- **Easier Reviews**: Code reviews can focus on specific domain areas
+- **Reduced Conflicts**: Multiple developers can work on documentation without file conflicts
+
+### Knowledge Transfer
+- **Onboarding**: New developers can focus on specific areas of the system
+- **Expertise Areas**: Teams can own documentation for their domain expertise
+- **Architecture Understanding**: Clear separation between features, infrastructure, and services
+
+## Additional Notes
+- These README files are for internal documentation and onboarding. They are not intended for end-user documentation.
+- If a function is trivial or self-explanatory, a short README with just the title and a one-sentence purpose is sufficient.
+- For complex features, link to related documentation or architectural discussions as needed.
+- When unsure about folder placement, consider: Is this user-facing functionality (features), foundational system support (infrastructure), or external service integration (cloud services)?
+- **Feature Folder Rule**: Only create new feature folders for system-level features. Minor features must be grouped under existing systems. When in doubt, ask the user for guidance.
+- Acurite is a system-level feature within the evoke-one platform, so all Acurite-related documentation goes under `features/acurite/`.
+- Examples of proper grouping: `grade-export.md` → `features/assignment-system/`, `question-timer.md` → `features/exam-system/`, `bulk-invite.md` → `features/class-management/`.

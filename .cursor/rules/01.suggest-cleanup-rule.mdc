@@ -1,0 +1,229 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Automatic Cleanup Suggestion Rule
+
+## Purpose
+
+Automatically detect common code quality issues and anti-patterns identified in [vibe-coding-for-monkeys.md](mdc:readme/vibe-coding-for-monkeys.md) and suggest appropriate cleanup actions. This rule helps maintain code quality by proactively identifying problems before they become technical debt.
+
+## Detection Patterns & Suggested Actions
+
+### 🔄 Infinite Loop Detection
+
+**Detect When:**
+- Functions with dependencies that aren't memoized
+- Object literals recreated in dependency tracking
+- Missing dependencies in change listeners
+- Circular references between modules
+
+**Auto-Suggest:**
+```
+🚨 INFINITE LOOP RISK DETECTED
+Issue: Function dependency without memoization
+Suggested Rule: Apply memoization pattern from README-PROGRAMMING-PRINCIPLES.md
+Quick Fix: memoize(() => { ... }, [dependency1, dependency2])
+```
+
+### 🏪 State Management Issues
+
+**Detect When:**
+- Excessive parameter passing (5+ parameters)
+- Data drilling through 3+ layers
+- Complex interdependent state logic
+- State not being cleared on cleanup
+
+**Auto-Suggest:**
+```
+🚨 STATE MANAGEMENT ISSUE DETECTED
+Issue: Excessive parameter passing (5+ params) detected
+Suggested Rule: Apply centralized state pattern from README-PROGRAMMING-PRINCIPLES.md
+Quick Fix: Extract shared state to centralized store
+```
+
+### 📁 Module Size Violations
+
+**Detect When:**
+- Modules exceeding 400 lines
+- Classes/modules with multiple unrelated responsibilities
+- Single modules handling connection + UI + state + settings
+
+**Auto-Suggest:**
+```
+🚨 MODULE TOO LARGE DETECTED
+Issue: Module exceeds 400 lines with multiple responsibilities
+Suggested Rule: Apply module splitting from 98.split-large-files.mdc
+Quick Fix: Split by domain (connection, settings, utilities)
+```
+
+### 🔗 Resource Leak Detection
+
+**Detect When:**
+- Setup functions without cleanup return
+- Event listeners added without removal
+- Connections opened without proper cleanup
+- Subscriptions without unsubscribe
+
+**Auto-Suggest:**
+```
+🚨 RESOURCE LEAK DETECTED
+Issue: Setup function with subscription but no cleanup
+Suggested Rule: Apply cleanup pattern from README-PROGRAMMING-PRINCIPLES.md
+Quick Fix: return cleanup() { subscription.unsubscribe() }
+```
+
+### 🎯 Type Safety Issues
+
+**Detect When:**
+- Usage of untyped parameters
+- Missing null checks before property access
+- Using fallback operators incorrectly for default values
+- Undefined property access without safe navigation
+
+**Auto-Suggest:**
+```
+🚨 TYPE SAFETY ISSUE DETECTED
+Issue: Untyped parameter usage detected
+Suggested Rule: Apply explicit typing from README-PROGRAMMING-PRINCIPLES.md
+Quick Fix: Define interface with proper type constraints
+```
+
+### 🚨 Race Condition Patterns
+
+**Detect When:**
+- State updates after async operations without validation
+- Event processing without connection status checks
+- Missing defensive checks in event handlers
+- Stale state access in async callbacks
+
+**Auto-Suggest:**
+```
+🚨 RACE CONDITION RISK DETECTED
+Issue: State update after async operation without validation
+Suggested Rule: Apply defensive programming from README-PROGRAMMING-PRINCIPLES.md
+Quick Fix: Add connection status check before state updates
+```
+
+## Implementation Guidelines
+
+### Auto-Detection Triggers
+
+1. **On Save:** Scan for patterns when modules are saved
+2. **On Review:** Highlight issues in code reviews
+3. **On Refactor:** Suggest improvements during code changes
+4. **On Import:** Check for violations when importing large modules
+
+### Suggestion Format
+
+Each suggestion should include:
+- **🚨 Issue Type:** Clear categorization of the problem
+- **Issue Description:** What was detected and why it's problematic
+- **Suggested Rule:** Which specific rule from [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc) or principles to apply
+- **Quick Fix:** Concrete code example or pattern to implement
+
+### Priority Levels
+
+1. **🔴 Critical:** Infinite loops, memory leaks, race conditions
+2. **🟡 Warning:** Module size, parameter drilling, type safety
+3. **🔵 Info:** Code organization, documentation suggestions
+
+## Integration with Existing Rules
+
+This rule works in conjunction with:
+- [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc) - Foundation principles
+- [98.split-large-files.mdc](mdc:.cursor/rules/98.split-large-files.mdc) - Module organization
+- Universal programming principles from [vibe-coding-for-monkeys.md](mdc:readme/vibe-coding-for-monkeys.md)
+
+## Example Detection Scenarios
+
+### Scenario 1: Infinite Loop Prevention
+```pseudocode
+// DETECTED PATTERN:
+function processData() {
+  expensiveOperation = () => { /* computation */ }
+  onDataChange(() => {
+    expensiveOperation()
+  }, [expensiveOperation]) // 🚨 Function dependency detected
+}
+
+// SUGGESTED FIX:
+function processData() {
+  expensiveOperation = memoize(() => { /* computation */ }, [dependency1])
+  onDataChange(() => {
+    expensiveOperation()
+  }, [expensiveOperation]) // ✅ Memoized function
+}
+```
+
+### Scenario 2: Race Condition Prevention
+```pseudocode
+// DETECTED PATTERN:
+connection.onMessage((data) => {
+  handleEvent(data) // 🚨 No connection check
+})
+
+// SUGGESTED FIX:
+connection.onMessage((data) => {
+  if (isConnected) { // ✅ Defensive check
+    handleEvent(data)
+  }
+})
+```
+
+### Scenario 3: Resource Leak Prevention
+```pseudocode
+// DETECTED PATTERN:
+function setupService() {
+  subscription = dataSource.subscribe(callback)
+  // 🚨 No cleanup detected
+}
+
+// SUGGESTED FIX:
+function setupService() {
+  subscription = dataSource.subscribe(callback)
+  return cleanup() { // ✅ Proper cleanup
+    subscription.unsubscribe()
+  }
+}
+```
+
+### Scenario 4: State Management Decoupling
+```pseudocode
+// DETECTED PATTERN:
+function renderComponent(user, settings, permissions, theme, language) {
+  // 🚨 Too many parameters
+  return childComponent(user, settings, permissions, theme, language)
+}
+
+// SUGGESTED FIX:
+class GlobalStore {
+  user, settings, permissions, theme, language
+}
+
+function renderComponent() {
+  user = GlobalStore.getUser() // ✅ Centralized access
+  return childComponent()
+}
+```
+
+## Benefits
+
+- **Proactive Quality:** Catch issues before they become bugs
+- **Learning Tool:** Educate developers on universal principles
+- **Consistency:** Enforce patterns across any codebase
+- **Time Saving:** Reduce debugging time by preventing common issues
+- **Knowledge Transfer:** Share solutions from [vibe-coding-for-monkeys.md](mdc:readme/vibe-coding-for-monkeys.md)
+
+## Configuration
+
+Enable auto-suggestions for:
+- ✅ Critical issues (always suggest)
+- ✅ Warning level issues (suggest during review)
+- ⚙️ Info level issues (configurable, suggest during refactoring)
+
+This rule ensures that the universal programming principles and troubleshooting patterns documented in [vibe-coding-for-monkeys.md](mdc:readme/vibe-coding-for-monkeys.md) are automatically applied to prevent common issues across any programming language or framework.
+
+
+

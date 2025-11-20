@@ -1,0 +1,36 @@
+---
+description: 
+globs: Dockerfile
+alwaysApply: false
+---
+# Docker Rules
+
+## Purpose
+
+This rule defines best practices for using Docker in this codebase, including Dockerfile authoring, image building, tagging, security, and CI/CD integration. It incorporates lessons learned from previous workflow improvements and aims to ensure secure, reliable, and maintainable containerization.
+
+## General Guidelines
+- Always use multi-stage builds to keep images small and secure.
+- Never include secrets or sensitive data in Docker images or build logs.
+- Tag images with both the commit SHA and branch/tag for traceability.
+- Use `.dockerignore` to exclude unnecessary files from the build context.
+- Keep Dockerfiles readable and well-commented.
+
+## CI/CD Integration
+- Always build and test Docker images in CI, including for pull requests.
+- Only push images to the registry when explicitly requested (e.g., via workflow dispatch or on main branch).
+- Ensure images are tested (e.g., via `docker run` or integration tests) before deployment.
+- Authenticate to the registry only when a push is required.
+- Avoid leaking secrets in logs or environment variables during CI/CD.
+- Document any workflow-specific requirements (e.g., login, conditional push).
+
+## Security
+- Use official base images where possible and keep them up to date.
+- Run containers as non-root users unless absolutely necessary.
+- Minimize the number of layers and installed packages.
+- Scan images for vulnerabilities regularly.
+
+## References
+- [01.core-rules.mdc](mdc:01.core-rules.mdc)
+- [01.error-handling-rule.mdc](mdc:01.error-handling-rule.mdc)
+

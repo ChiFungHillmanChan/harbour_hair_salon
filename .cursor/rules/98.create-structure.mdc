@@ -1,0 +1,65 @@
+---
+description: 
+globs: structure.md
+alwaysApply: false
+---
+# Structure File Creation and Maintenance Rule
+
+## Purpose
+To ensure the codebase remains discoverable and maintainable by documenting all functions and components in a single, canonical structure file: `readme/structure.md`.
+
+## Scope
+This rule applies to all contributors and maintainers. It covers the creation, updating, and automation of the structure file for both backend and frontend code.
+
+## Guidelines
+1. **File Location:**
+   - The structure file must be located at `readme/structure.md`.
+2. **When to Update:**
+   - Update the structure file whenever a new function, component, hook, or service is created, modified, or removed.
+   - Updates are required for all code reviews and PRs.
+3. **File Structure:**
+   - The structure file should begin with a tree diagram of the main app structure, showing only high-level domains, features, and supported languages.
+   - **Do not expand into individual CRUD files, page/component files, or internal helpers unless they are reusable or central to the architecture.**
+   - For translations, list the supported languages and main namespaces (e.g., `en.json`, `zh-TW.json`, `en/admin.json`).
+   - For service or action directories, represent them as a single entry (e.g., `admin/ (server actions for CRUD admin table)`).
+   - For page domains, represent them as a single entry (e.g., `admin/ (the admin page)`).
+   - Keep entries concise, clear, and focused on maintainability and discoverability.
+   - **Example:**
+     ```
+     app/
+     ├── actions/
+     │   └── admin/ (server actions for CRUD admin table)
+     ├── messages/ (multi-lingual translations)
+     │   ├── en.json
+     │   ├── zh-TW.json
+     │   ├── en/ (namespace: admin)
+     │   └── zh-TW/ (namespace: admin)
+     ├── [locale]/
+     │   ├── admin/ (the admin page)
+     ...
+     ```
+4. **Component/Table Overview Requirement:**
+   - The structure file must include a table listing all reusable functions, components, hooks, and services.
+   - Each entry in the table must include:
+     - **Name:** The function/component/hook/service name
+     - **Location:** The file path
+     - **Purpose/Description:** A brief summary of what it does
+     - **Related:** Other key modules it interacts with
+   - The table should be kept up to date with all additions, modifications, and removals.
+   - **Example:**
+     | Name                | Location                                      | Purpose/Description                                                                                 | Related                          |
+     |---------------------|-----------------------------------------------|-----------------------------------------------------------------------------------------------------|-----------------------------------|
+     | MainLayout          | app/components/MainLayout.tsx                  | Consistent layout with sticky navbar and responsive sidebar                                         | Navbar, Sidebar, useSidebar       |
+     | Sidebar             | app/components/Sidebar.tsx                     | Responsive sidebar navigation, mobile gestures, admin/user links, language switcher                 | MainLayout, LanguageSwitcher      |
+     | ...                 | ...                                           | ...                                                                                                 | ...                               |
+5. **Automation:**
+   - Where possible, automate the generation and updating of this file using scripts or developer tooling.
+   - Encourage contributors to use the tree and table format for consistency.
+6. **Review:**
+   - Reviewers must check that the structure file is updated and accurate before approving PRs that add or modify logic.
+
+## References
+- [01.search-codebase.mdc](mdc:.cursor/rules/01.search-codebase.mdc)
+- [readme/cursor-rules-guide.md](mdc:readme/cursor-rules-guide.md)
+
+

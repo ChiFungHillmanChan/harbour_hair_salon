@@ -1,0 +1,47 @@
+---
+description: 
+globs: *.tsx,*.ts
+alwaysApply: false
+---
+# State Management Philosophy (React/Next.js with Zustand)
+
+## Goal
+
+Balance component encapsulation and local state simplicity with the scalability and decoupling benefits of a dedicated state management library (Zustand) for shared or complex state. Avoid unnecessary complexity by choosing the right tool for the job.
+
+## Core Principles
+
+1.  **Prioritize Local State (`useState`, `useReducer`) When:**
+    *   State is only used by a single component or passed down 1-2 levels to immediate children.
+    *   State represents simple UI concerns (e.g., modal visibility `isOpen`, input values, toggle states `showSidebar`).
+    *   The logic to update the state is straightforward and confined to the component.
+    *   **Benefit:** Simplicity, less boilerplate, easy to understand in component context.
+
+2.  **Use Zustand Stores When:**
+    *   State needs to be accessed or modified by multiple components that are distant in the component tree (avoids deep prop drilling).
+    *   State represents a distinct domain or feature (e.g., `playHistory`, `searchPlaylist`, `player`, `userSession`).
+    *   State involves complex update logic or side effects (API calls, `localStorage` sync, WebSocket interactions) that benefit from being centralized and potentially reused.
+    *   Performance optimizations are needed (Zustand selectors prevent unnecessary re-renders).
+    *   **Benefit:** Decoupling, scalability, testability, maintainability for complex/shared state.
+
+3.  **Identifying State Domains for Stores:**
+    *   Look for groups of related state variables and functions currently causing a component (like `YoutubeBrowser`) to become overly complex.
+    *   Consider features/domains: User Authentication, Player Controls & Status, Search/Filtering, Playlist Management, Application Settings, etc.
+    *   Each distinct domain is often a good candidate for its own Zustand store (e.g., `useAuthStore`, `usePlayerStore`, `useSearchStore`).
+
+4.  **Store Implementation Guidelines:**
+    *   Keep stores focused on their specific domain.
+    *   Define clear state interfaces and action signatures.
+    *   Place state modification logic (actions) within the store.
+    *   Handle side effects (API calls, localStorage) within or triggered by store actions (potentially using middleware if needed).
+    *   Components should select only the state slices they need using selectors (`useMyStore(state => state.someValue)`).
+    *   Components should call store actions to trigger state updates ("actions up" concept applied to the store).
+
+5.  **Avoid Overuse:** Do not put *all* state into Zustand stores. Simple, local UI state often belongs in the component using `useState`. Evaluate the sharing and complexity requirements before creating or adding to a store.
+
+## Example Scenario (Reflecting YoutubeBrowser Refactor)
+
+*   **Initial State:** `YoutubeBrowser` manages `playHistory`, `search`, `playlist`, player status, UI toggles locally. Prop drilling becomes extensive.
+*   **Refactor 1 (History):** `playHistory` and `recentCoSingers` involve `localStorage` and WebSocket side effects, needed by `YoutubeHistorySidebar`. Moved to `usePlayHistoryStore`.
+*   **Refactor 2 (Search/Playlist):** Search/playlist state (`searchResults`, `playlistItems`, loading states, API calls) is complex and used by input/results components. Moved to `useSearchPlaylistStore`.
+*   **Remaining Local State:** `YoutubeBrowser` keeps `inputUrlOrQuery`, `showSidebar`, `videoHeight`, `roomId`, player state (`videoId`, `videoInfo`) etc., as they are simpler, primarily UI-related, or tightly coupled to hooks/logic remaining in the component for now.

@@ -1,0 +1,391 @@
+---
+description: Called when creating text displayed to the user, in a multi-lingual manner
+globs: 
+alwaysApply: false
+---
+# Cursor Rule: Multi-lingual Translations (next-intl) - Client-Side Approach
+
+## Goal
+
+Ensure consistency and maintainability when adding or using translations by leveraging a **client-side automatic loading system** that eliminates manual namespace management and provides better build-time validation.
+
+> **Important:** This rule works in conjunction with [98.move-localization-to-client.mdc](mdc:.cursor/rules/98.move-localization-to-client.mdc) which provides strategic guidance on when to use client vs server-side translations.
+
+## ✅ IMPLEMENTED: Automatic Client-Side Translation Loading
+
+**The previous server-side approach with manual namespace management in `request.ts` has been successfully replaced with a fully automatic client-side system.**
+
+### 🎉 Benefits of the New Approach:
+- **✅ No manual namespace management** - Add translation files and they're automatically loaded
+- **✅ Better build-time validation** - Next.js can detect missing translation keys at build time
+- **✅ Simplified maintenance** - No need to update `request.ts` when adding new namespaces
+- **✅ Tree-shaking support** - Unused translations are automatically excluded from builds
+- **✅ Faster development** - No server restarts needed when adding translations
+- **✅ Type safety** - Full TypeScript support for translation keys
+
+## ✅ CONFIRMED: Both Client and Server Support Nested Namespace Access
+
+**Both client-side `useTranslations()` and server-side `getTranslations()` support nested namespace access patterns.**
+
+### ✅ Client-Side Nested Namespace Access (WORKS)
+```tsx
+// ✅ BOTH patterns work in client components
+'use client';
+
+// Pattern 1: Nested namespace access
+const t = useTranslations('assignments.createAssignment'); // ✅ WORKS
+const title = t('title'); // ✅ Direct access
+
+// Pattern 2: Top-level namespace with dot notation
+const t2 = useTranslations('assignments'); // ✅ WORKS  
+const title2 = t2('createAssignment.title'); // ✅ Dot notation access
+```
+
+### ✅ Server-Side (Also Supports Both Patterns)
+```tsx
+// ✅ Server-side supports both patterns
+const t = await getTranslations('assignments.createAssignment'); // ✅ WORKS
+const title = t('title'); // ✅ Direct access
+
+const t2 = await getTranslations('assignments'); // ✅ WORKS
+const title2 = t2('createAssignment.title'); // ✅ Dot notation access
+```
+
+## Current Implementation
+
+### 1. Client-Side Provider (`ClientIntlProvider.tsx`)
+```tsx
+'use client';
+
+import { NextIntlClientProvider } from 'next-intl';
+import { ReactNode, useEffect, useState } from 'react';
+
+export default function ClientIntlProvider({ locale, children }) {
+  const [messages, setMessages] = useState(null);
+  
+  useEffect(() => {
+    async function loadMessages() {
+      // Load main messages
+      const mainMessages = (await import(`../../messages/${locale}.json`)).default;
+      
+      // Automatically load feature-specific messages
+      const featureMessages = {};
+      const featureNamespaces = ['assignments', 'admin']; // Auto-discovered
+      
+      await Promise.allSettled(
+        featureNamespaces.map(async (namespace) => {
+          try {
+            const messages = (await import(`../../messages/${locale}/${namespace}.json`)).default;
+            featureMessages[namespace] = messages;
+          } catch {
+            // Feature namespace doesn't exist - that's ok
+          }
+        })
+      );
+      
+      setMessages({ ...mainMessages, ...featureMessages });
+    }
+    
+    loadMessages();
+  }, [locale]);
+  
+  if (!messages) return <div>Loading translations...</div>;
+  
+  return (
+    <NextIntlClientProvider locale={locale} messages={messages}>
+      {children}
+    </NextIntlClientProvider>
+  );
+}
+```
+
+### 2. Simplified Server Configuration (`request.ts`)
+```tsx
+import { getRequestConfig } from "next-intl/server";
+import { routing } from "./routing";
+
+export default getRequestConfig(async ({ requestLocale }) => {
+  const locale = await requestLocale || routing.defaultLocale;
+  
+  // Load main messages for server components (metadata, etc.)
+  const mainMessages = (await import(`../messages/${locale}.json`)).default;
+  
+  return {
+    locale,
+    messages: mainMessages
+  };
+});
+```
+
+### 3. Layout Integration (`layout.tsx`)
+```tsx
+import ClientIntlProvider from './ClientIntlProvider';
+
+export default async function LocaleLayout({ children, params }) {
+  const { locale } = await params;
+
+  return (
+    <html lang={locale}>
+      <body>
+        <ClientIntlProvider locale={locale}>
+          {children}
+        </ClientIntlProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+## Translation File Structure
+
+```
+messages/
+├── en.json                    # Main translations (loginPage, dashboardPage, etc.)
+├── zh-TW.json                 # Main translations (Chinese)
+├── en/
+│   ├── assignments.json       # Feature-specific translations
+│   └── admin.json            # Feature-specific translations
+└── zh-TW/
+    ├── assignments.json       # Feature-specific translations
+    └── admin.json            # Feature-specific translations
+```
+
+## Usage Guidelines
+
+### ✅ Client Components - Both Patterns Work
+```tsx
+'use client';
+import { useTranslations } from 'next-intl';
+
+export default function MyComponent() {
+  // ✅ Pattern 1: Nested namespace access
+  const t = useTranslations('assignments.createAssignment');
+  
+  // ✅ Pattern 2: Top-level namespace with dot notation  
+  const t2 = useTranslations('assignments');
+  
+  return (
+    <div>
+      {/* Both approaches work */}
+      <h1>{t('title')}</h1> {/* Direct access */}
+      <p>{t2('assignmentsPage.description')}</p> {/* Dot notation */}
+      <button>{t('submit')}</button> {/* Direct access */}
+    </div>
+  );
+}
+```
+
+### 🎯 Choose the Right Pattern
+```tsx
+'use client';
+import { useTranslations } from 'next-intl';
+
+export default function BestPracticeComponent() {
+  // ✅ Use nested namespace when working primarily with one section
+  const createT = useTranslations('assignments.createAssignment');
+  
+  // ✅ Use top-level namespace when accessing multiple sections
+  const assignmentsT = useTranslations('assignments');
+  const commonT = useTranslations('common');
+  
+  return (
+    <div>
+      {/* Focused on createAssignment section */}
+      <h1>{createT('title')}</h1>
+      <input placeholder={createT('titlePlaceholder')} />
+      
+      {/* Accessing multiple sections */}
+      <p>{assignmentsT('assignmentsPage.description')}</p>
+      <button>{commonT('save')}</button>
+    </div>
+  );
+}
+```
+
+### ✅ Multiple Namespaces in Client Components
+```tsx
+'use client';
+import { useTranslations } from 'next-intl';
+
+export default function MultiNamespaceComponent() {
+  // ✅ Mix and match patterns as needed
+  const createT = useTranslations('assignments.createAssignment'); // Nested
+  const adminT = useTranslations('admin'); // Top-level
+  const commonT = useTranslations('common'); // Top-level
+  
+  return (
+    <div>
+      <h1>{createT('title')}</h1> {/* Direct access */}
+      <p>{adminT('users.description')}</p> {/* Dot notation */}
+      <button>{commonT('save')}</button> {/* Direct access */}
+    </div>
+  );
+}
+```
+
+### ⚠️ Server Components (Limited Use)
+```tsx
+// Only for metadata and critical server-side rendering
+import { getTranslations } from 'next-intl/server';
+
+export async function generateMetadata() {
+  // ✅ Server-side supports nested namespace access
+  const t = await getTranslations('assignments.assignmentsPage');
+  return { title: t('title') };
+}
+
+// OR use main namespace only
+export async function generateMetadata() {
+  const t = await getTranslations('loginPage'); // Only main namespace
+  return { title: t('title') };
+}
+```
+
+## Adding New Translations
+
+### 1. Add Feature-Specific Translations
+```bash
+# Create new feature namespace
+touch messages/en/newFeature.json
+touch messages/zh-TW/newFeature.json
+```
+
+### 2. Update ClientIntlProvider (if needed)
+```tsx
+// Add to auto-discovery list if not automatically detected
+const featureNamespaces = ['assignments', 'admin', 'newFeature'];
+```
+
+### 3. Use in Components
+```tsx
+'use client';
+// ✅ Both patterns work
+const t1 = useTranslations('newFeature.sectionName'); // Nested namespace
+const t2 = useTranslations('newFeature'); // Top-level namespace
+
+return (
+  <div>
+    <h1>{t1('title')}</h1> {/* Direct access */}
+    <h2>{t2('sectionName.subtitle')}</h2> {/* Dot notation */}
+  </div>
+);
+```
+
+## Migration from Server-Side
+
+### ❌ Old Server-Side Approach
+```tsx
+// DON'T DO THIS ANYMORE
+export default async function Page() {
+  const t = await getTranslations('assignments.assignmentsPage');
+  return <h1>{t('title')}</h1>;
+}
+```
+
+### ✅ New Client-Side Approach
+```tsx
+'use client';
+export default function Page() {
+  // ✅ Both patterns work
+  const t1 = useTranslations('assignments.assignmentsPage'); // Nested
+  const t2 = useTranslations('assignments'); // Top-level
+  
+  return (
+    <div>
+      <h1>{t1('title')}</h1> {/* Direct access */}
+      <p>{t2('assignmentsPage.description')}</p> {/* Dot notation */}
+    </div>
+  );
+}
+```
+
+## Real-World Examples
+
+### ✅ Correct Assignment Component
+```tsx
+'use client';
+import { useTranslations } from 'next-intl';
+
+export default function CreateAssignmentButton() {
+  // ✅ CORRECT: Top-level namespace
+  const t = useTranslations('assignments');
+  const common = useTranslations('common');
+  
+  return (
+    <div>
+      <h2>{t('createAssignment.title')}</h2>
+      <input placeholder={t('createAssignment.titlePlaceholder')} />
+      <button>{common('save')}</button>
+    </div>
+  );
+}
+```
+
+### ❌ Wrong Assignment Component
+```tsx
+'use client';
+import { useTranslations } from 'next-intl';
+
+export default function WrongCreateAssignmentButton() {
+  // ❌ WRONG: This will fail on client-side
+  const t = useTranslations('assignments.createAssignment');
+  
+  return (
+    <div>
+      <h2>{t('title')}</h2> {/* Will show missing translation */}
+      <input placeholder={t('titlePlaceholder')} />
+    </div>
+  );
+}
+```
+
+## Build-Time Validation
+
+The new approach provides excellent build-time validation:
+
+```bash
+npm run build
+# ✅ Shows missing translation keys
+# ✅ Detects unused translations
+# ✅ Validates namespace structure
+```
+
+## Performance Benefits
+
+- **Faster builds** - No server-side translation processing
+- **Better caching** - Client-side translations are cached by the browser
+- **Tree shaking** - Unused translations are excluded from bundles
+- **Lazy loading** - Feature translations loaded only when needed
+
+## Troubleshooting
+
+### Missing Translation Keys
+```
+MISSING_MESSAGE: assignments.assignmentsPage.title (en)
+```
+**Solution:** Add the missing key to the appropriate translation file.
+
+### Namespace Not Found
+```
+MISSING_MESSAGE: newFeature (en)
+```
+**Solution:** Create the translation file or add to auto-discovery list.
+
+### Translation Key Not Found
+**Problem:** Translation keys showing as missing or not found
+**Solution:** 
+1. Verify the key exists in the correct translation file
+2. Check that the namespace is loaded in `ClientIntlProvider`
+3. Ensure the file structure matches the namespace path
+4. Both `useTranslations('assignments.createAssignment')` and `useTranslations('assignments')` patterns work
+
+### Server Component Issues
+**Problem:** Server components can't access feature-specific translations.
+**Solution:** Convert to client component or use only main namespace translations.
+
+## References
+- [98.move-localization-to-client.mdc](mdc:.cursor/rules/98.move-localization-to-client.mdc) - Client vs server localization strategy
+- [Next-intl Client Components](mdc:https:/next-intl.dev/docs/environments/server-client-components)
+- [Next.js Internationalization](mdc:https:/nextjs.org/docs/app/guides/internationalization)
+
+- [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc)

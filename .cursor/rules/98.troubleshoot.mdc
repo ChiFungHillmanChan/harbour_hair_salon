@@ -1,0 +1,62 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Troubleshooting Guide
+
+## Purpose
+
+This guide documents common issues and their solutions for this codebase. It is intended to help developers quickly resolve recurring problems and avoid common pitfalls.
+
+## How to Use
+- Search this guide for your error message or issue description.
+- Follow the recommended solution or code sample.
+- If your issue is not listed, document the problem and solution here after resolving it.
+
+---
+
+## Next.js 15: Asynchronous Route Parameters
+
+### Problem
+In Next.js 15, route parameters are asynchronous and must be awaited before use. Accessing route parameters synchronously will result in errors or undefined values.
+
+### Solution
+Always extract and await route parameters at the beginning of your route handler.
+
+#### Incorrect
+```js
+export async function GET(request, { params }) {
+  // ❌ params.id is not available synchronously
+  const user = await prisma.user.findUnique({
+    where: { id: params.id }
+  });
+}
+```
+
+#### Correct
+```js
+export async function GET(request, { params }) {
+  // ✅ Await params before accessing properties
+  const { id } = await params;
+  const user = await prisma.user.findUnique({
+    where: { id }
+  });
+}
+```
+
+- Always include both types in the params definition if using TypeScript: `{ params: { id: string } } & { params: Promise<{ id: string }> }`
+- This ensures proper type checking while acknowledging the async nature of params.
+
+---
+
+## Reporting New Issues
+- When you encounter a new recurring issue, add a section to this guide with:
+  - A description of the problem
+  - The error message (if any)
+  - The solution or workaround
+  - Sample code if applicable
+
+## References
+- [02.next-js-rule.mdc](mdc:02.next-js-rule.mdc)
+

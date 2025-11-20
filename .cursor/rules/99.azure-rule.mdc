@@ -1,0 +1,17 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Azure Rules
+
+## Purpose
+
+This rule governs Azure-specific deployment and infrastructure preferences for this codebase.
+
+## Azure Web Apps
+- Always use the Linux version of Azure Web Apps for deployments.
+
+## References
+- [99.library-and-command-choices.mdc](mdc:99.library-and-command-choices.mdc)
+

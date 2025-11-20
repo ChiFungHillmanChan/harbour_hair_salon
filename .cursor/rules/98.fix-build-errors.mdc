@@ -1,0 +1,204 @@
+---
+description: Fixing build errors
+globs: 
+alwaysApply: false
+---
+# Build Error Resolution Rule
+
+## Purpose
+
+This rule establishes the proper methodology for fixing build errors, TypeScript errors, and ESLint violations. It explicitly prohibits shortcuts like ESLint disables and enforces proper type safety and code quality standards as defined in [02.js-ts-rule.mdc](mdc:.cursor/rules/02.js-ts-rule.mdc) and [02.next-js-rule.mdc](mdc:.cursor/rules/02.next-js-rule.mdc).
+
+## Scope
+
+This rule applies to all build error resolution activities across the entire codebase, including TypeScript compilation errors, ESLint violations, and framework-specific build issues.
+
+## Core Principles
+
+### 1. **NEVER Use ESLint Disables**
+- **Absolutely forbidden:** `// eslint-disable-next-line`
+- **Absolutely forbidden:** `// eslint-disable`
+- **Absolutely forbidden:** `/* eslint-disable */`
+- These are serious violations that hide real problems and create technical debt
+
+### 2. **NEVER Use TypeScript Suppressions**
+- **Absolutely forbidden:** `// @ts-ignore`
+- **Absolutely forbidden:** `// @ts-expect-error` (unless in very specific test scenarios)
+- **Absolutely forbidden:** `any` type in controlled code (see [02.js-ts-rule.mdc](mdc:.cursor/rules/02.js-ts-rule.mdc))
+
+### 3. **Fix Root Causes, Not Symptoms**
+- Address the underlying type safety or code quality issue
+- Understand why the error exists before attempting to fix it
+- Ensure the fix improves code quality rather than masking problems
+
+## Build Error Resolution Methodology
+
+### Step 1: Error Analysis
+1. **Read the complete error message** - understand what the compiler/linter is telling you
+2. **Identify the error category:**
+   - TypeScript type errors
+   - ESLint rule violations
+   - Framework-specific issues (Next.js, React, etc.)
+   - Import/export issues
+   - Missing dependencies
+
+### Step 2: Proper Resolution Strategies
+
+#### TypeScript Type Errors
+- **Import proper types:** Use official type definitions from libraries
+- **Define interfaces:** Create proper type definitions for data structures
+- **Use type guards:** Implement runtime type checking for unknown data
+- **Leverage generics:** Use TypeScript generics for reusable type-safe code
+- **Example Fix:**
+  ```typescript
+  // ❌ WRONG: Using any to hide error
+  const messages: any[] = [...]
+  
+  // ✅ CORRECT: Import and use proper types
+  import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+  const messages: ChatCompletionMessageParam[] = [...]
+  ```
+
+#### ESLint Rule Violations
+- **Understand the rule:** Research why the ESLint rule exists
+- **Refactor code:** Modify code to comply with the rule's intent
+- **Use proper patterns:** Follow established patterns from [02.js-ts-rule.mdc](mdc:.cursor/rules/02.js-ts-rule.mdc)
+- **Example Fix:**
+  ```typescript
+  // ❌ WRONG: Disabling the rule
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const unusedVar = 'value'
+  
+  // ✅ CORRECT: Remove unused variable or use it properly
+  const usedVar = 'value'
+  console.log(usedVar)
+  ```
+
+#### React/Next.js Specific Issues
+- **useEffect dependencies:** Use `useCallback` and `useMemo` properly
+- **Image optimization:** Use Next.js `Image` component instead of `<img>`
+- **Unescaped entities:** Use proper HTML entities (`&apos;`, `&quot;`)
+- **Example Fix:**
+  ```typescript
+  // ❌ WRONG: Missing dependencies
+  useEffect(() => {
+    loadData()
+  }, [id]) // Missing loadData dependency
+  
+  // ✅ CORRECT: Proper dependency management
+  const loadData = useCallback(async () => {
+    // implementation
+  }, [id, otherDeps])
+  
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+  ```
+
+### Step 3: Verification Process
+1. **Run build command** to ensure error is resolved
+2. **Check for new errors** introduced by the fix
+3. **Verify functionality** still works as expected
+4. **Review code quality** - ensure the fix improves rather than degrades code
+
+## Specific Error Categories & Solutions
+
+### 1. OpenAI/External API Type Issues
+- Import official type definitions
+- Use proper generic types for API responses
+- Implement type guards for external data validation
+
+### 2. Prisma Database Type Issues
+- Remove unsupported options (e.g., `skipDuplicates` in older versions)
+- Use proper Prisma client types
+- Handle database errors appropriately
+
+### 3. React Hook Dependency Issues
+- Wrap functions in `useCallback` with proper dependencies
+- Wrap objects/arrays in `useMemo` when used as dependencies
+- Include all variables from outer scope used inside effects
+
+### 4. Image and Asset Optimization
+- Replace `<img>` with Next.js `Image` component
+- Add proper `width` and `height` attributes
+- Use appropriate `alt` text for accessibility
+
+### 5. HTML Entity Escaping
+- Replace unescaped quotes with `&quot;`
+- Replace unescaped apostrophes with `&apos;`
+- Use proper HTML entities in JSX
+
+## Escalation Process
+
+If a build error cannot be resolved using proper methods:
+
+1. **Research the specific error** in official documentation
+2. **Check for library updates** that might resolve the issue
+3. **Consult team members** or create a detailed issue report
+4. **Document the investigation** and attempted solutions
+
+**NEVER resort to ESLint disables or TypeScript suppressions as a solution.**
+
+## Quality Assurance
+
+### Before Considering a Fix Complete:
+- [ ] Build passes without errors or warnings
+- [ ] No ESLint disables or TypeScript suppressions used
+- [ ] Code follows patterns from [02.js-ts-rule.mdc](mdc:.cursor/rules/02.js-ts-rule.mdc)
+- [ ] Type safety is maintained or improved
+- [ ] Functionality is preserved
+- [ ] Code quality is improved
+
+### Red Flags (Immediate Rejection):
+- Any use of `// eslint-disable`
+- Any use of `// @ts-ignore`
+- Any use of `any` type in controlled code
+- Removing functionality to avoid errors
+- Commenting out problematic code
+
+## Examples of Proper Fixes
+
+### Example 1: OpenAI Message Types
+```typescript
+// ❌ WRONG: Using any and ESLint disable
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const messages: any[] = [...]
+
+// ✅ CORRECT: Proper type import and usage
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+const messages: ChatCompletionMessageParam[] = [...]
+```
+
+### Example 2: useEffect Dependencies
+```typescript
+// ❌ WRONG: Ignoring dependency warnings
+useEffect(() => {
+  loadData()
+}, [id]) // eslint-disable-next-line react-hooks/exhaustive-deps
+
+// ✅ CORRECT: Proper dependency management
+const loadData = useCallback(async () => {
+  // implementation
+}, [id, dependency])
+
+useEffect(() => {
+  loadData()
+}, [loadData])
+```
+
+### Example 3: Image Components
+```typescript
+// ❌ WRONG: Using img tag
+<img src={imageSrc} alt="description" />
+
+// ✅ CORRECT: Using Next.js Image component
+import Image from 'next/image'
+<Image src={imageSrc} alt="description" width={800} height={600} />
+```
+
+## References
+- [02.js-ts-rule.mdc](mdc:.cursor/rules/02.js-ts-rule.mdc) - TypeScript and JavaScript best practices
+- [02.next-js-rule.mdc](mdc:.cursor/rules/02.next-js-rule.mdc) - Next.js specific guidelines
+- [01.error-handling-rule.mdc](mdc:.cursor/rules/01.error-handling-rule.mdc) - Error handling principles
+- [98.create-rules.mdc](mdc:.cursor/rules/98.create-rules.mdc) - Rule creation guidelines
+

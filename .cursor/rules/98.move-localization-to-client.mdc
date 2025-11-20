@@ -1,0 +1,656 @@
+---
+description: 
+globs: *.tsx
+alwaysApply: false
+---
+# Client-Side Localization Priority Rule
+
+## Purpose
+
+Maximize client-side localization while minimizing server-side translation usage. This rule ensures optimal performance, better build-time validation, and simplified maintenance by strategically separating client and server translation concerns.
+
+## Core Principle
+
+**Default to client-side localization unless server-side is absolutely required.**
+
+## Client-Side Localization (Preferred)
+
+### ✅ Use Client Components For:
+- **Page content** - All user-facing text, labels, descriptions
+- **Interactive elements** - Buttons, forms, modals, tooltips
+- **Dynamic content** - Lists, tables, cards, status messages
+- **Feature-specific UI** - Assignment pages, dashboard content, user management
+- **Error messages** - User-facing validation and error states
+- **Navigation elements** - Menus, breadcrumbs, tabs
+
+### Implementation Pattern:
+```tsx
+'use client';
+import { useTranslations } from 'next-intl';
+
+export default function MyComponent() {
+  const t = useTranslations('featureName.sectionName');
+  return <h1>{t('title')}</h1>;
+}
+```
+
+### Benefits:
+- **Build-time validation** - Missing keys detected during build
+- **Tree shaking** - Unused translations excluded from bundles
+- **Better caching** - Browser caches translation files
+- **Faster development** - No server restarts needed
+- **Type safety** - Full TypeScript support
+
+## Server-Side Localization (Limited Use)
+
+### ⚠️ Only Use Server Components For:
+- **Page metadata** - `<title>`, `<meta>` tags, OpenGraph data
+- **SEO-critical content** - Content that must be server-rendered for search engines
+- **Static generation** - Content needed at build time for static pages
+
+### Implementation Pattern:
+```tsx
+// Server component - only for metadata
+import { getTranslations } from 'next-intl/server';
+
+export async function generateMetadata({ params }) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'mainNamespace' });
+  
+  return {
+    title: t('pageTitle'),
+    description: t('pageDescription')
+  };
+}
+
+// Delegate content to client component
+export default function ServerPage() {
+  return <ClientPageComponent />;
+}
+```
+
+### Constraints:
+- **Main namespace only** - Server can only access main translation files (`en.json`, `zh-TW.json`)
+- **No feature namespaces** - Cannot access feature-specific files (`assignments.json`, `admin.json`)
+- **Minimal usage** - Keep server translations to absolute minimum
+
+## Migration Strategy
+
+### Step 1: Identify Current Usage
+```bash
+# Find server-side translation usage
+grep -r "getTranslations" --include="*.tsx" --include="*.ts"
+grep -r "await.*useTranslations" --include="*.tsx" --include="*.ts"
+```
+
+### Step 2: Categorize Components
+- **Metadata only** → Keep server-side, use main namespace
+- **Page content** → Move to client component
+- **Mixed usage** → Split into server (metadata) + client (content)
+
+### Step 3: Create Client Components
+```tsx
+// Before: Server component with mixed concerns
+export default async function Page() {
+  const t = await getTranslations('feature.section');
+  return (
+    <div>
+      <h1>{t('title')}</h1>
+      <p>{t('description')}</p>
+    </div>
+  );
+}
+
+// After: Server (metadata) + Client (content)
+export async function generateMetadata({ params }) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'mainNamespace' });
+  return { title: t('pageTitle') };
+}
+
+export default function Page() {
+  return <PageClient />;
+}
+
+// PageClient.tsx
+'use client';
+export default function PageClient() {
+  const t = useTranslations('feature.section');
+  return (
+    <div>
+      <h1>{t('title')}</h1>
+      <p>{t('description')}</p>
+    </div>
+  );
+}
+```
+
+## Translation File Organization
+
+### Main Files (Server Accessible)
+```
+messages/
+├── en.json           # loginPage, dashboardPage, common
+└── zh-TW.json        # loginPage, dashboardPage, common
+```
+
+### Feature Files (Client Only)
+```
+messages/
+├── en/
+│   ├── assignments.json    # assignments.assignmentsPage.*
+│   ├── admin.json         # admin.users.*, admin.schools.*
+│   └── ...
+└── zh-TW/
+    ├── assignments.json
+    ├── admin.json
+    └── ...
+```
+
+## Common Patterns
+
+### Pattern 1: Page with Metadata
+```tsx
+// page.tsx (Server)
+export async function generateMetadata({ params }) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'mainNamespace' });
+  return { title: t('assignments.pageTitle') }; // From main file
+}
+
+export default function Page() {
+  return <AssignmentsPageClient />; // Delegate to client
+}
+
+// AssignmentsPageClient.tsx (Client)
+'use client';
+export default function AssignmentsPageClient() {
+  const t = useTranslations('assignments.assignmentsPage'); // From feature file
+  return <div>{t('title')}</div>;
+}
+```
+
+### Pattern 2: Pure Client Page
+```tsx
+// page.tsx (Server - minimal)
+export const metadata = {
+  title: 'Static Title' // No translation needed
+};
+
+export default function Page() {
+  return <ClientComponent />;
+}
+```
+
+### Pattern 3: Layout with Provider
+```tsx
+// layout.tsx (Server)
+import ClientIntlProvider from './ClientIntlProvider';
+
+export default async function Layout({ children, params }) {
+  const { locale } = await params;
+  return (
+    <ClientIntlProvider locale={locale}>
+      {children}
+    </ClientIntlProvider>
+  );
+}
+```
+
+## Error Prevention
+
+### ❌ Common Mistakes:
+```tsx
+// DON'T: Server component accessing feature namespace
+const t = await getTranslations('assignments.assignmentsPage'); // ❌
+
+// DON'T: Client hook in server component
+export default async function Page() {
+  const t = useTranslations('feature'); // ❌ Hooks in server component
+}
+
+// DON'T: Mixed server/client in same component
+export default async function Page() {
+  const serverT = await getTranslations('main');
+  const clientT = useTranslations('feature'); // ❌ Can't mix
+}
+```
+
+### ✅ Correct Approaches:
+```tsx
+// DO: Server metadata + client content
+export async function generateMetadata({ params }) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'main' }); // ✅
+  return { title: t('pageTitle') };
+}
+
+export default function Page() {
+  return <ClientComponent />; // ✅ Delegate to client
+}
+
+// DO: Pure client component
+'use client';
+export default function ClientComponent() {
+  const t = useTranslations('feature.section'); // ✅
+  return <div>{t('content')}</div>;
+}
+```
+
+## Validation Checklist
+
+Before implementing translations, verify:
+
+- [ ] **Client-first approach** - Is this content better suited for client-side?
+- [ ] **Server necessity** - Is server-side rendering truly required?
+- [ ] **Namespace access** - Can server access the required namespace?
+- [ ] **Performance impact** - Will client-side improve performance?
+- [ ] **SEO requirements** - Does this content need server-side rendering for SEO?
+
+## Integration with Build Process
+
+### Build-Time Validation:
+```bash
+npm run build
+# ✅ Detects missing client-side translation keys
+# ✅ Validates namespace structure
+# ✅ Shows server-side translation errors
+```
+
+### Development Workflow:
+1. **Default to client components** for all new features
+2. **Add server metadata** only when required
+3. **Test build process** to catch translation issues early
+4. **Use feature namespaces** for client-side translations
+
+## References
+- [03.multi-lingual-rule.mdc](mdc:.cursor/rules/03.multi-lingual-rule.mdc) - Main translation implementation
+- [02.next-js-rule.mdc](mdc:.cursor/rules/02.next-js-rule.mdc) - Next.js specific patterns
+- [01.core-rules.mdc](mdc:.cursor/rules/01.core-rules.mdc) - Core programming principles
+
+# Move Localization to Client Components
+
+## Purpose
+
+Teach AI how to migrate existing server-side localized components to the client-side pattern by separating server concerns (data fetching, metadata) from client concerns (UI rendering, translations).
+
+## Core Migration Pattern
+
+**Separate server `page.tsx` (data + metadata) from client `PageClient.tsx` (UI + translations)**
+
+## Reference Implementation
+
+The assignments page demonstrates the perfect migration pattern:
+
+### Before: Mixed Server Component
+```tsx
+// ❌ OLD: Everything in server component
+export default async function AssignmentsPage() {
+  const session = await getServerSession(authOptions);
+  const t = await getTranslations('assignments.assignmentsPage');
+  
+  // ... data fetching logic ...
+  
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <h1>{t('title')}</h1>
+        <p>{isTeacher ? t('teacherDescription') : t('studentDescription')}</p>
+      </div>
+      
+      {/* Quick Stats */}
+      {isTeacher && uniqueAssignments.length > 0 && (
+        <div className="bg-white shadow rounded-lg p-6">
+          <h2>{t('quickStats')}</h2>
+          {/* ... stats cards ... */}
+        </div>
+      )}
+      
+      {/* Assignments List */}
+      <AssignmentsList assignments={uniqueAssignments} />
+    </div>
+  );
+}
+```
+
+### After: Separated Pattern
+```tsx
+// ✅ NEW: Server page.tsx (data + metadata only)
+export async function generateMetadata({ params }) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'assignments' });
+  return { title: t('assignmentsPage.title') || 'Assignments' };
+}
+
+export default async function AssignmentsPage() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    redirect('/login');
+  }
+
+  // ... ALL data fetching logic stays here ...
+  const user = await prisma.user.findUnique({ /* ... */ });
+  const isTeacher = (user?.teacherClasses?.length ?? 0) > 0;
+  const isStudent = (user?.studentClasses?.length ?? 0) > 0;
+  
+  // ... process data ...
+  const uniqueAssignments = /* ... */;
+  const userClasses = /* ... */;
+
+  return (
+    <AssignmentsPageClient
+      user={user}
+      isTeacher={isTeacher}
+      isStudent={isStudent}
+      uniqueAssignments={uniqueAssignments}
+      userClasses={userClasses}
+    />
+  );
+}
+```
+
+```tsx
+// ✅ NEW: AssignmentsPageClient.tsx (UI + translations only)
+'use client';
+
+import { useTranslations } from 'next-intl';
+import { Assignment, Submission } from '@prisma/client';
+import AssignmentsList from './AssignmentsList';
+import CreateAssignmentButton from './CreateAssignmentButton';
+
+type AssignmentWithCounts = Assignment & {
+  submissionCount?: number;
+  gradedCount?: number;
+  className?: string;
+  schoolName?: string;
+  userSubmission?: Pick<Submission, 'id' | 'status' | 'grade' | 'submittedAt'> | null;
+};
+
+interface AssignmentsPageClientProps {
+  user: Record<string, unknown> | null;
+  isTeacher: boolean;
+  isStudent: boolean;
+  uniqueAssignments: AssignmentWithCounts[];
+  userClasses: { id: string; name: string }[];
+}
+
+export default function AssignmentsPageClient({
+  user,
+  isTeacher,
+  isStudent,
+  uniqueAssignments,
+  userClasses
+}: AssignmentsPageClientProps) {
+  const t = useTranslations('assignments.assignmentsPage');
+
+  if (!user) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white shadow rounded-lg p-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">{t('title')}</h1>
+          <p className="text-gray-600">{t('userNotFound')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isTeacher && !isStudent) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white shadow rounded-lg p-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">{t('title')}</h1>
+          <p className="text-gray-600">{t('notEnrolled')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white shadow rounded-lg p-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('title')}</h1>
+            <p className="text-gray-600">
+              {isTeacher ? t('teacherDescription') : t('studentDescription')}
+            </p>
+          </div>
+          {isTeacher && userClasses.length > 0 && (
+            <CreateAssignmentButton classId={userClasses[0].id} />
+          )}
+        </div>
+      </div>
+
+      {/* Quick Stats for Teachers */}
+      {isTeacher && uniqueAssignments.length > 0 && (
+        <div className="bg-white shadow rounded-lg p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">{t('quickStats')}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <h3 className="font-medium text-blue-800 mb-2">{t('totalAssignments')}</h3>
+              <p className="text-2xl font-bold text-blue-600">{uniqueAssignments.length}</p>
+            </div>
+            <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+              <h3 className="font-medium text-green-800 mb-2">{t('englishAssignments')}</h3>
+              <p className="text-2xl font-bold text-green-600">
+                {uniqueAssignments.filter(a => a.assignmentType !== 'GENERAL').length}
+              </p>
+            </div>
+            <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+              <h3 className="font-medium text-purple-800 mb-2">{t('autoGraded')}</h3>
+              <p className="text-2xl font-bold text-purple-600">
+                {uniqueAssignments.filter(a => {
+                  try {
+                    return a.englishMarkingConfig && JSON.parse(a.englishMarkingConfig).autoGrading
+                  } catch {
+                    return false
+                  }
+                }).length}
+              </p>
+            </div>
+            <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+              <h3 className="font-medium text-orange-800 mb-2">{t('pendingReview')}</h3>
+              <p className="text-2xl font-bold text-orange-600">
+                {uniqueAssignments.reduce((sum, a) => sum + ((a.submissionCount ?? 0) - (a.gradedCount ?? 0)), 0)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assignments List */}
+      <div className="bg-white shadow rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-medium text-gray-900">
+            {isTeacher ? t('yourAssignments') : t('yourAssignedWork')}
+          </h2>
+        </div>
+        
+        {uniqueAssignments.length > 0 ? (
+          <AssignmentsList 
+            assignments={uniqueAssignments}
+            isTeacher={isTeacher}
+            isStudent={isStudent}
+            classId={userClasses.length > 0 ? userClasses[0].id : ''}
+          />
+        ) : (
+          <div className="p-6 text-center">
+            <p className="text-gray-500">
+              {isTeacher ? t('noAssignmentsTeacher') : t('noAssignmentsStudent')}
+            </p>
+            {isTeacher && userClasses.length > 0 && (
+              <div className="mt-4">
+                <CreateAssignmentButton classId={userClasses[0].id} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+## Step-by-Step Migration Process
+
+### Step 1: Analyze Current Server Component
+Identify what needs to be separated:
+- **Keep on server**: Data fetching, authentication, database queries, metadata
+- **Move to client**: UI rendering, translations, user interactions
+
+### Step 2: Create Client Component
+```bash
+# Create the client component file
+touch app/[locale]/feature/FeaturePageClient.tsx
+```
+
+### Step 3: Move UI Logic to Client
+1. **Copy all JSX/UI code** from server component to client component
+2. **Add `'use client'` directive** at the top
+3. **Replace `getTranslations`** with `useTranslations`
+4. **Define props interface** for data passed from server
+5. **Import necessary UI components**
+
+### Step 4: Update Server Component
+1. **Keep data fetching logic** in server component
+2. **Add metadata generation** if needed
+3. **Process and prepare data** for client component
+4. **Return client component** with processed data as props
+5. **Remove all UI/JSX code** except the client component call
+
+### Step 5: Handle Translation Namespaces
+- **Server metadata**: Use main namespace only (`'assignments'`, `'loginPage'`, etc.)
+- **Client UI**: Use feature namespaces (`'assignments.assignmentsPage'`, `'admin.users'`, etc.)
+
+## Common Migration Patterns
+
+### Pattern 1: Simple Page Migration
+```tsx
+// Before: Server component
+export default async function SimplePage() {
+  const data = await fetchData();
+  const t = await getTranslations('feature.section');
+  
+  return <div>{t('title')}: {data.name}</div>;
+}
+
+// After: Server page.tsx
+export default async function SimplePage() {
+  const data = await fetchData();
+  return <SimplePageClient data={data} />;
+}
+
+// After: SimplePageClient.tsx
+'use client';
+export default function SimplePageClient({ data }) {
+  const t = useTranslations('feature.section');
+  return <div>{t('title')}: {data.name}</div>;
+}
+```
+
+### Pattern 2: Complex Page with Stats
+```tsx
+// Before: Mixed server component
+export default async function ComplexPage() {
+  const data = await fetchComplexData();
+  const stats = calculateStats(data);
+  const t = await getTranslations('feature.section');
+  
+  return (
+    <div>
+      <h1>{t('title')}</h1>
+      <StatsSection stats={stats} />
+      <DataList items={data} />
+    </div>
+  );
+}
+
+// After: Server page.tsx
+export default async function ComplexPage() {
+  const data = await fetchComplexData();
+  const stats = calculateStats(data);
+  
+  return <ComplexPageClient data={data} stats={stats} />;
+}
+
+// After: ComplexPageClient.tsx
+'use client';
+export default function ComplexPageClient({ data, stats }) {
+  const t = useTranslations('feature.section');
+  
+  return (
+    <div>
+      <h1>{t('title')}</h1>
+      <StatsSection stats={stats} />
+      <DataList items={data} />
+    </div>
+  );
+}
+```
+
+### Pattern 3: Page with Metadata
+```tsx
+// Server page.tsx with metadata
+export async function generateMetadata({ params }) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'mainNamespace' });
+  return { title: t('pageTitle') };
+}
+
+export default async function PageWithMetadata() {
+  const data = await fetchData();
+  return <PageClient data={data} />;
+}
+```
+
+## Key Rules for Migration
+
+### ✅ DO:
+1. **Keep ALL data fetching** in server component
+2. **Move ALL UI rendering** to client component
+3. **Use feature namespaces** in client components (`'assignments.assignmentsPage'`)
+4. **Use main namespaces** for server metadata (`'assignments'`)
+5. **Copy complete UI sections** - don't lose any functionality
+6. **Define proper TypeScript interfaces** for props
+7. **Handle loading and error states** in client component
+
+### ❌ DON'T:
+1. **Mix data fetching and UI** in the same component
+2. **Use server translations** for UI content
+3. **Forget to copy complex UI sections** (like stats cards)
+4. **Break existing functionality** during migration
+5. **Use client hooks** in server components
+6. **Access feature namespaces** from server components
+
+## Validation Checklist
+
+After migration, verify:
+- [ ] **Server component**: Only data fetching + metadata + client component call
+- [ ] **Client component**: Only UI rendering + translations + user interactions
+- [ ] **All UI sections preserved**: Headers, stats, lists, empty states, etc.
+- [ ] **Translations working**: Client uses `useTranslations` with feature namespaces
+- [ ] **Props properly typed**: TypeScript interfaces defined for data flow
+- [ ] **Build succeeds**: No translation or type errors
+- [ ] **Functionality intact**: All original features still work
+
+## File Naming Convention
+
+- **Server**: `page.tsx` (Next.js requirement)
+- **Client**: `[FeatureName]PageClient.tsx` (e.g., `AssignmentsPageClient.tsx`)
+- **Location**: Same directory as the server page
+
+## Benefits of This Pattern
+
+1. **Clear separation of concerns** - Server handles data, client handles UI
+2. **Better performance** - Client-side translations with caching and tree-shaking
+3. **Build-time validation** - Missing translation keys caught during build
+4. **Type safety** - Proper interfaces between server and client
+5. **Maintainability** - Easier to modify UI without affecting data logic
+6. **Scalability** - Pattern works for simple and complex pages
+
+## References
+- [server/app/[locale]/assignments/page.tsx](mdc:server/app/[locale]/assignments/page.tsx) - Server component example
+- [server/app/[locale]/assignments/AssignmentsPageClient.tsx](mdc:server/app/[locale]/assignments/AssignmentsPageClient.tsx) - Client component example
+- [03.multi-lingual-rule.mdc](mdc:.cursor/rules/03.multi-lingual-rule.mdc) - Translation implementation details

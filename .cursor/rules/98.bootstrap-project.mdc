@@ -1,0 +1,142 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Project Bootstrap Rule
+
+## Core Principles
+
+When bootstrapping any new project, always follow these fundamental principles:
+
+### 1. Official Documentation First
+- **ALWAYS** refer to the official documentation for the framework, library, or tool being used
+- Never assume or guess bootstrap commands - verify them against official sources
+- Check for the latest version of bootstrap commands as they may change between versions
+- Look for official CLI tools, scaffolding tools, or project generators
+
+### 2. Use Official Bootstrap Commands with pnpm
+- **NEVER** manually create project structures or manage dependencies yourself
+- Always use the official bootstrap/scaffolding commands provided by the framework
+- **Prefer pnpm** as the package manager for all Node.js projects
+- Examples of preferred approaches:
+  - `pnpm create react-app` for React projects
+  - `pnpm create next-app` for Next.js projects
+  - `pnpm create vue@latest` for Vue.js projects
+  - `pnpm create svelte@latest` for Svelte projects
+  - `dotnet new` templates for .NET projects
+  - `rails new` for Ruby on Rails projects
+  - `django-admin startproject` for Django projects
+  - `cargo new` for Rust projects
+
+### 3. Avoid Self-Managed Dependencies
+- Do not manually install and configure build tools, bundlers, or development dependencies
+- Let the official bootstrap process handle:
+  - Build configurations (webpack, vite, etc.)
+  - Development server setup
+  - Testing framework configuration
+  - Linting and formatting tools
+  - TypeScript configuration
+  - Package.json scripts and dependencies
+
+## Package Manager Guidelines
+
+### pnpm Preference
+- **Always use pnpm** for Node.js projects when possible
+- Benefits of pnpm:
+  - Faster installation and better disk space efficiency
+  - Strict dependency resolution prevents phantom dependencies
+  - Better monorepo support
+  - Compatible with npm registry and most npm commands
+
+### Bootstrap Commands with pnpm
+- Use `pnpm create` instead of `npx create` when available
+- If `pnpm create` is not supported, use `pnpm dlx` as alternative to `npx`
+- Examples:
+  - `pnpm create react-app my-app` instead of `npx create-react-app my-app`
+  - `pnpm create next-app my-app` instead of `npx create-next-app my-app`
+  - `pnpm dlx create-expo-app my-app` for Expo projects
+
+## User Interaction Guidelines
+
+### 4. Guide Users Through Interactive Processes
+When bootstrap commands require user input:
+
+- **Explain each option** before running interactive commands
+- **Provide context** for configuration choices
+- **Recommend default options** for beginners unless specific requirements exist
+- **Document the choices made** for future reference
+
+Example guidance format:
+```
+The bootstrap process will ask you several questions:
+1. Project name: Use kebab-case (e.g., my-awesome-app)
+2. TypeScript: Choose 'Yes' for better type safety
+3. ESLint: Choose 'Yes' for code quality
+4. Tailwind CSS: Choose based on your styling preference
+5. Package manager: Select 'pnpm' when prompted
+```
+
+### 5. Post-Bootstrap Verification
+After running bootstrap commands:
+
+- Verify the project structure was created correctly
+- Test that the development server starts successfully with `pnpm dev` or `pnpm start`
+- Confirm all dependencies were installed properly with `pnpm install`
+- Check that basic commands (build, test, lint) work as expected
+- Ensure pnpm-lock.yaml file is generated (not package-lock.json or yarn.lock)
+
+## Framework-Specific Guidelines
+
+### Web Frameworks
+- For React: Use `pnpm create react-app` or `pnpm create vite@latest` with React template
+- For Next.js: Use `pnpm create next-app` with appropriate flags
+- For Vue: Use `pnpm create vue@latest` or Vue CLI with pnpm
+- For Angular: Use Angular CLI `ng new` then switch to pnpm
+- For Svelte: Use `pnpm create svelte@latest`
+
+### Backend Frameworks
+- For Node.js/Express: Use express-generator with pnpm or framework-specific CLIs
+- For Python/Django: Use `django-admin startproject`
+- For Python/FastAPI: Use official templates or cookiecutter
+- For .NET: Use `dotnet new` templates
+- For Spring Boot: Use Spring Initializr
+
+### Mobile Development
+- For React Native: Use `pnpm dlx react-native init` or Expo CLI with pnpm
+- For Flutter: Use `flutter create`
+- For Ionic: Use Ionic CLI with pnpm
+
+## Common Mistakes to Avoid
+
+1. **Don't** manually create package.json files
+2. **Don't** manually install build tools like webpack or babel
+3. **Don't** copy configurations from other projects without understanding
+4. **Don't** skip reading the official getting started guides
+5. **Don't** use outdated bootstrap commands or tutorials
+6. **Don't** mix package managers (avoid npm/yarn if pnpm is being used)
+
+## Best Practices
+
+1. **Always check for updates** to bootstrap tools before starting
+2. **Read the generated README** files for project-specific instructions
+3. **Commit the initial bootstrap** as a clean starting point
+4. **Document any post-bootstrap customizations** made to the project
+5. **Keep bootstrap tools updated** for future projects
+6. **Use pnpm consistently** across all Node.js projects in the workspace
+7. **Add pnpm-lock.yaml** to version control, exclude node_modules
+
+## Troubleshooting Bootstrap Issues
+
+If bootstrap commands fail:
+1. Check Node.js/runtime version compatibility
+2. Clear package manager caches (`pnpm store prune`)
+3. Try with pnpm first, fallback to npm/yarn only if necessary
+4. Check network connectivity and registry access
+5. Refer to official troubleshooting documentation
+6. Look for known issues in the project's GitHub repository
+7. Ensure pnpm is installed globally: `npm install -g pnpm`
+
+Remember: The goal is to get a working, properly configured project with minimal manual intervention and maximum adherence to community standards and best practices, using pnpm as the preferred package manager for optimal performance and dependency management.
+
+

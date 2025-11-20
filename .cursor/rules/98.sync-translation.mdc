@@ -1,0 +1,54 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rule: Synchronize Translation Files
+
+## Purpose
+This rule defines the procedure for ensuring that all translation keys present in the primary language (English) are also present in all other supported language files. It helps maintain consistency and completeness across localizations, preventing missing translations in the user interface. This rule is typically invoked on-demand or as part of a pre-commit/pre-PR check.
+
+## Scope
+This rule applies to all JSON translation files located within the `src/lib/locales/` directory, including both `common.json` and feature-specific `translation.json` (or similarly named) files.
+
+## Guidelines
+
+1.  **Identify Primary Language:** The English (`en`) translation files (`src/lib/locales/en/common.json` and `src/lib/locales/en/translation.json` or equivalent feature-specific files) are considered the source of truth for all translation keys and namespaces.
+
+2.  **Identify Target Languages:** All other language directories within `src/lib/locales/` (e.g., `ja`, `zh-TW`) are target languages that need to be synchronized.
+
+3.  **Synchronization Process (for each namespace/file type, e.g., `common.json`, `streamTimer` in `translation.json`):**
+    *   **Iterate through Keys:** For every key and nested key structure present in the primary language's JSON file (e.g., `en/common.json`).
+    *   **Check Existence in Target:** Verify if the same key structure exists in the corresponding file of each target language (e.g., `ja/common.json`, `zh-TW/common.json`).
+    *   **Add Missing Keys:**
+        *   If a key or an entire namespace from the primary language file is missing in a target language file, it must be added.
+        *   When adding missing keys to target languages:
+            *   **Translation:** Provide an accurate translation for the new key in the target language.
+    *   **Value Synchronization (Optional but Recommended):** While the primary goal is key structure synchronization, if a key exists in both primary and target but the English value has significantly changed in meaning, the corresponding translations in target languages should be reviewed and updated.
+
+4.  **Handling Feature-Specific Files:**
+    *   If the primary language has a feature-specific translation file (e.g., `en/translation.json` with a `streamTimer` namespace), ensure that corresponding `translation.json` files (or equivalent) exist for all target languages.
+    *   If a target language is missing this feature-specific file, create it by copying the structure from the primary language, and then proceed to translate or add placeholders for the values as described above.
+
+5.  **Delete Extra Keys from Target:** If a key or namespace exists in a target language file but is *not* present in the corresponding primary language file, it **must be deleted** from the target file. This ensures the target files strictly mirror the structure defined by the primary language.
+
+6.  **Update Documentation:** After synchronization, ensure that `readme/structure.md` accurately reflects the structure of all translation files, including any newly added files or namespaces, as per [98.create-structure.mdc](mdc:.cursor/rules/98.create-structure.mdc).
+
+7.  **Tooling (Recommended):**
+    *   Consider using or developing scripts/tools to automate the detection and (optionally) the placeholder-filling of missing keys.
+    *   Linters or i18n-specific tools can also help identify missing translations.
+
+## Example Scenario:
+
+*   `en/common.json` has `{"common": {"newFeatureButton": "New Feature"}}`
+*   `ja/common.json` is missing the `newFeatureButton` key.
+*   **Action:** Add `"newFeatureButton": "新機能 [NEEDS TRANSLATION]"` (or a translated version) to `ja/common.json` under the `common` namespace.
+
+## References
+- [01.core-rules.mdc](mdc:01.core-rules.mdc)
+- [03.multi-lingual-rule.mdc](mdc:03.multi-lingual-rule.mdc)
+- [98.create-structure.mdc](mdc:.cursor/rules/98.create-structure.mdc)
+- [readme/cursor-rules-guide.md](mdc:readme/cursor-rules-guide.md)
+- [readme/i18n-setup.md](mdc:readme/i18n-setup.md)
+
+

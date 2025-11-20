@@ -1,0 +1,116 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Core Error Handling Rule
+
+## Purpose
+
+To ensure robust, observable, and maintainable systems, all errors must be handled in a way that guarantees visibility and traceability. This rule applies to all languages, frameworks, and environments in the codebase.
+
+## Guidelines
+
+1. **Never Catch Errors Prematurely:**
+   - Do not catch errors unless you are able to handle them meaningfully or log them appropriately.
+   - Avoid empty catch blocks or catch blocks that suppress errors without logging.
+   - Let errors propagate to a level where they can be logged and/or handled globally.
+   - **Never mask real errors with generic "Internal server error" messages** - this prevents proper debugging and monitoring.
+
+2. **Always Log Errors:**
+   - All unhandled errors must be logged using Microsoft Application Insights or an equivalent centralized logging/monitoring solution.
+   - If Application Insights is not available for a given language or environment, use the best available alternative (e.g., Sentry, Datadog, Stackdriver, etc.).
+   - Ensure logs include sufficient context to diagnose the issue (error message, stack trace, relevant request/user info).
+
+3. **Consistent Error Handling Across the Codebase:**
+   - Apply these principles in all languages, frameworks, and runtime environments.
+   - Reference this rule in all framework- or language-specific error handling rules.
+
+4. **Special Handling:**
+   - Only use try/catch blocks when you need to handle specific errors in a special way (e.g., to provide a fallback, retry, or user-friendly message), and always log the error before handling.
+   - If the error object is not used, do not include it in the catch block.
+
+5. **API Endpoint Error Handling:**
+   - Let database errors, external API failures, and other service errors propagate to the framework's global error handler.
+   - Only catch and handle expected validation errors (e.g., invalid JWT tokens, missing required fields).
+   - Framework-level error handlers will automatically log to Application Insights with proper context.
+
+## Examples
+
+### Incorrect - Error Masking:
+```js
+// BAD: Masks real errors, prevents debugging
+export async function POST(request) {
+  try {
+    const user = await prisma.user.findUnique({ where: { id } });
+    const result = await openai.chat.completions.create(params);
+    return NextResponse.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error:', error); // Not sufficient for production
+    return NextResponse.json(
+      { error: 'Internal server error' }, // Generic, unhelpful
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Correct - Let Errors Propagate:
+```js
+// GOOD: Let real errors bubble up to Application Insights
+export async function POST(request) {
+  // Validate input (expected errors)
+  const { text, targetLanguage } = await request.json();
+  if (!text || !targetLanguage) {
+    return NextResponse.json(
+      { error: 'Text and target language are required' },
+      { status: 400 }
+    );
+  }
+
+  // Let service errors propagate (database, OpenAI, etc.)
+  const user = await prisma.user.findUnique({ where: { id } });
+  const result = await openai.chat.completions.create(params);
+  
+  return NextResponse.json({ success: true, data: result });
+}
+```
+
+### Correct - Specific Error Handling:
+```js
+// GOOD: Handle specific expected errors, log and re-throw unexpected ones
+try {
+  decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+} catch (jwtError) {
+  // Expected error - invalid/expired token
+  return {
+    success: false,
+    error: 'Invalid or expired token',
+    status: 401
+  };
+}
+// Database and other errors propagate automatically
+```
+
+### Client-Side Robustness:
+```dart
+// GOOD: Handle different server response formats gracefully
+Map<String, dynamic> data;
+try {
+  data = jsonDecode(response.body);
+} catch (e) {
+  // Server returned non-JSON (likely an unhandled error)
+  return {'success': false, 'error': 'Server error occurred'};
+}
+```
+
+## Benefits of This Approach
+
+1. **Better Debugging**: Real errors reach Application Insights with full stack traces
+2. **Proper Monitoring**: Database connection issues, API failures are visible in logs
+3. **Faster Resolution**: Developers see actual error causes, not generic messages
+4. **Production Insights**: Application Insights can properly track and alert on real issues
+
+## References
+- [01.core-rules.mdc](mdc:01.core-rules.mdc)
+

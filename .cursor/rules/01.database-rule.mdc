@@ -1,0 +1,175 @@
+---
+description: Database and Prisma ORM usage rules with emphasis on using generated types
+globs: *.prisma,*.ts,*.tsx
+alwaysApply: false
+---
+
+## Prisma rules
+
+- always use Prisma for database operations
+- always edit both `schema.dev.prisma` and `schema.prod.prisma` files when editing the schema
+- kindly reminds the user to create migrations with the `pnpm db:dev:migrate` command after editing the schema
+- Do NOT use the default `prima migration` command, always use the `db:migrate` scripts we have created.
+
+The `schema.dev.prisma` is used for fast local deployment using SQLite while the `schema.prod.prisma` will be used for production that uses MS SQL Server, note the difference in features, schema.
+
+## Critical: Use Prisma Generated Types - DO NOT Create Manual Interfaces
+
+### ❌ NEVER DO THIS - Manual Interface Creation
+```typescript
+// DON'T: Creating manual interfaces that duplicate Prisma models
+interface User {
+  id: string;
+  email: string;
+  firstName: string;
+  // ... other fields
+}
+
+interface Assignment {
+  id: string;
+  title: string;
+  description: string;
+  // ... other fields
+}
+```
+
+### ✅ ALWAYS DO THIS - Use Prisma Generated Types
+```typescript
+// DO: Import and use Prisma's generated types
+import type { User, Assignment, ExamQuestion } from '@prisma/client';
+
+// DO: Use Prisma types directly in function signatures
+export async function createUser(userData: Partial<User>): Promise<User> {
+  return await prisma.user.create({ data: userData });
+}
+
+// DO: Export Prisma types for reuse
+export type { User, Assignment, ExamQuestion } from '@prisma/client';
+```
+
+### Why Prisma Handles Types Automatically
+
+1. **Automatic Generation**: Prisma generates TypeScript types from your schema automatically
+2. **Always Up-to-Date**: Types are regenerated when you run migrations, ensuring perfect sync
+3. **Null vs Undefined Handling**: Prisma correctly handles `null` vs `undefined` based on your schema
+4. **Relation Types**: Prisma generates complex relation types that are impossible to manually maintain
+5. **Field Constraints**: Prisma types include all field constraints, optional fields, and database-specific types
+
+### Migration Workflow with Type Generation
+
+```bash
+# 1. Edit schema files
+# 2. Run migration (this regenerates types automatically)
+pnpm db:dev:migrate
+
+# 3. Types are now available in @prisma/client
+# 4. No manual interface creation needed!
+```
+
+### Common Anti-Patterns to Avoid
+
+#### ❌ Don't Create "Synchronized" Interfaces
+```typescript
+// DON'T: Trying to "sync" with database schema manually
+interface ExamQuestion {
+  id: string;
+  examId: string;
+  questionText: string;
+  points: number;
+  // This will get out of sync and cause type errors!
+}
+```
+
+#### ❌ Don't Transform Prisma Objects
+```typescript
+// DON'T: Manual transformations that lose type safety
+const transformedQuestion: ExamQuestion = {
+  id: result.id,
+  examId: result.examId,
+  questionText: result.questionText,
+  // Manual transformations are error-prone and unnecessary
+};
+```
+
+#### ✅ Do Use Prisma Objects Directly
+```typescript
+// DO: Return Prisma objects directly
+export async function createExamQuestion(data: CreateData): Promise<ExamQuestion> {
+  const result = await prisma.examQuestion.create({ data });
+  return result; // Prisma object is already perfectly typed!
+}
+```
+
+### Type Safety Best Practices
+
+1. **Import Types**: Always import types from `@prisma/client`
+2. **Use Partial<T>**: Use `Partial<PrismaType>` for update operations
+3. **Use Pick<T, K>**: Use `Pick<PrismaType, 'field1' | 'field2'>` for specific fields
+4. **Use Omit<T, K>**: Use `Omit<PrismaType, 'id' | 'createdAt'>` for creation data
+5. **Trust Prisma**: Let Prisma handle null/undefined, relations, and constraints
+
+### Examples of Correct Usage
+
+```typescript
+// ✅ Server Actions with Prisma Types
+import type { Exam, ExamQuestion } from '@prisma/client';
+
+export async function updateExam(
+  id: string, 
+  data: Partial<Omit<Exam, 'id' | 'createdAt' | 'updatedAt'>>
+): Promise<Exam> {
+  return await prisma.exam.update({
+    where: { id },
+    data
+  });
+}
+
+// ✅ Component Props with Prisma Types
+interface ExamFormProps {
+  exam: Exam & {
+    questions?: ExamQuestion[];
+  };
+}
+
+// ✅ API Responses with Prisma Types
+export type ApiResponse<T> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+};
+
+export async function getExam(id: string): Promise<ApiResponse<Exam>> {
+  const exam = await prisma.exam.findUnique({ where: { id } });
+  return { success: true, data: exam };
+}
+```
+
+### Remember: Prisma is Smarter Than Manual Types
+
+- **Database Schema Changes**: Automatically reflected in types
+- **Relation Handling**: Complex joins and includes are properly typed
+- **Null Safety**: Database nullability correctly mapped to TypeScript
+- **Field Validation**: Database constraints reflected in type system
+- **Performance**: No runtime overhead for type checking
+
+### When You Feel Like Creating Manual Types
+
+**STOP** and ask yourself:
+1. Is this data coming from Prisma? → Use Prisma types
+2. Is this data going to Prisma? → Use Prisma types with Partial/Pick/Omit
+3. Is this a form input? → Use Prisma types as the foundation
+4. Is this an API response? → Wrap Prisma types in response structure
+
+**The only time to create manual interfaces is for:**
+- External API responses (not from your database)
+- Complex computed/derived data not stored in database
+- Form-specific validation schemas (but still based on Prisma types)
+
+### Error Prevention
+
+If you see TypeScript errors like:
+- `Type 'undefined' is not assignable to type 'string | null'`
+- `Property 'data' does not exist on type`
+- Complex type mismatches
+
+**The solution is usually**: Stop fighting Prisma's types and use them directly!

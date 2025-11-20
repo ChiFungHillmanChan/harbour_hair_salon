@@ -1,0 +1,272 @@
+---
+description: Used for JavaScript
+globs: *.tsx,*.js,*.ts,*.json
+alwaysApply: false
+---
+# Next.js Rules
+
+## Purpose
+
+This rule provides concrete implementation guidance for Next.js projects. It builds on the abstract programming principles in [01.core-rules.mdc](mdc:01.core-rules.mdc) and general JavaScript/TypeScript rules in [02.js-ts-rule.mdc](mdc:02.js-ts-rule.mdc), and applies them specifically to the Next.js framework.
+
+> **Note:** This rule covers only Next.js-specific conventions. For general JavaScript/TypeScript best practices, see [02.js-ts-rule.mdc](mdc:02.js-ts-rule.mdc). For general library/command selection, see [99.library-and-command-choices.mdc](mdc:99.library-and-command-choices.mdc).
+
+## Next.js Specific Rules
+
+- Always use v15 when using Next.js.
+- Use `pnpm` for package management in all Next.js projects.
+- The correct command for shadcn-ui is `pnpm dlx shadcn`; the library is already installed, do not break it.
+- For viewport configuration, use the `viewport` export instead of including it in the `metadata` object.
+- In Next.js 15, route parameters are asynchronous and must be awaited before use. Always extract and await route parameters at the beginning of your route handler.
+- Prefer server actions over API routes for data operations. Organize server actions by domain and operation type (CRUD).
+- Place server actions in the `app/actions/` directory, organized by domain. Split large action files into smaller files by operation type.
+- Add the `'use server'` directive at the top of files containing server actions (not in type definition files or index files).
+- Use consistent response formats for all server actions (success flag, data, and error information).
+
+## Environment Variables and SDK Client Initialization
+
+### Critical Rule: Never Access Environment Variables at Module Level
+
+**❌ NEVER DO THIS - Module-level Environment Variable Access:**
+```typescript
+// DON'T: This causes build errors when env vars aren't available at build time
+const API_KEY = process.env.OPENAI_API_KEY;
+const CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
+const CONTAINER_NAME = process.env.AZURE_STORAGE_CONTAINER_NAME;
+
+// DON'T: Module-level client initialization
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const blobClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
+
+if (!API_KEY) {
+  throw new Error('Environment variable required'); // This runs at build time!
+}
+```
+
+**✅ ALWAYS DO THIS - Runtime Environment Variable Access:**
+```typescript
+// DO: Wrap in async server functions that access env vars at runtime
+'use server';
+
+export async function createOpenAIClient() {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+        throw new Error('OPENAI_API_KEY environment variable is required');
+    }
+    return new OpenAI({ apiKey });
+}
+
+export async function createAzureBlobClient() {
+    const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+    if (!connectionString) {
+        throw new Error('AZURE_STORAGE_CONNECTION_STRING environment variable is required');
+    }
+    return BlobServiceClient.fromConnectionString(connectionString);
+}
+```
+
+### SDK Client Initialization Pattern
+
+When integrating any SDK that requires environment variables:
+
+1. **Create a service file** in `app/services/[sdk-name].ts`
+2. **Add `'use server'` directive** at the top
+3. **Export async factory functions** for client creation
+4. **Access environment variables only within functions**, never at module level
+5. **Include proper error handling** for missing environment variables
+6. **Update consuming code** to use `await createClient()` instead of module-level clients
+
+### Why This Pattern is Required
+
+- **Build-time vs Runtime**: Next.js evaluates module-level code during build, but environment variables may not be available
+- **Docker/CI Environments**: Build environments often don't have production environment variables
+- **Security**: Prevents accidental exposure of credentials in client-side bundles
+- **Flexibility**: Allows different configurations per environment without code changes
+
+For detailed SDK initialization patterns, see [03.initialize-new-sdk.mdc](mdc:03.initialize-new-sdk.mdc).
+
+## React Hooks and useEffect Best Practices
+
+### useEffect Dependency Management
+- **Always include all dependencies** in the useEffect dependency array to satisfy ESLint rules and prevent stale closures.
+- **Never ignore ESLint warnings** about missing dependencies - they prevent bugs and ensure correct behavior.
+
+### Preventing Infinite Loops with useCallback
+When functions are used as dependencies in useEffect hooks, wrap them in `useCallback` to prevent infinite re-renders:
+
+```typescript
+// ❌ Bad: Function recreated on every render, causes infinite loop
+const myFunction = () => {
+  // function logic
+};
+
+useEffect(() => {
+  myFunction();
+}, [myFunction]); // This will cause infinite loop
+
+// ✅ Good: Function memoized with useCallback
+const myFunction = useCallback(() => {
+  // function logic
+}, [dependency1, dependency2]); // Only recreate when dependencies change
+
+useEffect(() => {
+  myFunction();
+}, [myFunction]); // Safe - function reference is stable
+```
+
+### Function Dependency Guidelines
+1. **Wrap in useCallback**: Any function used as a dependency in useEffect or other hooks must be wrapped in `useCallback`.
+2. **Include all dependencies**: The useCallback dependency array must include all values the function uses from component scope.
+3. **Refs don't need dependencies**: Functions that only use refs (like `useRef` values) can have empty dependency arrays since refs don't trigger re-renders.
+4. **State setters are stable**: React's state setters (from `useState`) are stable and don't need to be included in dependency arrays.
+
+### Common Patterns
+
+#### Auto-connect Pattern
+```typescript
+const connectToService = useCallback(async () => {
+  if (status !== "DISCONNECTED") return;
+  // connection logic
+}, [status, otherDependencies]);
+
+useEffect(() => {
+  if (shouldAutoConnect && settingsLoaded && devicesReady) {
+    const timeoutId = setTimeout(() => {
+      connectToService();
+    }, 500);
+    
+    return () => clearTimeout(timeoutId);
+  }
+}, [shouldAutoConnect, settingsLoaded, devicesReady, connectToService]);
+```
+
+#### Debounced Updates Pattern
+```typescript
+const updateSettings = useCallback(() => {
+  // update logic
+}, [setting1, setting2, setting3]);
+
+useEffect(() => {
+  if (isConnected) {
+    const timeoutId = setTimeout(() => {
+      updateSettings();
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }
+}, [setting1, setting2, setting3, isConnected, updateSettings]);
+```
+
+#### Device Enumeration Pattern
+```typescript
+const enumerateDevices = useCallback(async () => {
+  // device enumeration logic
+}, [selectedDeviceId]);
+
+useEffect(() => {
+  enumerateDevices();
+  
+  const handleDeviceChange = () => {
+    enumerateDevices();
+  };
+  
+  navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+  
+  return () => {
+    navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+  };
+}, [enumerateDevices]);
+```
+
+### Event Handler Functions
+- Event handlers that don't use component state/props don't need useCallback
+- Event handlers that use component state/props should use useCallback if passed as props to child components
+- Event handlers used only in JSX don't typically need useCallback unless performance optimization is needed
+
+## External Image Handling
+
+### Critical Rule: Use Regular `<img>` for External/CDN Images
+
+When working with external images that are already optimized (like from Azure Blob Storage, AWS S3, or other CDNs), **always use regular `<img>` elements instead of Next.js `<Image>` component**.
+
+**❌ NEVER DO THIS - Next.js Image with External URLs:**
+```typescript
+// DON'T: This causes 400 errors in production with external URLs
+import Image from 'next/image';
+
+<Image 
+  src="https://sakuraconnect.blob.core.windows.net/images/photo.png"
+  alt="External image"
+  fill
+  unoptimized={true} // Even with unoptimized, still uses /_next/image endpoint!
+/>
+```
+
+**✅ ALWAYS DO THIS - Regular img for External URLs:**
+```typescript
+// DO: Direct loading from external sources
+<img 
+  src="https://sakuraconnect.blob.core.windows.net/images/photo.png"
+  alt="External image"
+  className="absolute inset-0 w-full h-full object-contain"
+/>
+```
+
+### When to Use Each Approach
+
+**Use Next.js `<Image>` component for:**
+- Images in your `public/` folder
+- Images you control and want optimized
+- Images that benefit from Next.js optimization features
+
+**Use regular `<img>` element for:**
+- **Azure Blob Storage images** (already optimized with CDN)
+- **AWS S3/CloudFront images** (already optimized)
+- **Third-party CDN images** (already optimized)
+- **Generated images from AI services** (already processed)
+- **Any external URL that's already optimized**
+
+### Why This Matters
+
+1. **Production Errors**: Next.js `<Image>` with external URLs causes 400 errors in production
+2. **Performance**: External CDNs are already optimized - no need for double processing
+3. **Bandwidth**: Direct loading is more efficient than proxy through Next.js
+4. **Reliability**: Eliminates dependency on Next.js image optimization service
+
+### Implementation Pattern
+
+```typescript
+// For external images with aspect ratio containers
+<div className="relative aspect-square rounded-md overflow-hidden border">
+  <img 
+    src={externalImageUrl}
+    alt="Description"
+    className="absolute inset-0 w-full h-full object-contain"
+  />
+</div>
+
+// For responsive external images
+<img 
+  src={externalImageUrl}
+  alt="Description"
+  className="w-full h-auto rounded-md"
+/>
+```
+
+### Configuration
+
+When using regular `<img>` elements for external images:
+- **Remove `remotePatterns`** from `next.config.js` (not needed)
+- **Accept ESLint warnings** about using `<img>` (they're expected and correct)
+- **No image optimization configuration** needed
+
+## Error Handling
+- All error handling must follow the [01.error-handling-rule.mdc](mdc:01.error-handling-rule.mdc).
+- Use Microsoft Application Insights for logging errors in Next.js environments.
+
+## References
+- [01.core-rules.mdc](mdc:01.core-rules.mdc)
+- [01.error-handling-rule.mdc](mdc:01.error-handling-rule.mdc)
+- [02.js-ts-rule.mdc](mdc:02.js-ts-rule.mdc)
+- [03.initialize-new-sdk.mdc](mdc:03.initialize-new-sdk.mdc)
+- [99.library-and-command-choices.mdc](mdc:99.library-and-command-choices.mdc)
