@@ -1,28 +1,84 @@
-name: Deploy to AWS App Runner
+name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 env:
-  AWS_REGION: eu-west-2                   # Change this to your preferred region
-  ECR_REPOSITORY: harbour-hair-salon      # Must match the ECR repository name created in AWS
+  AWS_REGION: eu-west-2
+  ECR_REPOSITORY: harbour-hair-salon
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  deploy:
-    name: Build and Push to ECR
+  # 1. Continuous Integration Check (Runs on ALL branches)
+  ci-check:
+    name: CI - Build & Lint
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Generate Prisma Client (Dev)
+        # Updated script name
+        run: pnpm db:dev:generate
+
+      - name: Type Check (Build)
+        run: pnpm build
+
+      - name: Lint
+        run: pnpm lint
+
+  # 2. Deploy & Database Update (Runs ONLY on main)
+  deploy:
+    name: Deploy to AWS
+    needs: ci-check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js (For DB push)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          
+      - name: Install dependencies
+        run: pnpm install
+
+      # 2.1. Update Production Database Schema
+      - name: Update Production Database (Schema Push)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        # Uses the new prod schema location
+        run: pnpm db:prod:push
+
+      # 2.2. Docker Build & Push
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -40,12 +96,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Build the docker image
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          
-          # Push the image to ECR
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
