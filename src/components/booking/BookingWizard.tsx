@@ -246,34 +246,39 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm mb-1">Full Name</label>
-            <input 
-              required
-              type="text" 
-              className="w-full border border-zinc-300 p-2 rounded focus:outline-none focus:border-black"
-              value={userDetails.name}
-              onChange={e => setUserDetails({...userDetails, name: e.target.value})}
-            />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Email Address</label>
-            <input 
-              required
-              type="email" 
-              className="w-full border border-zinc-300 p-2 rounded focus:outline-none focus:border-black"
-              value={userDetails.email}
-              onChange={e => setUserDetails({...userDetails, email: e.target.value})}
-            />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Phone Number</label>
-            <input 
-              type="tel" 
-              className="w-full border border-zinc-300 p-2 rounded focus:outline-none focus:border-black"
-              value={userDetails.phone}
-              onChange={e => setUserDetails({...userDetails, phone: e.target.value})}
-            />
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-2">Full Name</label>
+              <input 
+                required
+                type="text" 
+                className="w-full border border-zinc-300 px-4 py-3 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all"
+                placeholder="John Doe"
+                value={userDetails.name}
+                onChange={e => setUserDetails({...userDetails, name: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-2">Email Address</label>
+              <input 
+                required
+                type="email" 
+                className="w-full border border-zinc-300 px-4 py-3 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all"
+                placeholder="john@example.com"
+                value={userDetails.email}
+                onChange={e => setUserDetails({...userDetails, email: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-2">Phone Number</label>
+              <input 
+                type="tel" 
+                className="w-full border border-zinc-300 px-4 py-3 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all"
+                placeholder="+1 (555) 000-0000"
+                value={userDetails.phone}
+                onChange={e => setUserDetails({...userDetails, phone: e.target.value})}
+              />
+            </div>
           </div>
 
           <div className="flex justify-between items-center mt-8">

@@ -19,10 +19,10 @@ export default function RegisterPage() {
           </p>
         </div>
         
-        <form action={action} className="mt-8 space-y-6">
-          <div className="space-y-4 rounded-md shadow-sm">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium leading-6 text-zinc-900">
+        <form action={action} className="mt-8 space-y-8">
+          <div className="space-y-6 rounded-md shadow-sm">
+            <div className="relative">
+              <label htmlFor="name" className="block text-sm font-medium leading-6 text-zinc-900 mb-2">
                 Full Name
               </label>
               <input
@@ -31,11 +31,12 @@ export default function RegisterPage() {
                 type="text"
                 autoComplete="name"
                 required
-                className="block w-full rounded-md border-0 py-2 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6"
+                className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
+                placeholder="John Doe"
               />
             </div>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium leading-6 text-zinc-900">
+            <div className="relative">
+              <label htmlFor="email" className="block text-sm font-medium leading-6 text-zinc-900 mb-2">
                 Email address
               </label>
               <input
@@ -44,11 +45,12 @@ export default function RegisterPage() {
                 type="email"
                 autoComplete="email"
                 required
-                className="block w-full rounded-md border-0 py-2 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6"
+                className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
+                placeholder="john@example.com"
               />
             </div>
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium leading-6 text-zinc-900">
+            <div className="relative">
+              <label htmlFor="phone" className="block text-sm font-medium leading-6 text-zinc-900 mb-2">
                 Phone Number (Optional)
               </label>
               <input
@@ -56,11 +58,12 @@ export default function RegisterPage() {
                 name="phone"
                 type="tel"
                 autoComplete="tel"
-                className="block w-full rounded-md border-0 py-2 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6"
+                className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
+                placeholder="+1 (555) 000-0000"
               />
             </div>
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium leading-6 text-zinc-900">
+            <div className="relative">
+              <label htmlFor="password" className="block text-sm font-medium leading-6 text-zinc-900 mb-2">
                 Password
               </label>
               <input
@@ -69,13 +72,16 @@ export default function RegisterPage() {
                 type="password"
                 autoComplete="new-password"
                 required
-                className="block w-full rounded-md border-0 py-2 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6"
+                className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
+                placeholder="••••••••"
               />
             </div>
           </div>
 
           {state?.error && (
-            <div className="text-red-600 text-sm text-center">{state.error}</div>
+            <div className="p-4 rounded-md bg-red-50 text-red-600 text-sm text-center border border-red-100">
+              {state.error}
+            </div>
           )}
 
           <div>
