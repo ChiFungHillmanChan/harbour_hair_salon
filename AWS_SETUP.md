@@ -86,6 +86,8 @@ Once the image is pushed to ECR (after the Action finishes):
 5.  **Service configuration**:
     *   Service name: `harbour-hair-web`
     *   Port: `3000`
+    *   **Health check protocol**: HTTP
+    *   **Health check path**: `/api/health`
 6.  **Networking (Secure Connection)**:
     *   **Incoming traffic**: Public.
     *   **Outgoing traffic**: Custom VPC.
