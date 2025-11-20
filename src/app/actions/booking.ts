@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 const getSlotsSchema = z.object({
   stylistId: z.string(),
-  date: z.string().transform((str) => new Date(str)),
+  date: z.coerce.date(),
   serviceDuration: z.number(),
 });
 
@@ -23,7 +23,7 @@ type CreateBookingInput = {
 const createBookingSchema = z.object({
   stylistId: z.string(),
   serviceId: z.string(),
-  date: z.string().transform((str) => new Date(str)), // ISO string
+  date: z.coerce.date(),
   time: z.string(), // HH:mm
   userEmail: z.string().email(),
   userName: z.string().min(2),
@@ -69,30 +69,36 @@ export async function fetchSlots(stylistId: string, date: Date, serviceDuration:
 }
 
 export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
-  // Parse date and time to create a full Date object
-  // In a real app, we'd use the date object directly combined with time
-  // But for simplicity, we assume the date object coming in is the selected day
+  // Validate the input
+  const result = createBookingSchema.safeParse(data);
   
+  if (!result.success) {
+    console.error('Validation failed:', result.error);
+    return { success: false, error: 'Invalid booking data' };
+  }
+
+  const validData = result.data;
+
   // Parse time HH:mm
-  const [hours, minutes] = data.time.split(':').map(Number);
-  const fullDate = new Date(data.date);
+  const [hours, minutes] = validData.time.split(':').map(Number);
+  const fullDate = new Date(validData.date);
   fullDate.setHours(hours, minutes, 0, 0);
 
   try {
     await createBooking({
-      stylistId: data.stylistId,
-      serviceId: data.serviceId,
+      stylistId: validData.stylistId,
+      serviceId: validData.serviceId,
       date: fullDate,
-      userEmail: data.userEmail,
-      userName: data.userName,
-      userPhone: data.userPhone,
+      userEmail: validData.userEmail,
+      userName: validData.userName,
+      userPhone: validData.userPhone,
     });
 
     revalidatePath('/book');
+    revalidatePath('/admin'); // Also revalidate admin dashboard
     return { success: true };
   } catch (error) {
     console.error('Booking failed:', error);
     return { success: false, error: 'Failed to create booking' };
   }
 }
-
