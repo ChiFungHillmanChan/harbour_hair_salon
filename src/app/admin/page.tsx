@@ -19,7 +19,7 @@ export default async function AdminDashboard() {
     <div className="p-8">
       <div className="mb-8">
         <h1 className="text-3xl font-serif font-bold text-zinc-900">Schedule</h1>
-        <p className="text-zinc-600 mt-2">Manage appointments and availability.</p>
+        <p className="text-zinc-700 mt-2">Manage appointments and availability.</p>
       </div>
       
       <ScheduleCalendar appointments={appointments} />
