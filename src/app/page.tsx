@@ -8,9 +8,27 @@ import { redirect } from 'next/navigation';
 // Revalidate data every hour
 export const revalidate = 3600;
 
-async function getServices() {
+const POPULAR_SERVICE_NAMES = [
+  'Short Over Ears - Wash, Haircut & Blow Dry (Student & NHS)',
+  'Short Over Ears - Wash, Haircut & Blow Dry',
+  'Children (Up to 12Yr) - Short Over Ears',
+  'Children (Up to 12Yr) - Long Hair',
+  'Heat Set Add-on',
+  'Shampoo & Blow Dry - Short Over Ears (Student & NHS)',
+  'Shampoo & Blow Dry - Short Over Ears',
+  'Shampoo & Blow Dry - Long Over Ears (Student & NHS)',
+  'Shampoo & Blow Dry - Long Over Ears',
+  'Patch Test',
+];
+
+async function getPopularServices() {
   const services = await prisma.service.findMany({
-    orderBy: { category: 'asc' }
+    where: {
+      name: {
+        in: POPULAR_SERVICE_NAMES
+      }
+    },
+    orderBy: { price: 'asc' }
   });
   
   // Convert Decimal to number for client components
@@ -47,7 +65,7 @@ export default async function Home() {
   }
 
   const [services, stylists, activeOffer] = await Promise.all([
-    getServices(),
+    getPopularServices(),
     getStylists(),
     getGlobalOffer()
   ]);
@@ -55,7 +73,12 @@ export default async function Home() {
   return (
     <div className="flex flex-col min-h-screen">
       <Hero />
-      <ServiceMenu services={services} activeOffer={activeOffer} />
+      <ServiceMenu 
+        services={services} 
+        activeOffer={activeOffer} 
+        title="Popular Services" 
+        flatList={true} 
+      />
       <StylistShowcase stylists={stylists} />
     </div>
   );

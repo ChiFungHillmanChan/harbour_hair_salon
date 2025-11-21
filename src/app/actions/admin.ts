@@ -4,8 +4,6 @@ import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { hashPassword } from '@/app/lib/password';
-import { redirect } from 'next/navigation';
-import { DiscountCode, Offer, User } from '@prisma/client';
 
 // --- Discount Codes ---
 
@@ -122,7 +120,7 @@ export async function createAdminUser(formData: FormData) {
         role: 'ADMIN',
       },
     });
-  } catch (error) {
+  } catch {
     return { error: 'Email already exists' };
   }
 

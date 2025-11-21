@@ -1,5 +1,4 @@
 import prisma from '@/app/lib/prisma';
-import { Offer } from '@prisma/client';
 import Link from 'next/link';
 
 // Revalidate data every hour

@@ -16,6 +16,7 @@ export async function Header() {
           <Link href="/services" className="hover:text-gray-400 transition-colors">Services</Link>
           <Link href="/offers" className="hover:text-gray-400 transition-colors">Offers</Link>
           <Link href="/#team" className="hover:text-gray-400 transition-colors">Team</Link>
+          <Link href="/contact" className="hover:text-gray-400 transition-colors">Contact</Link>
           
           {session?.userId ? (
             <>
