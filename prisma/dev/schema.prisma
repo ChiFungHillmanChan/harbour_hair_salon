@@ -63,6 +63,9 @@ model Appointment {
   
   serviceId String
   service   Service  @relation(fields: [serviceId], references: [id])
+
+  discountCodeId String?
+  discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id])
 }
 
 model Availability {
@@ -74,4 +77,30 @@ model Availability {
   
   stylistId String
   stylist   Stylist  @relation(fields: [stylistId], references: [id])
+}
+
+model DiscountCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  type        String   // PERCENTAGE, FIXED
+  value       Decimal
+  maxUses     Int?     // null means unlimited
+  usedCount   Int      @default(0)
+  expiresAt   DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  appointments Appointment[]
+}
+
+model Offer {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  discountType String   // PERCENTAGE, FIXED
+  discountValue Decimal
+  isActive    Boolean  @default(true)
+  isGlobal    Boolean  @default(false) // If true, applies to all services automatically
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
