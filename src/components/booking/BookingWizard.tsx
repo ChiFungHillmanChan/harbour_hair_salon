@@ -3,7 +3,7 @@
 import { Service, Stylist } from '@prisma/client';
 import { format, addDays, startOfToday } from 'date-fns';
 import { useState, useEffect } from 'react';
-import { fetchSlots, submitBooking } from '@/app/actions/booking';
+import { fetchSlots, submitBooking, validateDiscountCode } from '@/app/actions/booking';
 
 // Define a ClientService type where price is number instead of Decimal
 type ClientService = Omit<Service, 'price'> & { price: number };
@@ -24,6 +24,12 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [userDetails, setUserDetails] = useState({ name: '', email: '', phone: '' });
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Discount Logic
+  const [discountCode, setDiscountCode] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; value: number; type: string } | null>(null);
+  const [discountError, setDiscountError] = useState('');
+  const [isValidatingDiscount, setIsValidatingDiscount] = useState(false);
 
   // Fetch slots when stylist or date changes
   useEffect(() => {
@@ -38,6 +44,39 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
     }
   }, [selectedStylist, selectedDate, selectedService]);
 
+  const handleApplyDiscount = async () => {
+    if (!discountCode.trim()) return;
+    setDiscountError('');
+    setIsValidatingDiscount(true);
+    
+    const result = await validateDiscountCode(discountCode);
+    
+    if (result.valid) {
+      setAppliedDiscount({
+        code: discountCode,
+        value: result.value!,
+        type: result.type!,
+      });
+      setDiscountError('');
+    } else {
+      setAppliedDiscount(null);
+      setDiscountError(result.error || 'Invalid code');
+    }
+    setIsValidatingDiscount(false);
+  };
+
+  const getFinalPrice = () => {
+    if (!selectedService) return 0;
+    const originalPrice = selectedService.price;
+    if (!appliedDiscount) return originalPrice;
+
+    if (appliedDiscount.type === 'PERCENTAGE') {
+      return originalPrice - (originalPrice * (appliedDiscount.value / 100));
+    } else {
+      return Math.max(0, originalPrice - appliedDiscount.value);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStylist || !selectedService || !selectedTime) return;
@@ -51,6 +90,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
       userName: userDetails.name,
       userEmail: userDetails.email,
       userPhone: userDetails.phone,
+      discountCode: appliedDiscount?.code,
     });
 
     setIsLoading(false);
@@ -243,6 +283,22 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                 <span className="text-zinc-500 block">Time</span>
                 {selectedTime}
               </div>
+              <div className="col-span-2 border-t pt-2 mt-2">
+                <span className="text-zinc-500 block">Total Price</span>
+                <div className="flex items-center gap-2">
+                  {appliedDiscount ? (
+                    <>
+                      <span className="line-through text-zinc-400">£{selectedService?.price.toFixed(2)}</span>
+                      <span className="text-lg font-bold text-green-600">£{getFinalPrice().toFixed(2)}</span>
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                        {appliedDiscount.code} applied
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-lg font-bold">£{selectedService?.price.toFixed(2)}</span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -278,6 +334,42 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                 value={userDetails.phone}
                 onChange={e => setUserDetails({...userDetails, phone: e.target.value})}
               />
+            </div>
+
+             <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-2">Discount Code (Optional)</label>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  className="flex-1 border border-zinc-300 px-4 py-3 rounded-lg focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all uppercase"
+                  placeholder="PROMO CODE"
+                  value={discountCode}
+                  onChange={e => setDiscountCode(e.target.value)}
+                  disabled={!!appliedDiscount}
+                />
+                {appliedDiscount ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppliedDiscount(null);
+                      setDiscountCode('');
+                    }}
+                    className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-300"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleApplyDiscount}
+                    disabled={isValidatingDiscount || !discountCode.trim()}
+                    className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-zinc-800 disabled:opacity-50"
+                  >
+                    {isValidatingDiscount ? '...' : 'Apply'}
+                  </button>
+                )}
+              </div>
+              {discountError && <p className="text-red-500 text-xs mt-1">{discountError}</p>}
             </div>
           </div>
 

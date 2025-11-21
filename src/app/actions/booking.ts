@@ -3,6 +3,7 @@
 import { createBooking, getAvailableSlots } from '@/app/services/booking-service';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import prisma from '@/app/lib/prisma';
 
 const getSlotsSchema = z.object({
   stylistId: z.string(),
@@ -18,6 +19,7 @@ type CreateBookingInput = {
   userEmail: string;
   userName: string;
   userPhone?: string;
+  discountCode?: string;
 };
 
 const createBookingSchema = z.object({
@@ -28,6 +30,7 @@ const createBookingSchema = z.object({
   userEmail: z.string().email(),
   userName: z.string().min(2),
   userPhone: z.string().optional(),
+  discountCode: z.string().optional(),
 }) satisfies z.ZodType<CreateBookingInput>;
 
 export async function getAvailableSlotsAction(prevState: unknown, formData: FormData) {
@@ -68,6 +71,30 @@ export async function fetchSlots(stylistId: string, date: Date, serviceDuration:
   }
 }
 
+export async function validateDiscountCode(code: string) {
+  if (!code) return { valid: false, error: 'Code is empty' };
+
+  try {
+    const discount = await prisma.discountCode.findUnique({
+      where: { code },
+    });
+
+    if (!discount) return { valid: false, error: 'Invalid code' };
+    if (!discount.isActive) return { valid: false, error: 'Code is inactive' };
+    if (discount.expiresAt && new Date() > discount.expiresAt) return { valid: false, error: 'Code has expired' };
+    if (discount.maxUses && discount.usedCount >= discount.maxUses) return { valid: false, error: 'Code usage limit reached' };
+
+    return { 
+      valid: true, 
+      type: discount.type, 
+      value: Number(discount.value) 
+    };
+  } catch (error) {
+    console.error('Error validating discount code:', error);
+    return { valid: false, error: 'Validation failed' };
+  }
+}
+
 export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   // Validate the input
   const result = createBookingSchema.safeParse(data);
@@ -78,6 +105,25 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   }
 
   const validData = result.data;
+
+  // Validate discount code again server-side if provided
+  let discountCodeId = undefined;
+  if (validData.discountCode) {
+    const discount = await prisma.discountCode.findUnique({
+      where: { code: validData.discountCode },
+    });
+    if (discount && discount.isActive && 
+        (!discount.expiresAt || new Date() <= discount.expiresAt) &&
+        (!discount.maxUses || discount.usedCount < discount.maxUses)) {
+      discountCodeId = discount.id;
+      
+      // Increment usage count
+      await prisma.discountCode.update({
+        where: { id: discount.id },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
+  }
 
   // Parse time HH:mm
   const [hours, minutes] = validData.time.split(':').map(Number);
@@ -92,6 +138,7 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
       userEmail: validData.userEmail,
       userName: validData.userName,
       userPhone: validData.userPhone,
+      discountCodeId, // Pass discount code ID to service
     });
 
     revalidatePath('/book');

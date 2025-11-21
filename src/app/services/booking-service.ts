@@ -93,6 +93,7 @@ export async function createBooking(data: {
   userEmail: string;
   userName: string;
   userPhone?: string;
+  discountCodeId?: string;
 }) {
   // 1. Find or create user
   let user = await prisma.user.findUnique({
@@ -117,6 +118,7 @@ export async function createBooking(data: {
       serviceId: data.serviceId,
       userId: user.id,
       status: 'CONFIRMED', // Auto-confirm for now
+      discountCodeId: data.discountCodeId,
     },
   });
 
