@@ -38,7 +38,7 @@ const YearView = ({ currentDate, setCurrentDate, setViewMode, appointments }: Ye
               className="bg-white p-4 rounded-lg shadow hover:bg-zinc-50 text-left border border-zinc-200"
             >
               <h3 className="font-bold text-zinc-900">{format(month, 'MMMM')}</h3>
-              <p className="text-sm text-zinc-500">{monthAppointments.length} bookings</p>
+              <p className="text-sm text-zinc-700">{monthAppointments.length} bookings</p>
             </button>
           );
       })}
@@ -66,7 +66,7 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden">
       <div className="grid grid-cols-7 border-b border-zinc-200 bg-zinc-50">
         {weekDays.map(day => (
-          <div key={day} className="py-2 text-center text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+          <div key={day} className="py-2 text-center text-xs font-bold text-zinc-700 uppercase tracking-wide">
             {day}
           </div>
         ))}
@@ -85,13 +85,13 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
                 setSelectedDate(day);
               }}
               className={`min-h-[100px] p-2 border-b border-r border-zinc-100 cursor-pointer transition-colors
-                ${!isCurrentMonth ? 'bg-zinc-50/50 text-zinc-400' : 'bg-white'}
+                ${!isCurrentMonth ? 'bg-zinc-50/50 text-zinc-500' : 'bg-white text-zinc-900'}
                 ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-500' : 'hover:bg-zinc-50'}
               `}
             >
               <div className="flex justify-between items-start mb-1">
                 <span className={`text-sm font-medium w-6 h-6 flex items-center justify-center rounded-full
-                  ${isTodayDate ? 'bg-red-500 text-white' : 'text-zinc-700'}
+                  ${isTodayDate ? 'bg-red-500 text-white' : 'text-zinc-900'}
                 `}>
                   {format(day, 'd')}
                 </span>
@@ -139,7 +139,7 @@ const DayView = ({ currentDate, dayAppts }: DayViewProps) => {
           ) : (
               dayAppts.map(appt => (
                   <div key={appt.id} className="flex p-4 hover:bg-zinc-50 group">
-                      <div className="w-20 flex-shrink-0 text-zinc-500 text-sm pt-1">
+                      <div className="w-20 flex-shrink-0 text-zinc-700 text-sm pt-1 font-medium">
                           {format(new Date(appt.date), 'HH:mm')}
                       </div>
                       <div className="flex-1 bg-blue-50 rounded-lg p-3 border border-blue-100 group-hover:border-blue-200 transition-colors">

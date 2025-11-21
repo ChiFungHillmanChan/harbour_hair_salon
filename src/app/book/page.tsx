@@ -37,7 +37,7 @@ export default async function BookPage() {
     <div className="min-h-screen bg-zinc-50 py-12">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-serif mb-4">Book Your Appointment</h1>
+          <h1 className="text-4xl font-serif mb-4 text-zinc-900">Book Your Appointment</h1>
           <p className="text-zinc-600">Select your service, stylist, and preferred time.</p>
         </div>
         
