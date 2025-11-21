@@ -13,9 +13,10 @@ export async function Header() {
         </Link>
         
         <nav className="hidden md:flex space-x-8 text-sm uppercase tracking-widest items-center">
-          <Link href="/#services" className="hover:text-gray-400 transition-colors">Services</Link>
+          <Link href="/services" className="hover:text-gray-400 transition-colors">Services</Link>
+          <Link href="/offers" className="hover:text-gray-400 transition-colors">Offers</Link>
           <Link href="/#team" className="hover:text-gray-400 transition-colors">Team</Link>
-          <Link href="#contact" className="hover:text-gray-400 transition-colors">Contact</Link>
+          <Link href="/contact" className="hover:text-gray-400 transition-colors">Contact</Link>
           
           {session?.userId ? (
             <>

@@ -1,9 +1,9 @@
 'use client';
 
 import { Service, Stylist } from '@prisma/client';
-import { format, addDays, startOfToday } from 'date-fns';
+import { format, addDays, startOfToday, isSameDay } from 'date-fns';
 import { useState, useEffect } from 'react';
-import { fetchSlots, submitBooking } from '@/app/actions/booking';
+import { fetchSlots, submitBooking, validateDiscountCode } from '@/app/actions/booking';
 
 // Define a ClientService type where price is number instead of Decimal
 type ClientService = Omit<Service, 'price'> & { price: number };
@@ -15,6 +15,14 @@ interface BookingWizardProps {
   stylists: Stylist[];
 }
 
+const CATEGORIES = [
+  'Haircuts',
+  'Colouring',
+  'Perms',
+  'Treatments',
+  'Styling'
+];
+
 export function BookingWizard({ services, stylists }: BookingWizardProps) {
   const [step, setStep] = useState<Step>('SERVICE');
   const [selectedService, setSelectedService] = useState<ClientService | null>(null);
@@ -24,12 +32,24 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [userDetails, setUserDetails] = useState({ name: '', email: '', phone: '' });
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Search and Category Logic
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('Haircuts');
+
+  // Discount Logic
+  const [discountCode, setDiscountCode] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; value: number; type: string } | null>(null);
+  const [discountError, setDiscountError] = useState('');
+  const [isValidatingDiscount, setIsValidatingDiscount] = useState(false);
 
   // Fetch slots when stylist or date changes
   useEffect(() => {
     if (selectedStylist && selectedDate && selectedService) {
       const loadSlots = async () => {
         setIsLoading(true);
+        // Reset selected time when date/stylist changes
+        setSelectedTime(null);
         const slots = await fetchSlots(selectedStylist.id, selectedDate, selectedService.duration);
         setAvailableSlots(slots.filter(s => s.available).map(s => s.time));
         setIsLoading(false);
@@ -37,6 +57,39 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
       loadSlots();
     }
   }, [selectedStylist, selectedDate, selectedService]);
+
+  const handleApplyDiscount = async () => {
+    if (!discountCode.trim()) return;
+    setDiscountError('');
+    setIsValidatingDiscount(true);
+    
+    const result = await validateDiscountCode(discountCode);
+    
+    if (result.valid) {
+      setAppliedDiscount({
+        code: discountCode,
+        value: result.value!,
+        type: result.type!,
+      });
+      setDiscountError('');
+    } else {
+      setAppliedDiscount(null);
+      setDiscountError(result.error || 'Invalid code');
+    }
+    setIsValidatingDiscount(false);
+  };
+
+  const getFinalPrice = () => {
+    if (!selectedService) return 0;
+    const originalPrice = selectedService.price;
+    if (!appliedDiscount) return originalPrice;
+
+    if (appliedDiscount.type === 'PERCENTAGE') {
+      return originalPrice - (originalPrice * (appliedDiscount.value / 100));
+    } else {
+      return Math.max(0, originalPrice - appliedDiscount.value);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +104,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
       userName: userDetails.name,
       userEmail: userDetails.email,
       userPhone: userDetails.phone,
+      discountCode: appliedDiscount?.code,
     });
 
     setIsLoading(false);
@@ -61,6 +115,31 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
     }
   };
 
+  const filteredServices = services.filter(service => {
+    const matchesSearch = service.name.toLowerCase().includes(searchTerm.toLowerCase());
+    // If we have a category selected, filter by it. If the service data doesn't have categories perfectly matching, 
+    // we might need a fallback, but based on seed data it should work.
+    // We'll also support "All" if needed, but the prompt asked for specific 5 categories.
+    const matchesCategory = service.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  // Helper to group slots by time of day
+  const getGroupedSlots = () => {
+    const morning: string[] = [];
+    const afternoon: string[] = [];
+    const evening: string[] = [];
+
+    availableSlots.forEach(time => {
+      const hour = parseInt(time.split(':')[0]);
+      if (hour < 12) morning.push(time);
+      else if (hour < 17) afternoon.push(time);
+      else evening.push(time);
+    });
+
+    return { morning, afternoon, evening };
+  };
+
   const renderStepIndicator = () => (
     <div className="flex justify-center mb-8 space-x-2">
       {['SERVICE', 'STYLIST', 'DATE', 'DETAILS'].map((s, idx) => (
@@ -68,13 +147,16 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
           key={s} 
           className={`h-2 w-12 rounded-full ${
             ['SERVICE', 'STYLIST', 'DATE', 'DETAILS', 'CONFIRM'].indexOf(step) >= idx 
-              ? 'bg-black' 
+              ? 'bg-[#174F7F]' 
               : 'bg-gray-200'
           }`} 
         />
       ))}
     </div>
   );
+
+  const groupedSlots = getGroupedSlots();
+  const hasAnySlots = availableSlots.length > 0;
 
   if (step === 'CONFIRM') {
     return (
@@ -84,13 +166,13 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h2 className="text-3xl font-serif mb-4">Booking Confirmed!</h2>
-        <p className="text-zinc-600 mb-8">
+        <h2 className="text-3xl font-serif mb-4 text-zinc-900">Booking Confirmed!</h2>
+        <p className="text-zinc-700 mb-8">
           Thank you, {userDetails.name}. We have sent a confirmation email to {userDetails.email}.
         </p>
         <button 
           onClick={() => window.location.href = '/'}
-          className="bg-black text-white px-8 py-3 uppercase tracking-widest text-sm hover:bg-zinc-800"
+          className="bg-[#174F7F] text-white px-8 py-3 uppercase tracking-widest text-sm hover:bg-[#123c61] rounded-md transition-colors"
         >
           Return Home
         </button>
@@ -99,195 +181,447 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto bg-white shadow-xl p-8 min-h-[600px]">
+    <div className="max-w-4xl mx-auto bg-white shadow-xl p-8 min-h-[600px] rounded-xl border border-zinc-100">
       {renderStepIndicator()}
       
       <div className="mb-8">
-        <h2 className="text-2xl font-serif mb-2">
+        <h2 className="text-2xl font-serif mb-2 text-zinc-900">
           {step === 'SERVICE' && 'Select a Service'}
           {step === 'STYLIST' && 'Choose a Stylist'}
           {step === 'DATE' && 'Select Date & Time'}
           {step === 'DETAILS' && 'Your Details'}
         </h2>
-        <p className="text-zinc-500 text-sm">
+        <p className="text-zinc-600 text-sm">
            Step {['SERVICE', 'STYLIST', 'DATE', 'DETAILS'].indexOf(step) + 1} of 4
         </p>
       </div>
 
       {step === 'SERVICE' && (
-        <div className="space-y-4">
-          {services.map(service => (
-            <div 
-              key={service.id}
-              onClick={() => { setSelectedService(service); setStep('STYLIST'); }}
-              className="border border-zinc-200 p-4 flex justify-between items-center hover:border-black cursor-pointer transition-colors group"
-            >
-              <div>
-                <h3 className="font-medium group-hover:text-black transition-colors">{service.name}</h3>
-                <p className="text-sm text-zinc-500">{service.duration} mins</p>
+        <div className="space-y-6">
+          <div className="flex flex-col md:flex-row gap-4">
+             {/* Category Dropdown */}
+             <div className="md:w-1/3">
+                <label className="block text-sm font-medium text-zinc-700 mb-2">Category</label>
+                <div className="relative">
+                   <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="block w-full pl-4 pr-10 py-3 border border-zinc-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-[#174F7F] focus:border-[#174F7F] transition-all appearance-none text-zinc-900"
+                   >
+                      {CATEGORIES.map(category => (
+                         <option key={category} value={category}>{category}</option>
+                      ))}
+                   </select>
+                   <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                      <svg className="h-4 w-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                   </div>
+                </div>
+             </div>
+
+             {/* Search Bar */}
+             <div className="md:w-2/3">
+                <label className="block text-sm font-medium text-zinc-700 mb-2">Search</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    className="block w-full pl-10 pr-3 py-3 border border-zinc-300 rounded-lg leading-5 bg-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#174F7F] focus:border-[#174F7F] transition-all text-zinc-900"
+                    placeholder={`Search in ${selectedCategory}...`}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+             </div>
+          </div>
+
+          <div className="space-y-3 mt-6">
+             <h3 className="font-medium text-zinc-500 text-sm uppercase tracking-wider mb-3">Available Services</h3>
+            {filteredServices.length > 0 ? (
+              <div className="grid gap-4">
+                {filteredServices.map(service => (
+                  <div 
+                    key={service.id}
+                    onClick={() => { setSelectedService(service); setStep('STYLIST'); }}
+                    className="border border-zinc-200 p-6 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center hover:border-[#174F7F] hover:bg-blue-50/30 cursor-pointer transition-all group shadow-sm hover:shadow-md"
+                  >
+                    <div className="mb-2 sm:mb-0">
+                      <h3 className="font-medium text-zinc-900 group-hover:text-[#174F7F] transition-colors text-lg">{service.name}</h3>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-sm text-zinc-600 flex items-center gap-1">
+                           <svg className="w-4 h-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                           </svg>
+                           {service.duration} mins
+                        </span>
+                        {service.description && (
+                           <span className="text-sm text-zinc-500 hidden sm:inline-block border-l border-zinc-300 pl-3">
+                              {service.description}
+                           </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">£{service.price.toFixed(2)}</span>
+                  </div>
+                ))}
               </div>
-              <span className="font-serif">£{service.price.toFixed(2)}</span>
-            </div>
-          ))}
+            ) : (
+              <div className="text-center py-12 text-zinc-500 bg-zinc-50 rounded-lg border border-zinc-100 border-dashed">
+                <p>No services found in <span className="font-semibold">{selectedCategory}</span> matching &quot;{searchTerm}&quot;</p>
+                <button 
+                  onClick={() => setSearchTerm('')}
+                  className="mt-2 text-[#174F7F] underline text-sm hover:text-[#123c61]"
+                >
+                  Clear search
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {step === 'STYLIST' && (
         <div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
             {stylists.map(stylist => (
               <div 
                 key={stylist.id}
                 onClick={() => { setSelectedStylist(stylist); setStep('DATE'); }}
-                className="border border-zinc-200 p-4 text-center hover:border-black cursor-pointer transition-colors"
+                className="border border-zinc-200 p-6 rounded-lg text-center hover:border-[#174F7F] hover:bg-blue-50/30 cursor-pointer transition-all shadow-sm group"
               >
-                 <div className="w-20 h-20 bg-zinc-200 rounded-full mx-auto mb-3 overflow-hidden">
+                 <div className="w-24 h-24 bg-zinc-200 rounded-full mx-auto mb-4 overflow-hidden ring-2 ring-offset-2 ring-transparent group-hover:ring-[#174F7F] transition-all">
                    {stylist.imageUrl ? (
                      // eslint-disable-next-line @next/next/no-img-element
                      <img src={stylist.imageUrl} alt={stylist.name} className="w-full h-full object-cover" />
                    ) : (
-                     <div className="w-full h-full flex items-center justify-center text-xl font-serif text-zinc-400">
+                     <div className="w-full h-full flex items-center justify-center text-2xl font-serif text-zinc-400 bg-zinc-100">
                        {stylist.name.charAt(0)}
                      </div>
                    )}
                  </div>
-                <h3 className="font-medium">{stylist.name}</h3>
-                <p className="text-xs text-zinc-500">{stylist.role}</p>
+                <h3 className="font-medium text-zinc-900 text-lg">{stylist.name}</h3>
+                <p className="text-sm text-zinc-600 mt-1">{stylist.role}</p>
               </div>
             ))}
           </div>
-          <button onClick={() => setStep('SERVICE')} className="text-sm underline text-zinc-500">Back</button>
+          <button onClick={() => setStep('SERVICE')} className="text-sm font-medium text-zinc-600 hover:text-[#174F7F] flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Services
+          </button>
         </div>
       )}
 
       {step === 'DATE' && (
-        <div>
-          <div className="flex flex-col md:flex-row gap-8 mb-6">
-            <div className="flex-1">
-              <h3 className="font-medium mb-4">Select Date</h3>
-              <div className="flex space-x-2 overflow-x-auto pb-2">
-                {[0, 1, 2, 3, 4, 5, 6].map(offset => {
-                  const date = addDays(startOfToday(), offset);
-                  const isSelected = format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
-                  return (
-                    <button
-                      key={offset}
-                      onClick={() => setSelectedDate(date)}
-                      className={`flex-shrink-0 w-14 h-20 rounded-lg border flex flex-col items-center justify-center ${
-                        isSelected ? 'border-black bg-black text-white' : 'border-zinc-200'
-                      }`}
-                    >
-                      <span className="text-xs uppercase">{format(date, 'EEE')}</span>
-                      <span className="text-lg font-bold">{format(date, 'd')}</span>
-                    </button>
-                  );
-                })}
+        <div className="animate-in slide-in-from-right-4 duration-300">
+          <div className="flex flex-col lg:flex-row gap-8 mb-8 h-full">
+            {/* Date Selection - Sticky Sidebar on Desktop */}
+            <div className="lg:w-1/3">
+              <h3 className="font-medium mb-4 text-zinc-900 flex items-center gap-2">
+                <svg className="w-5 h-5 text-[#174F7F]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Select Date
+              </h3>
+              <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200">
+                <div className="flex lg:flex-col space-x-3 lg:space-x-0 lg:space-y-3 overflow-x-auto lg:overflow-visible pb-4 lg:pb-0 scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent">
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(offset => {
+                    const date = addDays(startOfToday(), offset);
+                    const isSelected = isSameDay(date, selectedDate);
+                    return (
+                      <button
+                        key={offset}
+                        onClick={() => setSelectedDate(date)}
+                        className={`flex-shrink-0 w-20 lg:w-full p-3 rounded-lg border flex lg:flex-row flex-col items-center lg:justify-between justify-center transition-all ${
+                          isSelected 
+                            ? 'border-[#174F7F] bg-[#174F7F] text-white shadow-md transform scale-105' 
+                            : 'border-zinc-200 hover:border-[#174F7F] hover:bg-white bg-white text-zinc-700'
+                        }`}
+                      >
+                        <div className="text-center lg:text-left">
+                          <span className={`text-xs uppercase font-bold block ${isSelected ? 'text-blue-200' : 'text-zinc-500'}`}>
+                            {format(date, 'EEE')}
+                          </span>
+                          <span className="text-lg font-bold block leading-tight">
+                            {format(date, 'd')}
+                          </span>
+                        </div>
+                        <span className={`text-xs ${isSelected ? 'text-blue-100' : 'text-zinc-400'}`}>
+                          {format(date, 'MMM')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
             
-            <div className="flex-1">
-              <h3 className="font-medium mb-4">Available Times</h3>
+            {/* Time Selection - Main Area */}
+            <div className="lg:w-2/3">
+              <h3 className="font-medium mb-4 text-zinc-900 flex items-center gap-2">
+                <svg className="w-5 h-5 text-[#174F7F]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Available Times
+              </h3>
+              
               {isLoading ? (
-                <div className="text-zinc-400 text-sm">Loading slots...</div>
-              ) : availableSlots.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2">
-                  {availableSlots.map(time => (
-                    <button
-                      key={time}
-                      onClick={() => setSelectedTime(time)}
-                      className={`py-2 text-sm border rounded ${
-                        selectedTime === time ? 'bg-black text-white border-black' : 'border-zinc-200 hover:border-black'
-                      }`}
-                    >
-                      {time}
-                    </button>
-                  ))}
+                <div className="flex flex-col items-center justify-center h-64 text-zinc-500 text-sm bg-zinc-50 rounded-xl border border-zinc-100">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#174F7F] mb-3"></div>
+                  Checking availability...
+                </div>
+              ) : hasAnySlots ? (
+                <div className="space-y-6 animate-in fade-in duration-500">
+                  {/* Morning Slots */}
+                  {groupedSlots.morning.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-3 border-b border-zinc-100 pb-1">Morning</h4>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                        {groupedSlots.morning.map(time => (
+                          <TimeSlotButton 
+                            key={time} 
+                            time={time} 
+                            isSelected={selectedTime === time} 
+                            onClick={() => setSelectedTime(time)} 
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Afternoon Slots */}
+                  {groupedSlots.afternoon.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-3 border-b border-zinc-100 pb-1">Afternoon</h4>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                        {groupedSlots.afternoon.map(time => (
+                          <TimeSlotButton 
+                            key={time} 
+                            time={time} 
+                            isSelected={selectedTime === time} 
+                            onClick={() => setSelectedTime(time)} 
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Evening Slots */}
+                  {groupedSlots.evening.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-3 border-b border-zinc-100 pb-1">Evening</h4>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                        {groupedSlots.evening.map(time => (
+                          <TimeSlotButton 
+                            key={time} 
+                            time={time} 
+                            isSelected={selectedTime === time} 
+                            onClick={() => setSelectedTime(time)} 
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="text-zinc-500 text-sm italic">No slots available for this date.</div>
+                <div className="flex flex-col items-center justify-center h-64 text-zinc-600 bg-zinc-50 rounded-xl border border-zinc-200 border-dashed text-center p-6">
+                  <svg className="w-12 h-12 text-zinc-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <p className="font-medium">No appointments available</p>
+                  <p className="text-sm text-zinc-500 mt-1">Please try selecting a different date or stylist.</p>
+                </div>
               )}
             </div>
           </div>
           
-          <div className="flex justify-between items-center">
-             <button onClick={() => setStep('STYLIST')} className="text-sm underline text-zinc-500">Back</button>
-             <button 
-               disabled={!selectedTime}
-               onClick={() => setStep('DETAILS')}
-               className="bg-black text-white px-6 py-2 uppercase text-sm tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
-             >
-               Continue
+          <div className="flex justify-between items-center pt-6 border-t border-zinc-100 sticky bottom-0 bg-white pb-2 z-10">
+             <button onClick={() => setStep('STYLIST')} className="text-sm font-medium text-zinc-600 hover:text-[#174F7F] flex items-center gap-1 px-3 py-2 rounded-md hover:bg-zinc-50 transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back
              </button>
+             <div className="flex flex-col items-end">
+               {selectedTime && (
+                 <span className="text-xs text-zinc-500 mb-1 hidden sm:block">
+                   {format(selectedDate, 'MMM d')} at {selectedTime}
+                 </span>
+               )}
+               <button 
+                 disabled={!selectedTime}
+                 onClick={() => setStep('DETAILS')}
+                 className="bg-[#174F7F] text-white px-8 py-3 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-[#123c61] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md transform active:scale-95"
+               >
+                 Continue
+               </button>
+             </div>
           </div>
         </div>
       )}
 
       {step === 'DETAILS' && (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="bg-zinc-50 p-4 rounded mb-6">
-            <h3 className="font-serif mb-2 border-b pb-2">Booking Summary</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <div className="bg-zinc-50/50 p-6 rounded-xl border border-zinc-200 shadow-sm">
+            <h3 className="font-serif text-lg mb-4 pb-2 border-b border-zinc-200 text-zinc-900">Booking Summary</h3>
+            <div className="grid grid-cols-2 gap-6 text-sm">
               <div>
-                <span className="text-zinc-500 block">Service</span>
-                {selectedService?.name}
+                <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Service</span>
+                <span className="text-zinc-900 font-medium text-base">{selectedService?.name}</span>
               </div>
               <div>
-                <span className="text-zinc-500 block">Stylist</span>
-                {selectedStylist?.name}
+                <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Stylist</span>
+                <span className="text-zinc-900 font-medium text-base">{selectedStylist?.name}</span>
               </div>
               <div>
-                <span className="text-zinc-500 block">Date</span>
-                {format(selectedDate, 'MMMM d, yyyy')}
+                <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Date</span>
+                <span className="text-zinc-900 font-medium text-base">{format(selectedDate, 'MMMM d, yyyy')}</span>
               </div>
               <div>
-                <span className="text-zinc-500 block">Time</span>
-                {selectedTime}
+                <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Time</span>
+                <span className="text-zinc-900 font-medium text-base">{selectedTime}</span>
+              </div>
+              <div className="col-span-2 border-t border-zinc-200 pt-4 mt-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-600 font-medium">Total Price</span>
+                  <div className="flex items-center gap-3">
+                    {appliedDiscount ? (
+                      <>
+                        <span className="line-through text-zinc-400 text-sm">£{selectedService?.price.toFixed(2)}</span>
+                        <span className="text-xl font-bold text-[#174F7F]">£{getFinalPrice().toFixed(2)}</span>
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md font-medium border border-green-200">
+                          {appliedDiscount.code} applied
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-xl font-bold text-zinc-900">£{selectedService?.price.toFixed(2)}</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm mb-1">Full Name</label>
-            <input 
-              required
-              type="text" 
-              className="w-full border border-zinc-300 p-2 rounded focus:outline-none focus:border-black"
-              value={userDetails.name}
-              onChange={e => setUserDetails({...userDetails, name: e.target.value})}
-            />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Email Address</label>
-            <input 
-              required
-              type="email" 
-              className="w-full border border-zinc-300 p-2 rounded focus:outline-none focus:border-black"
-              value={userDetails.email}
-              onChange={e => setUserDetails({...userDetails, email: e.target.value})}
-            />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Phone Number</label>
-            <input 
-              type="tel" 
-              className="w-full border border-zinc-300 p-2 rounded focus:outline-none focus:border-black"
-              value={userDetails.phone}
-              onChange={e => setUserDetails({...userDetails, phone: e.target.value})}
-            />
+          <div className="space-y-6">
+            <h3 className="font-medium text-zinc-900 text-lg">Contact Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1.5">Full Name</label>
+                <input 
+                  required
+                  type="text" 
+                  className="w-full border border-zinc-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#174F7F]/20 focus:border-[#174F7F] transition-all bg-white text-zinc-900"
+                  placeholder="e.g. John Doe"
+                  value={userDetails.name}
+                  onChange={e => setUserDetails({...userDetails, name: e.target.value})}
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1.5">Email Address</label>
+                <input 
+                  required
+                  type="email" 
+                  className="w-full border border-zinc-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#174F7F]/20 focus:border-[#174F7F] transition-all bg-white text-zinc-900"
+                  placeholder="e.g. john@example.com"
+                  value={userDetails.email}
+                  onChange={e => setUserDetails({...userDetails, email: e.target.value})}
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1.5">Phone Number</label>
+                <input 
+                  type="tel" 
+                  className="w-full border border-zinc-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#174F7F]/20 focus:border-[#174F7F] transition-all bg-white text-zinc-900"
+                  placeholder="e.g. +1 (555) 000-0000"
+                  value={userDetails.phone}
+                  onChange={e => setUserDetails({...userDetails, phone: e.target.value})}
+                />
+              </div>
+              
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1.5">Discount Code (Optional)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    className="flex-1 border border-zinc-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#174F7F]/20 focus:border-[#174F7F] transition-all uppercase bg-white text-zinc-900"
+                    placeholder="PROMO CODE"
+                    value={discountCode}
+                    onChange={e => setDiscountCode(e.target.value)}
+                    disabled={!!appliedDiscount}
+                  />
+                  {appliedDiscount ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppliedDiscount(null);
+                        setDiscountCode('');
+                      }}
+                      className="bg-zinc-100 text-zinc-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-zinc-200 border border-zinc-200 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleApplyDiscount}
+                      disabled={isValidatingDiscount || !discountCode.trim()}
+                      className="bg-zinc-900 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                    >
+                      {isValidatingDiscount ? '...' : 'Apply'}
+                    </button>
+                  )}
+                </div>
+                {discountError && <p className="text-red-600 text-xs mt-1.5 flex items-center"><span className="mr-1">⚠️</span> {discountError}</p>}
+              </div>
+            </div>
           </div>
 
-          <div className="flex justify-between items-center mt-8">
-             <button type="button" onClick={() => setStep('DATE')} className="text-sm underline text-zinc-500">Back</button>
+          <div className="flex justify-between items-center pt-6 border-t border-zinc-100">
+             <button type="button" onClick={() => setStep('DATE')} className="text-sm font-medium text-zinc-600 hover:text-[#174F7F] flex items-center gap-1">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back
+             </button>
              <button 
                type="submit"
                disabled={isLoading}
-               className="bg-black text-white px-8 py-3 uppercase text-sm tracking-widest disabled:opacity-50"
+               className="bg-[#174F7F] text-white px-8 py-3.5 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-[#123c61] disabled:opacity-70 shadow-md transition-all transform hover:-translate-y-0.5"
              >
-               {isLoading ? 'Booking...' : 'Confirm Booking'}
+               {isLoading ? (
+                 <span className="flex items-center gap-2">
+                   <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>
+                   Processing...
+                 </span>
+               ) : 'Confirm Booking'}
              </button>
           </div>
         </form>
       )}
     </div>
+  );
+}
+
+function TimeSlotButton({ time, isSelected, onClick }: { time: string; isSelected: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`py-3 px-2 text-sm font-medium border rounded-lg transition-all relative overflow-hidden ${
+        isSelected 
+          ? 'bg-[#174F7F] text-white border-[#174F7F] shadow-md scale-105 z-10' 
+          : 'border-zinc-200 text-zinc-700 hover:border-[#174F7F] hover:text-[#174F7F] bg-white hover:bg-blue-50/30'
+      }`}
+    >
+      {isSelected && (
+        <div className="absolute inset-0 bg-white/10 animate-pulse"></div>
+      )}
+      {time}
+    </button>
   );
 }

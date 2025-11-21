@@ -18,10 +18,11 @@ export async function getAvailableSlots(
     where: {
       stylistId,
       dayOfWeek,
-      isOff: false,
+      isOff: false, // Only get slots if the stylist is NOT off
     },
   });
 
+  // If no availability record found or isOff is true (though filtered above), return no slots
   if (!availability) {
     return [];
   }
@@ -73,10 +74,13 @@ export async function getAvailableSlots(
       );
     });
 
-    slots.push({
-      time: format(currentSlot, 'HH:mm'),
-      available: !isBusy,
-    });
+    // Only add the slot if it is not busy
+    if (!isBusy) {
+      slots.push({
+        time: format(currentSlot, 'HH:mm'),
+        available: true,
+      });
+    }
 
     // Interval - let's assume 30 min slots for start times, or dynamic based on logic
     // For simplicity, increment by 30 mins
@@ -93,6 +97,7 @@ export async function createBooking(data: {
   userEmail: string;
   userName: string;
   userPhone?: string;
+  discountCodeId?: string;
 }) {
   // 1. Find or create user
   let user = await prisma.user.findUnique({
@@ -117,9 +122,9 @@ export async function createBooking(data: {
       serviceId: data.serviceId,
       userId: user.id,
       status: 'CONFIRMED', // Auto-confirm for now
+      discountCodeId: data.discountCodeId,
     },
   });
 
   return appointment;
 }
-

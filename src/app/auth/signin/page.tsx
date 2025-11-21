@@ -19,10 +19,10 @@ export default function SignInPage() {
           </p>
         </div>
         
-        <form action={action} className="mt-8 space-y-6">
-          <div className="-space-y-px rounded-md shadow-sm">
-            <div>
-              <label htmlFor="email" className="sr-only">
+        <form action={action} className="mt-8 space-y-8">
+          <div className="space-y-6 rounded-md shadow-sm">
+            <div className="relative">
+              <label htmlFor="email" className="block text-sm font-medium leading-6 text-zinc-900 mb-2">
                 Email address
               </label>
               <input
@@ -31,12 +31,12 @@ export default function SignInPage() {
                 type="email"
                 autoComplete="email"
                 required
-                className="relative block w-full rounded-t-md border-0 py-3 text-zinc-900 ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6"
-                placeholder="Email address"
+                className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
+                placeholder="Enter your email"
               />
             </div>
-            <div>
-              <label htmlFor="password" className="sr-only">
+            <div className="relative">
+              <label htmlFor="password" className="block text-sm font-medium leading-6 text-zinc-900 mb-2">
                 Password
               </label>
               <input
@@ -45,14 +45,16 @@ export default function SignInPage() {
                 type="password"
                 autoComplete="current-password"
                 required
-                className="relative block w-full rounded-b-md border-0 py-3 text-zinc-900 ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6"
-                placeholder="Password"
+                className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
+                placeholder="Enter your password"
               />
             </div>
           </div>
 
           {state?.error && (
-            <div className="text-red-600 text-sm text-center">{state.error}</div>
+            <div className="p-4 rounded-md bg-red-50 text-red-600 text-sm text-center border border-red-100">
+              {state.error}
+            </div>
           )}
 
           <div>
