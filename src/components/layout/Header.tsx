@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getSession } from '@/app/lib/session';
 import { logout } from '@/app/actions/auth';
+import { MobileNav } from './MobileNav';
 
 export async function Header() {
   const session = await getSession();
@@ -32,12 +33,16 @@ export async function Header() {
           )}
         </nav>
 
-        <Link 
-          href="/book"
-          className="bg-white text-black px-6 py-2 text-sm uppercase tracking-widest font-semibold hover:bg-gray-200 transition-colors ml-4"
-        >
-          Book Now
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link 
+            href="/book"
+            className="hidden md:block bg-white text-black px-6 py-2 text-sm uppercase tracking-widest font-semibold hover:bg-gray-200 transition-colors"
+          >
+            Book Now
+          </Link>
+
+          <MobileNav session={session} />
+        </div>
       </div>
     </header>
   );
