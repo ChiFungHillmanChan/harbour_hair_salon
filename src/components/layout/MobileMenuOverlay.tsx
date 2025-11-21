@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { logout } from '@/app/actions/auth';
-import { useEffect, useState } from 'react';
 
 interface MobileMenuOverlayProps {
   isOpen: boolean;
@@ -15,14 +14,9 @@ interface MobileMenuOverlayProps {
 }
 
 export default function MobileMenuOverlay({ isOpen, onClose, session }: MobileMenuOverlayProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-
+  // No need for mounted state check since this component is dynamically imported with { ssr: false }
+  // It will only ever render on the client where document.body is available
+  
   return createPortal(
     <div 
       className={`fixed inset-0 z-[100] bg-black flex flex-col transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
@@ -131,4 +125,3 @@ export default function MobileMenuOverlay({ isOpen, onClose, session }: MobileMe
     document.body
   );
 }
-
