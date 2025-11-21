@@ -18,10 +18,11 @@ export async function getAvailableSlots(
     where: {
       stylistId,
       dayOfWeek,
-      isOff: false,
+      isOff: false, // Only get slots if the stylist is NOT off
     },
   });
 
+  // If no availability record found or isOff is true (though filtered above), return no slots
   if (!availability) {
     return [];
   }
@@ -73,10 +74,13 @@ export async function getAvailableSlots(
       );
     });
 
-    slots.push({
-      time: format(currentSlot, 'HH:mm'),
-      available: !isBusy,
-    });
+    // Only add the slot if it is not busy
+    if (!isBusy) {
+      slots.push({
+        time: format(currentSlot, 'HH:mm'),
+        available: true,
+      });
+    }
 
     // Interval - let's assume 30 min slots for start times, or dynamic based on logic
     // For simplicity, increment by 30 mins
@@ -124,4 +128,3 @@ export async function createBooking(data: {
 
   return appointment;
 }
-

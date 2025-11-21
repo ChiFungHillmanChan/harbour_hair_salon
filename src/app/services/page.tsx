@@ -1,5 +1,4 @@
 import prisma from '@/app/lib/prisma';
-import { Service, Offer } from '@prisma/client';
 import Link from 'next/link';
 
 // Revalidate data every hour
@@ -31,6 +30,8 @@ async function getGlobalOffer() {
   };
 }
 
+import { ServiceList } from '@/components/services/ServiceList';
+
 export default async function ServicesPage() {
   const [services, activeOffer] = await Promise.all([
     getServices(),
@@ -47,7 +48,7 @@ export default async function ServicesPage() {
   }, {} as Record<string, typeof services>);
 
   // Custom sort order
-  const sortOrder = ['Haircuts', 'Colouring', 'Treatments'];
+  const sortOrder = ['Haircuts', 'Colouring', 'Perms', 'Treatments', 'Styling'];
   const categories = Object.keys(groupedServices).sort((a, b) => {
     const indexA = sortOrder.findIndex(key => a.includes(key));
     const indexB = sortOrder.findIndex(key => b.includes(key));
@@ -61,14 +62,6 @@ export default async function ServicesPage() {
     // Otherwise alphabetical
     return a.localeCompare(b);
   });
-
-  const getDiscountedPrice = (price: number) => {
-    if (!activeOffer) return null;
-    if (activeOffer.discountType === 'PERCENTAGE') {
-      return price - (price * (activeOffer.discountValue / 100));
-    }
-    return Math.max(0, price - activeOffer.discountValue);
-  };
 
   return (
     <div className="min-h-screen bg-white">
@@ -96,56 +89,11 @@ export default async function ServicesPage() {
           </div>
         )}
 
-        <div className="space-y-20">
-          {categories.map((category) => (
-            <div key={category}>
-              <h2 className="text-3xl font-serif text-zinc-900 mb-8 text-center relative">
-                <span className="relative z-10 bg-white px-6">{category}</span>
-                <div className="absolute top-1/2 left-0 w-full h-px bg-zinc-200 -z-0" />
-              </h2>
-              
-              <div className="grid grid-cols-1 gap-8">
-                {groupedServices[category].map((service) => {
-                  const discountedPrice = getDiscountedPrice(service.price);
-                  
-                  return (
-                    <div key={service.id} className="group flex justify-between items-baseline border-b border-zinc-100 pb-4 hover:border-zinc-300 transition-colors">
-                      <div className="pr-8">
-                        <h3 className="text-xl font-serif text-zinc-900 mb-1 group-hover:text-zinc-600 transition-colors">
-                          {service.name}
-                        </h3>
-                        {service.description && (
-                          <p className="text-zinc-500 font-light text-sm leading-relaxed mb-2">
-                            {service.description}
-                          </p>
-                        )}
-                        <span className="text-xs text-zinc-400 uppercase tracking-wider">
-                          {service.duration} mins
-                        </span>
-                      </div>
-                      <div className="text-right whitespace-nowrap">
-                        {discountedPrice !== null ? (
-                          <div className="flex flex-col items-end">
-                            <span className="text-sm text-zinc-400 line-through decoration-zinc-400/50">
-                              £{service.price.toFixed(2)}
-                            </span>
-                            <span className="text-xl font-medium text-red-700 font-serif">
-                              £{discountedPrice.toFixed(2)}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="text-xl font-medium text-zinc-900 font-serif">
-                            £{service.price.toFixed(2)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
+        <ServiceList 
+          groupedServices={groupedServices} 
+          categories={categories} 
+          activeOffer={activeOffer} 
+        />
 
         <div className="mt-20 text-center">
            <Link 
