@@ -1,5 +1,8 @@
 import prisma from '@/app/lib/prisma';
 import { addMinutes, format, setHours, setMinutes, startOfDay } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
+
+const SALON_TIMEZONE = 'Europe/London';
 
 export type TimeSlot = {
   time: string;
@@ -57,8 +60,15 @@ export async function getAvailableSlots(
 
   let currentSlot = setMinutes(setHours(startOfDayDate, startHour), startMinute);
   const endTime = setMinutes(setHours(startOfDayDate, endHour), endMinute);
+  // Use London timezone for "now" comparison to filter past slots correctly
+  const now = toZonedTime(new Date(), SALON_TIMEZONE);
 
   while (addMinutes(currentSlot, serviceDuration) <= endTime) {
+    // Skip slots that have already passed today
+    if (currentSlot <= now) {
+      currentSlot = addMinutes(currentSlot, 30);
+      continue;
+    }
     const slotEnd = addMinutes(currentSlot, serviceDuration);
 
     // Check collision with existing appointments
@@ -97,28 +107,56 @@ export async function createBooking(data: {
   userId: string;
   discountCodeId?: string;
 }) {
-  // Create appointment directly with the authenticated user's ID
-  const appointment = await prisma.appointment.create({
-    data: {
-      date: data.date,
-      stylistId: data.stylistId,
-      serviceId: data.serviceId,
-      userId: data.userId,
-      status: 'CONFIRMED', // Auto-confirm for now
-      discountCodeId: data.discountCodeId,
-    },
-    include: {
-      user: {
-        select: { email: true, name: true },
+  // Use Serializable transaction to prevent double-booking race conditions
+  const appointment = await prisma.$transaction(async (tx) => {
+    // Check for conflicting appointments within the time range
+    const service = await tx.service.findUnique({ where: { id: data.serviceId } });
+    if (!service) throw new Error('Service not found');
+
+    const appointmentEnd = addMinutes(data.date, service.duration);
+    const dayStart = startOfDay(data.date);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const existingAppointments = await tx.appointment.findMany({
+      where: {
+        stylistId: data.stylistId,
+        date: { gte: dayStart, lte: dayEnd },
+        status: { not: 'CANCELLED' },
       },
-      stylist: {
-        select: { name: true },
+      include: { service: true },
+    });
+
+    const hasConflict = existingAppointments.some((appt) => {
+      const apptStart = new Date(appt.date);
+      const apptEnd = addMinutes(apptStart, appt.service.duration);
+      return (
+        (data.date >= apptStart && data.date < apptEnd) ||
+        (appointmentEnd > apptStart && appointmentEnd <= apptEnd) ||
+        (data.date <= apptStart && appointmentEnd >= apptEnd)
+      );
+    });
+
+    if (hasConflict) {
+      throw new Error('This time slot is no longer available. Please choose another time.');
+    }
+
+    return tx.appointment.create({
+      data: {
+        date: data.date,
+        stylistId: data.stylistId,
+        serviceId: data.serviceId,
+        userId: data.userId,
+        status: 'CONFIRMED',
+        discountCodeId: data.discountCodeId,
       },
-      service: {
-        select: { name: true, price: true, duration: true },
+      include: {
+        user: { select: { email: true, name: true } },
+        stylist: { select: { name: true } },
+        service: { select: { name: true, price: true, duration: true } },
       },
-    },
-  });
+    });
+  }, { isolationLevel: 'Serializable' });
 
   return appointment;
 }

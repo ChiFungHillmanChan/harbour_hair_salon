@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const secretKey = process.env.SESSION_SECRET || '';
-const key = new TextEncoder().encode(secretKey);
+const secretKey = process.env.SESSION_SECRET;
+if (!secretKey) {
+  console.error('CRITICAL: SESSION_SECRET is not set. All protected routes will be inaccessible.');
+}
+const key = new TextEncoder().encode(secretKey ?? '');
 
 async function getSessionFromRequest(request: NextRequest) {
   const cookie = request.cookies.get('session')?.value;

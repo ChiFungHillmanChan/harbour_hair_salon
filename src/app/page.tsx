@@ -7,11 +7,12 @@ import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 
 export const metadata: Metadata = {
-  title: 'Harbour Hair Salon | Leeds Hair Stylists',
-  description: 'Expert hair styling in the heart of Leeds. Book your appointment at Harbour Hair Salon, Central Arcade.',
+  title: 'Expert Hair Styling in Leeds City Centre',
+  description: 'Book your appointment at Harbour Hair Salon, Central Arcade, Leeds. Expert cuts, colours, perms and grooming by Hong Kong trained stylists.',
+  alternates: { canonical: '/' },
   openGraph: {
-    title: 'Harbour Hair Salon | Leeds Hair Stylists',
-    description: 'Expert hair styling in the heart of Leeds.',
+    title: 'Harbour Hair Salon | Expert Hair Styling in Leeds',
+    description: 'Professional hair salon in Leeds city centre. Book online today.',
   },
 };
 
@@ -89,18 +90,33 @@ export default async function Home() {
             '@context': 'https://schema.org',
             '@type': 'HairSalon',
             name: 'Harbour Hair Salon',
+            url: 'https://harbourhairsalon.co.uk',
+            image: 'https://harbourhairsalon.co.uk/images/og-image.png',
+            description: 'Professional hair salon in Leeds city centre. Expert cuts, colours, perms and grooming by Hong Kong trained stylists.',
             address: {
               '@type': 'PostalAddress',
-              streetAddress: 'F/1 Central Arcade, Central Road',
+              streetAddress: 'Upper Floor, Unit 15 Central Arcade, Central Rd',
               addressLocality: 'Leeds',
+              addressRegion: 'West Yorkshire',
               postalCode: 'LS1 6DX',
               addressCountry: 'GB',
             },
-            telephone: '+441234567890',
+            geo: {
+              '@type': 'GeoCoordinates',
+              latitude: 53.7965911,
+              longitude: -1.5416801,
+            },
+            telephone: '+447831830898',
+            priceRange: '$$',
+            currenciesAccepted: 'GBP',
+            paymentAccepted: 'Cash, Credit Card',
+            areaServed: { '@type': 'City', name: 'Leeds' },
+            sameAs: ['https://www.instagram.com/harbourhair_leeds/'],
             openingHoursSpecification: [
               { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday','Tuesday','Wednesday','Thursday','Friday'], opens: '10:00', closes: '19:30' },
               { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Saturday','Sunday'], opens: '10:30', closes: '18:00' },
             ],
+            knowsLanguage: ['en', 'zh-yue'],
           }),
         }}
       />

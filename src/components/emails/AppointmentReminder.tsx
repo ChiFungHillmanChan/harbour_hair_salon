@@ -23,7 +23,7 @@ interface AppointmentReminderProps {
 }
 
 const BRAND = '#174F7F';
-const SALON_ADDRESS = 'F/1 Central Arcade, Central Road, Leeds, LS1 6DX';
+const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 const BASE_URL = 'https://harbourhairsalon.co.uk';
 
 export function AppointmentReminder({ appointment }: AppointmentReminderProps) {

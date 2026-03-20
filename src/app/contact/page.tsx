@@ -2,18 +2,20 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Contact & Location | Harbour Hair Salon',
-  description: 'Find Harbour Hair Salon at Central Arcade, Leeds. Opening hours, directions, and contact details.',
+  title: 'Contact & Find Us in Leeds City Centre',
+  description: 'Visit Harbour Hair Salon at Unit 15 Central Arcade, Leeds LS1 6DX. Opening hours, directions from Leeds station, and contact details.',
+  alternates: { canonical: '/contact' },
 };
 
 export default function ContactPage() {
   return (
     <div className="min-h-screen bg-white">
       {/* Header Section */}
-      <div className="bg-zinc-900 text-white py-10">
+      <div className="bg-zinc-900 text-white py-14">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-3xl md:text-5xl font-serif mb-4 tracking-tight">Contact Us</h1>
-          <p className="text-lg text-zinc-300 font-light">Find us in the heart of Leeds</p>
+          <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
+          <h1 className="text-3xl md:text-5xl font-serif mb-4 tracking-tight">Contact <span className="italic text-zinc-400">Us</span></h1>
+          <p className="text-lg text-zinc-300 font-light">Find us in the heart of Leeds city centre</p>
         </div>
       </div>
 
@@ -27,13 +29,11 @@ export default function ContactPage() {
               <h2 className="text-2xl font-bold text-black mb-6 border-b-2 border-zinc-200 pb-2">Location</h2>
               <address className="not-italic text-zinc-600 text-lg leading-relaxed">
                 <p className="font-medium text-zinc-900 mb-2">Harbour Hair Salon</p>
-                <p>F/1 Central Arcade</p>
-                <p>Central Road</p>
+                <p>Upper Floor, Unit 15</p>
+                <p>Central Arcade, Central Rd</p>
                 <p>Leeds, LS1 6DX</p>
                 <p className="mt-4 text-sm text-zinc-500">
-                  Just a 10-minute walk from Leeds Train Station.
-                  <br />
-                  Located inside Central Arcade.
+                  Located inside Central Arcade, just a short walk from Leeds Train Station.
                 </p>
               </address>
             </div>
@@ -44,8 +44,8 @@ export default function ContactPage() {
               <div className="space-y-4 text-lg">
                 <p>
                   <span className="block text-sm font-bold text-zinc-900 uppercase tracking-wider mb-1">Phone</span>
-                  <a href="tel:+441234567890" className="text-zinc-600 hover:text-zinc-900 transition-colors">
-                    +44 123 456 7890
+                  <a href="tel:+447831830898" className="text-zinc-600 hover:text-zinc-900 transition-colors">
+                    07831 830898
                   </a>
                 </p>
                 <p>
@@ -106,7 +106,7 @@ export default function ContactPage() {
           {/* Map */}
           <div className="h-full min-h-[400px] bg-zinc-100 rounded-lg overflow-hidden relative shadow-lg">
             <iframe 
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2356.118936462793!2d-1.5446742229743192!3d53.79784867246742!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x48795c1e2c072d9f%3A0x2524661623250319!2sCentral%20Arcade!5e0!3m2!1sen!2suk!4v1710000000000!5m2!1sen!2suk" 
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2356.2!2d-1.544255!3d53.7965911!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x48795d7c1f30e4cf%3A0xad74be12e1f34d1a!2sHarbour%20Hair!5e0!3m2!1sen!2suk!4v1710000000000!5m2!1sen!2suk" 
               width="100%" 
               height="100%" 
               style={{ border: 0, minHeight: '500px' }} 
@@ -119,19 +119,18 @@ export default function ContactPage() {
         </div>
 
         {/* CTA Section */}
-        <div className="mt-20 text-center bg-zinc-50 rounded-2xl p-16">
-          <h2 className="text-3xl font-bold text-black mb-6">Ready for a fresh look?</h2>
-          <p className="text-zinc-600 mb-10 max-w-xl mx-auto">
+        <div className="mt-20 text-center bg-zinc-900 p-16">
+          <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-8" />
+          <h2 className="text-3xl font-serif text-white mb-6">Ready for a fresh look?</h2>
+          <p className="text-zinc-400 mb-10 max-w-xl mx-auto font-light">
             Book your appointment online today and let our expert stylists take care of you.
           </p>
-          <div className="mb-4">
-            <Link 
-              href="/book"
-              className="inline-block bg-zinc-900 text-white px-12 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-zinc-800 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-            >
-              Book Here
-            </Link>
-          </div>
+          <Link
+            href="/book"
+            className="inline-block bg-[var(--accent)] text-black px-12 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all"
+          >
+            Book Appointment
+          </Link>
         </div>
       </div>
     </div>

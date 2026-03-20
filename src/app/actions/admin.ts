@@ -4,39 +4,95 @@ import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { hashPassword } from '@/app/lib/password';
+import { z } from 'zod';
+
+// --- Validation Schemas ---
+
+const discountCodeSchema = z.object({
+  code: z.string().min(1, 'Code is required').toUpperCase(),
+  type: z.enum(['PERCENTAGE', 'FIXED']),
+  value: z.coerce.number().positive('Value must be positive'),
+  maxUses: z.coerce.number().int().positive().nullable().optional(),
+  expiresAt: z.coerce.date().nullable().optional(),
+});
+
+const offerSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().optional(),
+  discountType: z.enum(['PERCENTAGE', 'FIXED']),
+  discountValue: z.coerce.number().positive('Value must be positive'),
+  isGlobal: z.boolean().optional(),
+});
+
+const adminUserSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Please enter a valid email'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+async function requireAdmin() {
+  const session = await verifySession();
+  if (session.role !== 'ADMIN') {
+    return { error: 'Unauthorized', session: null };
+  }
+  return { error: null, session };
+}
 
 // --- Discount Codes ---
 
 export async function createDiscountCode(formData: FormData) {
-  const session = await verifySession();
-  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error };
 
-  const code = formData.get('code') as string;
-  const type = formData.get('type') as string; // 'PERCENTAGE' | 'FIXED'
-  const value = parseFloat(formData.get('value') as string);
-  const maxUses = formData.get('maxUses') ? parseInt(formData.get('maxUses') as string) : null;
-  const expiresAt = formData.get('expiresAt') ? new Date(formData.get('expiresAt') as string) : null;
-
-  await prisma.discountCode.create({
-    data: {
-      code,
-      type,
-      value,
-      maxUses,
-      expiresAt,
-    },
+  const parsed = discountCodeSchema.safeParse({
+    code: formData.get('code'),
+    type: formData.get('type'),
+    value: formData.get('value'),
+    maxUses: formData.get('maxUses') || null,
+    expiresAt: formData.get('expiresAt') || null,
   });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  try {
+    await prisma.discountCode.create({
+      data: {
+        code: parsed.data.code,
+        type: parsed.data.type,
+        value: parsed.data.value,
+        maxUses: parsed.data.maxUses ?? null,
+        expiresAt: parsed.data.expiresAt ?? null,
+      },
+    });
+  } catch {
+    return { error: 'Discount code already exists' };
+  }
 
   revalidatePath('/admin/discounts');
 }
 
 export async function deleteDiscountCode(id: string) {
-  const session = await verifySession();
-  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const { error } = await requireAdmin();
+  if (error) return;
 
-  await prisma.discountCode.delete({
-    where: { id },
+  // Check if any appointments use this code
+  const usageCount = await prisma.appointment.count({
+    where: { discountCodeId: id },
   });
+
+  if (usageCount > 0) {
+    // Deactivate instead of deleting
+    await prisma.discountCode.update({
+      where: { id },
+      data: { isActive: false },
+    });
+  } else {
+    await prisma.discountCode.delete({
+      where: { id },
+    });
+  }
 
   revalidatePath('/admin/discounts');
 }
@@ -44,35 +100,41 @@ export async function deleteDiscountCode(id: string) {
 // --- Offers ---
 
 export async function createOffer(formData: FormData) {
-  const session = await verifySession();
-  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const { error } = await requireAdmin();
+  if (error) return { error };
 
-  const title = formData.get('title') as string;
-  const description = formData.get('description') as string;
-  const discountType = formData.get('discountType') as string;
-  const discountValue = parseFloat(formData.get('discountValue') as string);
-  const isGlobal = formData.get('isGlobal') === 'on';
-  
+  const parsed = offerSchema.safeParse({
+    title: formData.get('title'),
+    description: formData.get('description'),
+    discountType: formData.get('discountType'),
+    discountValue: formData.get('discountValue'),
+    isGlobal: formData.get('isGlobal') === 'on',
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
   await prisma.offer.create({
     data: {
-      title,
-      description,
-      discountType,
-      discountValue,
+      title: parsed.data.title,
+      description: parsed.data.description || null,
+      discountType: parsed.data.discountType,
+      discountValue: parsed.data.discountValue,
       isActive: true,
-      isGlobal,
+      isGlobal: parsed.data.isGlobal ?? false,
     },
   });
 
   revalidatePath('/admin/offers');
-  revalidatePath('/offers'); // Public page
-  revalidatePath('/'); // Home page
-  revalidatePath('/services'); // Services page
+  revalidatePath('/offers');
+  revalidatePath('/');
+  revalidatePath('/services');
 }
 
 export async function toggleOfferStatus(id: string, isActive: boolean) {
-  const session = await verifySession();
-  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const { error } = await requireAdmin();
+  if (error) return;
 
   await prisma.offer.update({
     where: { id },
@@ -86,8 +148,8 @@ export async function toggleOfferStatus(id: string, isActive: boolean) {
 }
 
 export async function deleteOffer(id: string) {
-  const session = await verifySession();
-  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const { error } = await requireAdmin();
+  if (error) return;
 
   await prisma.offer.delete({
     where: { id },
@@ -102,20 +164,26 @@ export async function deleteOffer(id: string) {
 // --- Admin Users ---
 
 export async function createAdminUser(formData: FormData) {
-  const session = await verifySession();
-  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const { error } = await requireAdmin();
+  if (error) return { error };
 
-  const name = formData.get('name') as string;
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
+  const parsed = adminUserSchema.safeParse({
+    name: formData.get('name'),
+    email: formData.get('email'),
+    password: formData.get('password'),
+  });
 
-  const hashedPassword = await hashPassword(password);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const hashedPassword = await hashPassword(parsed.data.password);
 
   try {
     await prisma.user.create({
       data: {
-        name,
-        email,
+        name: parsed.data.name,
+        email: parsed.data.email,
         password: hashedPassword,
         role: 'ADMIN',
       },
@@ -128,13 +196,17 @@ export async function createAdminUser(formData: FormData) {
 }
 
 export async function deleteAdminUser(id: string) {
-  const session = await verifySession();
-  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const { error, session } = await requireAdmin();
+  if (error || !session) return;
 
-  // Prevent self-deletion
-  if (id === session.userId) {
-    throw new Error('Cannot delete yourself');
-  }
+  if (id === session.userId) return;
+
+  // Check if user has appointments — skip deletion if so
+  const appointmentCount = await prisma.appointment.count({
+    where: { userId: id },
+  });
+
+  if (appointmentCount > 0) return;
 
   await prisma.user.delete({
     where: { id },
@@ -144,11 +216,11 @@ export async function deleteAdminUser(id: string) {
 }
 
 export async function resetUserPassword(userId: string, newPassword: string) {
-  const session = await verifySession();
-  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const { error } = await requireAdmin();
+  if (error) return { error };
 
-  if (!newPassword || newPassword.length < 6) {
-    return { error: 'Password must be at least 6 characters' };
+  if (!newPassword || newPassword.length < 8) {
+    return { error: 'Password must be at least 8 characters' };
   }
 
   const hashedPassword = await hashPassword(newPassword);

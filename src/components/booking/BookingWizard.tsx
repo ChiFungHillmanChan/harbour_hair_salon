@@ -32,6 +32,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
   // Search and Category Logic
   const [searchTerm, setSearchTerm] = useState('');
@@ -96,6 +97,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
     if (!selectedStylist || !selectedService || !selectedTime) return;
 
     setIsLoading(true);
+    setBookingError(null);
     const result = await submitBooking({
       stylistId: selectedStylist.id,
       serviceId: selectedService.id,
@@ -108,7 +110,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
     if (result.success) {
       setIsSubmitted(true);
     } else {
-      alert('Booking failed. Please try again.');
+      setBookingError(result.error || 'Booking failed. Please try again.');
     }
   };
 
@@ -476,7 +478,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
               </div>
               <div>
                 <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Date</span>
-                <span className="text-zinc-900 font-medium text-base">{format(selectedDate, 'MMMM d, yyyy')}</span>
+                <span className="text-zinc-900 font-medium text-base">{format(selectedDate, 'd MMMM yyyy')}</span>
               </div>
               <div>
                 <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Time</span>
@@ -539,6 +541,12 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
             </div>
             {discountError && <p className="text-red-600 text-xs mt-1.5">{discountError}</p>}
           </div>
+
+          {bookingError && (
+            <div className="p-4 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">
+              {bookingError}
+            </div>
+          )}
 
           <div className="flex justify-between items-center pt-6 border-t border-zinc-100">
              <button type="button" onClick={() => setStep('DATE')} className="text-sm font-medium text-zinc-600 hover:text-[#174F7F] flex items-center gap-1">
