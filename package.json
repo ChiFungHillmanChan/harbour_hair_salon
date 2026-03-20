@@ -29,12 +29,14 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@react-email/components": "^1.0.10",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
     "jose": "^6.1.2",
-    "next": "16.0.3",
+    "next": "16.2.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "resend": "^6.9.4",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -44,7 +46,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.0.3",
+    "eslint-config-next": "16.2.0",
     "prisma": "^5.22.0",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",
