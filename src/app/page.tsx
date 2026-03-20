@@ -1,9 +1,19 @@
+import type { Metadata } from 'next';
 import prisma from '@/app/lib/prisma';
 import { Hero } from '@/components/home/Hero';
 import { ServiceMenu } from '@/components/home/ServiceMenu';
 import { StylistShowcase } from '@/components/home/StylistShowcase';
 import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
+
+export const metadata: Metadata = {
+  title: 'Harbour Hair Salon | Leeds Hair Stylists',
+  description: 'Expert hair styling in the heart of Leeds. Book your appointment at Harbour Hair Salon, Central Arcade.',
+  openGraph: {
+    title: 'Harbour Hair Salon | Leeds Hair Stylists',
+    description: 'Expert hair styling in the heart of Leeds.',
+  },
+};
 
 // Revalidate data every hour
 export const revalidate = 3600;
@@ -72,6 +82,28 @@ export default async function Home() {
 
   return (
     <div className="flex flex-col min-h-screen">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'HairSalon',
+            name: 'Harbour Hair Salon',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: 'F/1 Central Arcade, Central Road',
+              addressLocality: 'Leeds',
+              postalCode: 'LS1 6DX',
+              addressCountry: 'GB',
+            },
+            telephone: '+441234567890',
+            openingHoursSpecification: [
+              { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday','Tuesday','Wednesday','Thursday','Friday'], opens: '10:00', closes: '19:30' },
+              { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Saturday','Sunday'], opens: '10:30', closes: '18:00' },
+            ],
+          }),
+        }}
+      />
       <Hero />
       <ServiceMenu 
         services={services} 

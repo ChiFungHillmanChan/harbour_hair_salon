@@ -1,5 +1,11 @@
+import type { Metadata } from 'next';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Special Offers | Harbour Hair Salon',
+  description: 'Exclusive seasonal promotions and special offers at Harbour Hair Salon, Leeds.',
+};
 
 // Revalidate data every hour
 export const revalidate = 3600;
@@ -94,25 +100,6 @@ export default async function OffersPage() {
         )}
       </section>
 
-      {/* Newsletter / VIP Section Placeholder */}
-      <section className="bg-zinc-50 py-24 border-t border-zinc-200">
-        <div className="container mx-auto px-4 text-center">
-          <h3 className="text-3xl font-serif mb-6 text-zinc-900">Join Our Guest List</h3>
-          <p className="text-zinc-500 mb-10 max-w-lg mx-auto font-light text-lg">
-            Be the first to receive updates on new styles, exclusive events, and seasonal privileges.
-          </p>
-          <div className="max-w-md mx-auto flex gap-0 shadow-sm">
-             <input 
-               type="email" 
-               placeholder="Email Address" 
-               className="flex-1 px-6 py-4 bg-white border border-zinc-200 border-r-0 focus:outline-none focus:border-zinc-900 transition-colors text-sm placeholder:font-light"
-             />
-             <button className="px-10 py-4 bg-zinc-900 text-white text-xs font-bold uppercase tracking-[0.15em] hover:bg-zinc-800 transition-colors">
-               Subscribe
-             </button>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
