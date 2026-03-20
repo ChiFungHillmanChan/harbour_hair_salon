@@ -63,7 +63,7 @@ function RegisterForm() {
                 type="tel"
                 autoComplete="tel"
                 className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
-                placeholder="+1 (555) 000-0000"
+                placeholder="07XXX XXX XXX"
               />
             </div>
             <div className="relative">

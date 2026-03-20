@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
       },
     },
     include: {
-      user: true,
-      stylist: true,
-      service: true,
+      user: { select: { email: true, name: true } },
+      stylist: { select: { name: true } },
+      service: { select: { name: true, price: true, duration: true } },
     },
   });
 

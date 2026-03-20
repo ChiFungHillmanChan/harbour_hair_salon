@@ -2,8 +2,9 @@ import prisma from '@/app/lib/prisma';
 import { BookingWizard } from '@/components/booking/BookingWizard';
 
 export const metadata = {
-  title: 'Book Appointment | Harbour Hair',
-  description: 'Book your next hair appointment online.',
+  title: 'Book Your Hair Appointment in Leeds',
+  description: 'Book your next hair appointment online at Harbour Hair Salon, Leeds city centre. Choose your service, stylist and time.',
+  alternates: { canonical: '/book' },
 };
 
 // Revalidate frequently for booking page

@@ -68,6 +68,10 @@ model Appointment {
 
   discountCodeId String?
   discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id])
+
+  @@index([stylistId, date])
+  @@index([userId, status])
+  @@index([status, reminderSent, date])
 }
 
 model Availability {
@@ -76,9 +80,11 @@ model Availability {
   startTime String   // HH:mm
   endTime   String   // HH:mm
   isOff     Boolean  @default(false)
-  
+
   stylistId String
   stylist   Stylist  @relation(fields: [stylistId], references: [id])
+
+  @@index([stylistId, dayOfWeek])
 }
 
 model DiscountCode {

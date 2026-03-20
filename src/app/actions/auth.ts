@@ -7,6 +7,13 @@ import { createSession, deleteSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 
+function sanitizeRedirect(url: string | null): string {
+  if (!url) return '/';
+  // Only allow relative paths starting with / and not protocol-relative //
+  if (url.startsWith('/') && !url.startsWith('//')) return url;
+  return '/';
+}
+
 const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 15 * 60 * 1000;
@@ -76,11 +83,11 @@ export async function login(prevState: unknown, formData: FormData) {
   await createSession(user.id, user.role);
   resetRateLimit(ip);
 
-  const redirectTo = formData.get('redirect') as string;
+  const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
   if (user.role === 'ADMIN') {
     redirect('/admin');
   } else {
-    redirect(redirectTo || '/');
+    redirect(redirectTo);
   }
 }
 
@@ -97,7 +104,7 @@ export async function register(prevState: unknown, formData: FormData) {
     where: { email },
   });
 
-  const redirectTo = formData.get('redirect') as string;
+  const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
 
   if (existingUser) {
     if (existingUser.password) {
@@ -114,7 +121,7 @@ export async function register(prevState: unknown, formData: FormData) {
         },
       });
       await createSession(existingUser.id, existingUser.role);
-      redirect(redirectTo || '/');
+      redirect(redirectTo);
     }
   }
 
@@ -131,7 +138,7 @@ export async function register(prevState: unknown, formData: FormData) {
   });
 
   await createSession(user.id, user.role);
-  redirect(redirectTo || '/');
+  redirect(redirectTo);
 }
 
 export async function logout() {

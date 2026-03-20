@@ -105,29 +105,39 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
   const validData = result.data;
 
-  // Validate discount code again server-side if provided
+  // Atomically validate and claim the discount code within a transaction
   let discountCodeId = undefined;
   if (validData.discountCode) {
-    const discount = await prisma.discountCode.findUnique({
-      where: { code: validData.discountCode },
-    });
-    if (discount && discount.isActive &&
-        (!discount.expiresAt || new Date() <= discount.expiresAt) &&
-        (!discount.maxUses || discount.usedCount < discount.maxUses)) {
-      discountCodeId = discount.id;
+    try {
+      discountCodeId = await prisma.$transaction(async (tx) => {
+        const discount = await tx.discountCode.findUnique({
+          where: { code: validData.discountCode },
+        });
 
-      // Increment usage count
-      await prisma.discountCode.update({
-        where: { id: discount.id },
-        data: { usedCount: { increment: 1 } },
-      });
+        if (!discount || !discount.isActive) return undefined;
+        if (discount.expiresAt && new Date() > discount.expiresAt) return undefined;
+        if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) return undefined;
+
+        await tx.discountCode.update({
+          where: { id: discount.id },
+          data: { usedCount: { increment: 1 } },
+        });
+
+        return discount.id;
+      }, { isolationLevel: 'Serializable' });
+    } catch {
+      // Discount claim failed (concurrent usage) — proceed without discount
+      discountCodeId = undefined;
     }
   }
 
-  // Parse time HH:mm
+  // Parse time HH:mm in salon timezone (Europe/London)
+  // fromZonedTime converts a "London local time" to the correct UTC Date
+  const { fromZonedTime } = await import('date-fns-tz');
   const [hours, minutes] = validData.time.split(':').map(Number);
-  const fullDate = new Date(validData.date);
-  fullDate.setHours(hours, minutes, 0, 0);
+  const localDate = new Date(validData.date);
+  localDate.setHours(hours, minutes, 0, 0);
+  const fullDate = fromZonedTime(localDate, 'Europe/London');
 
   try {
     const appointment = await createBooking({
@@ -215,17 +225,37 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
     const oldDate = appointment.date;
 
     await prisma.$transaction(async (tx) => {
-      const existingAtNewTime = await tx.appointment.findFirst({
+      // Check for overlapping appointments using duration-based range
+      const { startOfDay } = await import('date-fns');
+      const { addMinutes } = await import('date-fns');
+
+      const dayStart = startOfDay(newDate);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setHours(23, 59, 59, 999);
+      const newEnd = addMinutes(newDate, appointment.service.duration);
+
+      const existingAppointments = await tx.appointment.findMany({
         where: {
           stylistId: appointment.stylistId,
-          date: newDate,
+          date: { gte: dayStart, lte: dayEnd },
           status: { not: 'CANCELLED' },
           id: { not: appointmentId },
         },
+        include: { service: true },
       });
 
-      if (existingAtNewTime) {
-        throw new Error('Slot is no longer available');
+      const hasConflict = existingAppointments.some((appt) => {
+        const apptStart = new Date(appt.date);
+        const apptEnd = addMinutes(apptStart, appt.service.duration);
+        return (
+          (newDate >= apptStart && newDate < apptEnd) ||
+          (newEnd > apptStart && newEnd <= apptEnd) ||
+          (newDate <= apptStart && newEnd >= apptEnd)
+        );
+      });
+
+      if (hasConflict) {
+        throw new Error('This time slot is no longer available');
       }
 
       await tx.appointment.update({

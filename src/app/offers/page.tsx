@@ -3,8 +3,9 @@ import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Special Offers | Harbour Hair Salon',
-  description: 'Exclusive seasonal promotions and special offers at Harbour Hair Salon, Leeds.',
+  title: 'Special Offers & Promotions in Leeds',
+  description: 'Exclusive seasonal promotions and special offers at Harbour Hair Salon, Leeds city centre. Save on haircuts, colours and treatments.',
+  alternates: { canonical: '/offers' },
 };
 
 // Revalidate data every hour
@@ -29,13 +30,20 @@ export default async function OffersPage() {
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
-        <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1633681926022-84c23e8cb2d6?q=80&w=2670&auto=format&fit=crop')] bg-cover bg-center" />
+        <div className="absolute inset-0">
+          <img
+            src="/images/offers-hero.png"
+            alt="Special offers at Harbour Hair Salon Leeds"
+            className="w-full h-full object-cover opacity-40"
+          />
+        </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
+          <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
-            Exclusive <span className="italic text-zinc-400">Privileges</span>
+            Special <span className="italic text-zinc-400">Offers</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
-            Curated seasonal promotions and tailored experiences designed to elevate your personal style.
+            Exclusive seasonal promotions at our Leeds city centre salon, designed to elevate your personal style.
           </p>
         </div>
       </section>

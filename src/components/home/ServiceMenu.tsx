@@ -1,4 +1,5 @@
 import { Service, Offer } from '@prisma/client';
+import Link from 'next/link';
 
 interface ServiceMenuProps {
   services: (Omit<Service, 'price'> & { price: number })[];
@@ -69,11 +70,12 @@ export function ServiceMenu({ services, activeOffer, title = "Our Services", fla
   };
 
   return (
-    <section id="services" className="py-20 bg-white text-zinc-900">
+    <section id="services" className="py-24 bg-white text-zinc-900">
       <div className="container mx-auto px-4">
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-serif mb-4">{title}</h2>
-          <div className="w-24 h-1 bg-black mx-auto" />
+          <p className="text-sm uppercase tracking-[0.3em] text-[var(--accent)] mb-4 font-medium">What We Offer</p>
+          <h2 className="text-3xl md:text-5xl font-serif mb-4">{title}</h2>
+          <div className="w-16 h-[2px] bg-[var(--accent)] mx-auto" />
         </div>
 
         {flatList ? (
@@ -98,6 +100,22 @@ export function ServiceMenu({ services, activeOffer, title = "Our Services", fla
             ))}
           </div>
         )}
+
+        {/* View All + Book links */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mt-16">
+          <Link
+            href="/services"
+            className="text-sm uppercase tracking-[0.2em] font-medium text-zinc-600 hover:text-[var(--accent)] transition-colors border-b border-zinc-300 hover:border-[var(--accent)] pb-1"
+          >
+            View Full Menu
+          </Link>
+          <Link
+            href="/book"
+            className="inline-block bg-[var(--accent)] text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all"
+          >
+            Book Appointment
+          </Link>
+        </div>
       </div>
     </section>
   );
