@@ -41,7 +41,7 @@ export default async function AdminUsersPage() {
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   {admin.id !== session.userId && (
                     <div className="flex justify-end gap-2">
-                      <ResetPasswordButton userId={admin.id} userName={admin.name} />
+                      <ResetPasswordButton userId={admin.id} userName={admin.name || 'User'} />
                       <form action={deleteAdminUser.bind(null, admin.id)}>
                         <button className="text-red-600 hover:text-red-900">Delete</button>
                       </form>
