@@ -27,8 +27,10 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
   const [error, setError] = useState<string | null>(null);
 
   const appointmentDate = new Date(appointment.date);
-  const hoursUntil = (appointmentDate.getTime() - Date.now()) / (1000 * 60 * 60);
-  const isWithin24Hours = hoursUntil < 24;
+  const [isWithin24Hours] = useState(() => {
+    const hoursUntil = (appointmentDate.getTime() - Date.now()) / (1000 * 60 * 60);
+    return hoursUntil < 24;
+  });
 
   const formattedDate = appointmentDate.toLocaleDateString('en-GB', {
     weekday: 'long',
