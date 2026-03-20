@@ -45,13 +45,29 @@ All models identical to existing schema with one addition:
 
 ### prisma.ts Update
 
-Update `src/app/lib/prisma.ts` to detect `POSTGRES_URL` and use it when available, falling back to `DATABASE_URL` for local SQLite dev.
+Replace the current complex fallback chain in `src/app/lib/prisma.ts` with simple logic:
+
+```
+if (POSTGRES_URL) → use it (Vercel production)
+else if (DATABASE_URL) → use it (local SQLite dev)
+else → throw error
+```
+
+Remove the manual `.env` file parsing and `fs.existsSync` calls — unnecessary on Vercel serverless. Remove the `console.log` that prints the database URL on cold starts (leaks connection strings in Vercel logs).
+
+### Build Configuration
+
+Add `postinstall` script to `package.json` so Prisma Client is generated from the correct schema during Vercel builds:
+
+```json
+"postinstall": "prisma generate --schema prisma/vercel/schema.prisma"
+```
 
 ### Deployment Steps
 
 1. `vercel integration add neon` — creates Neon database, auto-injects env vars
-2. `pnpm db:vercel:deploy` — run migrations against Vercel Postgres
-3. Seed data via `prisma/seed.ts`
+2. Run migrations locally: `vercel env pull .env.local && pnpm db:vercel:deploy`
+3. Seed locally: `npx prisma db seed --schema prisma/vercel/schema.prisma`
 
 ---
 
@@ -59,7 +75,7 @@ Update `src/app/lib/prisma.ts` to detect `POSTGRES_URL` and use it when availabl
 
 ### Architecture
 
-- **Service:** `src/app/services/email-service.ts` — wraps Resend SDK, `'use server'` directive, runtime env var access
+- **Service:** `src/app/services/email-service.ts` — wraps Resend SDK, uses `import 'server-only'` guard (NOT `'use server'` — these are internal functions called by server actions, not client-callable)
 - **Templates:** `src/components/emails/` — React Email JSX components
 - **Sender:** `onboarding@resend.dev` (Resend shared domain, free tier)
 
@@ -84,7 +100,7 @@ Update `src/app/lib/prisma.ts` to detect `POSTGRES_URL` and use it when availabl
 ### email-service.ts Interface
 
 ```typescript
-'use server';
+import 'server-only';
 
 export async function sendBookingConfirmation(appointment: AppointmentWithDetails): Promise<void>
 export async function sendBookingCancellation(appointment: AppointmentWithDetails): Promise<void>
@@ -94,9 +110,26 @@ export async function sendAppointmentReminder(appointment: AppointmentWithDetail
 
 All functions: get Resend API key at runtime, send email, fail silently with console.error (email failure should not block booking operations).
 
-### No Password Reset
+### Admin Password Reset (No Self-Service)
 
-Admin resets passwords from admin panel instead. Self-service password reset deferred until custom domain is configured (needed for email deliverability).
+Self-service password reset deferred until custom domain is configured (needed for email deliverability). Instead, admin resets passwords from the admin panel.
+
+New server action in `src/app/actions/admin.ts`:
+
+```typescript
+export async function resetUserPassword(userId: string, newPassword: string): Promise<ActionResult>
+```
+
+- Verify caller is ADMIN
+- Hash new password with bcryptjs
+- Update user record
+- Delete all sessions for the target user (by clearing their cookies if they're the current user — otherwise session naturally expires)
+
+UI: Add a "Reset Password" button in the admin users table, opens a modal with new password input.
+
+### Timezone Handling
+
+All appointment dates are stored as UTC `DateTime` in Prisma. The salon is UK-based. The 24-hour cancel/reschedule cutoff and cron reminder window both operate in UTC. The booking wizard should display times in the user's local timezone (browser) but submit as UTC.
 
 ### Newsletter Removal
 
@@ -106,11 +139,19 @@ Remove the non-functional newsletter signup UI from `src/app/offers/page.tsx`.
 
 ## 3. User Booking History — View, Cancel, Reschedule
 
+### Auth Requirement for Booking
+
+The booking page (`/book`) will require authentication. If no session exists, redirect to `/auth/signin?redirect=/book`. After signin/register, redirect back to booking. This ensures every booking is tied to an authenticated user, which is required for the "My Bookings" page to work.
+
+Guest bookings (password-less User records) are no longer created. Users must register or sign in before booking.
+
 ### New Page: `src/app/appointments/page.tsx`
 
 - Requires authenticated session (redirect to signin if not logged in)
-- Two tabs: **Upcoming** (status CONFIRMED/PENDING, date >= now) and **Past** (COMPLETED/CANCELLED or date < now)
+- Two tabs: **Upcoming** (status CONFIRMED, date >= now) and **Past** (COMPLETED/CANCELLED or date < now)
 - Each booking card: service name, stylist, date/time, status badge, price
+
+Note: PENDING status is unused — `createBooking` auto-confirms. If PENDING is introduced later, it should be treated as upcoming and cancellable but not reschedulable.
 
 ### Cancel Flow
 
@@ -121,7 +162,7 @@ Remove the non-functional newsletter signup UI from `src/app/offers/page.tsx`.
    - Verify appointment is >= 24 hours away
    - Update status to `CANCELLED`
    - Send cancellation email
-   - Revalidate `/appointments` and `/admin`
+   - Revalidate `/appointments`, `/admin`, and `/book`
 
 ### Reschedule Flow
 
@@ -132,11 +173,10 @@ Remove the non-functional newsletter signup UI from `src/app/offers/page.tsx`.
 5. Server action `rescheduleAppointment(appointmentId, newDate)`:
    - Verify session — user must own this appointment
    - Verify original appointment is >= 24 hours away
-   - Verify new slot is available for the same stylist (re-check at write time)
-   - Update appointment date in a single Prisma update (atomic — old slot released, new slot claimed)
+   - Use `prisma.$transaction()` with serializable isolation to: re-check slot availability for the same stylist AND update appointment date. This prevents two users from claiming the same slot via concurrent reschedules.
    - Reset `reminderSent` to `false` (so reminder fires for new time)
    - Send reschedule email with old and new times
-   - Revalidate `/appointments` and `/admin`
+   - Revalidate `/appointments`, `/admin`, and `/book`
 
 ### New Server Actions in `src/app/actions/booking.ts`
 
@@ -158,7 +198,12 @@ Add "My Bookings" link in `Header.tsx`, visible when user is logged in and role 
 - `GET` handler, secured with `CRON_SECRET` header validation
 - Query: all appointments where `status = 'CONFIRMED'` AND `date` between now and now + 24 hours AND `reminderSent = false`
 - For each: send reminder email via `sendAppointmentReminder()`, then set `reminderSent = true`
-- Runs hourly
+
+### Vercel Hobby Cron Limitation
+
+Vercel Hobby (free) plan allows **2 cron jobs, max once per day**. Hourly is not available on free tier.
+
+**Approach:** Run once daily at 8:00 AM UTC. The query window ("now to now + 24 hours") still catches all next-day appointments. Appointments booked after the cron runs for the same day will not get a reminder — this is acceptable for a salon. If hourly resolution is needed later, upgrade to Vercel Pro or use an external cron service.
 
 ### vercel.json
 
@@ -166,7 +211,7 @@ Add "My Bookings" link in `Header.tsx`, visible when user is logged in and role 
 {
   "crons": [{
     "path": "/api/cron/reminders",
-    "schedule": "0 * * * *"
+    "schedule": "0 8 * * *"
   }]
 }
 ```
@@ -244,7 +289,7 @@ headers: async () => [{
 
 ### Rate Limiting on Auth
 
-Simple in-memory Map tracking failed login attempts per IP. After 5 failures in 15 minutes, block further attempts. Resets on successful login. Implemented directly in `login()` server action — no external dependency.
+Simple in-memory Map tracking failed login attempts per IP (extracted from `headers().get('x-forwarded-for')`, using the first/leftmost value). After 5 failures in 15 minutes, block further attempts. Resets on successful login. Implemented directly in `login()` server action — no external dependency.
 
 Note: in-memory rate limiting resets on serverless cold starts. This is acceptable for a salon site — it deters casual brute force without needing Redis.
 
@@ -305,8 +350,9 @@ pnpm add resend @react-email/components
 - `src/app/actions/booking.ts` — email integration, cancel/reschedule actions
 - `src/app/actions/admin.ts` — admin password reset action
 - `src/app/offers/page.tsx` — remove newsletter section
+- `src/app/book/page.tsx` — require auth before booking
 - `src/components/layout/Header.tsx` — add "My Bookings" link
-- `src/app/layout.tsx` — JSON-LD structured data
+- `src/app/page.tsx` — JSON-LD structured data (home page only)
 - All page files — add metadata exports
 - `prisma/dev/schema.prisma` — add `reminderSent` field to Appointment
 - `prisma/prod/schema.prisma` — add `reminderSent` field to Appointment
