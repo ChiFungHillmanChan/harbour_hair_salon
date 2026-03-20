@@ -1,11 +1,11 @@
 'use client';
 
-import { useActionState } from 'react';
+import { Suspense, useActionState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { login } from '@/app/actions/auth';
 import Link from 'next/link';
 
-export default function SignInPage() {
+function SignInForm() {
   const [state, action, isPending] = useActionState(login, undefined);
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get('redirect');
@@ -80,5 +80,13 @@ export default function SignInPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense>
+      <SignInForm />
+    </Suspense>
   );
 }
