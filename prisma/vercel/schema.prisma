@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("POSTGRES_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 model User {
@@ -48,20 +49,20 @@ model Service {
 }
 
 model Appointment {
-  id        String   @id @default(cuid())
-  date      DateTime
+  id           String   @id @default(cuid())
+  date         DateTime
   status       String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
   notes        String?
   reminderSent Boolean  @default(false)
   createdAt    DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt    DateTime @updatedAt
 
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  
+
   stylistId String
   stylist   Stylist  @relation(fields: [stylistId], references: [id])
-  
+
   serviceId String
   service   Service  @relation(fields: [serviceId], references: [id])
 
@@ -75,7 +76,7 @@ model Availability {
   startTime String   // HH:mm
   endTime   String   // HH:mm
   isOff     Boolean  @default(false)
-  
+
   stylistId String
   stylist   Stylist  @relation(fields: [stylistId], references: [id])
 }

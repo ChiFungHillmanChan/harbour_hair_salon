@@ -16,7 +16,13 @@
     "db:prod:migrate": "prisma migrate dev --schema prisma/prod/schema.prisma",
     "db:prod:deploy": "prisma migrate deploy --schema prisma/prod/schema.prisma",
     "db:prod:push": "prisma db push --schema prisma/prod/schema.prisma",
-    "db:prod:generate": "prisma generate --schema prisma/prod/schema.prisma"
+    "db:prod:generate": "prisma generate --schema prisma/prod/schema.prisma",
+    "postinstall": "prisma generate --schema prisma/vercel/schema.prisma",
+    "db:vercel:generate": "prisma generate --schema prisma/vercel/schema.prisma",
+    "db:vercel:migrate": "prisma migrate dev --schema prisma/vercel/schema.prisma",
+    "db:vercel:deploy": "prisma migrate deploy --schema prisma/vercel/schema.prisma",
+    "db:vercel:push": "prisma db push --schema prisma/vercel/schema.prisma",
+    "db:vercel:studio": "prisma studio --schema prisma/vercel/schema.prisma"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
