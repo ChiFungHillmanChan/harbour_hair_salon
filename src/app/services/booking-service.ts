@@ -50,7 +50,7 @@ export async function getAvailableSlots(
 
   // 3. Generate slots
   const slots: TimeSlot[] = [];
-  
+
   // Parse start and end times from availability string "HH:mm"
   const [startHour, startMinute] = availability.startTime.split(':').map(Number);
   const [endHour, endMinute] = availability.endTime.split(':').map(Number);
@@ -60,7 +60,7 @@ export async function getAvailableSlots(
 
   while (addMinutes(currentSlot, serviceDuration) <= endTime) {
     const slotEnd = addMinutes(currentSlot, serviceDuration);
-    
+
     // Check collision with existing appointments
     const isBusy = existingAppointments.some((appt) => {
       const apptStart = new Date(appt.date);
@@ -94,35 +94,29 @@ export async function createBooking(data: {
   stylistId: string;
   serviceId: string;
   date: Date;
-  userEmail: string;
-  userName: string;
-  userPhone?: string;
+  userId: string;
   discountCodeId?: string;
 }) {
-  // 1. Find or create user
-  let user = await prisma.user.findUnique({
-    where: { email: data.userEmail },
-  });
-
-  if (!user) {
-    user = await prisma.user.create({
-      data: {
-        email: data.userEmail,
-        name: data.userName,
-        phone: data.userPhone,
-      },
-    });
-  }
-
-  // 2. Create appointment
+  // Create appointment directly with the authenticated user's ID
   const appointment = await prisma.appointment.create({
     data: {
       date: data.date,
       stylistId: data.stylistId,
       serviceId: data.serviceId,
-      userId: user.id,
+      userId: data.userId,
       status: 'CONFIRMED', // Auto-confirm for now
       discountCodeId: data.discountCodeId,
+    },
+    include: {
+      user: {
+        select: { email: true, name: true },
+      },
+      stylist: {
+        select: { name: true },
+      },
+      service: {
+        select: { name: true, price: true, duration: true },
+      },
     },
   });
 

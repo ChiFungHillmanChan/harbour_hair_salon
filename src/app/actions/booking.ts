@@ -1,6 +1,8 @@
 'use server';
 
 import { createBooking, getAvailableSlots } from '@/app/services/booking-service';
+import { sendBookingConfirmation } from '@/app/services/email-service';
+import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
@@ -16,9 +18,6 @@ type CreateBookingInput = {
   serviceId: string;
   date: Date | string;
   time: string;
-  userEmail: string;
-  userName: string;
-  userPhone?: string;
   discountCode?: string;
 };
 
@@ -27,9 +26,6 @@ const createBookingSchema = z.object({
   serviceId: z.string(),
   date: z.coerce.date(),
   time: z.string(), // HH:mm
-  userEmail: z.string().email(),
-  userName: z.string().min(2),
-  userPhone: z.string().optional(),
   discountCode: z.string().optional(),
 }) satisfies z.ZodType<CreateBookingInput>;
 
@@ -84,10 +80,10 @@ export async function validateDiscountCode(code: string) {
     if (discount.expiresAt && new Date() > discount.expiresAt) return { valid: false, error: 'Code has expired' };
     if (discount.maxUses && discount.usedCount >= discount.maxUses) return { valid: false, error: 'Code usage limit reached' };
 
-    return { 
-      valid: true, 
-      type: discount.type, 
-      value: Number(discount.value) 
+    return {
+      valid: true,
+      type: discount.type,
+      value: Number(discount.value),
     };
   } catch (error) {
     console.error('Error validating discount code:', error);
@@ -96,9 +92,12 @@ export async function validateDiscountCode(code: string) {
 }
 
 export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
+  // Require authentication
+  const session = await verifySession();
+
   // Validate the input
   const result = createBookingSchema.safeParse(data);
-  
+
   if (!result.success) {
     console.error('Validation failed:', result.error);
     return { success: false, error: 'Invalid booking data' };
@@ -112,11 +111,11 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     const discount = await prisma.discountCode.findUnique({
       where: { code: validData.discountCode },
     });
-    if (discount && discount.isActive && 
+    if (discount && discount.isActive &&
         (!discount.expiresAt || new Date() <= discount.expiresAt) &&
         (!discount.maxUses || discount.usedCount < discount.maxUses)) {
       discountCodeId = discount.id;
-      
+
       // Increment usage count
       await prisma.discountCode.update({
         where: { id: discount.id },
@@ -131,18 +130,30 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   fullDate.setHours(hours, minutes, 0, 0);
 
   try {
-    await createBooking({
+    const appointment = await createBooking({
       stylistId: validData.stylistId,
       serviceId: validData.serviceId,
       date: fullDate,
-      userEmail: validData.userEmail,
-      userName: validData.userName,
-      userPhone: validData.userPhone,
-      discountCodeId, // Pass discount code ID to service
+      userId: session.userId,
+      discountCodeId,
+    });
+
+    // Send confirmation email (fail silently — handled in email-service)
+    await sendBookingConfirmation({
+      id: appointment.id,
+      date: appointment.date,
+      user: appointment.user,
+      stylist: appointment.stylist,
+      service: {
+        name: appointment.service.name,
+        price: Number(appointment.service.price),
+        duration: appointment.service.duration,
+      },
     });
 
     revalidatePath('/book');
-    revalidatePath('/admin'); // Also revalidate admin dashboard
+    revalidatePath('/appointments');
+    revalidatePath('/admin');
     return { success: true };
   } catch (error) {
     console.error('Booking failed:', error);
