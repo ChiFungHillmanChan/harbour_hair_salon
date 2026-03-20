@@ -1,7 +1,7 @@
 'use server';
 
 import { createBooking, getAvailableSlots } from '@/app/services/booking-service';
-import { sendBookingConfirmation } from '@/app/services/email-service';
+import { sendBookingConfirmation, sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -158,5 +158,100 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   } catch (error) {
     console.error('Booking failed:', error);
     return { success: false, error: 'Failed to create booking' };
+  }
+}
+
+export async function cancelAppointment(appointmentId: string) {
+  const session = await verifySession();
+
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: { user: true, stylist: true, service: true },
+  });
+
+  if (!appointment || appointment.userId !== session.userId) {
+    return { success: false, error: 'Appointment not found' };
+  }
+
+  const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
+  if (hoursUntil < 24) {
+    return { success: false, error: 'Cannot cancel within 24 hours of appointment' };
+  }
+
+  await prisma.appointment.update({
+    where: { id: appointmentId },
+    data: { status: 'CANCELLED' },
+  });
+
+  await sendBookingCancellation({
+    ...appointment,
+    service: { ...appointment.service, price: Number(appointment.service.price) },
+  });
+
+  revalidatePath('/appointments');
+  revalidatePath('/admin');
+  revalidatePath('/book');
+  return { success: true };
+}
+
+export async function rescheduleAppointment(appointmentId: string, newDate: Date) {
+  const session = await verifySession();
+
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: { user: true, stylist: true, service: true },
+  });
+
+  if (!appointment || appointment.userId !== session.userId) {
+    return { success: false, error: 'Appointment not found' };
+  }
+
+  const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
+  if (hoursUntil < 24) {
+    return { success: false, error: 'Cannot reschedule within 24 hours of appointment' };
+  }
+
+  try {
+    const oldDate = appointment.date;
+
+    await prisma.$transaction(async (tx) => {
+      const existingAtNewTime = await tx.appointment.findFirst({
+        where: {
+          stylistId: appointment.stylistId,
+          date: newDate,
+          status: { not: 'CANCELLED' },
+          id: { not: appointmentId },
+        },
+      });
+
+      if (existingAtNewTime) {
+        throw new Error('Slot is no longer available');
+      }
+
+      await tx.appointment.update({
+        where: { id: appointmentId },
+        data: { date: newDate, reminderSent: false },
+      });
+    }, { isolationLevel: 'Serializable' });
+
+    const updated = await prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: { user: true, stylist: true, service: true },
+    });
+
+    if (updated) {
+      await sendBookingReschedule(
+        { ...updated, service: { ...updated.service, price: Number(updated.service.price) } },
+        oldDate,
+      );
+    }
+
+    revalidatePath('/appointments');
+    revalidatePath('/admin');
+    revalidatePath('/book');
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Reschedule failed';
+    return { success: false, error: message };
   }
 }

@@ -24,6 +24,9 @@ export async function Header() {
               {session.role === 'ADMIN' && (
                 <Link href="/admin" className="hover:text-gray-400 transition-colors">Dashboard</Link>
               )}
+              {session.role !== 'ADMIN' && (
+                <Link href="/appointments" className="hover:text-gray-400 transition-colors">My Bookings</Link>
+              )}
               <form action={logout}>
                 <button className="hover:text-gray-400 transition-colors uppercase">Sign Out</button>
               </form>
