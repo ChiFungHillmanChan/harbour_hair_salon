@@ -5,6 +5,31 @@ import prisma from '@/app/lib/prisma';
 import { hashPassword, verifyPassword } from '@/app/lib/password';
 import { createSession, deleteSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
+
+const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000;
+
+function getClientIp(headersList: Headers): string {
+  const forwarded = headersList.get('x-forwarded-for');
+  return forwarded?.split(',')[0]?.trim() || 'unknown';
+}
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+  if (!record || now - record.firstAttempt > WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, firstAttempt: now });
+    return true;
+  }
+  record.count++;
+  return record.count <= MAX_ATTEMPTS;
+}
+
+function resetRateLimit(ip: string): void {
+  loginAttempts.delete(ip);
+}
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address.'),
@@ -19,6 +44,12 @@ const registerSchema = z.object({
 });
 
 export async function login(prevState: unknown, formData: FormData) {
+  const headersList = await headers();
+  const ip = getClientIp(headersList);
+  if (!checkRateLimit(ip)) {
+    return { error: 'Too many login attempts. Please try again in 15 minutes.' };
+  }
+
   const result = loginSchema.safeParse(Object.fromEntries(formData));
 
   if (!result.success) {
@@ -43,11 +74,13 @@ export async function login(prevState: unknown, formData: FormData) {
   }
 
   await createSession(user.id, user.role);
-  
+  resetRateLimit(ip);
+
+  const redirectTo = formData.get('redirect') as string;
   if (user.role === 'ADMIN') {
     redirect('/admin');
   } else {
-    redirect('/');
+    redirect(redirectTo || '/');
   }
 }
 
@@ -64,6 +97,8 @@ export async function register(prevState: unknown, formData: FormData) {
     where: { email },
   });
 
+  const redirectTo = formData.get('redirect') as string;
+
   if (existingUser) {
     if (existingUser.password) {
       return { error: 'This email is already registered. Please sign in instead.' };
@@ -79,7 +114,7 @@ export async function register(prevState: unknown, formData: FormData) {
         },
       });
       await createSession(existingUser.id, existingUser.role);
-      redirect('/');
+      redirect(redirectTo || '/');
     }
   }
 
@@ -96,11 +131,10 @@ export async function register(prevState: unknown, formData: FormData) {
   });
 
   await createSession(user.id, user.role);
-  redirect('/');
+  redirect(redirectTo || '/');
 }
 
 export async function logout() {
   await deleteSession();
   redirect('/');
 }
-

@@ -3,7 +3,8 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-const secretKey = process.env.SESSION_SECRET || 'default_secret_key_change_me_in_prod';
+const secretKey = process.env.SESSION_SECRET;
+if (!secretKey) throw new Error('SESSION_SECRET environment variable is required');
 const key = new TextEncoder().encode(secretKey);
 
 type SessionPayload = {
