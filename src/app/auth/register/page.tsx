@@ -1,11 +1,11 @@
 'use client';
 
-import { useActionState } from 'react';
+import { Suspense, useActionState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { register } from '@/app/actions/auth';
 import Link from 'next/link';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const [state, action, isPending] = useActionState(register, undefined);
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get('redirect');
@@ -107,5 +107,13 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
   );
 }
