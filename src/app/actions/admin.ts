@@ -130,7 +130,7 @@ export async function createAdminUser(formData: FormData) {
 export async function deleteAdminUser(id: string) {
   const session = await verifySession();
   if (session.role !== 'ADMIN') throw new Error('Unauthorized');
-  
+
   // Prevent self-deletion
   if (id === session.userId) {
     throw new Error('Cannot delete yourself');
@@ -141,4 +141,22 @@ export async function deleteAdminUser(id: string) {
   });
 
   revalidatePath('/admin/users');
+}
+
+export async function resetUserPassword(userId: string, newPassword: string) {
+  const session = await verifySession();
+  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+
+  if (!newPassword || newPassword.length < 6) {
+    return { error: 'Password must be at least 6 characters' };
+  }
+
+  const hashedPassword = await hashPassword(newPassword);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: hashedPassword },
+  });
+
+  revalidatePath('/admin/users');
+  return { success: true };
 }
