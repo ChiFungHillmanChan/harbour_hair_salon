@@ -1,4 +1,10 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Contact & Location | Harbour Hair Salon',
+  description: 'Find Harbour Hair Salon at Central Arcade, Leeds. Opening hours, directions, and contact details.',
+};
 
 export default function ContactPage() {
   return (

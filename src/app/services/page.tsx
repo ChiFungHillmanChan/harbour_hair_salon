@@ -1,5 +1,11 @@
+import type { Metadata } from 'next';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Services & Pricing | Harbour Hair Salon',
+  description: 'Browse our full range of hair services and pricing at Harbour Hair Salon, Leeds.',
+};
 
 // Revalidate data every hour
 export const revalidate = 3600;
