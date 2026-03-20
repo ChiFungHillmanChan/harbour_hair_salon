@@ -94,6 +94,15 @@ export default function MobileMenuOverlay({ isOpen, onClose, session }: MobileMe
                   Dashboard
                 </Link>
               )}
+              {session.role !== 'ADMIN' && (
+                <Link
+                  href="/appointments"
+                  className="text-zinc-400 hover:text-white text-xl tracking-wide transition-colors"
+                  onClick={onClose}
+                >
+                  My Bookings
+                </Link>
+              )}
               <form action={logout} className="w-full">
                 <button className="text-zinc-400 hover:text-white text-xl tracking-wide uppercase w-full text-left transition-colors">
                   Sign Out
