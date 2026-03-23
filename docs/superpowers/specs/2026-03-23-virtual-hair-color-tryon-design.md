@@ -27,7 +27,7 @@ A standalone page (`/try-color`) for Harbour Hair Salon that lets users virtuall
 ```
 Camera Feed / Uploaded Photo
   → MediaPipe Image Segmenter (hair category mask)
-  → Canvas compositing (original image + hair mask + selected color + intensity)
+  → Canvas compositing (soft-light blend: original + hair mask + selected color × intensity)
   → Real-time display on screen
   → User captures → Result image (downloadable / saveable)
 ```
@@ -58,7 +58,7 @@ model SavedHairColor {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  imageData String   // Base64 encoded result image (stored as text)
+  imageUrl  String   // URL to saved image (stored via Vercel Blob in prod, local file in dev)
   colorHex  String   // The color that was applied (e.g. "#d4a76a")
   colorName String?  // Display name if preset color (e.g. "Honey Blonde")
   intensity Int      // 0-100 intensity value
@@ -67,6 +67,8 @@ model SavedHairColor {
   @@index([userId])
 }
 ```
+
+**Cross-provider notes:** `@default(cuid())` works across SQLite, PostgreSQL, and MSSQL as Prisma generates the CUID at the client level, not the database. All three schemas use the same model definition. `String` maps to `TEXT` (SQLite), `text` (Postgres), `nvarchar(max)` (MSSQL) — all sufficient for URLs.
 
 Add relation to User model:
 ```prisma
@@ -141,6 +143,15 @@ No changes needed — `/try-color` is a public page. Save actions check session 
 - Targets ~30fps on modern devices, degrades gracefully on older hardware
 - Model loaded once on component mount, disposed on unmount
 
+### Color Compositing Algorithm
+
+1. For each pixel where hair mask confidence > 0.5:
+   - Use Canvas `soft-light` blend mode to overlay selected color onto original hair
+   - `intensity` (0-100) maps to overlay opacity: `intensity / 100`
+   - At 0% intensity: no visible change. At 100%: full soft-light blend.
+2. Apply 2px Gaussian blur to mask edges to avoid hard cutoff artifacts
+3. Composite: draw original frame → set `globalCompositeOperation = 'soft-light'` → draw color layer (clipped to hair mask) at `globalAlpha = intensity/100`
+
 ### ColorPalette.tsx
 
 - Preset colors as an array of `{ name, hex }` objects
@@ -152,7 +163,7 @@ No changes needed — `/try-color` is a public page. Save actions check session 
 
 - Displays composited canvas as an `<img>` (toDataURL)
 - Download: creates a temporary `<a>` with blob URL
-- Save: calls server action with base64 image data
+- Save: converts canvas to Blob, uploads via server action to Vercel Blob (prod) or local `/public/uploads` (dev), stores returned URL in DB
 - Shows login prompt if not authenticated
 
 ## Server Actions (src/app/actions/try-color.ts)
@@ -161,27 +172,36 @@ No changes needed — `/try-color` is a public page. Save actions check session 
 'use server'
 
 async function saveHairColorResult(formData: FormData): Promise<ActionResult>
-// Requires auth. Saves imageData (base64), colorHex, colorName, intensity.
-// Limit: max 20 saved results per user (delete oldest if exceeded).
+// Requires auth. Receives image as Blob via FormData.
+// Uploads to Vercel Blob (prod) or saves to public/uploads (dev).
+// Stores returned URL + colorHex, colorName, intensity in SavedHairColor.
+// Limit: max 20 saved results per user (delete oldest + its blob if exceeded).
 
 async function getSavedResults(): Promise<SavedHairColor[]>
 // Requires auth. Returns all saved results for current user, newest first.
 
 async function deleteSavedResult(id: string): Promise<ActionResult>
-// Requires auth. Deletes a saved result owned by current user.
+// Requires auth. Deletes saved result owned by current user + removes blob.
 ```
+
+## Image Storage
+
+- **Production (Vercel):** Use `@vercel/blob` to store result images. Free tier includes 256MB, sufficient for early usage. Each image ~50-200KB (compressed JPEG).
+- **Development (local):** Save to `public/uploads/try-color/` directory.
+- **Limit:** Max 20 saved images per user. When exceeded, delete oldest result and its blob.
+- **Cleanup:** `deleteSavedResult` removes both the DB record and the blob.
 
 ## Performance Considerations
 
 - **Model loading:** MediaPipe WASM model is ~4MB. Show loading spinner on first load. Cache via browser's standard caching.
-- **Frame rate:** Target 30fps. If device struggles, auto-reduce to 15fps.
+- **Frame rate:** Target 30fps. Measure frame delta via `requestAnimationFrame` timestamps. If average frame time exceeds 50ms over 10 frames, auto-reduce to processing every 2nd frame (~15fps).
 - **Mobile:** Primary use case. Design is mobile-first. Camera view takes most of screen.
-- **Image storage:** Base64 images in database. Limit 20 per user to control storage. Consider moving to blob storage if usage grows.
+- **Uploaded photos:** Resize to max 1280px on longest side before processing to prevent memory issues on mobile.
 
 ## Privacy
 
 - All image processing happens in the browser — no photos leave the user's device during try-on.
-- Saved results (logged-in users) store base64 in database — this is the only time image data touches the server.
+- Saved results (logged-in users only) upload the final result image to Vercel Blob — this is the only time image data touches the server.
 - Privacy notice displayed on landing page.
 
 ## Future: API Enhancement (Not in v1)
