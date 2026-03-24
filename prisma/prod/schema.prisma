@@ -51,9 +51,10 @@ model Service {
 model Appointment {
   id        String   @id @default(cuid())
   date      DateTime
-  status    String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
-  notes     String?
-  createdAt DateTime @default(now())
+  status       String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
+  notes        String?
+  reminderSent Boolean  @default(false)
+  createdAt    DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   userId    String
@@ -67,6 +68,10 @@ model Appointment {
 
   discountCodeId String?
   discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id])
+
+  @@index([stylistId, date])
+  @@index([userId, status])
+  @@index([status, reminderSent, date])
 }
 
 model Availability {
@@ -75,9 +80,11 @@ model Availability {
   startTime String   // HH:mm
   endTime   String   // HH:mm
   isOff     Boolean  @default(false)
-  
+
   stylistId String
   stylist   Stylist  @relation(fields: [stylistId], references: [id])
+
+  @@index([stylistId, dayOfWeek])
 }
 
 model DiscountCode {

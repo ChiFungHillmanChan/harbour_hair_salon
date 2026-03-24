@@ -16,19 +16,29 @@
     "db:prod:migrate": "prisma migrate dev --schema prisma/prod/schema.prisma",
     "db:prod:deploy": "prisma migrate deploy --schema prisma/prod/schema.prisma",
     "db:prod:push": "prisma db push --schema prisma/prod/schema.prisma",
-    "db:prod:generate": "prisma generate --schema prisma/prod/schema.prisma"
+    "db:prod:generate": "prisma generate --schema prisma/prod/schema.prisma",
+    "postinstall": "prisma generate --schema prisma/vercel/schema.prisma",
+    "db:vercel:generate": "prisma generate --schema prisma/vercel/schema.prisma",
+    "db:vercel:migrate": "prisma migrate dev --schema prisma/vercel/schema.prisma",
+    "db:vercel:deploy": "prisma migrate deploy --schema prisma/vercel/schema.prisma",
+    "db:vercel:push": "prisma db push --schema prisma/vercel/schema.prisma",
+    "db:vercel:studio": "prisma studio --schema prisma/vercel/schema.prisma"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.34",
     "@prisma/client": "^5.22.0",
+    "@react-email/components": "^1.0.10",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "jose": "^6.1.2",
-    "next": "16.0.3",
+    "next": "16.2.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "resend": "^6.9.4",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -38,7 +48,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.0.3",
+    "eslint-config-next": "16.2.0",
     "prisma": "^5.22.0",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",

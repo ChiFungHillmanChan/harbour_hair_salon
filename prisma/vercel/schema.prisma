@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?  // Optional for guest users
+  name      String?
+  phone     String?
+  role      String   @default("USER") // USER, ADMIN
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  appointments Appointment[]
+}
+
+model Stylist {
+  id          String   @id @default(cuid())
+  name        String
+  bio         String?
+  imageUrl    String?
+  role        String   // e.g., Senior Stylist, Director
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  appointments Appointment[]
+  availabilities Availability[]
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Decimal
+  duration    Int      // in minutes
+  category    String   // e.g., Cut, Color, Treatment
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  appointments Appointment[]
+}
+
+model Appointment {
+  id           String   @id @default(cuid())
+  date         DateTime
+  status       String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
+  notes        String?
+  reminderSent Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  stylistId String
+  stylist   Stylist  @relation(fields: [stylistId], references: [id])
+
+  serviceId String
+  service   Service  @relation(fields: [serviceId], references: [id])
+
+  discountCodeId String?
+  discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id])
+
+  @@index([stylistId, date])
+  @@index([userId, status])
+  @@index([status, reminderSent, date])
+}
+
+model Availability {
+  id        String   @id @default(cuid())
+  dayOfWeek Int      // 0-6 (Sun-Sat)
+  startTime String   // HH:mm
+  endTime   String   // HH:mm
+  isOff     Boolean  @default(false)
+
+  stylistId String
+  stylist   Stylist  @relation(fields: [stylistId], references: [id])
+
+  @@index([stylistId, dayOfWeek])
+}
+
+model DiscountCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  type        String   // PERCENTAGE, FIXED
+  value       Decimal
+  maxUses     Int?     // null means unlimited
+  usedCount   Int      @default(0)
+  expiresAt   DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  appointments Appointment[]
+}
+
+model Offer {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  discountType String   // PERCENTAGE, FIXED
+  discountValue Decimal
+  isActive    Boolean  @default(true)
+  isGlobal    Boolean  @default(false) // If true, applies to all services automatically
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

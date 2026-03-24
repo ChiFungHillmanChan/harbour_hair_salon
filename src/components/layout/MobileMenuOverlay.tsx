@@ -80,6 +80,13 @@ export default function MobileMenuOverlay({ isOpen, onClose, session }: MobileMe
           >
             Contact
           </Link>
+          <Link
+            href="/try-color"
+            className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
+            onClick={onClose}
+          >
+            Try Color
+          </Link>
 
           <div className="border-t border-zinc-800 my-4 w-full"></div>
 
@@ -92,6 +99,15 @@ export default function MobileMenuOverlay({ isOpen, onClose, session }: MobileMe
                   onClick={onClose}
                 >
                   Dashboard
+                </Link>
+              )}
+              {session.role !== 'ADMIN' && (
+                <Link
+                  href="/appointments"
+                  className="text-zinc-400 hover:text-white text-xl tracking-wide transition-colors"
+                  onClick={onClose}
+                >
+                  My Bookings
                 </Link>
               )}
               <form action={logout} className="w-full">

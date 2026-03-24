@@ -1,5 +1,12 @@
+import type { Metadata } from 'next';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Hair Services & Pricing in Leeds',
+  description: 'Full menu of haircuts, colouring, perms and treatments at Harbour Hair Salon, Leeds city centre. Prices from £8. Book online.',
+  alternates: { canonical: '/services' },
+};
 
 // Revalidate data every hour
 export const revalidate = 3600;
@@ -67,13 +74,20 @@ export default async function ServicesPage() {
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
-        <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=2574&auto=format&fit=crop')] bg-cover bg-center" />
+        <div className="absolute inset-0">
+          <img
+            src="/images/services-hero.png"
+            alt="Hair styling services at Harbour Hair Salon Leeds"
+            className="w-full h-full object-cover opacity-40"
+          />
+        </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
+          <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
-            Our <span className="italic text-zinc-400">Menu</span>
+            Services & <span className="italic text-zinc-400">Pricing</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
-            Expertly crafted services tailored to your unique style and preferences.
+            Expertly crafted hair services in Leeds city centre, tailored to your unique style.
           </p>
         </div>
       </section>
@@ -96,9 +110,9 @@ export default async function ServicesPage() {
         />
 
         <div className="mt-20 text-center">
-           <Link 
+           <Link
              href="/book"
-             className="inline-block bg-zinc-900 text-white px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-zinc-800 transition-all"
+             className="inline-block bg-[var(--accent)] text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all"
            >
              Book Appointment
            </Link>

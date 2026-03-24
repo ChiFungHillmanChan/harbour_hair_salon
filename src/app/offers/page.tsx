@@ -1,5 +1,12 @@
+import type { Metadata } from 'next';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Special Offers & Promotions in Leeds',
+  description: 'Exclusive seasonal promotions and special offers at Harbour Hair Salon, Leeds city centre. Save on haircuts, colours and treatments.',
+  alternates: { canonical: '/offers' },
+};
 
 // Revalidate data every hour
 export const revalidate = 3600;
@@ -23,13 +30,20 @@ export default async function OffersPage() {
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
-        <div className="absolute inset-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1633681926022-84c23e8cb2d6?q=80&w=2670&auto=format&fit=crop')] bg-cover bg-center" />
+        <div className="absolute inset-0">
+          <img
+            src="/images/offers-hero.png"
+            alt="Special offers at Harbour Hair Salon Leeds"
+            className="w-full h-full object-cover opacity-40"
+          />
+        </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
+          <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
-            Exclusive <span className="italic text-zinc-400">Privileges</span>
+            Special <span className="italic text-zinc-400">Offers</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
-            Curated seasonal promotions and tailored experiences designed to elevate your personal style.
+            Exclusive seasonal promotions at our Leeds city centre salon, designed to elevate your personal style.
           </p>
         </div>
       </section>
@@ -94,25 +108,6 @@ export default async function OffersPage() {
         )}
       </section>
 
-      {/* Newsletter / VIP Section Placeholder */}
-      <section className="bg-zinc-50 py-24 border-t border-zinc-200">
-        <div className="container mx-auto px-4 text-center">
-          <h3 className="text-3xl font-serif mb-6 text-zinc-900">Join Our Guest List</h3>
-          <p className="text-zinc-500 mb-10 max-w-lg mx-auto font-light text-lg">
-            Be the first to receive updates on new styles, exclusive events, and seasonal privileges.
-          </p>
-          <div className="max-w-md mx-auto flex gap-0 shadow-sm">
-             <input 
-               type="email" 
-               placeholder="Email Address" 
-               className="flex-1 px-6 py-4 bg-white border border-zinc-200 border-r-0 focus:outline-none focus:border-zinc-900 transition-colors text-sm placeholder:font-light"
-             />
-             <button className="px-10 py-4 bg-zinc-900 text-white text-xs font-bold uppercase tracking-[0.15em] hover:bg-zinc-800 transition-colors">
-               Subscribe
-             </button>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

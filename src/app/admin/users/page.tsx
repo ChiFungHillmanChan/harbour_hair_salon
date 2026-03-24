@@ -2,6 +2,7 @@ import prisma from '@/app/lib/prisma';
 import { AdminUserForm } from '@/components/admin/AdminUserForm';
 import { deleteAdminUser } from '@/app/actions/admin';
 import { verifySession } from '@/app/lib/session';
+import { ResetPasswordButton } from '@/components/admin/ResetPasswordButton';
 
 export default async function AdminUsersPage() {
   const session = await verifySession();
@@ -39,9 +40,12 @@ export default async function AdminUsersPage() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   {admin.id !== session.userId && (
-                    <form action={deleteAdminUser.bind(null, admin.id)}>
-                      <button className="text-red-600 hover:text-red-900">Delete</button>
-                    </form>
+                    <div className="flex justify-end gap-2">
+                      <ResetPasswordButton userId={admin.id} userName={admin.name || 'User'} />
+                      <form action={deleteAdminUser.bind(null, admin.id)}>
+                        <button className="text-red-600 hover:text-red-900">Delete</button>
+                      </form>
+                    </div>
                   )}
                   {admin.id === session.userId && (
                     <span className="text-zinc-400 italic">Current User</span>

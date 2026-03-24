@@ -1,5 +1,8 @@
 import prisma from '@/app/lib/prisma';
 import { addMinutes, format, setHours, setMinutes, startOfDay } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
+
+const SALON_TIMEZONE = 'Europe/London';
 
 export type TimeSlot = {
   time: string;
@@ -50,17 +53,24 @@ export async function getAvailableSlots(
 
   // 3. Generate slots
   const slots: TimeSlot[] = [];
-  
+
   // Parse start and end times from availability string "HH:mm"
   const [startHour, startMinute] = availability.startTime.split(':').map(Number);
   const [endHour, endMinute] = availability.endTime.split(':').map(Number);
 
   let currentSlot = setMinutes(setHours(startOfDayDate, startHour), startMinute);
   const endTime = setMinutes(setHours(startOfDayDate, endHour), endMinute);
+  // Use London timezone for "now" comparison to filter past slots correctly
+  const now = toZonedTime(new Date(), SALON_TIMEZONE);
 
   while (addMinutes(currentSlot, serviceDuration) <= endTime) {
+    // Skip slots that have already passed today
+    if (currentSlot <= now) {
+      currentSlot = addMinutes(currentSlot, 30);
+      continue;
+    }
     const slotEnd = addMinutes(currentSlot, serviceDuration);
-    
+
     // Check collision with existing appointments
     const isBusy = existingAppointments.some((appt) => {
       const apptStart = new Date(appt.date);
@@ -94,37 +104,59 @@ export async function createBooking(data: {
   stylistId: string;
   serviceId: string;
   date: Date;
-  userEmail: string;
-  userName: string;
-  userPhone?: string;
+  userId: string;
   discountCodeId?: string;
 }) {
-  // 1. Find or create user
-  let user = await prisma.user.findUnique({
-    where: { email: data.userEmail },
-  });
+  // Use Serializable transaction to prevent double-booking race conditions
+  const appointment = await prisma.$transaction(async (tx) => {
+    // Check for conflicting appointments within the time range
+    const service = await tx.service.findUnique({ where: { id: data.serviceId } });
+    if (!service) throw new Error('Service not found');
 
-  if (!user) {
-    user = await prisma.user.create({
+    const appointmentEnd = addMinutes(data.date, service.duration);
+    const dayStart = startOfDay(data.date);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const existingAppointments = await tx.appointment.findMany({
+      where: {
+        stylistId: data.stylistId,
+        date: { gte: dayStart, lte: dayEnd },
+        status: { not: 'CANCELLED' },
+      },
+      include: { service: true },
+    });
+
+    const hasConflict = existingAppointments.some((appt) => {
+      const apptStart = new Date(appt.date);
+      const apptEnd = addMinutes(apptStart, appt.service.duration);
+      return (
+        (data.date >= apptStart && data.date < apptEnd) ||
+        (appointmentEnd > apptStart && appointmentEnd <= apptEnd) ||
+        (data.date <= apptStart && appointmentEnd >= apptEnd)
+      );
+    });
+
+    if (hasConflict) {
+      throw new Error('This time slot is no longer available. Please choose another time.');
+    }
+
+    return tx.appointment.create({
       data: {
-        email: data.userEmail,
-        name: data.userName,
-        phone: data.userPhone,
+        date: data.date,
+        stylistId: data.stylistId,
+        serviceId: data.serviceId,
+        userId: data.userId,
+        status: 'CONFIRMED',
+        discountCodeId: data.discountCodeId,
+      },
+      include: {
+        user: { select: { email: true, name: true } },
+        stylist: { select: { name: true } },
+        service: { select: { name: true, price: true, duration: true } },
       },
     });
-  }
-
-  // 2. Create appointment
-  const appointment = await prisma.appointment.create({
-    data: {
-      date: data.date,
-      stylistId: data.stylistId,
-      serviceId: data.serviceId,
-      userId: user.id,
-      status: 'CONFIRMED', // Auto-confirm for now
-      discountCodeId: data.discountCodeId,
-    },
-  });
+  }, { isolationLevel: 'Serializable' });
 
   return appointment;
 }

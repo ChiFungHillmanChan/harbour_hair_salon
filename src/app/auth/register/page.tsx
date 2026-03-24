@@ -1,11 +1,14 @@
 'use client';
 
-import { useActionState } from 'react';
+import { Suspense, useActionState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { register } from '@/app/actions/auth';
 import Link from 'next/link';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const [state, action, isPending] = useActionState(register, undefined);
+  const searchParams = useSearchParams();
+  const redirectParam = searchParams.get('redirect');
 
   return (
     <div className="flex min-h-[80vh] items-center justify-center bg-zinc-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -18,8 +21,9 @@ export default function RegisterPage() {
             Join us to book your next appointment
           </p>
         </div>
-        
+
         <form action={action} className="mt-8 space-y-8">
+          <input type="hidden" name="redirect" value={redirectParam || ''} />
           <div className="space-y-6 rounded-md shadow-sm">
             <div className="relative">
               <label htmlFor="name" className="block text-sm font-medium leading-6 text-zinc-900 mb-2">
@@ -59,7 +63,7 @@ export default function RegisterPage() {
                 type="tel"
                 autoComplete="tel"
                 className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
-                placeholder="+1 (555) 000-0000"
+                placeholder="07XXX XXX XXX"
               />
             </div>
             <div className="relative">
@@ -106,3 +110,10 @@ export default function RegisterPage() {
   );
 }
 
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
+  );
+}
