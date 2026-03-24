@@ -28,6 +28,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.34",
     "@prisma/client": "^5.22.0",
     "@react-email/components": "^1.0.10",
     "bcryptjs": "^3.0.3",
