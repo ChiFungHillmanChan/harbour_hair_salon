@@ -32,6 +32,7 @@ export default function TryColorClient() {
   const [error, setError] = useState<string | null>(null);
   const [workerReady, setWorkerReady] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
+  const [hasUploadedImage, setHasUploadedImage] = useState(false);
 
   const previewRef = useRef<PreviewCanvasHandle>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -175,6 +176,7 @@ export default function TryColorClient() {
         );
 
         setDimensions({ width: img.width, height: img.height });
+        setHasUploadedImage(true);
         previewRef.current?.drawImageData(coloredData, img.width, img.height);
       } catch (err) {
         setError(
@@ -210,6 +212,8 @@ export default function TryColorClient() {
   const startUpload = () => {
     setError(null);
     setMode('upload');
+    setHasUploadedImage(false);
+    uploadDataRef.current = null;
   };
 
   const handleColorChange = (hex: string, name: string | null) => {
@@ -318,12 +322,12 @@ export default function TryColorClient() {
           </>
         )}
 
-        {mode === 'upload' && !previewRef.current?.getCanvas()?.width && (
+        {mode === 'upload' && !hasUploadedImage && !loading && (
           <UploadDropzone onImageLoaded={handleImageLoaded} />
         )}
 
-        {mode === 'upload' && (
-          <div className={loading ? 'hidden' : ''}>
+        {mode === 'upload' && hasUploadedImage && (
+          <div>
             <PreviewCanvas
               ref={previewRef}
               width={dimensions.width}
@@ -348,21 +352,34 @@ export default function TryColorClient() {
       <ResultActions onDownload={() => previewRef.current?.downloadJpeg()} />
 
       {/* Mode switch */}
-      <div className="text-center">
+      <div className="flex justify-center gap-4 flex-wrap">
         {mode === 'camera' ? (
           <button
             onClick={startUpload}
             className="text-zinc-500 hover:text-zinc-700 text-sm underline transition-colors"
           >
-            Or upload a photo instead
+            Upload a photo instead
           </button>
         ) : (
-          <button
-            onClick={startCamera}
-            className="text-zinc-500 hover:text-zinc-700 text-sm underline transition-colors"
-          >
-            Or use your camera instead
-          </button>
+          <>
+            {hasUploadedImage && (
+              <button
+                onClick={() => {
+                  setHasUploadedImage(false);
+                  uploadDataRef.current = null;
+                }}
+                className="text-zinc-500 hover:text-zinc-700 text-sm underline transition-colors"
+              >
+                Change photo
+              </button>
+            )}
+            <button
+              onClick={startCamera}
+              className="text-zinc-500 hover:text-zinc-700 text-sm underline transition-colors"
+            >
+              Use camera instead
+            </button>
+          </>
         )}
       </div>
     </div>
