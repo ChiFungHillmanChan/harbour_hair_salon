@@ -1,7 +1,7 @@
 // src/components/try-color/CameraView.tsx
 'use client';
 
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState } from 'react';
 
 interface CameraViewProps {
   onFrame: (video: HTMLVideoElement) => void;
@@ -15,13 +15,13 @@ export function CameraView({ onFrame, onError, active }: CameraViewProps) {
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
 
-  // Stable refs for callbacks to avoid re-triggering effects on parent re-renders
+  // Stable refs for callbacks
   const onFrameRef = useRef(onFrame);
   const onErrorRef = useRef(onError);
   useEffect(() => { onFrameRef.current = onFrame; }, [onFrame]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
 
-  // Start/stop camera based on active prop and facingMode
+  // Start/stop camera
   useEffect(() => {
     if (!active) return;
 
@@ -73,7 +73,7 @@ export function CameraView({ onFrame, onError, active }: CameraViewProps) {
     };
   }, [active, facingMode]);
 
-  // Frame capture loop — prefer requestVideoFrameCallback for efficiency
+  // Frame capture loop
   useEffect(() => {
     if (!active) return;
 
@@ -106,7 +106,7 @@ export function CameraView({ onFrame, onError, active }: CameraViewProps) {
   };
 
   return (
-    <div className="relative w-full aspect-[4/3] bg-black rounded-lg overflow-hidden">
+    <div className="relative w-full h-full bg-black">
       <video
         ref={videoRef}
         className="w-full h-full object-cover"
@@ -116,30 +116,21 @@ export function CameraView({ onFrame, onError, active }: CameraViewProps) {
         autoPlay
       />
 
-      {/* Flip camera button */}
+      {/* Flip camera */}
       <button
         onClick={flipCamera}
-        className="absolute top-3 right-3 bg-black/60 text-white p-2 rounded-full hover:bg-black/80 transition-colors"
+        className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white p-2.5 rounded-full hover:bg-black/70 transition-all duration-300 border border-white/10"
         aria-label="Flip camera"
       >
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-          />
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
       </button>
 
-      {/* LIVE badge */}
-      <div className="absolute top-3 left-3 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">
-        LIVE
+      {/* Live indicator */}
+      <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/50 backdrop-blur-sm px-2.5 py-1 rounded-full border border-white/10">
+        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+        <span className="text-white text-[10px] font-bold tracking-wider uppercase">Live</span>
       </div>
     </div>
   );

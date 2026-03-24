@@ -1,4 +1,3 @@
-// src/components/try-color/ColorPalette.tsx
 'use client';
 
 import { PRESET_COLORS, type PresetColor } from './constants';
@@ -19,80 +18,101 @@ export function ColorPalette({
   onIntensityChange,
 }: ColorPaletteProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Active color display */}
-      <div className="flex items-center gap-3 text-sm text-zinc-400">
+      <div className="flex items-center gap-3">
         <div
-          className="w-6 h-6 rounded-full border border-zinc-600"
+          className="w-8 h-8 rounded-full border-2 border-[var(--accent)]/40 shadow-lg shadow-black/20"
           style={{ backgroundColor: selectedHex }}
         />
-        <span className="font-medium text-white">
-          {selectedName ?? 'Custom'}
-        </span>
-        <span className="text-zinc-500">{selectedHex}</span>
-        <span className="ml-auto">{intensity}%</span>
+        <div>
+          <p className="text-white font-serif text-lg leading-tight">
+            {selectedName ?? 'Custom Colour'}
+          </p>
+          <p className="text-zinc-500 text-xs tracking-wider uppercase">
+            {selectedHex} · {intensity}% intensity
+          </p>
+        </div>
       </div>
 
       {/* Preset swatches */}
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-        {PRESET_COLORS.map((color: PresetColor) => (
-          <button
-            key={color.hex}
-            onClick={() => onColorChange(color.hex, color.name)}
-            className={`flex-shrink-0 w-10 h-10 rounded-full border-2 transition-all duration-200 ${
-              selectedHex === color.hex
-                ? 'border-white scale-110'
-                : 'border-zinc-700 hover:border-zinc-500'
-            }`}
-            style={{ backgroundColor: color.hex }}
-            title={color.name}
-            aria-label={color.name}
-          />
-        ))}
-        {/* Custom color picker */}
-        <label
-          className={`flex-shrink-0 w-10 h-10 rounded-full border-2 border-dashed cursor-pointer flex items-center justify-center transition-all duration-200 ${
-            !PRESET_COLORS.some((c) => c.hex === selectedHex)
-              ? 'border-white scale-110'
-              : 'border-zinc-700 hover:border-zinc-500'
-          }`}
-          title="Custom color"
-        >
-          <input
-            type="color"
-            value={selectedHex}
-            onChange={(e) => onColorChange(e.target.value, null)}
-            className="sr-only"
-          />
-          <svg
-            className="w-5 h-5 text-zinc-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-        </label>
+      <div>
+        <p className="text-[var(--accent)] text-xs uppercase tracking-[0.2em] font-medium mb-3">
+          Select Colour
+        </p>
+        <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-hide">
+          {PRESET_COLORS.map((color: PresetColor) => (
+            <button
+              key={color.hex}
+              onClick={() => onColorChange(color.hex, color.name)}
+              className="group flex-shrink-0 flex flex-col items-center gap-1.5"
+            >
+              <div
+                className={`w-11 h-11 rounded-full transition-all duration-300 ${
+                  selectedHex === color.hex
+                    ? 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-zinc-900 scale-110'
+                    : 'hover:scale-105 border border-zinc-700 group-hover:border-zinc-500'
+                }`}
+                style={{ backgroundColor: color.hex }}
+              />
+              <span
+                className={`text-[10px] leading-tight text-center max-w-[3rem] transition-colors ${
+                  selectedHex === color.hex
+                    ? 'text-[var(--accent)]'
+                    : 'text-zinc-600 group-hover:text-zinc-400'
+                }`}
+              >
+                {color.name.split(' ').slice(-1)[0]}
+              </span>
+            </button>
+          ))}
+          {/* Custom color picker */}
+          <label className="group flex-shrink-0 flex flex-col items-center gap-1.5 cursor-pointer">
+            <div
+              className={`w-11 h-11 rounded-full border-2 border-dashed flex items-center justify-center transition-all duration-300 ${
+                !PRESET_COLORS.some((c) => c.hex === selectedHex)
+                  ? 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-zinc-900 scale-110 border-[var(--accent)]'
+                  : 'border-zinc-700 group-hover:border-zinc-500 hover:scale-105'
+              }`}
+            >
+              <input
+                type="color"
+                value={selectedHex}
+                onChange={(e) => onColorChange(e.target.value, null)}
+                className="sr-only"
+              />
+              <svg
+                className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+            <span className="text-[10px] text-zinc-600 group-hover:text-zinc-400">Custom</span>
+          </label>
+        </div>
       </div>
 
       {/* Intensity slider */}
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-zinc-500 uppercase tracking-wider w-16">
+      <div>
+        <p className="text-[var(--accent)] text-xs uppercase tracking-[0.2em] font-medium mb-2">
           Intensity
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={intensity}
-          onChange={(e) => onIntensityChange(Number(e.target.value))}
-          className="flex-1 accent-[var(--accent)]"
-        />
+        </p>
+        <div className="flex items-center gap-4">
+          <span className="text-zinc-600 text-xs">Light</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={intensity}
+            onChange={(e) => onIntensityChange(Number(e.target.value))}
+            className="flex-1 h-1.5 accent-[var(--accent)] cursor-pointer"
+          />
+          <span className="text-zinc-600 text-xs">Bold</span>
+        </div>
       </div>
     </div>
   );

@@ -62,10 +62,10 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
 
   return (
     <div
-      className={`w-full aspect-[4/3] border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-4 transition-colors cursor-pointer ${
+      className={`w-full h-full min-h-[280px] border border-dashed rounded-lg flex flex-col items-center justify-center gap-5 transition-all duration-300 cursor-pointer ${
         dragging
-          ? 'border-[var(--accent)] bg-zinc-800/50'
-          : 'border-zinc-700 bg-zinc-900 hover:border-zinc-500'
+          ? 'border-[var(--accent)] bg-[var(--accent)]/5'
+          : 'border-zinc-700 hover:border-zinc-500 bg-zinc-900/50'
       }`}
       onClick={() => inputRef.current?.click()}
       onDragOver={(e) => {
@@ -75,26 +75,33 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
     >
-      <svg
-        className="w-12 h-12 text-zinc-500"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        strokeWidth={1.5}
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-        />
-      </svg>
-      <p className="text-zinc-400 text-sm">
-        Drop a photo here or <span className="text-[var(--accent)]">browse</span>
+      <div className="w-16 h-16 rounded-full border border-zinc-700 flex items-center justify-center">
+        <svg
+          className="w-7 h-7 text-[var(--accent)]"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.5}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+          />
+        </svg>
+      </div>
+      <div className="text-center">
+        <p className="text-white font-serif text-lg mb-1">Upload Your Photo</p>
+        <p className="text-zinc-500 text-sm">
+          Drop here or <span className="text-[var(--accent)] hover:underline">browse</span>
+        </p>
+      </div>
+      <p className="text-zinc-600 text-xs tracking-wider uppercase">
+        JPEG, PNG, or WebP · Max 10MB
       </p>
-      <p className="text-zinc-600 text-xs">JPEG, PNG, or WebP up to 10MB</p>
 
       {error && (
-        <p className="text-red-400 text-sm mt-2">{error}</p>
+        <p className="text-red-400 text-sm px-4 text-center">{error}</p>
       )}
 
       <input
