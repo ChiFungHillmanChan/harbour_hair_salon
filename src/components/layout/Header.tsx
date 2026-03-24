@@ -20,6 +20,7 @@ export async function Header() {
           <Link href="/offers" className="hover:text-[var(--accent)] transition-colors duration-300">Offers</Link>
           <Link href="/#team" className="hover:text-[var(--accent)] transition-colors duration-300">Team</Link>
           <Link href="/contact" className="hover:text-[var(--accent)] transition-colors duration-300">Contact</Link>
+          <Link href="/try-color" className="hover:text-[var(--accent)] transition-colors duration-300">Try Color</Link>
 
           {session?.userId ? (
             <>
