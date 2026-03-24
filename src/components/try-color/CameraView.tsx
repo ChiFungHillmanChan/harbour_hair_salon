@@ -15,41 +15,63 @@ export function CameraView({ onFrame, onError, active }: CameraViewProps) {
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
 
-  const startCamera = useCallback(async () => {
-    try {
-      // Stop existing stream
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      }
+  // Stable refs for callbacks to avoid re-triggering effects on parent re-renders
+  const onFrameRef = useRef(onFrame);
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onFrameRef.current = onFrame; }, [onFrame]);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-    } catch {
-      onError(
-        'Camera access was denied. You can upload a photo instead.',
-      );
-    }
-  }, [facingMode, onError]);
-
-  // Start/stop camera based on active prop
+  // Start/stop camera based on active prop and facingMode
   useEffect(() => {
     if (!active) return;
-    startCamera();
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        });
+
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Camera error:', err);
+        const msg =
+          err instanceof DOMException && err.name === 'NotAllowedError'
+            ? 'Camera access was denied. You can upload a photo instead.'
+            : err instanceof DOMException && err.name === 'NotFoundError'
+              ? 'No camera found on this device. You can upload a photo instead.'
+              : err instanceof DOMException && err.name === 'AbortError'
+                ? 'Camera was interrupted. Try again.'
+                : `Camera error: ${err instanceof Error ? err.message : String(err)}`;
+        onErrorRef.current(msg);
+      }
+    })();
+
     return () => {
+      cancelled = true;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
     };
-  }, [active, startCamera]);
+  }, [active, facingMode]);
 
   // Frame capture loop — prefer requestVideoFrameCallback for efficiency
   useEffect(() => {
@@ -58,12 +80,10 @@ export function CameraView({ onFrame, onError, active }: CameraViewProps) {
     const video = videoRef.current;
     if (!video) return;
 
-    // requestVideoFrameCallback fires once per decoded video frame,
-    // avoiding duplicate processing. Fall back to rAF if unavailable.
     if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
       const onVideoFrame = () => {
         if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-          onFrame(video);
+          onFrameRef.current(video);
         }
         rafRef.current = video.requestVideoFrameCallback(onVideoFrame);
       };
@@ -73,13 +93,13 @@ export function CameraView({ onFrame, onError, active }: CameraViewProps) {
 
     const captureLoop = () => {
       if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        onFrame(video);
+        onFrameRef.current(video);
       }
       rafRef.current = requestAnimationFrame(captureLoop);
     };
     rafRef.current = requestAnimationFrame(captureLoop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [active, onFrame]);
+  }, [active]);
 
   const flipCamera = () => {
     setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));

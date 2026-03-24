@@ -18,6 +18,7 @@ import {
   HAIR_CATEGORY_INDEX,
   SLOW_FRAME_THRESHOLD_MS,
   SLOW_FRAME_WINDOW,
+  WARMUP_FRAMES,
 } from '@/components/try-color/constants';
 
 type Mode = 'landing' | 'camera' | 'upload';
@@ -36,6 +37,7 @@ export default function TryColorClient() {
   const workerRef = useRef<Worker | null>(null);
   const colorRef = useRef({ hex: colorHex, intensity });
   const frameTimesRef = useRef<number[]>([]);
+  const frameCountRef = useRef(0);
 
   // Upload mode: store original image data and mask for re-coloring on color change
   const uploadDataRef = useRef<{
@@ -70,6 +72,10 @@ export default function TryColorClient() {
       } else if (type === 'frame') {
         const { bitmap, elapsed } = e.data;
         previewRef.current?.drawBitmap(bitmap);
+        frameCountRef.current++;
+
+        // Skip warmup frames before measuring performance
+        if (frameCountRef.current <= WARMUP_FRAMES) return;
 
         // Track frame times for performance fallback
         const times = frameTimesRef.current;
