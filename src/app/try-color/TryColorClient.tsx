@@ -1,4 +1,3 @@
-// src/app/try-color/TryColorClient.tsx
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -40,7 +39,6 @@ export default function TryColorClient() {
   const frameTimesRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
 
-  // Upload mode: store original image data and mask for re-coloring on color change
   const uploadDataRef = useRef<{
     originalImageData: ImageData;
     mask: Uint8Array;
@@ -48,12 +46,10 @@ export default function TryColorClient() {
     height: number;
   } | null>(null);
 
-  // Keep refs in sync with state for the frame callback
   useEffect(() => {
     colorRef.current = { hex: colorHex, intensity };
   }, [colorHex, intensity]);
 
-  // Initialize worker
   const initWorker = useCallback(() => {
     if (workerRef.current) return;
 
@@ -75,10 +71,8 @@ export default function TryColorClient() {
         previewRef.current?.drawBitmap(bitmap);
         frameCountRef.current++;
 
-        // Skip warmup frames before measuring performance
         if (frameCountRef.current <= WARMUP_FRAMES) return;
 
-        // Track frame times for performance fallback
         const times = frameTimesRef.current;
         times.push(elapsed);
         if (times.length > SLOW_FRAME_WINDOW) times.shift();
@@ -100,7 +94,6 @@ export default function TryColorClient() {
     workerRef.current = worker;
   }, []);
 
-  // Cleanup worker on unmount
   useEffect(() => {
     return () => {
       workerRef.current?.terminate();
@@ -108,12 +101,10 @@ export default function TryColorClient() {
     };
   }, []);
 
-  // Handle camera frame — send to worker
   const handleFrame = useCallback(
     (video: HTMLVideoElement) => {
       if (!workerRef.current || !workerReady) return;
 
-      // Update dimensions on first frame
       if (
         video.videoWidth !== dimensions.width ||
         video.videoHeight !== dimensions.height
@@ -121,7 +112,6 @@ export default function TryColorClient() {
         setDimensions({ width: video.videoWidth, height: video.videoHeight });
       }
 
-      // Capture frame as ImageBitmap and send to worker
       createImageBitmap(video).then((bitmap) => {
         const { hex, intensity: int } = colorRef.current;
         workerRef.current?.postMessage(
@@ -139,7 +129,6 @@ export default function TryColorClient() {
     [workerReady, dimensions.width, dimensions.height],
   );
 
-  // Handle uploaded image — main-thread segmentation (stores mask for re-coloring)
   const handleImageLoaded = useCallback(
     async (img: HTMLImageElement) => {
       setLoading(true);
@@ -153,7 +142,6 @@ export default function TryColorClient() {
         ctx.drawImage(img, 0, 0);
         const originalImageData = ctx.getImageData(0, 0, img.width, img.height);
 
-        // Store originals for re-coloring when user changes color/intensity
         uploadDataRef.current = {
           originalImageData,
           mask: maskData,
@@ -161,7 +149,6 @@ export default function TryColorClient() {
           height: img.height,
         };
 
-        // Apply initial color
         const coloredData = new ImageData(
           new Uint8ClampedArray(originalImageData.data),
           img.width,
@@ -179,9 +166,7 @@ export default function TryColorClient() {
         setHasUploadedImage(true);
         previewRef.current?.drawImageData(coloredData, img.width, img.height);
       } catch (err) {
-        setError(
-          'Could not process this image. Try a different photo.',
-        );
+        setError('Could not process this image. Try a different photo.');
         console.error(err);
       } finally {
         setLoading(false);
@@ -190,7 +175,6 @@ export default function TryColorClient() {
     [colorHex, intensity],
   );
 
-  // Re-apply color to upload preview when color or intensity changes
   useEffect(() => {
     if (mode !== 'upload' || !uploadDataRef.current) return;
     const { originalImageData, mask, width, height } = uploadDataRef.current;
@@ -221,166 +205,214 @@ export default function TryColorClient() {
     setColorName(name);
   };
 
-  // Landing page
+  // ── Landing ──────────────────────────────────────────────
   if (mode === 'landing') {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4">
-        <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
-        <h1 className="text-5xl md:text-6xl font-serif mb-4 tracking-tight text-zinc-900">
-          Virtual Hair Color{' '}
-          <span className="italic text-zinc-500">Try-On</span>
-        </h1>
-        <p className="text-lg text-zinc-500 mb-10 max-w-md font-light">
-          See how a new colour looks on you — live
-        </p>
+      <div className="min-h-screen bg-zinc-900 text-white">
+        {/* Hero */}
+        <section className="relative py-24 md:py-32 overflow-hidden">
+          {/* Subtle gradient background */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-zinc-900 to-zinc-900" />
 
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
-          <button
-            onClick={startCamera}
-            className="bg-[#174F7F] text-white px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[#123c61] transition-colors duration-300 rounded-lg"
-          >
-            Open Camera
-          </button>
-          <button
-            onClick={startUpload}
-            className="border border-zinc-300 text-zinc-700 px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-zinc-100 transition-colors duration-300 rounded-lg"
-          >
-            Upload Photo
-          </button>
-        </div>
+          <div className="relative z-10 container mx-auto px-4 text-center">
+            <div className="animate-fade-in">
+              <div className="w-16 h-[2px] bg-[var(--accent)] mx-auto mb-8" />
 
-        <div className="space-y-2 text-xs text-zinc-400 max-w-sm">
-          <p>Your photos are processed entirely on your device and never leave your browser.</p>
-          <p>Preview only. Very light shades may look different in salon.</p>
-        </div>
+              <p className="text-[var(--accent)] text-sm uppercase tracking-[0.3em] font-medium mb-6">
+                Virtual Experience
+              </p>
+
+              <h1 className="text-5xl md:text-7xl font-serif mb-6 tracking-tight leading-[0.95]">
+                Hair Colour{' '}
+                <span className="italic text-zinc-400">Try-On</span>
+              </h1>
+
+              <p className="text-lg md:text-xl text-zinc-400 mb-12 max-w-lg mx-auto font-light leading-relaxed">
+                See how a new colour looks on you before you book.
+                Powered by AI, processed entirely on your device.
+              </p>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+                <button
+                  onClick={startCamera}
+                  className="bg-[var(--accent)] text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all duration-300 hover:scale-105"
+                >
+                  Open Camera
+                </button>
+                <button
+                  onClick={startUpload}
+                  className="border border-white/30 text-white px-10 py-4 text-sm uppercase tracking-[0.2em] font-medium hover:bg-white/10 transition-all duration-300"
+                >
+                  Upload Photo
+                </button>
+              </div>
+
+              <div className="w-16 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
+
+              <div className="space-y-2 text-xs text-zinc-500 max-w-md mx-auto">
+                <p>Your photos never leave your browser. All processing happens on-device.</p>
+                <p>Preview only — very light or fantasy shades may look different in salon.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* How it works */}
+        <section className="py-16 border-t border-zinc-800">
+          <div className="container mx-auto px-4 max-w-3xl">
+            <h2 className="font-serif text-2xl text-center mb-12 tracking-tight">
+              How It <span className="italic text-zinc-400">Works</span>
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
+              {[
+                { step: '01', title: 'Capture', desc: 'Open your camera or upload a photo' },
+                { step: '02', title: 'Explore', desc: 'Browse 12 preset colours or pick your own' },
+                { step: '03', title: 'Download', desc: 'Save your favourite look as a JPEG' },
+              ].map((item) => (
+                <div key={item.step}>
+                  <p className="text-[var(--accent)] text-xs tracking-[0.3em] font-medium mb-3">
+                    {item.step}
+                  </p>
+                  <h3 className="font-serif text-xl mb-2">{item.title}</h3>
+                  <p className="text-zinc-500 text-sm font-light">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
     );
   }
 
-  // Camera or Upload mode
+  // ── Camera / Upload Mode ─────────────────────────────────
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-      {/* Back button */}
-      <button
-        onClick={() => {
-          workerRef.current?.terminate();
-          workerRef.current = null;
-          setWorkerReady(false);
-          setMode('landing');
-          setError(null);
-        }}
-        className="text-zinc-500 hover:text-zinc-800 text-sm flex items-center gap-1 transition-colors"
-      >
-        <svg
-          className="w-4 h-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-        Back
-      </button>
+    <div className="min-h-screen bg-zinc-950">
+      {/* Top bar */}
+      <div className="bg-zinc-900 border-b border-zinc-800">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <button
+            onClick={() => {
+              workerRef.current?.terminate();
+              workerRef.current = null;
+              setWorkerReady(false);
+              setMode('landing');
+              setError(null);
+              setHasUploadedImage(false);
+              uploadDataRef.current = null;
+            }}
+            className="text-zinc-400 hover:text-white text-sm flex items-center gap-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
 
-      {/* Error message */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-          {error}
+          <h1 className="font-serif text-white text-lg tracking-tight">
+            Colour <span className="italic text-zinc-400">Try-On</span>
+          </h1>
+
+          <div className="w-12" /> {/* Spacer for centering */}
         </div>
-      )}
+      </div>
 
-      {/* Loading state */}
-      {loading && (
-        <div className="flex items-center justify-center gap-3 py-8 text-zinc-500">
-          <div className="w-5 h-5 border-2 border-zinc-300 border-t-[#174F7F] rounded-full animate-spin" />
-          <span className="text-sm">Loading hair detection model...</span>
-        </div>
-      )}
+      <div className="container mx-auto px-4 py-4 max-w-2xl space-y-4">
+        {/* Error */}
+        {error && (
+          <div className="bg-red-950/50 border border-red-900/50 text-red-300 px-4 py-3 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
 
-      {/* Preview area */}
-      <div className="relative w-full aspect-[4/3] bg-black rounded-lg overflow-hidden">
-        {mode === 'camera' && (
-          <>
-            <CameraView
-              onFrame={handleFrame}
-              onError={(msg) => {
-                setError(msg);
-                setMode('upload');
-              }}
-              active={mode === 'camera'}
-            />
-            {/* Overlay the preview canvas on top of the camera */}
-            <div className="absolute inset-0">
-              <PreviewCanvas
-                ref={previewRef}
-                width={dimensions.width}
-                height={dimensions.height}
-                mirrored
+        {/* Loading */}
+        {loading && (
+          <div className="flex items-center justify-center gap-3 py-12 text-zinc-400">
+            <div className="w-5 h-5 border-2 border-zinc-700 border-t-[var(--accent)] rounded-full animate-spin" />
+            <span className="text-sm font-light">Loading hair detection model...</span>
+          </div>
+        )}
+
+        {/* Preview area */}
+        <div className="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden border border-zinc-800 shadow-2xl shadow-black/50">
+          {mode === 'camera' && (
+            <>
+              <CameraView
+                onFrame={handleFrame}
+                onError={(msg) => {
+                  setError(msg);
+                  setMode('upload');
+                }}
+                active={mode === 'camera'}
               />
-            </div>
-          </>
-        )}
+              <div className="absolute inset-0">
+                <PreviewCanvas
+                  ref={previewRef}
+                  width={dimensions.width}
+                  height={dimensions.height}
+                  mirrored
+                />
+              </div>
+            </>
+          )}
 
-        {mode === 'upload' && !hasUploadedImage && !loading && (
-          <UploadDropzone onImageLoaded={handleImageLoaded} />
-        )}
+          {mode === 'upload' && !hasUploadedImage && !loading && (
+            <UploadDropzone onImageLoaded={handleImageLoaded} />
+          )}
 
-        {mode === 'upload' && hasUploadedImage && (
-          <div>
+          {mode === 'upload' && hasUploadedImage && (
             <PreviewCanvas
               ref={previewRef}
               width={dimensions.width}
               height={dimensions.height}
             />
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      {/* Color controls */}
-      <div className="bg-zinc-900 rounded-lg p-4">
-        <ColorPalette
-          selectedHex={colorHex}
-          selectedName={colorName}
-          intensity={intensity}
-          onColorChange={handleColorChange}
-          onIntensityChange={setIntensity}
-        />
-      </div>
+        {/* Color controls panel */}
+        <div className="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
+          <ColorPalette
+            selectedHex={colorHex}
+            selectedName={colorName}
+            intensity={intensity}
+            onColorChange={handleColorChange}
+            onIntensityChange={setIntensity}
+          />
+        </div>
 
-      {/* Download */}
-      <ResultActions onDownload={() => previewRef.current?.downloadJpeg()} />
+        {/* Download */}
+        <ResultActions onDownload={() => previewRef.current?.downloadJpeg()} />
 
-      {/* Mode switch */}
-      <div className="flex justify-center gap-4 flex-wrap">
-        {mode === 'camera' ? (
-          <button
-            onClick={startUpload}
-            className="text-zinc-500 hover:text-zinc-700 text-sm underline transition-colors"
-          >
-            Upload a photo instead
-          </button>
-        ) : (
-          <>
-            {hasUploadedImage && (
-              <button
-                onClick={() => {
-                  setHasUploadedImage(false);
-                  uploadDataRef.current = null;
-                }}
-                className="text-zinc-500 hover:text-zinc-700 text-sm underline transition-colors"
-              >
-                Change photo
-              </button>
-            )}
+        {/* Mode switch */}
+        <div className="flex justify-center gap-6 pb-6">
+          {mode === 'camera' ? (
             <button
-              onClick={startCamera}
-              className="text-zinc-500 hover:text-zinc-700 text-sm underline transition-colors"
+              onClick={startUpload}
+              className="text-zinc-500 hover:text-[var(--accent)] text-sm transition-colors"
             >
-              Use camera instead
+              Upload a photo instead
             </button>
-          </>
-        )}
+          ) : (
+            <>
+              {hasUploadedImage && (
+                <button
+                  onClick={() => {
+                    setHasUploadedImage(false);
+                    uploadDataRef.current = null;
+                  }}
+                  className="text-zinc-500 hover:text-[var(--accent)] text-sm transition-colors"
+                >
+                  Change photo
+                </button>
+              )}
+              <button
+                onClick={startCamera}
+                className="text-zinc-500 hover:text-[var(--accent)] text-sm transition-colors"
+              >
+                Use camera instead
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

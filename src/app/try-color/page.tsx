@@ -10,8 +10,6 @@ export const metadata: Metadata = {
 
 export default function TryColorPage() {
   return (
-    <div className="min-h-screen bg-white">
-      <TryColorClient />
-    </div>
+    <TryColorClient />
   );
 }
