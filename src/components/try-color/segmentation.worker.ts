@@ -14,18 +14,20 @@ import { hexToRgb } from './colorMath';
 let segmenter: ImageSegmenter | null = null;
 let busy = false;
 
-// Reusable canvases to avoid allocation per frame
-let mainCanvas: OffscreenCanvas | null = null;
-let mainCtx: OffscreenCanvasRenderingContext2D | null = null;
+// Reusable canvases / buffers to avoid allocation per frame
+let segCanvas: OffscreenCanvas | null = null;
+let segCtx: OffscreenCanvasRenderingContext2D | null = null;
 let overlayCanvas: OffscreenCanvas | null = null;
 let overlayCtx: OffscreenCanvasRenderingContext2D | null = null;
+let overlayImageData: ImageData | null = null;
 
 function ensureCanvases(w: number, h: number) {
-  if (!mainCanvas || mainCanvas.width !== w || mainCanvas.height !== h) {
-    mainCanvas = new OffscreenCanvas(w, h);
-    mainCtx = mainCanvas.getContext('2d')!;
+  if (!segCanvas || segCanvas.width !== w || segCanvas.height !== h) {
+    segCanvas = new OffscreenCanvas(w, h);
+    segCtx = segCanvas.getContext('2d')!;
     overlayCanvas = new OffscreenCanvas(w, h);
     overlayCtx = overlayCanvas.getContext('2d')!;
+    overlayImageData = new ImageData(w, h);
   }
 }
 
@@ -59,12 +61,12 @@ function processFrame(
     const h = frame.height;
     ensureCanvases(w, h);
 
-    // Draw original frame
-    mainCtx!.drawImage(frame, 0, 0);
+    // Draw frame onto segmentation canvas (MediaPipe needs a canvas source)
+    segCtx!.drawImage(frame, 0, 0);
     frame.close();
 
     // Run segmentation
-    const result = segmenter.segmentForVideo(mainCanvas!, timestamp);
+    const result = segmenter.segmentForVideo(segCanvas!, timestamp);
     const mask = result.categoryMask;
     if (!mask) {
       result.close();
@@ -74,40 +76,30 @@ function processFrame(
 
     const maskData = mask.getAsUint8Array();
 
-    // Fast compositing approach:
-    // 1. Build a color overlay where hair pixels get the target color with alpha = intensity
-    // 2. Use Canvas drawImage to composite it over the original frame
-    // This avoids per-pixel HSL math and leverages GPU-accelerated Canvas ops.
-
+    // Build color overlay using Uint32Array for ~4x faster pixel writes.
+    // Only hair pixels get the target color; rest stays transparent.
+    // The main thread composites this over the live <video> via CSS
+    // mix-blend-mode: color, so we don't need to composite here.
     const [tR, tG, tB] = hexToRgb(colorHex);
     const alpha = Math.round((intensity / 100) * 140); // cap at ~55% for natural look
 
-    const overlayData = overlayCtx!.createImageData(w, h);
-    const pixels = overlayData.data;
+    const buf32 = new Uint32Array(overlayImageData!.data.buffer);
+    buf32.fill(0); // clear to fully transparent
+    // Little-endian RGBA: R in lowest byte, A in highest
+    const fillColor = tR | (tG << 8) | (tB << 16) | (alpha << 24);
 
     for (let i = 0; i < maskData.length; i++) {
       if (maskData[i] === HAIR_CATEGORY_INDEX) {
-        const idx = i * 4;
-        pixels[idx] = tR;
-        pixels[idx + 1] = tG;
-        pixels[idx + 2] = tB;
-        pixels[idx + 3] = alpha;
+        buf32[i] = fillColor;
       }
     }
 
     result.close();
 
-    overlayCtx!.putImageData(overlayData, 0, 0);
+    overlayCtx!.putImageData(overlayImageData!, 0, 0);
 
-    // Use 'color' blend mode: applies hue+saturation from overlay while
-    // preserving luminance (shadows/highlights/texture) from the original.
-    // Falls back to simple alpha blend if not supported.
-    mainCtx!.globalCompositeOperation = 'color';
-    mainCtx!.drawImage(overlayCanvas!, 0, 0);
-    mainCtx!.globalCompositeOperation = 'source-over';
-
-    // Transfer result back as ImageBitmap
-    const resultBitmap = mainCanvas!.transferToImageBitmap();
+    // Transfer overlay-only bitmap (CSS mix-blend-mode handles compositing)
+    const resultBitmap = overlayCanvas!.transferToImageBitmap();
     const elapsed = performance.now() - start;
 
     self.postMessage(

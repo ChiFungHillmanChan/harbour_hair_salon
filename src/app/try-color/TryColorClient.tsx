@@ -38,6 +38,8 @@ export default function TryColorClient() {
   const colorRef = useRef({ hex: colorHex, intensity });
   const frameTimesRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
+  const workerBusyRef = useRef(false);
+  const videoElRef = useRef<HTMLVideoElement | null>(null);
 
   const uploadDataRef = useRef<{
     originalImageData: ImageData;
@@ -67,6 +69,7 @@ export default function TryColorClient() {
         setWorkerReady(true);
         setLoading(false);
       } else if (type === 'frame') {
+        workerBusyRef.current = false;
         const { bitmap, elapsed } = e.data;
         previewRef.current?.drawBitmap(bitmap);
         frameCountRef.current++;
@@ -103,7 +106,8 @@ export default function TryColorClient() {
 
   const handleFrame = useCallback(
     (video: HTMLVideoElement) => {
-      if (!workerRef.current || !workerReady) return;
+      videoElRef.current = video;
+      if (!workerRef.current || !workerReady || workerBusyRef.current) return;
 
       if (
         video.videoWidth !== dimensions.width ||
@@ -112,6 +116,7 @@ export default function TryColorClient() {
         setDimensions({ width: video.videoWidth, height: video.videoHeight });
       }
 
+      workerBusyRef.current = true;
       createImageBitmap(video).then((bitmap) => {
         const { hex, intensity: int } = colorRef.current;
         workerRef.current?.postMessage(
@@ -204,6 +209,52 @@ export default function TryColorClient() {
     setColorHex(hex);
     setColorName(name);
   };
+
+  const handleDownload = useCallback(() => {
+    if (mode !== 'camera') {
+      previewRef.current?.downloadJpeg();
+      return;
+    }
+    // Camera mode: composite live video + color overlay for export
+    const video = videoElRef.current;
+    const overlayCanvas = previewRef.current?.getCanvas();
+    if (!video || !overlayCanvas) return;
+
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = w;
+    exportCanvas.height = h;
+    const ctx = exportCanvas.getContext('2d')!;
+
+    // Draw mirrored video (front camera)
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, -w, 0, w, h);
+    ctx.restore();
+
+    // Apply color overlay with 'color' blend
+    ctx.globalCompositeOperation = 'color';
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.drawImage(overlayCanvas, -w, 0, w, h);
+    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
+
+    exportCanvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `hair-color-preview-${Date.now()}.jpg`;
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+      'image/jpeg',
+      0.9,
+    );
+  }, [mode]);
 
   // ── Landing ──────────────────────────────────────────────
   if (mode === 'landing') {
@@ -344,12 +395,13 @@ export default function TryColorClient() {
                 }}
                 active={mode === 'camera'}
               />
-              <div className="absolute inset-0">
+              <div className="absolute inset-0 pointer-events-none">
                 <PreviewCanvas
                   ref={previewRef}
                   width={dimensions.width}
                   height={dimensions.height}
                   mirrored
+                  blendMode="color"
                 />
               </div>
             </>
@@ -380,7 +432,7 @@ export default function TryColorClient() {
         </div>
 
         {/* Download */}
-        <ResultActions onDownload={() => previewRef.current?.downloadJpeg()} />
+        <ResultActions onDownload={handleDownload} />
 
         {/* Mode switch */}
         <div className="flex justify-center gap-6 pb-6">

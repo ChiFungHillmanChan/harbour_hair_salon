@@ -12,33 +12,31 @@ export interface PreviewCanvasHandle {
 interface PreviewCanvasProps {
   width: number;
   height: number;
+  /** CSS-level mirroring (GPU-accelerated, replaces per-frame canvas flip) */
   mirrored?: boolean;
+  /** CSS mix-blend-mode — use 'color' for overlay-on-video compositing */
+  blendMode?: React.CSSProperties['mixBlendMode'];
 }
 
 export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
-  function PreviewCanvas({ width, height, mirrored = false }, ref) {
+  function PreviewCanvas({ width, height, mirrored = false, blendMode }, ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
     useEffect(() => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       canvas.width = width;
       canvas.height = height;
+      ctxRef.current = canvas.getContext('2d');
     }, [width, height]);
 
     useImperativeHandle(ref, () => ({
       drawBitmap(bitmap: ImageBitmap) {
+        const ctx = ctxRef.current;
         const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d')!;
-        if (mirrored) {
-          ctx.save();
-          ctx.scale(-1, 1);
-          ctx.drawImage(bitmap, -canvas.width, 0, canvas.width, canvas.height);
-          ctx.restore();
-        } else {
-          ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        }
+        if (!ctx || !canvas) { bitmap.close(); return; }
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         bitmap.close();
       },
 
@@ -47,8 +45,8 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         if (!canvas) return;
         canvas.width = w;
         canvas.height = h;
-        const ctx = canvas.getContext('2d')!;
-        ctx.putImageData(data, 0, 0);
+        ctxRef.current = canvas.getContext('2d');
+        ctxRef.current?.putImageData(data, 0, 0);
       },
 
       downloadJpeg() {
@@ -78,6 +76,10 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
       <canvas
         ref={canvasRef}
         className="w-full h-full object-cover rounded-lg"
+        style={{
+          ...(mirrored && { transform: 'scaleX(-1)' }),
+          ...(blendMode && { mixBlendMode: blendMode }),
+        }}
       />
     );
   },
