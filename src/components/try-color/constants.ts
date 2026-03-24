@@ -32,5 +32,7 @@ export const SEGMENTER_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite';
 
 export const LIVE_TARGET_FPS = 12;
-export const SLOW_FRAME_THRESHOLD_MS = 80;
-export const SLOW_FRAME_WINDOW = 10;
+export const SLOW_FRAME_THRESHOLD_MS = 200;
+export const SLOW_FRAME_WINDOW = 30;
+// Skip the first N frames before measuring performance (model warmup)
+export const WARMUP_FRAMES = 15;
