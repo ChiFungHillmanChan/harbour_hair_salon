@@ -44,9 +44,11 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
       drawImageData(data: ImageData, w: number, h: number) {
         const canvas = canvasRef.current;
         if (!canvas) return;
-        canvas.width = w;
-        canvas.height = h;
-        ctxRef.current = canvas.getContext('2d');
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+          ctxRef.current = canvas.getContext('2d');
+        }
         ctxRef.current?.putImageData(data, 0, 0);
       },
 

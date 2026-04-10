@@ -13,41 +13,124 @@ import {
   segmentStill,
   type HairMaskData,
 } from '@/components/try-color/HairSegmentation';
-import { applyRecolorToImageDataWithAlpha } from '@/components/try-color/colorMath';
+import {
+  applyRecolorToImageDataWithAlpha,
+  type ResolvedRecolorContext,
+} from '@/components/try-color/colorMath';
 import {
   PRESET_COLORS,
   DEFAULT_INTENSITY,
   LIVE_FRAME_MAX_DIM,
+  LIVE_TARGET_FPS,
   SLOW_FRAME_THRESHOLD_MS,
   SLOW_FRAME_WINDOW,
   WARMUP_FRAMES,
-  OVERLAY_STALE_MS,
+  type HairAnalysis,
+  type HairLevel,
+  type HairLevelMode,
+  type RecolorRequest,
+  type ShadePreset,
 } from '@/components/try-color/constants';
 
 type Mode = 'landing' | 'camera' | 'upload';
+const DEFAULT_SHADE = PRESET_COLORS[3];
+
+interface LivePreviewProfile {
+  maxDim: number;
+  targetFps: number;
+}
+
+function detectLivePreviewProfile(): LivePreviewProfile {
+  if (typeof navigator === 'undefined') {
+    return { maxDim: LIVE_FRAME_MAX_DIM, targetFps: LIVE_TARGET_FPS };
+  }
+
+  const ua = navigator.userAgent;
+  const maxTouchPoints = navigator.maxTouchPoints ?? 0;
+  const hasCoarsePointer =
+    typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+
+  // iPadOS Safari reports as Macintosh but has touch points
+  const isIPadOS =
+    /Macintosh/i.test(ua) && maxTouchPoints > 1 && hasCoarsePointer;
+
+  const isTablet =
+    /iPad|Tablet/i.test(ua) ||
+    isIPadOS ||
+    (hasCoarsePointer && maxTouchPoints > 1 && window.innerWidth >= 768);
+
+  const isPhone =
+    /iPhone/i.test(ua) ||
+    (/Android/i.test(ua) && !isTablet) ||
+    (hasCoarsePointer && maxTouchPoints > 1 && window.innerWidth < 768);
+
+  const deviceMemory = 'deviceMemory' in navigator ? Number(navigator.deviceMemory) : undefined;
+
+  if (isPhone) {
+    return {
+      maxDim: deviceMemory && deviceMemory <= 4 ? 288 : 320,
+      targetFps: 8,
+    };
+  }
+
+  if (isTablet) {
+    return {
+      maxDim: deviceMemory && deviceMemory <= 4 ? 320 : 384,
+      targetFps: 10,
+    };
+  }
+
+  return { maxDim: LIVE_FRAME_MAX_DIM, targetFps: LIVE_TARGET_FPS };
+}
+
+function buildRecolorRequest(
+  preset: ShadePreset,
+  previewStrength: number,
+  baseLevelMode: HairLevelMode,
+  manualBaseLevel: HairLevel,
+): RecolorRequest {
+  return {
+    preset,
+    previewStrength,
+    baseLevelMode,
+    manualBaseLevel: baseLevelMode === 'manual' ? manualBaseLevel : undefined,
+  };
+}
 
 export default function TryColorClient() {
   const [mode, setMode] = useState<Mode>('landing');
-  const [colorHex, setColorHex] = useState(PRESET_COLORS[3].hex);
-  const [colorName, setColorName] = useState<string | null>(PRESET_COLORS[3].name);
-  const [intensity, setIntensity] = useState(DEFAULT_INTENSITY);
+  const [selectedShade, setSelectedShade] = useState<ShadePreset>(DEFAULT_SHADE);
+  const [previewStrength, setPreviewStrength] = useState(DEFAULT_INTENSITY);
+  const [baseLevelMode, setBaseLevelMode] = useState<HairLevelMode>('auto');
+  const [manualBaseLevel, setManualBaseLevel] = useState<HairLevel>(5);
+  const [hairAnalysis, setHairAnalysis] = useState<HairAnalysis | null>(null);
+  const [recolorContext, setRecolorContext] = useState<ResolvedRecolorContext | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState('Loading...');
   const [error, setError] = useState<string | null>(null);
   const [workerReady, setWorkerReady] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
   const [hasUploadedImage, setHasUploadedImage] = useState(false);
+  const [liveProfile, setLiveProfile] = useState<LivePreviewProfile>({
+    maxDim: LIVE_FRAME_MAX_DIM,
+    targetFps: LIVE_TARGET_FPS,
+  });
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
   const previewRef = useRef<PreviewCanvasHandle>(null);
   const workerRef = useRef<Worker | null>(null);
-  const colorRef = useRef({ hex: colorHex, intensity });
+  const requestRef = useRef<RecolorRequest>(
+    buildRecolorRequest(DEFAULT_SHADE, DEFAULT_INTENSITY, 'auto', 5),
+  );
   const frameTimesRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
   const workerBusyRef = useRef(false);
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const displayCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const cachedFrameRef = useRef<ImageBitmap | null>(null);
-  const lastFrameTimeRef = useRef(0);
-  const renderRafRef = useRef(0);
-  const facingModeRef = useRef<'user' | 'environment'>('user');
+  const lastUiUpdateRef = useRef(0);
+  const droppedFramesRef = useRef(0);
+  const pendingRecolorRef = useRef<ResolvedRecolorContext | null>(null);
 
   const uploadDataRef = useRef<{
     originalImageData: ImageData;
@@ -55,10 +138,48 @@ export default function TryColorClient() {
     width: number;
     height: number;
   } | null>(null);
+  const uploadGenRef = useRef(0);
 
   useEffect(() => {
-    colorRef.current = { hex: colorHex, intensity };
-  }, [colorHex, intensity]);
+    requestRef.current = buildRecolorRequest(
+      selectedShade,
+      previewStrength,
+      baseLevelMode,
+      manualBaseLevel,
+    );
+  }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel]);
+
+  useEffect(() => {
+    setLiveProfile(detectLivePreviewProfile());
+    const onResize = () => setLiveProfile(detectLivePreviewProfile());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const drawLiveFrame = useCallback(
+    (frame: ImageBitmap) => {
+      const canvas = displayCanvasRef.current;
+      if (!canvas) return;
+      if (!displayCtxRef.current) {
+        displayCtxRef.current = canvas.getContext('2d');
+      }
+      const ctx = displayCtxRef.current;
+      if (!ctx) return;
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      if (facingMode === 'user') {
+        ctx.scale(-1, 1);
+        ctx.drawImage(frame, -w, 0, w, h);
+      } else {
+        ctx.drawImage(frame, 0, 0, w, h);
+      }
+      ctx.restore();
+    },
+    [facingMode],
+  );
 
   const resetWorkerMetrics = useCallback(() => {
     frameTimesRef.current = [];
@@ -72,8 +193,19 @@ export default function TryColorClient() {
     setWorkerReady(false);
     setLoading(false);
     resetWorkerMetrics();
+    droppedFramesRef.current = 0;
+    pendingRecolorRef.current = null;
     cachedFrameRef.current?.close();
     cachedFrameRef.current = null;
+    displayCtxRef.current?.clearRect(
+      0,
+      0,
+      displayCanvasRef.current?.width ?? 0,
+      displayCanvasRef.current?.height ?? 0,
+    );
+    displayCtxRef.current = null;
+    setHairAnalysis(null);
+    setRecolorContext(null);
   }, [resetWorkerMetrics]);
 
   const supportsLivePreview = useCallback(() => {
@@ -93,6 +225,7 @@ export default function TryColorClient() {
     }
 
     resetWorkerMetrics();
+    setLoadingLabel('Loading hair detection model...');
     setLoading(true);
     const worker = new Worker(
       new URL(
@@ -108,11 +241,25 @@ export default function TryColorClient() {
         setLoading(false);
       } else if (type === 'frame') {
         workerBusyRef.current = false;
-        const { bitmap, elapsed } = e.data;
+        const { bitmap, elapsed, recolor } = e.data as {
+          bitmap: ImageBitmap;
+          elapsed: number;
+          recolor: ResolvedRecolorContext;
+        };
         cachedFrameRef.current?.close();
         cachedFrameRef.current = bitmap;
-        lastFrameTimeRef.current = performance.now();
+        drawLiveFrame(bitmap);
         frameCountRef.current++;
+
+        const now = performance.now();
+        const UI_THROTTLE_MS = 250;
+        if (now - lastUiUpdateRef.current >= UI_THROTTLE_MS) {
+          lastUiUpdateRef.current = now;
+          setHairAnalysis(recolor.analysis);
+          setRecolorContext(recolor);
+        } else {
+          pendingRecolorRef.current = recolor;
+        }
 
         if (frameCountRef.current <= WARMUP_FRAMES) return;
 
@@ -148,7 +295,7 @@ export default function TryColorClient() {
 
     worker.postMessage({ type: 'init' });
     workerRef.current = worker;
-  }, [cleanupCameraState, resetWorkerMetrics, supportsLivePreview]);
+  }, [cleanupCameraState, drawLiveFrame, resetWorkerMetrics, supportsLivePreview]);
 
   useEffect(() => {
     return () => {
@@ -156,51 +303,35 @@ export default function TryColorClient() {
     };
   }, [cleanupCameraState]);
 
-  // Single-canvas render loop for processed live frames.
+  // Flush any throttled UI state that hasn't been committed yet
   useEffect(() => {
     if (mode !== 'camera') return;
-
-    const render = () => {
-      const canvas = displayCanvasRef.current;
-      if (!canvas) {
-        renderRafRef.current = requestAnimationFrame(render);
-        return;
+    const id = setInterval(() => {
+      const pending = pendingRecolorRef.current;
+      if (pending) {
+        pendingRecolorRef.current = null;
+        setHairAnalysis(pending.analysis);
+        setRecolorContext(pending);
       }
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        renderRafRef.current = requestAnimationFrame(render);
-        return;
-      }
-
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
-
-      const frame = cachedFrameRef.current;
-      if (frame && (performance.now() - lastFrameTimeRef.current) < OVERLAY_STALE_MS) {
-        ctx.save();
-        if (facingModeRef.current === 'user') {
-          ctx.scale(-1, 1);
-          ctx.drawImage(frame, -w, 0, w, h);
-        } else {
-          ctx.drawImage(frame, 0, 0, w, h);
-        }
-        ctx.restore();
-      }
-
-      renderRafRef.current = requestAnimationFrame(render);
-    };
-
-    renderRafRef.current = requestAnimationFrame(render);
-    return () => {
-      cancelAnimationFrame(renderRafRef.current);
-    };
+    }, 300);
+    return () => clearInterval(id);
   }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'camera') return;
+    const frame = cachedFrameRef.current;
+    if (frame) {
+      drawLiveFrame(frame);
+    }
+  }, [mode, dimensions.width, dimensions.height, drawLiveFrame]);
 
   const handleFrame = useCallback(
     (video: HTMLVideoElement) => {
-      if (!workerRef.current || !workerReady || workerBusyRef.current) return;
+      if (!workerRef.current || !workerReady) return;
+      if (workerBusyRef.current) {
+        droppedFramesRef.current++;
+        return;
+      }
 
       if (
         video.videoWidth !== dimensions.width ||
@@ -212,19 +343,17 @@ export default function TryColorClient() {
       workerBusyRef.current = true;
       const scale = Math.min(
         1,
-        LIVE_FRAME_MAX_DIM / Math.max(video.videoWidth, video.videoHeight),
+        liveProfile.maxDim / Math.max(video.videoWidth, video.videoHeight),
       );
       const rw = Math.round(video.videoWidth * scale);
       const rh = Math.round(video.videoHeight * scale);
 
       const postFrame = (bitmap: ImageBitmap) => {
-        const { hex, intensity: currentIntensity } = colorRef.current;
         workerRef.current?.postMessage(
           {
             type: 'segment',
             frame: bitmap,
-            colorHex: hex,
-            intensity: currentIntensity,
+            request: requestRef.current,
             timestamp: performance.now(),
           },
           [bitmap],
@@ -234,7 +363,7 @@ export default function TryColorClient() {
       createImageBitmap(video, {
         resizeWidth: rw,
         resizeHeight: rh,
-        resizeQuality: 'high',
+        resizeQuality: 'medium',
       })
         .then(postFrame)
         .catch(() => createImageBitmap(video).then(postFrame))
@@ -245,15 +374,19 @@ export default function TryColorClient() {
           cleanupCameraState();
         });
     },
-    [cleanupCameraState, workerReady, dimensions.height, dimensions.width],
+    [cleanupCameraState, workerReady, dimensions.height, dimensions.width, liveProfile.maxDim],
   );
 
   const handleImageLoaded = useCallback(
     async (source: HTMLImageElement | HTMLCanvasElement) => {
+      const gen = ++uploadGenRef.current;
+      setLoadingLabel('Analysing your photo...');
       setLoading(true);
       setError(null);
       try {
         const hairMask = await segmentStill(source);
+        if (gen !== uploadGenRef.current) return;
+
         const canvas = document.createElement('canvas');
         canvas.width = source.width;
         canvas.height = source.height;
@@ -273,42 +406,55 @@ export default function TryColorClient() {
           source.width,
           source.height,
         );
-        applyRecolorToImageDataWithAlpha(
+        const nextContext = applyRecolorToImageDataWithAlpha(
           coloredData,
-          hairMask.alphaMask,
-          colorHex,
-          intensity,
+          hairMask,
+          requestRef.current,
         );
+
+        if (gen !== uploadGenRef.current) return;
 
         setDimensions({ width: source.width, height: source.height });
         setHasUploadedImage(true);
+        setHairAnalysis(nextContext.analysis);
+        setRecolorContext(nextContext);
         previewRef.current?.drawImageData(coloredData, source.width, source.height);
       } catch (err) {
+        if (gen !== uploadGenRef.current) return;
         setError('Could not process this image. Try a different photo.');
         console.error(err);
       } finally {
-        setLoading(false);
+        if (gen === uploadGenRef.current) {
+          setLoading(false);
+        }
       }
     },
-    [colorHex, intensity],
+    [],
   );
 
   useEffect(() => {
     if (mode !== 'upload' || !uploadDataRef.current) return;
-    const { originalImageData, hairMask, width, height } = uploadDataRef.current;
-    const coloredData = new ImageData(
-      new Uint8ClampedArray(originalImageData.data),
-      width,
-      height,
-    );
-    applyRecolorToImageDataWithAlpha(
-      coloredData,
-      hairMask.alphaMask,
-      colorHex,
-      intensity,
-    );
-    previewRef.current?.drawImageData(coloredData, width, height);
-  }, [colorHex, intensity, mode]);
+
+    const rafId = requestAnimationFrame(() => {
+      if (!uploadDataRef.current) return;
+      const { originalImageData, hairMask, width, height } = uploadDataRef.current;
+      const coloredData = new ImageData(
+        new Uint8ClampedArray(originalImageData.data),
+        width,
+        height,
+      );
+      const nextContext = applyRecolorToImageDataWithAlpha(
+        coloredData,
+        hairMask,
+        requestRef.current,
+      );
+      setHairAnalysis(nextContext.analysis);
+      setRecolorContext(nextContext);
+      previewRef.current?.drawImageData(coloredData, width, height);
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel, mode]);
 
   const startCamera = () => {
     setError(null);
@@ -322,11 +468,21 @@ export default function TryColorClient() {
     setMode('upload');
     setHasUploadedImage(false);
     uploadDataRef.current = null;
+    setHairAnalysis(null);
+    setRecolorContext(null);
   };
 
-  const handleColorChange = (hex: string, name: string | null) => {
-    setColorHex(hex);
-    setColorName(name);
+  const handleShadeChange = (shade: ShadePreset) => {
+    setSelectedShade(shade);
+  };
+
+  const handleBaseLevelModeChange = (nextMode: HairLevelMode) => {
+    setBaseLevelMode(nextMode);
+  };
+
+  const handleManualBaseLevelChange = (level: HairLevel) => {
+    setBaseLevelMode('manual');
+    setManualBaseLevel(level);
   };
 
   const handleDownload = useCallback(() => {
@@ -351,6 +507,12 @@ export default function TryColorClient() {
       0.9,
     );
   }, [mode]);
+
+  const detectedBaseLevel = hairAnalysis?.estimatedBaseLevel ?? null;
+  const effectiveBaseLevel =
+    recolorContext?.effectiveBaseLevel ??
+    (baseLevelMode === 'manual' ? manualBaseLevel : detectedBaseLevel);
+  const expectedResultNotice = recolorContext?.expectedResultNotice ?? null;
 
   // ── Landing ──────────────────────────────────────────────
   if (mode === 'landing') {
@@ -444,6 +606,8 @@ export default function TryColorClient() {
               setError(null);
               setHasUploadedImage(false);
               uploadDataRef.current = null;
+              setHairAnalysis(null);
+              setRecolorContext(null);
             }}
             className="text-zinc-400 hover:text-white text-sm flex items-center gap-2 transition-colors"
           >
@@ -473,7 +637,7 @@ export default function TryColorClient() {
         {loading && (
           <div className="flex items-center justify-center gap-3 py-12 text-zinc-400">
             <div className="w-5 h-5 border-2 border-zinc-700 border-t-accent rounded-full animate-spin" />
-            <span className="text-sm font-light">Loading hair detection model...</span>
+            <span className="text-sm font-light">{loadingLabel}</span>
           </div>
         )}
 
@@ -489,8 +653,8 @@ export default function TryColorClient() {
                   setMode('upload');
                 }}
                 active={mode === 'camera'}
-                hidden
-                onFacingModeChange={(m) => { facingModeRef.current = m; }}
+                targetFps={liveProfile.targetFps}
+                onFacingModeChange={setFacingMode}
               />
               <canvas
                 ref={displayCanvasRef}
@@ -517,16 +681,26 @@ export default function TryColorClient() {
         {/* Color controls panel */}
         <div className="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
           <ColorPalette
-            selectedHex={colorHex}
-            selectedName={colorName}
-            intensity={intensity}
-            onColorChange={handleColorChange}
-            onIntensityChange={setIntensity}
+            selectedHex={selectedShade.swatchHex}
+            selectedName={selectedShade.name}
+            previewStrength={previewStrength}
+            baseLevelMode={baseLevelMode}
+            manualBaseLevel={manualBaseLevel}
+            detectedBaseLevel={detectedBaseLevel}
+            effectiveBaseLevel={effectiveBaseLevel}
+            expectedResultNotice={expectedResultNotice}
+            onShadeChange={handleShadeChange}
+            onPreviewStrengthChange={setPreviewStrength}
+            onBaseLevelModeChange={handleBaseLevelModeChange}
+            onManualBaseLevelChange={handleManualBaseLevelChange}
           />
         </div>
 
         {/* Download */}
-        <ResultActions onDownload={handleDownload} />
+        <ResultActions
+          onDownload={handleDownload}
+          disabled={loading || (mode === 'upload' && !hasUploadedImage) || (mode === 'camera' && frameCountRef.current === 0)}
+        />
 
         {/* Mode switch */}
         <div className="flex justify-center gap-6 pb-6">

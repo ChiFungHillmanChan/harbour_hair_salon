@@ -2,25 +2,33 @@
 'use client';
 
 import { useRef, useEffect, useState } from 'react';
-import { LIVE_TARGET_FPS } from './constants';
 
 interface CameraViewProps {
   onFrame: (video: HTMLVideoElement) => void;
   onError: (error: string) => void;
   active: boolean;
+  targetFps?: number;
   /** Hide the video element; stream stays active for frame capture */
   hidden?: boolean;
   /** Called when the user flips between front/back camera */
   onFacingModeChange?: (mode: 'user' | 'environment') => void;
 }
 
-export function CameraView({ onFrame, onError, active, hidden, onFacingModeChange }: CameraViewProps) {
+export function CameraView({
+  onFrame,
+  onError,
+  active,
+  targetFps = 12,
+  hidden,
+  onFacingModeChange,
+}: CameraViewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const lastFrameTimeRef = useRef(0);
-  const frameIntervalMs = 1000 / LIVE_TARGET_FPS;
+  const [streamGeneration, setStreamGeneration] = useState(0);
+  const frameIntervalMs = 1000 / targetFps;
 
   // Stable refs for callbacks
   const onFrameRef = useRef(onFrame);
@@ -55,6 +63,7 @@ export function CameraView({ onFrame, onError, active, hidden, onFacingModeChang
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
+          setStreamGeneration((g) => g + 1);
         }
       } catch (err) {
         if (cancelled) return;
@@ -80,12 +89,14 @@ export function CameraView({ onFrame, onError, active, hidden, onFacingModeChang
     };
   }, [active, facingMode]);
 
-  // Frame capture loop — throttled to LIVE_TARGET_FPS
+  // Frame capture loop — restarts when stream changes (camera flip) or fps changes
   useEffect(() => {
-    if (!active) return;
+    if (!active || streamGeneration === 0) return;
 
     const video = videoRef.current;
     if (!video) return;
+
+    lastFrameTimeRef.current = 0;
 
     const throttledDispatch = () => {
       const now = performance.now();
@@ -112,7 +123,7 @@ export function CameraView({ onFrame, onError, active, hidden, onFacingModeChang
     };
     rafRef.current = requestAnimationFrame(captureLoop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [active, frameIntervalMs]);
+  }, [active, frameIntervalMs, streamGeneration]);
 
   const flipCamera = () => {
     setFacingMode((prev) => {

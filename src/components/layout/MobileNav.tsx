@@ -12,9 +12,10 @@ interface MobileNavProps {
     userId?: string;
     role?: string;
   } | null;
+  hasOffers?: boolean;
 }
 
-export function MobileNav({ session }: MobileNavProps) {
+export function MobileNav({ session, hasOffers = false }: MobileNavProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export function MobileNav({ session }: MobileNavProps) {
       </button>
 
       {/* Mobile Menu Overlay - Loaded dynamically */}
-      <MobileMenuOverlay isOpen={isOpen} onClose={closeMenu} session={session} />
+      <MobileMenuOverlay isOpen={isOpen} onClose={closeMenu} session={session} hasOffers={hasOffers} />
     </div>
   );
 }

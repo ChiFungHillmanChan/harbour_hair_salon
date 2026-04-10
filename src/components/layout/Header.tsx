@@ -2,9 +2,14 @@ import Link from 'next/link';
 import { getSession } from '@/app/lib/session';
 import { logout } from '@/app/actions/auth';
 import { MobileNav } from './MobileNav';
+import prisma from '@/app/lib/prisma';
 
 export async function Header() {
-  const session = await getSession();
+  const [session, activeOffersCount] = await Promise.all([
+    getSession(),
+    prisma.offer.count({ where: { isActive: true } }),
+  ]);
+  const hasOffers = activeOffersCount > 0;
 
   return (
     <header className="bg-black text-white sticky top-0 z-50">
@@ -17,7 +22,9 @@ export async function Header() {
 
         <nav className="hidden md:flex space-x-8 text-sm uppercase tracking-widest items-center">
           <Link href="/services" className="hover:text-accent transition-colors duration-300">Services</Link>
-          <Link href="/offers" className="hover:text-accent transition-colors duration-300">Offers</Link>
+          {hasOffers && (
+            <Link href="/offers" className="hover:text-accent transition-colors duration-300">Offers</Link>
+          )}
           <Link href="/#team" className="hover:text-accent transition-colors duration-300">Team</Link>
           <Link href="/contact" className="hover:text-accent transition-colors duration-300">Contact</Link>
           <Link href="/try-color" className="hover:text-accent transition-colors duration-300">Try Color</Link>
@@ -47,7 +54,7 @@ export async function Header() {
             Book Now
           </Link>
 
-          <MobileNav session={session} />
+          <MobileNav session={session} hasOffers={hasOffers} />
         </div>
       </div>
     </header>

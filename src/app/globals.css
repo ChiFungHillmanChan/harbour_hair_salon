@@ -7,6 +7,8 @@
   --brand-dark: #123c61;
   --accent: #C9A96E;
   --accent-light: #D4C5A0;
+  --font-sans-stack: "Avenir Next", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-serif-stack: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
 }
 
 @theme inline {
@@ -16,8 +18,8 @@
   --color-brand-dark: var(--brand-dark);
   --color-accent: var(--accent);
   --color-accent-light: var(--accent-light);
-  --font-sans: var(--font-inter);
-  --font-serif: var(--font-cormorant);
+  --font-sans: var(--font-sans-stack);
+  --font-serif: var(--font-serif-stack);
 }
 
 body {
@@ -64,6 +66,35 @@ body {
   100% { background-position: 200% 0; }
 }
 
+/* Apple-style hero intro: each layer uses the same long ease-out curve,
+   with staggered delays via utility classes below. */
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes hero-zoom {
+  from {
+    transform: scale(1.12);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes scroll-hint {
+  0%, 100% { transform: translate(-50%, 0); opacity: 0.45; }
+  50%      { transform: translate(-50%, 10px); opacity: 1; }
+}
+
 .animate-fade-in {
   animation: fade-in 0.8s ease-out forwards;
 }
@@ -74,6 +105,71 @@ body {
 
 .animate-slide-in-right {
   animation: slide-in-right 0.5s ease-out forwards;
+}
+
+/* Apple-inspired: a long, slow ease-out with a touch of over-damping. */
+.ease-apple {
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Hero intro utilities. Each .hero-rise-N uses a staggered delay. */
+.hero-rise {
+  opacity: 0;
+  animation: hero-rise 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.hero-rise-0 { animation-delay: 0.05s; }
+.hero-rise-1 { animation-delay: 0.18s; }
+.hero-rise-2 { animation-delay: 0.32s; }
+.hero-rise-3 { animation-delay: 0.48s; }
+.hero-rise-4 { animation-delay: 0.66s; }
+.hero-rise-5 { animation-delay: 0.86s; }
+
+.hero-zoom {
+  animation: hero-zoom 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.scroll-hint {
+  animation: scroll-hint 2.2s ease-in-out infinite;
+}
+
+/* Scroll reveal — toggled by Reveal.tsx via the `is-visible` class.
+   Uses the Apple ease curve. */
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition:
+    opacity 1s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 1s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-left {
+  transform: translateX(-40px);
+}
+.reveal-left.is-visible {
+  transform: translateX(0);
+}
+.reveal-scale {
+  transform: scale(0.94);
+}
+.reveal-scale.is-visible {
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-rise,
+  .hero-zoom,
+  .scroll-hint,
+  .reveal {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
 }
 
 /* Gold accent underline */

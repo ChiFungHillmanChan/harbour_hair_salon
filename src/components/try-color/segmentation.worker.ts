@@ -9,11 +9,16 @@ import {
   HAIR_CATEGORY_INDEX,
   MEDIAPIPE_WASM_CDN,
   SEGMENTER_MODEL_URL,
+  type HairAnalysis,
+  type RecolorRequest,
 } from './constants';
 import {
   applyRecolorToImageDataWithAlpha,
+  analyzeHair,
   normalizeHairConfidence,
+  smoothHairAnalysis,
 } from './colorMath';
+import { refineHairMask, type HairMaskData } from './HairSegmentation';
 
 let segmenter: ImageSegmenter | null = null;
 let busy = false;
@@ -25,8 +30,14 @@ let outputCtx: OffscreenCanvasRenderingContext2D | null = null;
 let outputImageData: ImageData | null = null;
 let workingAlphaMask: Float32Array | null = null;
 let smoothedAlphaMask: Float32Array | null = null;
+let smoothedCoreMask: Float32Array | null = null;
+let smoothedFringeMask: Float32Array | null = null;
+let smoothedAnalysis: HairAnalysis | null = null;
+let lastStableAnalysis: HairAnalysis | null = null;
 
 const TEMPORAL_BLEND = 0.35;
+const TEMPORAL_ANALYSIS_BLEND = 0.25;
+const MIN_ANALYSIS_CONFIDENCE = 0.15;
 
 function shouldPreferCpuDelegate() {
   const ua = self.navigator?.userAgent ?? '';
@@ -48,6 +59,16 @@ function ensureCanvases(width: number, height: number) {
     outputImageData = new ImageData(width, height);
     workingAlphaMask = new Float32Array(width * height);
     smoothedAlphaMask = new Float32Array(width * height);
+    smoothedCoreMask = new Float32Array(width * height);
+    smoothedFringeMask = new Float32Array(width * height);
+    smoothedAnalysis = null;
+    lastStableAnalysis = null;
+  }
+}
+
+function blendMask(dst: Float32Array, src: Float32Array, amount: number) {
+  for (let i = 0; i < dst.length; i++) {
+    dst[i] = src[i] * (1 - amount) + dst[i] * amount;
   }
 }
 
@@ -102,10 +123,18 @@ async function init() {
   self.postMessage({ type: 'ready' });
 }
 
+interface WorkerTimings {
+  drawAndReadback: number;
+  segment: number;
+  maskRefine: number;
+  recolor: number;
+  transfer: number;
+  total: number;
+}
+
 function processFrame(
   frame: ImageBitmap,
-  colorHex: string,
-  intensity: number,
+  request: RecolorRequest,
   timestamp: number,
 ) {
   if (!segmenter || busy) {
@@ -115,49 +144,98 @@ function processFrame(
 
   busy = true;
   const start = performance.now();
+  const timings: Partial<WorkerTimings> = {};
 
   try {
     const width = frame.width;
     const height = frame.height;
     ensureCanvases(width, height);
 
+    const t0 = performance.now();
     frameCtx!.drawImage(frame, 0, 0);
     frame.close();
-
     const sourceImageData = frameCtx!.getImageData(0, 0, width, height);
-    let processedBitmap: ImageBitmap | null = null;
+    timings.drawAndReadback = performance.now() - t0;
 
+    let processedBitmap: ImageBitmap | null = null;
+    let recolorSummary: ReturnType<typeof applyRecolorToImageDataWithAlpha> | null = null;
+
+    const tSeg = performance.now();
     segmenter.segmentForVideo(frameCanvas!, timestamp, (result) => {
       try {
-        copyHairAlphaMask(result, workingAlphaMask!);
+        timings.segment = performance.now() - tSeg;
 
-        for (let i = 0; i < workingAlphaMask!.length; i++) {
-          smoothedAlphaMask![i] =
-            workingAlphaMask![i] * (1 - TEMPORAL_BLEND) +
-            smoothedAlphaMask![i] * TEMPORAL_BLEND;
-        }
+        const tMask = performance.now();
+        copyHairAlphaMask(result, workingAlphaMask!);
+        const refinedMask = refineHairMask(sourceImageData, workingAlphaMask!);
+
+        blendMask(smoothedAlphaMask!, refinedMask.alphaMask, TEMPORAL_BLEND);
+        blendMask(smoothedCoreMask!, refinedMask.coreMask, TEMPORAL_BLEND);
+        blendMask(smoothedFringeMask!, refinedMask.fringeMask, TEMPORAL_BLEND);
+        timings.maskRefine = performance.now() - tMask;
+
+        const smoothedMask: HairMaskData = {
+          alphaMask: smoothedAlphaMask!,
+          coreMask: smoothedCoreMask!,
+          fringeMask: smoothedFringeMask!,
+          width,
+          height,
+        };
 
         outputImageData!.data.set(sourceImageData.data);
-        applyRecolorToImageDataWithAlpha(
+        const rawAnalysis = analyzeHair(outputImageData!, smoothedMask.alphaMask);
+        let analysisToUse = rawAnalysis;
+
+        if (rawAnalysis.confidence < MIN_ANALYSIS_CONFIDENCE && lastStableAnalysis) {
+          analysisToUse = lastStableAnalysis;
+        } else if (smoothedAnalysis) {
+          analysisToUse = smoothHairAnalysis(
+            smoothedAnalysis,
+            rawAnalysis,
+            TEMPORAL_ANALYSIS_BLEND,
+          );
+        }
+
+        smoothedAnalysis = analysisToUse;
+        if (analysisToUse.confidence >= MIN_ANALYSIS_CONFIDENCE) {
+          lastStableAnalysis = analysisToUse;
+        }
+
+        const tRecolor = performance.now();
+        const recolor = applyRecolorToImageDataWithAlpha(
           outputImageData!,
-          smoothedAlphaMask!,
-          colorHex,
-          intensity,
+          smoothedMask,
+          request,
+          { analysisOverride: analysisToUse },
         );
+        timings.recolor = performance.now() - tRecolor;
+
+        recolorSummary = recolor;
+
+        const tTransfer = performance.now();
         outputCtx!.putImageData(outputImageData!, 0, 0);
         processedBitmap = outputCanvas!.transferToImageBitmap();
+        timings.transfer = performance.now() - tTransfer;
       } finally {
         result.close();
       }
     });
 
-    if (!processedBitmap) {
+    if (!processedBitmap || !recolorSummary) {
       return;
     }
 
     const elapsed = performance.now() - start;
+    timings.total = elapsed;
+
     self.postMessage(
-      { type: 'frame', bitmap: processedBitmap, elapsed },
+      {
+        type: 'frame',
+        bitmap: processedBitmap,
+        elapsed,
+        recolor: recolorSummary,
+        timings,
+      },
       // @ts-expect-error transferable
       [processedBitmap],
     );
@@ -183,7 +261,7 @@ self.onmessage = (e: MessageEvent) => {
       });
     });
   } else if (type === 'segment') {
-    const { frame, colorHex, intensity, timestamp } = e.data;
-    processFrame(frame, colorHex, intensity, timestamp);
+    const { frame, request, timestamp } = e.data;
+    processFrame(frame, request, timestamp);
   }
 };

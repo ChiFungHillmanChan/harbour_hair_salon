@@ -11,9 +11,10 @@ interface MobileMenuOverlayProps {
     userId?: string;
     role?: string;
   } | null;
+  hasOffers?: boolean;
 }
 
-export default function MobileMenuOverlay({ isOpen, onClose, session }: MobileMenuOverlayProps) {
+export default function MobileMenuOverlay({ isOpen, onClose, session, hasOffers = false }: MobileMenuOverlayProps) {
   // No need for mounted state check since this component is dynamically imported with { ssr: false }
   // It will only ever render on the client where document.body is available
   
@@ -59,13 +60,15 @@ export default function MobileMenuOverlay({ isOpen, onClose, session }: MobileMe
           >
             Services
           </Link>
-          <Link
-            href="/offers"
-            className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
-            onClick={onClose}
-          >
-            Offers
-          </Link>
+          {hasOffers && (
+            <Link
+              href="/offers"
+              className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
+              onClick={onClose}
+            >
+              Offers
+            </Link>
+          )}
           <Link
             href="/#team"
             className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
