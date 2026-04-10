@@ -7,8 +7,7 @@ import {
   getPublishedPostBySlug,
   type BlogSection,
 } from '@/app/services/blog-service';
-
-const BASE_URL = 'https://harbourhairsalon.co.uk';
+import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
 export const revalidate = 3600;
 

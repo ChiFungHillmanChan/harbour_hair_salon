@@ -3,11 +3,12 @@ import prisma from '@/app/lib/prisma';
 import { getAllCategoryContent } from '@/app/services/category-content-service';
 import { getPublishedPosts } from '@/app/services/blog-service';
 import { getAllStylistsWithSlug } from '@/app/stylists/slug';
+import { SITE_URL } from '@/app/lib/site-url';
 
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = 'https://harbourhairsalon.co.uk';
+  const baseUrl = SITE_URL;
 
   const [
     latestService,

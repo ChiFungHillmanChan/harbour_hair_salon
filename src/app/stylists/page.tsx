@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getAllStylistsWithSlug } from './slug';
+import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
 export const metadata: Metadata = {
   title: 'Meet the Stylists',
@@ -15,8 +16,6 @@ export const metadata: Metadata = {
 };
 
 export const revalidate = 3600;
-
-const BASE_URL = 'https://harbourhairsalon.co.uk';
 
 export default async function StylistsIndexPage() {
   const stylists = await getAllStylistsWithSlug();

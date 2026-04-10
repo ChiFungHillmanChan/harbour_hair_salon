@@ -3,6 +3,7 @@ import Image from 'next/image';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
 import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
+import { SITE_URL } from '@/app/lib/site-url';
 
 export const metadata: Metadata = {
   title: 'Special Offers & Promotions in Leeds',
@@ -41,8 +42,8 @@ export default async function OffersPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://harbourhairsalon.co.uk' },
-              { '@type': 'ListItem', position: 2, name: 'Special Offers', item: 'https://harbourhairsalon.co.uk/offers' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Special Offers', item: `${SITE_URL}/offers` },
             ],
           }),
         }}

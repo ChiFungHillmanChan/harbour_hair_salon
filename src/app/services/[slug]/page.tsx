@@ -8,10 +8,9 @@ import {
   getCategoryContentBySlug,
 } from '@/app/services/category-content-service';
 import { Faq } from '@/components/seo/Faq';
+import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
 export const revalidate = 3600;
-
-const BASE_URL = 'https://harbourhairsalon.co.uk';
 
 export async function generateStaticParams() {
   const all = await getAllCategoryContent();

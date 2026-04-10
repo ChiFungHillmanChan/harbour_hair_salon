@@ -9,6 +9,7 @@ import {
   Hr,
   Preview,
 } from '@react-email/components';
+import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
 export type AppointmentWithDetails = {
   id: string;
@@ -24,7 +25,6 @@ interface BookingCancellationProps {
 
 const BRAND = '#174F7F';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
-const BASE_URL = 'https://harbourhairsalon.co.uk';
 
 export function BookingCancellation({ appointment }: BookingCancellationProps) {
   const dateFormatted = appointment.date.toLocaleDateString('en-GB', {

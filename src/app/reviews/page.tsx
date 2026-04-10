@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getApprovedReviews, getAggregateRating } from '@/app/services/review-service';
+import { SITE_URL } from '@/app/lib/site-url';
 
 export const metadata: Metadata = {
   title: 'Client Reviews',
@@ -56,8 +57,8 @@ export default async function ReviewsPage() {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://harbourhairsalon.co.uk' },
-      { '@type': 'ListItem', position: 2, name: 'Reviews', item: 'https://harbourhairsalon.co.uk/reviews' },
+      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+      { '@type': 'ListItem', position: 2, name: 'Reviews', item: `${SITE_URL}/reviews` },
     ],
   };
 
@@ -66,7 +67,7 @@ export default async function ReviewsPage() {
         '@context': 'https://schema.org',
         '@type': 'HairSalon',
         name: 'Harbour Hair Salon',
-        url: 'https://harbourhairsalon.co.uk',
+        url: SITE_URL,
         aggregateRating: {
           '@type': 'AggregateRating',
           ratingValue: agg.average,

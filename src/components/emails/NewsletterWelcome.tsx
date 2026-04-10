@@ -13,7 +13,7 @@ import {
 const BRAND = '#174F7F';
 const ACCENT = '#c9a96e';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
-const BASE_URL = 'https://harbourhairsalon.co.uk';
+import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
 export function NewsletterWelcome() {
   return (

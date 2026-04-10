@@ -10,6 +10,7 @@ import {
   buildSameAsArray,
 } from '@/app/services/site-settings-service';
 import { getFaqsByKey } from '@/app/services/faq-service';
+import { SITE_URL } from '@/app/lib/site-url';
 import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 
@@ -102,8 +103,8 @@ export default async function Home() {
     '@context': 'https://schema.org',
     '@type': 'HairSalon',
     name: 'Harbour Hair Salon',
-    url: 'https://harbourhairsalon.co.uk',
-    image: 'https://harbourhairsalon.co.uk/images/og-image.png',
+    url: SITE_URL,
+    image: `${SITE_URL}/images/og-image.png`,
     description:
       'Professional hair salon in Leeds city centre. Expert cuts, colours, perms and grooming by Hong Kong trained stylists.',
     address: {

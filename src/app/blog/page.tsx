@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getPublishedPosts } from '@/app/services/blog-service';
+import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
 export const metadata: Metadata = {
   title: 'The Harbour Journal',
@@ -16,8 +17,6 @@ export const metadata: Metadata = {
 };
 
 export const revalidate = 3600;
-
-const BASE_URL = 'https://harbourhairsalon.co.uk';
 
 function formatDate(date: Date) {
   return date.toLocaleDateString('en-GB', {

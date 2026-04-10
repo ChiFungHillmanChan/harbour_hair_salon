@@ -3,6 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Faq } from '@/components/seo/Faq';
 import { getFaqsByKey } from '@/app/services/faq-service';
+import { SITE_URL } from '@/app/lib/site-url';
 
 export const metadata: Metadata = {
   title: 'Contact & Find Us in Leeds City Centre',
@@ -44,8 +45,8 @@ export default async function ContactPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://harbourhairsalon.co.uk' },
-              { '@type': 'ListItem', position: 2, name: 'Contact', item: 'https://harbourhairsalon.co.uk/contact' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Contact', item: `${SITE_URL}/contact` },
             ],
           }),
         }}
@@ -57,7 +58,7 @@ export default async function ContactPage() {
             '@context': 'https://schema.org',
             '@type': 'HairSalon',
             name: 'Harbour Hair Salon',
-            url: 'https://harbourhairsalon.co.uk',
+            url: SITE_URL,
             telephone: '+447831830898',
             address: {
               '@type': 'PostalAddress',

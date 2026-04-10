@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next';
+import { SITE_URL } from '@/app/lib/site-url';
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -7,6 +8,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: ['/admin', '/auth/', '/appointments', '/api/', '/book'],
     },
-    sitemap: 'https://harbourhairsalon.co.uk/sitemap.xml',
+    sitemap: `${SITE_URL}/sitemap.xml`,
   };
 }

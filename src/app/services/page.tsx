@@ -46,6 +46,7 @@ import { ServiceList } from '@/components/services/ServiceList';
 import { Faq } from '@/components/seo/Faq';
 import { getAllCategoryContent } from '@/app/services/category-content-service';
 import { getFaqsByKey } from '@/app/services/faq-service';
+import { SITE_URL } from '@/app/lib/site-url';
 
 export default async function ServicesPage() {
   const [services, activeOffer, categoryContents, servicesFaqs] = await Promise.all([
@@ -116,8 +117,8 @@ export default async function ServicesPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://harbourhairsalon.co.uk' },
-              { '@type': 'ListItem', position: 2, name: 'Services & Pricing', item: 'https://harbourhairsalon.co.uk/services' },
+              { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+              { '@type': 'ListItem', position: 2, name: 'Services & Pricing', item: `${SITE_URL}/services` },
             ],
           }),
         }}

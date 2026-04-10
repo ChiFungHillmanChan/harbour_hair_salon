@@ -8,13 +8,14 @@ import {
   getSiteSettings,
   normalizeTwitterHandle,
 } from "@/app/services/site-settings-service";
+import { SITE_URL } from "@/app/lib/site-url";
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
   const twitterHandle = normalizeTwitterHandle(settings.twitterHandle);
 
   return {
-    metadataBase: new URL("https://harbourhairsalon.co.uk"),
+    metadataBase: new URL(SITE_URL),
     title: {
       default: "Harbour Hair Salon | Expert Hair Styling in Leeds",
       template: "%s | Harbour Hair Salon Leeds",

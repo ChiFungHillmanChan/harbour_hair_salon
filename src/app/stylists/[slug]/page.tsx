@@ -2,8 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getAllStylistsWithSlug, getStylistBySlug } from '../slug';
-
-const BASE_URL = 'https://harbourhairsalon.co.uk';
+import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
 export const revalidate = 3600;
 
