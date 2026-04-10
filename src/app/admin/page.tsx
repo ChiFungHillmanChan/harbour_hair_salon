@@ -18,7 +18,7 @@ export default async function AdminDashboard() {
         },
       },
       include: {
-        user: true,
+        user: { select: { id: true, name: true, email: true } },
         stylist: true,
         service: true,
       },

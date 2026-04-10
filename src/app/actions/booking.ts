@@ -68,6 +68,7 @@ export async function fetchSlots(stylistId: string, date: Date, serviceDuration:
 }
 
 export async function validateDiscountCode(code: string) {
+  await verifySession();
   if (!code) return { valid: false, error: 'Code is empty' };
 
   try {
@@ -200,11 +201,19 @@ export async function cancelAppointment(appointmentId: string) {
 
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    include: { user: true, stylist: true, service: true },
+    include: {
+      user: { select: { email: true, name: true } },
+      stylist: true,
+      service: true,
+    },
   });
 
   if (!appointment || appointment.userId !== session.userId) {
     return { success: false, error: 'Appointment not found' };
+  }
+
+  if (appointment.status !== 'CONFIRMED') {
+    return { success: false, error: 'Only confirmed appointments can be cancelled' };
   }
 
   const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
@@ -233,11 +242,19 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
 
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    include: { user: true, stylist: true, service: true },
+    include: {
+      user: { select: { email: true, name: true } },
+      stylist: true,
+      service: true,
+    },
   });
 
   if (!appointment || appointment.userId !== session.userId) {
     return { success: false, error: 'Appointment not found' };
+  }
+
+  if (appointment.status !== 'CONFIRMED') {
+    return { success: false, error: 'Only confirmed appointments can be rescheduled' };
   }
 
   const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
@@ -290,7 +307,11 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
 
     const updated = await prisma.appointment.findUnique({
       where: { id: appointmentId },
-      include: { user: true, stylist: true, service: true },
+      include: {
+        user: { select: { email: true, name: true } },
+        stylist: true,
+        service: true,
+      },
     });
 
     if (updated) {

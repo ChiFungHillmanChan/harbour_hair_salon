@@ -8,6 +8,7 @@ export default async function AdminUsersPage() {
   const session = await verifySession();
   const admins = await prisma.user.findMany({
     where: { role: 'ADMIN' },
+    select: { id: true, name: true, email: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
   });
 
