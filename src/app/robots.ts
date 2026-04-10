@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/admin', '/auth/', '/appointments', '/api/'],
+      disallow: ['/admin', '/auth/', '/appointments', '/api/', '/book'],
     },
     sitemap: 'https://harbourhairsalon.co.uk/sitemap.xml',
   };

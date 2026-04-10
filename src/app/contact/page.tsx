@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
+import { Faq } from '@/components/seo/Faq';
+import { getFaqsByKey } from '@/app/services/faq-service';
 
 export const metadata: Metadata = {
   title: 'Contact & Find Us in Leeds City Centre',
@@ -12,17 +14,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const contactFaqs = await getFaqsByKey('contact');
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
           <Image
-            src="/images/hero-salon.png"
+            src="/images/hero-salon.webp"
             alt="Harbour Hair Salon location in Leeds Central Arcade"
             fill
             priority
+            sizes="100vw"
             className="object-cover opacity-40"
           />
         </div>
@@ -191,6 +195,13 @@ export default function ContactPage() {
           </Link>
         </div>
       </div>
+      {contactFaqs.length > 0 && (
+        <Faq
+          title="Visiting Harbour Hair Salon"
+          intro="Getting here, contacting us, and managing your appointment."
+          items={contactFaqs.map((f) => ({ question: f.question, answer: f.answer }))}
+        />
+      )}
     </div>
   );
 }

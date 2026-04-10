@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
+import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
 
 export const metadata: Metadata = {
   title: 'Special Offers & Promotions in Leeds',
@@ -50,10 +51,11 @@ export default async function OffersPage() {
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
           <Image
-            src="/images/offers-hero.png"
+            src="/images/offers-hero.webp"
             alt="Special offers at Harbour Hair Salon Leeds"
             fill
             priority
+            sizes="100vw"
             className="object-cover opacity-40"
           />
         </div>
@@ -71,10 +73,10 @@ export default async function OffersPage() {
       {/* Offers Grid */}
       <section className="container mx-auto px-4 py-24">
         {offers.length === 0 ? (
-          <div className="text-center py-20 max-w-2xl mx-auto border border-zinc-100 rounded-sm bg-zinc-50">
+          <div className="text-center py-20 max-w-2xl mx-auto border border-zinc-100 rounded-sm bg-zinc-50 mb-16">
             <h3 className="text-2xl font-serif text-zinc-400 mb-2">Quiet Season</h3>
-            <p className="text-zinc-500 font-light">
-              We are currently curating new experiences. Please check back soon for exclusive offers.
+            <p className="text-zinc-500 font-light mb-6">
+              We are currently curating new experiences. Be the first to know when new offers drop by joining the list below.
             </p>
           </div>
         ) : (
@@ -128,6 +130,15 @@ export default async function OffersPage() {
         )}
       </section>
 
+      {/* Newsletter capture */}
+      <section className="container mx-auto px-4 pb-24 max-w-3xl">
+        <NewsletterForm
+          variant="card"
+          source="offers-page"
+          title="Never miss an offer"
+          description="Join our list to hear about seasonal promotions, new services and early-access bookings before they go public."
+        />
+      </section>
     </div>
   );
 }

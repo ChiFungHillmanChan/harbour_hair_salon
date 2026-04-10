@@ -4,6 +4,8 @@ import { BookingConfirmation } from '@/components/emails/BookingConfirmation';
 import { BookingCancellation } from '@/components/emails/BookingCancellation';
 import { BookingReschedule } from '@/components/emails/BookingReschedule';
 import { AppointmentReminder } from '@/components/emails/AppointmentReminder';
+import { ReviewRequest, type ReviewRequestAppointment } from '@/components/emails/ReviewRequest';
+import { NewsletterWelcome } from '@/components/emails/NewsletterWelcome';
 
 export type AppointmentWithDetails = {
   id: string;
@@ -77,5 +79,33 @@ export async function sendAppointmentReminder(appointment: AppointmentWithDetail
     });
   } catch (error) {
     console.error('Failed to send appointment reminder email:', error);
+  }
+}
+
+export async function sendReviewRequest(appointment: ReviewRequestAppointment): Promise<void> {
+  try {
+    const resend = getResendClient();
+    await resend.emails.send({
+      from: FROM,
+      to: appointment.user.email,
+      subject: 'How was your visit? — Harbour Hair Salon',
+      react: ReviewRequest({ appointment }),
+    });
+  } catch (error) {
+    console.error('Failed to send review request email:', error);
+  }
+}
+
+export async function sendNewsletterWelcome(email: string): Promise<void> {
+  try {
+    const resend = getResendClient();
+    await resend.emails.send({
+      from: FROM,
+      to: email,
+      subject: 'Welcome to Harbour Hair Salon',
+      react: NewsletterWelcome(),
+    });
+  } catch (error) {
+    console.error('Failed to send newsletter welcome email:', error);
   }
 }

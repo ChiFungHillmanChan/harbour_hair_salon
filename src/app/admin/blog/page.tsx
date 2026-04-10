@@ -1,0 +1,154 @@
+import Link from 'next/link';
+import { getAllPostsForAdmin } from '@/app/services/blog-service';
+import { deleteBlogPost, toggleBlogPostStatus } from '@/app/actions/admin-blog';
+
+export const dynamic = 'force-dynamic';
+
+function formatDate(date: Date) {
+  return date.toLocaleDateString('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+export default async function AdminBlogListPage() {
+  const posts = await getAllPostsForAdmin();
+
+  const publishedCount = posts.filter((p) => p.status === 'PUBLISHED').length;
+  const draftCount = posts.length - publishedCount;
+
+  return (
+    <div className="p-8">
+      <div className="flex items-start justify-between mb-8 gap-6">
+        <div>
+          <h1 className="text-3xl font-serif font-bold text-zinc-900">Journal</h1>
+          <p className="text-zinc-700 mt-2">
+            Write, edit and publish blog posts. Published posts appear on the public{' '}
+            <Link href="/blog" className="underline hover:text-zinc-900">
+              journal page
+            </Link>
+            .
+          </p>
+        </div>
+        <Link
+          href="/admin/blog/new"
+          className="shrink-0 bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded"
+        >
+          + New post
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
+          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Total</p>
+          <p className="text-3xl font-bold text-zinc-900 mt-1">{posts.length}</p>
+        </div>
+        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
+          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Published</p>
+          <p className="text-3xl font-bold text-emerald-600 mt-1">{publishedCount}</p>
+        </div>
+        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
+          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Drafts</p>
+          <p className="text-3xl font-bold text-amber-600 mt-1">{draftCount}</p>
+        </div>
+      </div>
+
+      {posts.length === 0 ? (
+        <div className="bg-white border border-zinc-200 rounded-lg p-12 text-center">
+          <p className="text-zinc-500 mb-6">No posts yet. Write your first one.</p>
+          <Link
+            href="/admin/blog/new"
+            className="inline-block bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded"
+          >
+            + New post
+          </Link>
+        </div>
+      ) : (
+        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-zinc-200 bg-zinc-50">
+                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-6 py-3">
+                  Title
+                </th>
+                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3">
+                  Status
+                </th>
+                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3">
+                  Published
+                </th>
+                <th className="text-right text-xs uppercase tracking-wider text-zinc-500 font-medium px-6 py-3">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {posts.map((post) => (
+                <tr key={post.id} className="hover:bg-zinc-50">
+                  <td className="px-6 py-4">
+                    <div>
+                      <p className="font-medium text-zinc-900">{post.title}</p>
+                      <p className="text-xs text-zinc-500 mt-0.5 font-mono">/{post.slug}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <span
+                      className={`inline-block px-2.5 py-1 text-xs uppercase tracking-wider font-bold rounded-full ${
+                        post.status === 'PUBLISHED'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-amber-100 text-amber-700'
+                      }`}
+                    >
+                      {post.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 text-sm text-zinc-600">
+                    {formatDate(post.publishedAt)}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {post.status === 'PUBLISHED' && (
+                        <Link
+                          href={`/blog/${post.slug}`}
+                          target="_blank"
+                          className="text-xs font-medium text-zinc-600 hover:text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                        >
+                          View
+                        </Link>
+                      )}
+                      <Link
+                        href={`/admin/blog/${post.id}/edit`}
+                        className="text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                      >
+                        Edit
+                      </Link>
+                      <form action={toggleBlogPostStatus}>
+                        <input type="hidden" name="id" value={post.id} />
+                        <button
+                          type="submit"
+                          className="text-xs font-medium px-3 py-1.5 rounded transition-colors text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                        >
+                          {post.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
+                        </button>
+                      </form>
+                      <form action={deleteBlogPost}>
+                        <input type="hidden" name="id" value={post.id} />
+                        <button
+                          type="submit"
+                          className="text-xs font-medium px-3 py-1.5 rounded transition-colors text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,7 +1,12 @@
 import React from 'react';
 import Link from 'next/link';
+import prisma from '@/app/lib/prisma';
+import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
 
-export function Footer() {
+export async function Footer() {
+  const activeOffersCount = await prisma.offer.count({ where: { isActive: true } });
+  const hasOffers = activeOffersCount > 0;
+
   return (
     <footer className="bg-zinc-900 text-white" id="contact">
       {/* Booking CTA strip */}
@@ -16,6 +21,22 @@ export function Footer() {
           >
             Book Appointment
           </Link>
+        </div>
+      </div>
+
+      {/* Newsletter strip */}
+      <div className="border-b border-zinc-800 bg-zinc-950">
+        <div className="container mx-auto px-4 py-14 max-w-xl text-center">
+          <div className="w-12 h-[2px] bg-accent mx-auto mb-5" />
+          <h3 className="text-2xl md:text-3xl font-serif text-white tracking-tight mb-3">
+            Stay in the loop
+          </h3>
+          <p className="text-zinc-400 font-light leading-relaxed mb-6 text-sm">
+            Seasonal offers and stylist tips, straight to your inbox. No spam, unsubscribe any time.
+          </p>
+          <div className="max-w-sm mx-auto">
+            <NewsletterForm variant="inline" source="footer" />
+          </div>
         </div>
       </div>
 
@@ -37,7 +58,12 @@ export function Footer() {
             <h4 className="text-sm uppercase tracking-widest font-bold mb-6 text-accent">Quick Links</h4>
             <ul className="space-y-3 text-sm text-zinc-400">
               <li><Link href="/services" className="hover:text-white transition-colors">Services & Pricing</Link></li>
-              <li><Link href="/offers" className="hover:text-white transition-colors">Special Offers</Link></li>
+              {hasOffers && (
+                <li><Link href="/offers" className="hover:text-white transition-colors">Special Offers</Link></li>
+              )}
+              <li><Link href="/stylists" className="hover:text-white transition-colors">Our Stylists</Link></li>
+              <li><Link href="/reviews" className="hover:text-white transition-colors">Client Reviews</Link></li>
+              <li><Link href="/blog" className="hover:text-white transition-colors">Journal</Link></li>
               <li><Link href="/book" className="hover:text-white transition-colors">Book Online</Link></li>
               <li><Link href="/contact" className="hover:text-white transition-colors">Contact Us</Link></li>
             </ul>

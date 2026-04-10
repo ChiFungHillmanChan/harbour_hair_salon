@@ -43,11 +43,16 @@ async function getGlobalOffer() {
 }
 
 import { ServiceList } from '@/components/services/ServiceList';
+import { Faq } from '@/components/seo/Faq';
+import { getAllCategoryContent } from '@/app/services/category-content-service';
+import { getFaqsByKey } from '@/app/services/faq-service';
 
 export default async function ServicesPage() {
-  const [services, activeOffer] = await Promise.all([
+  const [services, activeOffer, categoryContents, servicesFaqs] = await Promise.all([
     getServices(),
-    getGlobalOffer()
+    getGlobalOffer(),
+    getAllCategoryContent(),
+    getFaqsByKey('services-master'),
   ]);
   
   // Group services by category
@@ -121,10 +126,11 @@ export default async function ServicesPage() {
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
           <Image
-            src="/images/services-hero.png"
+            src="/images/services-hero.webp"
             alt="Hair styling services at Harbour Hair Salon Leeds"
             fill
             priority
+            sizes="100vw"
             className="object-cover opacity-40"
           />
         </div>
@@ -150,10 +156,13 @@ export default async function ServicesPage() {
           </div>
         )}
 
-        <ServiceList 
-          groupedServices={groupedServices} 
-          categories={categories} 
-          activeOffer={activeOffer} 
+        <ServiceList
+          groupedServices={groupedServices}
+          categories={categories}
+          activeOffer={activeOffer}
+          categorySlugs={Object.fromEntries(
+            categoryContents.map((c) => [c.category, c.slug])
+          )}
         />
 
         <div className="mt-20 text-center">
@@ -165,6 +174,13 @@ export default async function ServicesPage() {
            </Link>
         </div>
       </div>
+      {servicesFaqs.length > 0 && (
+        <Faq
+          title="Service FAQs"
+          intro="Common questions about our haircuts, colouring, perms and treatments in Leeds."
+          items={servicesFaqs.map((f) => ({ question: f.question, answer: f.answer }))}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cancelAppointment } from '@/app/actions/booking';
@@ -13,6 +14,7 @@ type SerializedAppointment = {
   stylistId: string;
   service: { name: string; price: number; duration: number };
   serviceId: string;
+  hasReview?: boolean;
 };
 
 interface AppointmentCardProps {
@@ -109,6 +111,18 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
                   {cancelling ? 'Cancelling...' : 'Cancel'}
                 </button>
               </div>
+            )}
+
+            {!isUpcoming && appointment.status !== 'CANCELLED' && !appointment.hasReview && (
+              <Link
+                href={`/reviews/new?appointmentId=${appointment.id}`}
+                className="px-4 py-2 text-sm bg-accent text-black rounded-md font-medium hover:bg-accent-light transition-colors"
+              >
+                Leave a review
+              </Link>
+            )}
+            {!isUpcoming && appointment.hasReview && (
+              <span className="text-xs text-zinc-400 italic">Review submitted</span>
             )}
           </div>
         </div>

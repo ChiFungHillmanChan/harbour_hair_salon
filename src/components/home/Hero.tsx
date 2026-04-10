@@ -1,62 +1,109 @@
+'use client';
+
 import Image from 'next/image';
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 
 export function Hero() {
+  const bgRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) return;
+
+    let rafId = 0;
+    const onScroll = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        const scrollY = window.scrollY;
+        const bg = bgRef.current;
+        const content = contentRef.current;
+        if (bg) {
+          // Parallax background: moves slower than scroll and subtly zooms.
+          bg.style.transform = `translate3d(0, ${scrollY * 0.35}px, 0) scale(${1 + scrollY * 0.0005})`;
+        }
+        if (content) {
+          // Content fades + lifts slightly as user scrolls — Apple-style.
+          const fade = Math.max(0, 1 - scrollY / 600);
+          content.style.opacity = String(fade);
+          content.style.transform = `translate3d(0, ${scrollY * 0.18}px, 0)`;
+        }
+        rafId = 0;
+      });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, []);
+
   return (
-    <section className="relative h-[90vh] min-h-[650px] flex items-center justify-center bg-zinc-900 text-white overflow-hidden">
-      {/* Background Image */}
-      <div className="absolute inset-0">
-        <Image
-          src="/images/hero-salon.png"
-          alt="Harbour Hair Salon interior in Leeds Central Arcade"
-          fill
-          priority
-          className="object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30" />
+    <section className="relative h-[78vh] min-h-[520px] md:h-[100vh] md:min-h-[680px] flex items-center justify-center bg-zinc-900 text-white overflow-hidden">
+      {/* Background layer with parallax + initial slow zoom */}
+      <div ref={bgRef} className="absolute inset-0 will-change-transform">
+        <div className="absolute inset-0 hero-zoom">
+          <Image
+            src="/images/hero-salon.webp"
+            alt="Harbour Hair Salon interior in Leeds Central Arcade"
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
+          />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-black/30" />
+        {/* Soft vignette */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,transparent_55%,rgba(0,0,0,0.65)_100%)]" />
       </div>
 
-      <div className="relative z-10 text-center max-w-4xl px-4 animate-fade-in">
-        {/* Gold accent line */}
-        <div className="w-16 h-[2px] bg-accent mx-auto mb-8" />
+      {/* Content layer */}
+      <div
+        ref={contentRef}
+        className="relative z-10 text-center max-w-4xl px-4 will-change-transform"
+      >
+        <div className="hero-rise hero-rise-0 w-12 md:w-16 h-[2px] bg-accent mx-auto mb-5 md:mb-8" />
 
-        <p className="text-sm uppercase tracking-[0.3em] text-accent mb-6 font-medium">
+        <p className="hero-rise hero-rise-1 text-[11px] md:text-sm uppercase tracking-[0.3em] md:tracking-[0.35em] text-accent mb-4 md:mb-6 font-medium">
           Leeds City Centre
         </p>
 
-        <h1 className="text-5xl md:text-7xl lg:text-8xl font-serif mb-6 tracking-tight leading-[0.95]">
-          Expert Hair
-          <br />
-          <span className="italic text-zinc-300">Styling</span>
+        <h1 className="text-[2.75rem] md:text-7xl lg:text-8xl font-serif mb-5 md:mb-6 tracking-tight leading-[0.95]">
+          <span className="hero-rise hero-rise-2 block">Expert Hair</span>
+          <span className="hero-rise hero-rise-3 block italic text-zinc-300">Styling</span>
         </h1>
 
-        <p className="text-lg md:text-xl text-zinc-300 mb-10 max-w-2xl mx-auto font-light leading-relaxed">
+        <p className="hero-rise hero-rise-4 text-base md:text-xl text-zinc-300 mb-8 md:mb-10 max-w-2xl mx-auto font-light leading-relaxed px-2">
           Tailored cuts, colours and grooming by Hong Kong trained stylists.
           Precision and artistry in every appointment.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <div className="hero-rise hero-rise-5 flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
           <Link
             href="/book"
-            className="inline-block bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-300"
+            className="group inline-flex items-center justify-center gap-2 bg-accent text-black px-7 md:px-10 py-3 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.18em] md:tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-500 ease-apple hover:shadow-[0_20px_50px_-15px_rgba(201,169,110,0.6)] hover:-translate-y-0.5"
           >
             Book Appointment
+            <svg className="w-4 h-4 transition-transform duration-500 ease-apple group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
           </Link>
           <Link
             href="/services"
-            className="inline-block border border-white/40 text-white px-10 py-4 text-sm uppercase tracking-[0.2em] font-medium hover:bg-white/10 transition-all duration-300"
+            className="inline-flex items-center justify-center border border-white/40 text-white px-7 md:px-10 py-3 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.18em] md:tracking-[0.2em] font-medium hover:bg-white/10 hover:border-white/70 transition-all duration-500 ease-apple"
           >
             View Services
           </Link>
         </div>
 
-        {/* Gold accent line */}
-        <div className="w-16 h-[2px] bg-accent mx-auto mt-12" />
+        <div className="hero-rise hero-rise-5 w-12 md:w-16 h-[2px] bg-accent mx-auto mt-8 md:mt-12" />
       </div>
 
-      {/* Scroll indicator */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
-        <svg className="w-6 h-6 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      {/* Scroll indicator — pinned to viewport, parallax-independent */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 scroll-hint pointer-events-none">
+        <svg className="w-6 h-6 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
         </svg>
       </div>

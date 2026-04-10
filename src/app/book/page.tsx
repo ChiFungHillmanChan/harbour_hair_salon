@@ -6,6 +6,7 @@ export const metadata = {
   title: 'Book Your Hair Appointment in Leeds',
   description: 'Book your next hair appointment online at Harbour Hair Salon, Leeds city centre. Choose your service, stylist and time.',
   alternates: { canonical: '/book' },
+  robots: { index: false, follow: true },
   openGraph: {
     title: 'Book Your Appointment | Harbour Hair Salon Leeds',
     description: 'Book your next hair appointment online. Choose your service, stylist and time.',
@@ -45,10 +46,11 @@ export default async function BookPage() {
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
           <Image
-            src="/images/hero-salon.png"
+            src="/images/hero-salon.webp"
             alt="Book your appointment at Harbour Hair Salon Leeds"
             fill
             priority
+            sizes="100vw"
             className="object-cover opacity-40"
           />
         </div>

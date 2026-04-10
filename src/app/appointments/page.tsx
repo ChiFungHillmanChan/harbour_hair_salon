@@ -6,6 +6,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'My Bookings | Harbour Hair Salon',
   description: 'View, cancel, or reschedule your hair appointments.',
+  robots: { index: false, follow: false },
 };
 
 export default async function AppointmentsPage() {
@@ -13,7 +14,11 @@ export default async function AppointmentsPage() {
 
   const appointments = await prisma.appointment.findMany({
     where: { userId: session.userId },
-    include: { stylist: true, service: true },
+    include: {
+      stylist: true,
+      service: true,
+      review: { select: { id: true } },
+    },
     orderBy: { date: 'desc' },
   });
 
@@ -29,6 +34,7 @@ export default async function AppointmentsPage() {
       ...a,
       date: a.date.toISOString(),
       service: { ...a.service, price: Number(a.service.price) },
+      hasReview: Boolean(a.review),
     }));
 
   return (

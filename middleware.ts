@@ -44,6 +44,13 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (path.startsWith('/reviews/new')) {
+    if (!session?.userId) {
+      const target = `/auth/signin?redirect=${encodeURIComponent(path + request.nextUrl.search)}`;
+      return NextResponse.redirect(new URL(target, request.url));
+    }
+  }
+
   // Sliding session: refresh token if less than 7 days remaining
   const response = NextResponse.next();
   if (session?.userId && key) {
@@ -70,5 +77,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/appointments/:path*', '/book/:path*'],
+  matcher: ['/admin/:path*', '/appointments/:path*', '/book/:path*', '/reviews/new'],
 };

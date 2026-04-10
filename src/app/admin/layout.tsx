@@ -26,14 +26,35 @@ export default async function AdminLayout({
           <Link href="/admin" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
             Schedule
           </Link>
+          <Link href="/admin/services" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Services & Pricing
+          </Link>
+          <Link href="/admin/categories" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Category Pages
+          </Link>
+          <Link href="/admin/stylists" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Stylists
+          </Link>
+          <Link href="/admin/faqs" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            FAQs
+          </Link>
           <Link href="/admin/discounts" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
             Discounts
           </Link>
           <Link href="/admin/offers" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
             Offers
           </Link>
+          <Link href="/admin/reviews" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Reviews
+          </Link>
+          <Link href="/admin/blog" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Journal
+          </Link>
           <Link href="/admin/users" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
             Admin Users
+          </Link>
+          <Link href="/admin/settings" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Site Settings
           </Link>
         </nav>
 

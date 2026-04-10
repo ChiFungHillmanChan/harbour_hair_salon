@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 import prisma from '@/app/lib/prisma';
-import { sendAppointmentReminder } from '@/app/services/email-service';
+import { sendAppointmentReminder, sendReviewRequest } from '@/app/services/email-service';
 
 function safeCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -66,5 +66,65 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  return NextResponse.json({ sent: sentIds.length, failed: failedIds.length, total: appointments.length });
+  // Review request emails: past appointments from 1-14 days ago without a review
+  // or an already-sent request. Two-week cutoff keeps the flywheel fresh, not spammy.
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+  const pastAppointments = await prisma.appointment.findMany({
+    where: {
+      status: 'CONFIRMED',
+      reviewRequestSent: false,
+      date: {
+        gte: fourteenDaysAgo,
+        lte: oneDayAgo,
+      },
+      review: null,
+    },
+    include: {
+      user: { select: { email: true, name: true } },
+      stylist: { select: { name: true } },
+      service: { select: { name: true } },
+    },
+    take: 100,
+  });
+
+  const reviewSentIds: string[] = [];
+  const reviewFailedIds: string[] = [];
+
+  for (const appointment of pastAppointments) {
+    try {
+      await sendReviewRequest({
+        id: appointment.id,
+        date: appointment.date,
+        user: appointment.user,
+        stylist: appointment.stylist,
+        service: appointment.service,
+      });
+      reviewSentIds.push(appointment.id);
+    } catch (error) {
+      console.error(`Failed to send review request for appointment ${appointment.id}:`, error);
+      reviewFailedIds.push(appointment.id);
+    }
+  }
+
+  if (reviewSentIds.length > 0) {
+    await prisma.appointment.updateMany({
+      where: { id: { in: reviewSentIds } },
+      data: { reviewRequestSent: true },
+    });
+  }
+
+  return NextResponse.json({
+    reminders: {
+      sent: sentIds.length,
+      failed: failedIds.length,
+      total: appointments.length,
+    },
+    reviewRequests: {
+      sent: reviewSentIds.length,
+      failed: reviewFailedIds.length,
+      total: pastAppointments.length,
+    },
+  });
 }
