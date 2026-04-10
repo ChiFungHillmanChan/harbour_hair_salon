@@ -6,6 +6,16 @@ export function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 }
 
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function smoothstep(edge0: number, edge1: number, value: number): number {
+  if (edge0 === edge1) return value >= edge1 ? 1 : 0;
+  const t = clamp01((value - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
+
 /** RGB (0-255) → HSL (h: 0-360, s: 0-1, l: 0-1). */
 export function rgbToHsl(
   r: number,
@@ -75,6 +85,26 @@ export function recolorPixel(
   return hslToRgb(newH, newS, origL);
 }
 
+/** Get HSL saturation (0-1) for a hex color. Used to detect achromatic/light colors. */
+export function getHexSaturation(hex: string): number {
+  const [r, g, b] = hexToRgb(hex);
+  const [, s] = rgbToHsl(r, g, b);
+  return s;
+}
+
+/** Reduce recolor strength for low-saturation shades so blondes/greys stay believable. */
+export function getHexBlendScale(hex: string): number {
+  return getHexSaturation(hex) < 0.15 ? 0.6 : 1;
+}
+
+/** Normalize raw hair confidence into a soft alpha mask in the [0, 1] range. */
+export function normalizeHairConfidence(
+  value: number,
+  floor = 0.2,
+): number {
+  return smoothstep(floor, 1, value);
+}
+
 /**
  * Apply recolor to an ImageData using a Uint8Array category mask.
  * Modifies imageData pixels in-place. hairCategory is the mask value
@@ -104,5 +134,43 @@ export function applyRecolorToImageData(
     pixels[idx] = nr;
     pixels[idx + 1] = ng;
     pixels[idx + 2] = nb;
+  }
+}
+
+/**
+ * Apply recolor to an ImageData using a soft alpha mask.
+ * Each alpha value should be in [0, 1], where 0 = no recolor and 1 = full recolor.
+ */
+export function applyRecolorToImageDataWithAlpha(
+  imageData: ImageData,
+  alphaMask: Float32Array,
+  targetHex: string,
+  intensity: number,
+): void {
+  const [tR, tG, tB] = hexToRgb(targetHex);
+  const [targetH, targetS] = rgbToHsl(tR, tG, tB);
+  const blendScale = getHexBlendScale(targetHex);
+  const pixels = imageData.data;
+
+  for (let i = 0; i < alphaMask.length; i++) {
+    const alpha = clamp01(alphaMask[i] * blendScale);
+    if (alpha <= 0) continue;
+
+    const idx = i * 4;
+    const origR = pixels[idx];
+    const origG = pixels[idx + 1];
+    const origB = pixels[idx + 2];
+    const [nextR, nextG, nextB] = recolorPixel(
+      origR,
+      origG,
+      origB,
+      targetH,
+      targetS,
+      intensity,
+    );
+
+    pixels[idx] = Math.round(origR + (nextR - origR) * alpha);
+    pixels[idx + 1] = Math.round(origG + (nextG - origG) * alpha);
+    pixels[idx + 2] = Math.round(origB + (nextB - origB) * alpha);
   }
 }

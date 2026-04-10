@@ -5,6 +5,7 @@ import { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 export interface PreviewCanvasHandle {
   drawBitmap: (bitmap: ImageBitmap) => void;
   drawImageData: (data: ImageData, width: number, height: number) => void;
+  clearCanvas: () => void;
   downloadJpeg: () => void;
   getCanvas: () => HTMLCanvasElement | null;
 }
@@ -47,6 +48,13 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
         canvas.height = h;
         ctxRef.current = canvas.getContext('2d');
         ctxRef.current?.putImageData(data, 0, 0);
+      },
+
+      clearCanvas() {
+        const ctx = ctxRef.current;
+        const canvas = canvasRef.current;
+        if (!ctx || !canvas) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
       },
 
       downloadJpeg() {

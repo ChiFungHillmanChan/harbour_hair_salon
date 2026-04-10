@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 
 interface UploadDropzoneProps {
-  onImageLoaded: (image: HTMLImageElement) => void;
+  onImageLoaded: (image: HTMLImageElement | HTMLCanvasElement) => void;
 }
 
 const MAX_SIZE = 1024;
@@ -42,15 +42,24 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
       return;
     }
 
+    const objectUrl = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      const resized = resizeImage(img);
-      const resizedImg = new Image();
-      resizedImg.onload = () => onImageLoaded(resizedImg);
-      resizedImg.src = resized.toDataURL('image/jpeg', 0.9);
+      try {
+        if (img.width > MAX_SIZE || img.height > MAX_SIZE) {
+          onImageLoaded(resizeImage(img));
+        } else {
+          onImageLoaded(img);
+        }
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
-    img.onerror = () => setError('Could not read this image. Try another file.');
-    img.src = URL.createObjectURL(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      setError('Could not read this image. Try another file.');
+    };
+    img.src = objectUrl;
   };
 
   const handleDrop = (e: React.DragEvent) => {

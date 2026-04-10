@@ -3,42 +3,102 @@
 import {
   ImageSegmenter,
   FilesetResolver,
+  type ImageSegmenterResult,
 } from '@mediapipe/tasks-vision';
 import {
+  HAIR_CATEGORY_INDEX,
   MEDIAPIPE_WASM_CDN,
   SEGMENTER_MODEL_URL,
-  HAIR_CATEGORY_INDEX,
 } from './constants';
-import { hexToRgb } from './colorMath';
+import {
+  applyRecolorToImageDataWithAlpha,
+  normalizeHairConfidence,
+} from './colorMath';
 
 let segmenter: ImageSegmenter | null = null;
 let busy = false;
 
-// Reusable canvases / buffers to avoid allocation per frame
-let segCanvas: OffscreenCanvas | null = null;
-let segCtx: OffscreenCanvasRenderingContext2D | null = null;
-let overlayCanvas: OffscreenCanvas | null = null;
-let overlayCtx: OffscreenCanvasRenderingContext2D | null = null;
-let overlayImageData: ImageData | null = null;
+let frameCanvas: OffscreenCanvas | null = null;
+let frameCtx: OffscreenCanvasRenderingContext2D | null = null;
+let outputCanvas: OffscreenCanvas | null = null;
+let outputCtx: OffscreenCanvasRenderingContext2D | null = null;
+let outputImageData: ImageData | null = null;
+let workingAlphaMask: Float32Array | null = null;
+let smoothedAlphaMask: Float32Array | null = null;
 
-function ensureCanvases(w: number, h: number) {
-  if (!segCanvas || segCanvas.width !== w || segCanvas.height !== h) {
-    segCanvas = new OffscreenCanvas(w, h);
-    segCtx = segCanvas.getContext('2d')!;
-    overlayCanvas = new OffscreenCanvas(w, h);
-    overlayCtx = overlayCanvas.getContext('2d')!;
-    overlayImageData = new ImageData(w, h);
+const TEMPORAL_BLEND = 0.35;
+
+function shouldPreferCpuDelegate() {
+  const ua = self.navigator?.userAgent ?? '';
+  const isAppleMobile =
+    /iPhone|iPad|iPod/i.test(ua) ||
+    (self.navigator?.platform === 'MacIntel' &&
+      (self.navigator?.maxTouchPoints ?? 0) > 1);
+  const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|Android/i.test(ua);
+  return isAppleMobile || isSafari;
+}
+
+function ensureCanvases(width: number, height: number) {
+  if (!frameCanvas || frameCanvas.width !== width || frameCanvas.height !== height) {
+    frameCanvas = new OffscreenCanvas(width, height);
+    frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true })!;
+
+    outputCanvas = new OffscreenCanvas(width, height);
+    outputCtx = outputCanvas.getContext('2d')!;
+    outputImageData = new ImageData(width, height);
+    workingAlphaMask = new Float32Array(width * height);
+    smoothedAlphaMask = new Float32Array(width * height);
+  }
+}
+
+function copyHairAlphaMask(result: ImageSegmenterResult, dst: Float32Array) {
+  const hairConfidenceMask = result.confidenceMasks?.[HAIR_CATEGORY_INDEX];
+  if (hairConfidenceMask) {
+    const raw = hairConfidenceMask.getAsFloat32Array();
+    for (let i = 0; i < raw.length; i++) {
+      dst[i] = normalizeHairConfidence(raw[i]);
+    }
+    return;
+  }
+
+  const categoryMask = result.categoryMask;
+  if (!categoryMask) {
+    dst.fill(0);
+    return;
+  }
+
+  const raw = categoryMask.getAsUint8Array();
+  for (let i = 0; i < raw.length; i++) {
+    dst[i] = raw[i] === HAIR_CATEGORY_INDEX ? 1 : 0;
   }
 }
 
 async function init() {
   const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_CDN);
-  segmenter = await ImageSegmenter.createFromOptions(vision, {
-    baseOptions: { modelAssetPath: SEGMENTER_MODEL_URL },
-    outputCategoryMask: true,
-    outputConfidenceMasks: false,
-    runningMode: 'VIDEO',
-  });
+  const preferCpu = shouldPreferCpuDelegate();
+
+  try {
+    segmenter = await ImageSegmenter.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: SEGMENTER_MODEL_URL,
+        delegate: preferCpu ? 'CPU' : 'GPU',
+      },
+      outputCategoryMask: true,
+      outputConfidenceMasks: true,
+      runningMode: 'VIDEO',
+    });
+  } catch {
+    segmenter = await ImageSegmenter.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: SEGMENTER_MODEL_URL,
+        delegate: 'CPU',
+      },
+      outputCategoryMask: true,
+      outputConfidenceMasks: true,
+      runningMode: 'VIDEO',
+    });
+  }
+
   self.postMessage({ type: 'ready' });
 }
 
@@ -57,58 +117,56 @@ function processFrame(
   const start = performance.now();
 
   try {
-    const w = frame.width;
-    const h = frame.height;
-    ensureCanvases(w, h);
+    const width = frame.width;
+    const height = frame.height;
+    ensureCanvases(width, height);
 
-    // Draw frame onto segmentation canvas (MediaPipe needs a canvas source)
-    segCtx!.drawImage(frame, 0, 0);
+    frameCtx!.drawImage(frame, 0, 0);
     frame.close();
 
-    // Run segmentation
-    const result = segmenter.segmentForVideo(segCanvas!, timestamp);
-    const mask = result.categoryMask;
-    if (!mask) {
-      result.close();
-      busy = false;
+    const sourceImageData = frameCtx!.getImageData(0, 0, width, height);
+    let processedBitmap: ImageBitmap | null = null;
+
+    segmenter.segmentForVideo(frameCanvas!, timestamp, (result) => {
+      try {
+        copyHairAlphaMask(result, workingAlphaMask!);
+
+        for (let i = 0; i < workingAlphaMask!.length; i++) {
+          smoothedAlphaMask![i] =
+            workingAlphaMask![i] * (1 - TEMPORAL_BLEND) +
+            smoothedAlphaMask![i] * TEMPORAL_BLEND;
+        }
+
+        outputImageData!.data.set(sourceImageData.data);
+        applyRecolorToImageDataWithAlpha(
+          outputImageData!,
+          smoothedAlphaMask!,
+          colorHex,
+          intensity,
+        );
+        outputCtx!.putImageData(outputImageData!, 0, 0);
+        processedBitmap = outputCanvas!.transferToImageBitmap();
+      } finally {
+        result.close();
+      }
+    });
+
+    if (!processedBitmap) {
       return;
     }
 
-    const maskData = mask.getAsUint8Array();
-
-    // Build color overlay using Uint32Array for ~4x faster pixel writes.
-    // Only hair pixels get the target color; rest stays transparent.
-    // The main thread composites this over the live <video> via CSS
-    // mix-blend-mode: color, so we don't need to composite here.
-    const [tR, tG, tB] = hexToRgb(colorHex);
-    const alpha = Math.round((intensity / 100) * 140); // cap at ~55% for natural look
-
-    const buf32 = new Uint32Array(overlayImageData!.data.buffer);
-    buf32.fill(0); // clear to fully transparent
-    // Little-endian RGBA: R in lowest byte, A in highest
-    const fillColor = tR | (tG << 8) | (tB << 16) | (alpha << 24);
-
-    for (let i = 0; i < maskData.length; i++) {
-      if (maskData[i] === HAIR_CATEGORY_INDEX) {
-        buf32[i] = fillColor;
-      }
-    }
-
-    result.close();
-
-    overlayCtx!.putImageData(overlayImageData!, 0, 0);
-
-    // Transfer overlay-only bitmap (CSS mix-blend-mode handles compositing)
-    const resultBitmap = overlayCanvas!.transferToImageBitmap();
     const elapsed = performance.now() - start;
-
     self.postMessage(
-      { type: 'frame', bitmap: resultBitmap, elapsed },
+      { type: 'frame', bitmap: processedBitmap, elapsed },
       // @ts-expect-error transferable
-      [resultBitmap],
+      [processedBitmap],
     );
   } catch (err) {
     console.error('Worker segmentation error:', err);
+    self.postMessage({
+      type: 'error',
+      message: 'Live preview processing failed. Try uploading a photo instead.',
+    });
   } finally {
     busy = false;
   }
@@ -117,7 +175,13 @@ function processFrame(
 self.onmessage = (e: MessageEvent) => {
   const { type } = e.data;
   if (type === 'init') {
-    init();
+    void init().catch((err) => {
+      console.error('Worker init error:', err);
+      self.postMessage({
+        type: 'error',
+        message: 'Live preview is unavailable on this device. Try uploading a photo instead.',
+      });
+    });
   } else if (type === 'segment') {
     const { frame, colorHex, intensity, timestamp } = e.data;
     processFrame(frame, colorHex, intensity, timestamp);

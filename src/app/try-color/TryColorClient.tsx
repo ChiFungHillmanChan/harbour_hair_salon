@@ -9,15 +9,19 @@ import {
 } from '@/components/try-color/PreviewCanvas';
 import { ColorPalette } from '@/components/try-color/ColorPalette';
 import { ResultActions } from '@/components/try-color/ResultActions';
-import { segmentStill } from '@/components/try-color/HairSegmentation';
-import { applyRecolorToImageData } from '@/components/try-color/colorMath';
+import {
+  segmentStill,
+  type HairMaskData,
+} from '@/components/try-color/HairSegmentation';
+import { applyRecolorToImageDataWithAlpha } from '@/components/try-color/colorMath';
 import {
   PRESET_COLORS,
   DEFAULT_INTENSITY,
-  HAIR_CATEGORY_INDEX,
+  LIVE_FRAME_MAX_DIM,
   SLOW_FRAME_THRESHOLD_MS,
   SLOW_FRAME_WINDOW,
   WARMUP_FRAMES,
+  OVERLAY_STALE_MS,
 } from '@/components/try-color/constants';
 
 type Mode = 'landing' | 'camera' | 'upload';
@@ -39,11 +43,15 @@ export default function TryColorClient() {
   const frameTimesRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
   const workerBusyRef = useRef(false);
-  const videoElRef = useRef<HTMLVideoElement | null>(null);
+  const displayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cachedFrameRef = useRef<ImageBitmap | null>(null);
+  const lastFrameTimeRef = useRef(0);
+  const renderRafRef = useRef(0);
+  const facingModeRef = useRef<'user' | 'environment'>('user');
 
   const uploadDataRef = useRef<{
     originalImageData: ImageData;
-    mask: Uint8Array;
+    hairMask: HairMaskData;
     width: number;
     height: number;
   } | null>(null);
@@ -52,9 +60,39 @@ export default function TryColorClient() {
     colorRef.current = { hex: colorHex, intensity };
   }, [colorHex, intensity]);
 
+  const resetWorkerMetrics = useCallback(() => {
+    frameTimesRef.current = [];
+    frameCountRef.current = 0;
+    workerBusyRef.current = false;
+  }, []);
+
+  const cleanupCameraState = useCallback(() => {
+    workerRef.current?.terminate();
+    workerRef.current = null;
+    setWorkerReady(false);
+    setLoading(false);
+    resetWorkerMetrics();
+    cachedFrameRef.current?.close();
+    cachedFrameRef.current = null;
+  }, [resetWorkerMetrics]);
+
+  const supportsLivePreview = useCallback(() => {
+    return (
+      typeof Worker !== 'undefined' &&
+      typeof OffscreenCanvas !== 'undefined' &&
+      typeof createImageBitmap === 'function'
+    );
+  }, []);
+
   const initWorker = useCallback(() => {
     if (workerRef.current) return;
+    if (!supportsLivePreview()) {
+      setError('Live preview is unavailable on this device. Try uploading a photo instead.');
+      setMode('upload');
+      return;
+    }
 
+    resetWorkerMetrics();
     setLoading(true);
     const worker = new Worker(
       new URL(
@@ -71,7 +109,9 @@ export default function TryColorClient() {
       } else if (type === 'frame') {
         workerBusyRef.current = false;
         const { bitmap, elapsed } = e.data;
-        previewRef.current?.drawBitmap(bitmap);
+        cachedFrameRef.current?.close();
+        cachedFrameRef.current = bitmap;
+        lastFrameTimeRef.current = performance.now();
         frameCountRef.current++;
 
         if (frameCountRef.current <= WARMUP_FRAMES) return;
@@ -86,27 +126,80 @@ export default function TryColorClient() {
               'Live preview is too slow on this device. Try uploading a photo instead.',
             );
             setMode('upload');
-            worker.terminate();
-            workerRef.current = null;
+            cleanupCameraState();
           }
         }
+      } else if (type === 'error') {
+        workerBusyRef.current = false;
+        setLoading(false);
+        setError(e.data.message);
+        setMode('upload');
+        cleanupCameraState();
       }
+    };
+
+    worker.onerror = () => {
+      workerBusyRef.current = false;
+      setLoading(false);
+      setError('Live preview is unavailable on this device. Try uploading a photo instead.');
+      setMode('upload');
+      cleanupCameraState();
     };
 
     worker.postMessage({ type: 'init' });
     workerRef.current = worker;
-  }, []);
+  }, [cleanupCameraState, resetWorkerMetrics, supportsLivePreview]);
 
   useEffect(() => {
     return () => {
-      workerRef.current?.terminate();
-      workerRef.current = null;
+      cleanupCameraState();
     };
-  }, []);
+  }, [cleanupCameraState]);
+
+  // Single-canvas render loop for processed live frames.
+  useEffect(() => {
+    if (mode !== 'camera') return;
+
+    const render = () => {
+      const canvas = displayCanvasRef.current;
+      if (!canvas) {
+        renderRafRef.current = requestAnimationFrame(render);
+        return;
+      }
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        renderRafRef.current = requestAnimationFrame(render);
+        return;
+      }
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const frame = cachedFrameRef.current;
+      if (frame && (performance.now() - lastFrameTimeRef.current) < OVERLAY_STALE_MS) {
+        ctx.save();
+        if (facingModeRef.current === 'user') {
+          ctx.scale(-1, 1);
+          ctx.drawImage(frame, -w, 0, w, h);
+        } else {
+          ctx.drawImage(frame, 0, 0, w, h);
+        }
+        ctx.restore();
+      }
+
+      renderRafRef.current = requestAnimationFrame(render);
+    };
+
+    renderRafRef.current = requestAnimationFrame(render);
+    return () => {
+      cancelAnimationFrame(renderRafRef.current);
+    };
+  }, [mode]);
 
   const handleFrame = useCallback(
     (video: HTMLVideoElement) => {
-      videoElRef.current = video;
       if (!workerRef.current || !workerReady || workerBusyRef.current) return;
 
       if (
@@ -117,59 +210,79 @@ export default function TryColorClient() {
       }
 
       workerBusyRef.current = true;
-      createImageBitmap(video).then((bitmap) => {
-        const { hex, intensity: int } = colorRef.current;
+      const scale = Math.min(
+        1,
+        LIVE_FRAME_MAX_DIM / Math.max(video.videoWidth, video.videoHeight),
+      );
+      const rw = Math.round(video.videoWidth * scale);
+      const rh = Math.round(video.videoHeight * scale);
+
+      const postFrame = (bitmap: ImageBitmap) => {
+        const { hex, intensity: currentIntensity } = colorRef.current;
         workerRef.current?.postMessage(
           {
             type: 'segment',
             frame: bitmap,
             colorHex: hex,
-            intensity: int,
+            intensity: currentIntensity,
             timestamp: performance.now(),
           },
           [bitmap],
         );
-      });
+      };
+
+      createImageBitmap(video, {
+        resizeWidth: rw,
+        resizeHeight: rh,
+        resizeQuality: 'high',
+      })
+        .then(postFrame)
+        .catch(() => createImageBitmap(video).then(postFrame))
+        .catch(() => {
+          workerBusyRef.current = false;
+          setError('Live preview is unavailable on this device. Try uploading a photo instead.');
+          setMode('upload');
+          cleanupCameraState();
+        });
     },
-    [workerReady, dimensions.width, dimensions.height],
+    [cleanupCameraState, workerReady, dimensions.height, dimensions.width],
   );
 
   const handleImageLoaded = useCallback(
-    async (img: HTMLImageElement) => {
+    async (source: HTMLImageElement | HTMLCanvasElement) => {
       setLoading(true);
       setError(null);
       try {
-        const maskData = await segmentStill(img);
+        const hairMask = await segmentStill(source);
         const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
+        canvas.width = source.width;
+        canvas.height = source.height;
         const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0);
-        const originalImageData = ctx.getImageData(0, 0, img.width, img.height);
+        ctx.drawImage(source, 0, 0);
+        const originalImageData = ctx.getImageData(0, 0, source.width, source.height);
 
         uploadDataRef.current = {
           originalImageData,
-          mask: maskData,
-          width: img.width,
-          height: img.height,
+          hairMask,
+          width: source.width,
+          height: source.height,
         };
 
         const coloredData = new ImageData(
           new Uint8ClampedArray(originalImageData.data),
-          img.width,
-          img.height,
+          source.width,
+          source.height,
         );
-        applyRecolorToImageData(
+        applyRecolorToImageDataWithAlpha(
           coloredData,
-          maskData,
+          hairMask.alphaMask,
           colorHex,
           intensity,
-          HAIR_CATEGORY_INDEX,
         );
 
-        setDimensions({ width: img.width, height: img.height });
+        setDimensions({ width: source.width, height: source.height });
         setHasUploadedImage(true);
-        previewRef.current?.drawImageData(coloredData, img.width, img.height);
+        previewRef.current?.drawImageData(coloredData, source.width, source.height);
       } catch (err) {
         setError('Could not process this image. Try a different photo.');
         console.error(err);
@@ -182,13 +295,18 @@ export default function TryColorClient() {
 
   useEffect(() => {
     if (mode !== 'upload' || !uploadDataRef.current) return;
-    const { originalImageData, mask, width, height } = uploadDataRef.current;
+    const { originalImageData, hairMask, width, height } = uploadDataRef.current;
     const coloredData = new ImageData(
       new Uint8ClampedArray(originalImageData.data),
       width,
       height,
     );
-    applyRecolorToImageData(coloredData, mask, colorHex, intensity, HAIR_CATEGORY_INDEX);
+    applyRecolorToImageDataWithAlpha(
+      coloredData,
+      hairMask.alphaMask,
+      colorHex,
+      intensity,
+    );
     previewRef.current?.drawImageData(coloredData, width, height);
   }, [colorHex, intensity, mode]);
 
@@ -199,6 +317,7 @@ export default function TryColorClient() {
   };
 
   const startUpload = () => {
+    cleanupCameraState();
     setError(null);
     setMode('upload');
     setHasUploadedImage(false);
@@ -215,33 +334,10 @@ export default function TryColorClient() {
       previewRef.current?.downloadJpeg();
       return;
     }
-    // Camera mode: composite live video + color overlay for export
-    const video = videoElRef.current;
-    const overlayCanvas = previewRef.current?.getCanvas();
-    if (!video || !overlayCanvas) return;
+    const canvas = displayCanvasRef.current;
+    if (!canvas) return;
 
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = w;
-    exportCanvas.height = h;
-    const ctx = exportCanvas.getContext('2d')!;
-
-    // Draw mirrored video (front camera)
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, -w, 0, w, h);
-    ctx.restore();
-
-    // Apply color overlay with 'color' blend
-    ctx.globalCompositeOperation = 'color';
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(overlayCanvas, -w, 0, w, h);
-    ctx.restore();
-    ctx.globalCompositeOperation = 'source-over';
-
-    exportCanvas.toBlob(
+    canvas.toBlob(
       (blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
@@ -317,7 +413,7 @@ export default function TryColorClient() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
               {[
                 { step: '01', title: 'Capture', desc: 'Open your camera or upload a photo' },
-                { step: '02', title: 'Explore', desc: 'Browse 12 preset colours or pick your own' },
+                { step: '02', title: 'Explore', desc: 'Browse 22 salon colours or pick your own' },
                 { step: '03', title: 'Download', desc: 'Save your favourite look as a JPEG' },
               ].map((item) => (
                 <div key={item.step}>
@@ -343,9 +439,7 @@ export default function TryColorClient() {
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => {
-              workerRef.current?.terminate();
-              workerRef.current = null;
-              setWorkerReady(false);
+              cleanupCameraState();
               setMode('landing');
               setError(null);
               setHasUploadedImage(false);
@@ -390,20 +484,20 @@ export default function TryColorClient() {
               <CameraView
                 onFrame={handleFrame}
                 onError={(msg) => {
+                  cleanupCameraState();
                   setError(msg);
                   setMode('upload');
                 }}
                 active={mode === 'camera'}
+                hidden
+                onFacingModeChange={(m) => { facingModeRef.current = m; }}
               />
-              <div className="absolute inset-0 pointer-events-none">
-                <PreviewCanvas
-                  ref={previewRef}
-                  width={dimensions.width}
-                  height={dimensions.height}
-                  mirrored
-                  blendMode="color"
-                />
-              </div>
+              <canvas
+                ref={displayCanvasRef}
+                width={dimensions.width}
+                height={dimensions.height}
+                className="absolute inset-0 z-10 w-full h-full object-cover rounded-lg"
+              />
             </>
           )}
 

@@ -3,10 +3,71 @@
 import {
   ImageSegmenter,
   FilesetResolver,
+  type ImageSegmenterResult,
 } from '@mediapipe/tasks-vision';
-import { MEDIAPIPE_WASM_CDN, SEGMENTER_MODEL_URL } from './constants';
+import {
+  HAIR_CATEGORY_INDEX,
+  MEDIAPIPE_WASM_CDN,
+  SEGMENTER_MODEL_URL,
+} from './constants';
+import { normalizeHairConfidence } from './colorMath';
 
 let segmenterPromise: Promise<ImageSegmenter> | null = null;
+
+export interface HairMaskData {
+  alphaMask: Float32Array;
+  width: number;
+  height: number;
+}
+
+function shouldPreferCpuDelegate() {
+  if (typeof navigator === 'undefined') return false;
+
+  const ua = navigator.userAgent;
+  const isAppleMobile =
+    /iPhone|iPad|iPod/i.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|Android/i.test(ua);
+  return isAppleMobile || isSafari;
+}
+
+function createSegmenterOptions(runningMode: 'IMAGE' | 'VIDEO') {
+  return {
+    baseOptions: {
+      modelAssetPath: SEGMENTER_MODEL_URL,
+      ...(shouldPreferCpuDelegate() ? { delegate: 'CPU' as const } : {}),
+    },
+    outputCategoryMask: true,
+    outputConfidenceMasks: true,
+    runningMode,
+  };
+}
+
+function copyHairMask(
+  result: ImageSegmenterResult,
+  width: number,
+  height: number,
+): HairMaskData {
+  const hairConfidenceMask = result.confidenceMasks?.[HAIR_CATEGORY_INDEX];
+  if (hairConfidenceMask) {
+    const raw = hairConfidenceMask.getAsFloat32Array();
+    const alphaMask = new Float32Array(raw.length);
+    for (let i = 0; i < raw.length; i++) {
+      alphaMask[i] = normalizeHairConfidence(raw[i]);
+    }
+    return { alphaMask, width, height };
+  }
+
+  const categoryMask = result.categoryMask;
+  if (!categoryMask) throw new Error('Segmentation returned no usable hair mask');
+
+  const raw = categoryMask.getAsUint8Array();
+  const alphaMask = new Float32Array(raw.length);
+  for (let i = 0; i < raw.length; i++) {
+    alphaMask[i] = raw[i] === HAIR_CATEGORY_INDEX ? 1 : 0;
+  }
+  return { alphaMask, width, height };
+}
 
 /**
  * Create and cache a single ImageSegmenter instance.
@@ -16,12 +77,7 @@ export function getSegmenter(): Promise<ImageSegmenter> {
   if (!segmenterPromise) {
     segmenterPromise = (async () => {
       const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_CDN);
-      return ImageSegmenter.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: SEGMENTER_MODEL_URL },
-        outputCategoryMask: true,
-        outputConfidenceMasks: false,
-        runningMode: 'IMAGE',
-      });
+      return ImageSegmenter.createFromOptions(vision, createSegmenterOptions('IMAGE'));
     })();
   }
   return segmenterPromise;
@@ -29,19 +85,31 @@ export function getSegmenter(): Promise<ImageSegmenter> {
 
 /**
  * Run segmentation on a single still image (for the upload fallback path).
- * Returns the category mask as a Uint8Array (one byte per pixel).
+ * Returns a soft alpha mask that can be reused for recoloring updates.
  */
 export async function segmentStill(
   image: HTMLImageElement | HTMLCanvasElement | ImageBitmap,
-): Promise<Uint8Array> {
+): Promise<HairMaskData> {
   const segmenter = await getSegmenter();
-  const result = segmenter.segment(image);
-  const mask = result.categoryMask;
-  if (!mask) throw new Error('Segmentation returned no category mask');
-  // Copy the mask data before MediaPipe reclaims the buffer
-  const data = new Uint8Array(mask.getAsUint8Array());
-  result.close();
-  return data;
+  let maskData: HairMaskData | null = null;
+
+  segmenter.segment(image, (result) => {
+    try {
+      maskData = copyHairMask(
+        result,
+        result.categoryMask?.width ?? image.width,
+        result.categoryMask?.height ?? image.height,
+      );
+    } finally {
+      result.close();
+    }
+  });
+
+  if (!maskData) {
+    throw new Error('Segmentation returned no hair mask');
+  }
+
+  return maskData;
 }
 
 /**
@@ -50,10 +118,5 @@ export async function segmentStill(
  */
 export async function createVideoSegmenter(): Promise<ImageSegmenter> {
   const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_CDN);
-  return ImageSegmenter.createFromOptions(vision, {
-    baseOptions: { modelAssetPath: SEGMENTER_MODEL_URL },
-    outputCategoryMask: true,
-    outputConfidenceMasks: false,
-    runningMode: 'VIDEO',
-  });
+  return ImageSegmenter.createFromOptions(vision, createSegmenterOptions('VIDEO'));
 }

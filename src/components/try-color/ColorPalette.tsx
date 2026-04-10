@@ -40,15 +40,16 @@ export function ColorPalette({
         <p className="text-[var(--accent)] text-xs uppercase tracking-[0.2em] font-medium mb-3">
           Select Colour
         </p>
-        <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-hide">
+        <div className="flex flex-wrap gap-2.5 pb-1">
           {PRESET_COLORS.map((color: PresetColor) => (
             <button
               key={color.hex}
               onClick={() => onColorChange(color.hex, color.name)}
-              className="group flex-shrink-0 flex flex-col items-center gap-1.5"
+              className="group flex flex-col items-center gap-1"
+              title={color.name}
             >
               <div
-                className={`w-11 h-11 rounded-full transition-all duration-300 ${
+                className={`w-9 h-9 rounded-full transition-all duration-300 ${
                   selectedHex === color.hex
                     ? 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-zinc-900 scale-110'
                     : 'hover:scale-105 border border-zinc-700 group-hover:border-zinc-500'
@@ -56,7 +57,7 @@ export function ColorPalette({
                 style={{ backgroundColor: color.hex }}
               />
               <span
-                className={`text-[10px] leading-tight text-center max-w-[3rem] transition-colors ${
+                className={`text-[9px] leading-tight text-center max-w-[2.5rem] transition-colors truncate ${
                   selectedHex === color.hex
                     ? 'text-[var(--accent)]'
                     : 'text-zinc-600 group-hover:text-zinc-400'
@@ -67,9 +68,9 @@ export function ColorPalette({
             </button>
           ))}
           {/* Custom color picker */}
-          <label className="group flex-shrink-0 flex flex-col items-center gap-1.5 cursor-pointer">
+          <label className="group flex flex-col items-center gap-1 cursor-pointer">
             <div
-              className={`w-11 h-11 rounded-full border-2 border-dashed flex items-center justify-center transition-all duration-300 ${
+              className={`w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center transition-all duration-300 ${
                 !PRESET_COLORS.some((c) => c.hex === selectedHex)
                   ? 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-zinc-900 scale-110 border-[var(--accent)]'
                   : 'border-zinc-700 group-hover:border-zinc-500 hover:scale-105'
@@ -82,7 +83,7 @@ export function ColorPalette({
                 className="sr-only"
               />
               <svg
-                className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300"
+                className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -91,7 +92,7 @@ export function ColorPalette({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
             </div>
-            <span className="text-[10px] text-zinc-600 group-hover:text-zinc-400">Custom</span>
+            <span className="text-[9px] text-zinc-600 group-hover:text-zinc-400">Custom</span>
           </label>
         </div>
       </div>
