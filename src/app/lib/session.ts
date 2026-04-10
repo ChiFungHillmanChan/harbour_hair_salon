@@ -19,7 +19,7 @@ export async function encrypt(payload: SessionPayload) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('7d')
+    .setExpirationTime('30d')
     .sign(getKey());
 }
 
@@ -35,7 +35,7 @@ export async function decrypt(session: string | undefined = '') {
 }
 
 export async function createSession(userId: string, role: string) {
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
   const session = await encrypt({ userId, role, expiresAt });
 
   (await cookies()).set('session', session, {
@@ -45,6 +45,18 @@ export async function createSession(userId: string, role: string) {
     sameSite: 'lax',
     path: '/',
   });
+}
+
+export async function refreshSession() {
+  const cookie = (await cookies()).get('session')?.value;
+  const session = await decrypt(cookie);
+  if (!session?.userId) return;
+
+  // Refresh if less than 7 days remaining
+  const timeLeft = new Date(session.expiresAt).getTime() - Date.now();
+  if (timeLeft < 7 * 24 * 60 * 60 * 1000) {
+    await createSession(session.userId, session.role);
+  }
 }
 
 export async function verifySession() {

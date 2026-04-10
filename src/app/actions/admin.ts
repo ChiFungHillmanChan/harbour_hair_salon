@@ -31,9 +31,9 @@ const offerSchema = z.object({
 );
 
 const adminUserSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Please enter a valid email'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
+  email: z.string().email('Please enter a valid email').max(254),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(128),
 });
 
 async function requireAdmin() {
@@ -227,6 +227,20 @@ export async function resetUserPassword(userId: string, newPassword: string) {
 
   if (!newPassword || newPassword.length < 8) {
     return { error: 'Password must be at least 8 characters' };
+  }
+
+  if (newPassword.length > 128) {
+    return { error: 'Password must be at most 128 characters' };
+  }
+
+  // Verify the target user is an admin (admins can only reset other admin passwords)
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (!targetUser || targetUser.role !== 'ADMIN') {
+    return { error: 'Can only reset passwords for admin users' };
   }
 
   const hashedPassword = await hashPassword(newPassword);

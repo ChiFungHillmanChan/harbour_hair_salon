@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, isToday, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
-import { Appointment, Service, Stylist, User } from '@prisma/client';
+import { Appointment, Service, Stylist } from '@prisma/client';
 
 type AppointmentWithDetails = Appointment & {
-  user: User;
+  user: { id: string; name: string | null; email: string };
   service: Service;
   stylist: Stylist;
 };

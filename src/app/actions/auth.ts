@@ -6,54 +6,90 @@ import { hashPassword, verifyPassword } from '@/app/lib/password';
 import { createSession, deleteSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
 function sanitizeRedirect(url: string | null): string {
   if (!url) return '/';
-  // Only allow relative paths starting with / and not protocol-relative //
   if (url.startsWith('/') && !url.startsWith('//')) return url;
   return '/';
 }
-
-const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
-const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 15 * 60 * 1000;
 
 function getClientIp(headersList: Headers): string {
   const forwarded = headersList.get('x-forwarded-for');
   return forwarded?.split(',')[0]?.trim() || 'unknown';
 }
 
-function checkRateLimit(ip: string): boolean {
+// Persistent rate limiter — survives serverless cold starts
+// Falls back to in-memory if Upstash is not configured
+const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const loginLimiter = upstashUrl && upstashToken
+  ? new Ratelimit({
+      redis: new Redis({ url: upstashUrl, token: upstashToken }),
+      limiter: Ratelimit.slidingWindow(5, '15 m'),
+      prefix: 'rl:login',
+    })
+  : null;
+
+const registerLimiter = upstashUrl && upstashToken
+  ? new Ratelimit({
+      redis: new Redis({ url: upstashUrl, token: upstashToken }),
+      limiter: Ratelimit.slidingWindow(5, '15 m'),
+      prefix: 'rl:register',
+    })
+  : null;
+
+// In-memory fallback (separate maps for login vs register)
+const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const registerAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000;
+
+function checkMemoryRateLimit(map: Map<string, { count: number; firstAttempt: number }>, ip: string): boolean {
   const now = Date.now();
-  const record = loginAttempts.get(ip);
+  const record = map.get(ip);
   if (!record || now - record.firstAttempt > WINDOW_MS) {
-    loginAttempts.set(ip, { count: 1, firstAttempt: now });
+    map.set(ip, { count: 1, firstAttempt: now });
     return true;
   }
   record.count++;
   return record.count <= MAX_ATTEMPTS;
 }
 
-function resetRateLimit(ip: string): void {
-  loginAttempts.delete(ip);
+async function checkLoginRate(ip: string): Promise<boolean> {
+  if (loginLimiter) {
+    const { success } = await loginLimiter.limit(ip);
+    return success;
+  }
+  return checkMemoryRateLimit(loginAttempts, ip);
+}
+
+async function checkRegisterRate(ip: string): Promise<boolean> {
+  if (registerLimiter) {
+    const { success } = await registerLimiter.limit(ip);
+    return success;
+  }
+  return checkMemoryRateLimit(registerAttempts, ip);
 }
 
 const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email address.'),
-  password: z.string().min(1, 'Password is required.'),
+  email: z.string().email('Please enter a valid email address.').max(254),
+  password: z.string().min(1, 'Password is required.').max(128),
 });
 
 const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters.'),
-  email: z.string().email('Please enter a valid email address.'),
-  password: z.string().min(6, 'Password must be at least 6 characters.'),
-  phone: z.string().optional(),
+  name: z.string().min(2, 'Name must be at least 2 characters.').max(100),
+  email: z.string().email('Please enter a valid email address.').max(254),
+  password: z.string().min(6, 'Password must be at least 6 characters.').max(128),
+  phone: z.string().max(20).optional(),
 });
 
 export async function login(prevState: unknown, formData: FormData) {
   const headersList = await headers();
   const ip = getClientIp(headersList);
-  if (!checkRateLimit(ip)) {
+  if (!(await checkLoginRate(ip))) {
     return { error: 'Too many login attempts. Please try again in 15 minutes.' };
   }
 
@@ -70,7 +106,6 @@ export async function login(prevState: unknown, formData: FormData) {
   });
 
   if (!user || !user.password) {
-    // User doesn't exist or is a guest (no password)
     return { error: 'Incorrect email or password. Please try again.' };
   }
 
@@ -81,7 +116,6 @@ export async function login(prevState: unknown, formData: FormData) {
   }
 
   await createSession(user.id, user.role);
-  resetRateLimit(ip);
 
   const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
   if (user.role === 'ADMIN') {
@@ -94,7 +128,7 @@ export async function login(prevState: unknown, formData: FormData) {
 export async function register(prevState: unknown, formData: FormData) {
   const headersList = await headers();
   const ip = getClientIp(headersList);
-  if (!checkRateLimit(ip)) {
+  if (!(await checkRegisterRate(ip))) {
     return { error: 'Too many registration attempts. Please try again in 15 minutes.' };
   }
 
