@@ -22,18 +22,26 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   appointments Appointment[]
+  reviews      Review[]
 }
 
 model Stylist {
-  id          String   @id @default(cuid())
-  name        String
-  bio         String?
-  imageUrl    String?
-  role        String   // e.g., Senior Stylist, Director
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  appointments Appointment[]
-  availabilities Availability[]
+  id              String   @id @default(cuid())
+  name            String
+  bio             String?
+  imageUrl        String?
+  role            String   // e.g., Senior Stylist, Director
+  slug            String?  @unique
+  tagline         String?
+  specialtiesJson String   @default("[]")
+  languagesJson   String   @default("[]")
+  yearsExperience Int?
+  trainedIn       String?
+  extendedBioJson String   @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  appointments    Appointment[]
+  availabilities  Availability[]
 }
 
 model Service {
@@ -50,13 +58,14 @@ model Service {
 }
 
 model Appointment {
-  id           String   @id @default(cuid())
-  date         DateTime
-  status       String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
-  notes        String?
-  reminderSent Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  date               DateTime
+  status             String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
+  notes              String?
+  reminderSent       Boolean  @default(false)
+  reviewRequestSent  Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -70,9 +79,29 @@ model Appointment {
   discountCodeId String?
   discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
 
+  review    Review?
+
   @@index([stylistId, date])
   @@index([userId, status])
   @@index([status, reminderSent, date])
+  @@index([status, reviewRequestSent, date])
+}
+
+model Review {
+  id             String   @id @default(cuid())
+  rating         Int      // 1-5
+  comment        String?
+  status         String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  appointmentId  String   @unique
+  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
 }
 
 model Availability {
@@ -112,4 +141,72 @@ model Offer {
   isGlobal    Boolean  @default(false) // If true, applies to all services automatically
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model ServiceCategoryContent {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  category        String   @unique
+  title           String
+  hero            String
+  metaDescription String
+  intro           String
+  overviewJson    String   // JSON array of strings (paragraphs)
+  includesJson    String   // JSON array of strings (bullets)
+  processJson     String   // JSON array of { step, detail }
+  aftercareJson   String   // JSON array of strings
+  faqsJson        String   // JSON array of { question, answer }
+  relatedSlugs    String   @default("") // comma-separated slugs
+  displayOrder    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SiteSettings {
+  id                  String   @id @default("singleton")
+  phone               String   @default("07831 830898")
+  twitterHandle       String   @default("") // e.g. @harbourhair_leeds
+  gscVerification     String   @default("") // Google Search Console code
+  googleBusinessUrl   String   @default("")
+  facebookUrl         String   @default("")
+  instagramUrl        String   @default("https://www.instagram.com/harbourhair_leeds/")
+  treatwellUrl        String   @default("")
+  freshaUrl           String   @default("")
+  booksyUrl           String   @default("")
+  updatedAt           DateTime @updatedAt
+}
+
+model Faq {
+  id         String   @id @default(cuid())
+  key        String   // e.g. "home", "contact", "services-master", "category:haircuts"
+  question   String
+  answer     String
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([key, sortOrder])
+}
+
+model BlogPost {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  title          String
+  description    String
+  excerpt        String
+  author         String
+  authorRole     String
+  publishedAt    DateTime
+  readingTime    Int      @default(5)
+  tags           String   @default("") // comma-separated
+  coverImage     String
+  coverAlt       String
+  lede           String
+  sectionsJson   String   // JSON-encoded BlogSection[]
+  relatedSlugs   String   @default("") // comma-separated slugs
+  status         String   @default("DRAFT") // DRAFT, PUBLISHED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, publishedAt])
 }
