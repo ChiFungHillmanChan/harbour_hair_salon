@@ -111,7 +111,7 @@ async function main() {
         name: 'Chan',
         role: 'Lead Stylist',
         bio: 'Experienced barber delivering tailored haircuts and grooming services with meticulous attention to detail. Led by Hong Kong Stylist standards.',
-        imageUrl: '/images/team/chan.jpg',
+        imageUrl: null,
         availabilities: {
           create: [
             { dayOfWeek: 1, startTime: '10:00', endTime: '19:30' }, // Mon
