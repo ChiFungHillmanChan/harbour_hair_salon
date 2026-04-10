@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 
 export function Hero() {
@@ -5,10 +6,12 @@ export function Hero() {
     <section className="relative h-[90vh] min-h-[650px] flex items-center justify-center bg-zinc-900 text-white overflow-hidden">
       {/* Background Image */}
       <div className="absolute inset-0">
-        <img
+        <Image
           src="/images/hero-salon.png"
           alt="Harbour Hair Salon interior in Leeds Central Arcade"
-          className="w-full h-full object-cover"
+          fill
+          priority
+          className="object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30" />
       </div>

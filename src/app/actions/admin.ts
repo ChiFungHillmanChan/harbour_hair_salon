@@ -14,7 +14,10 @@ const discountCodeSchema = z.object({
   value: z.coerce.number().positive('Value must be positive'),
   maxUses: z.coerce.number().int().positive().nullable().optional(),
   expiresAt: z.coerce.date().nullable().optional(),
-});
+}).refine(
+  (data) => data.type !== 'PERCENTAGE' || data.value <= 100,
+  { message: 'Percentage discount cannot exceed 100%', path: ['value'] }
+);
 
 const offerSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -22,7 +25,10 @@ const offerSchema = z.object({
   discountType: z.enum(['PERCENTAGE', 'FIXED']),
   discountValue: z.coerce.number().positive('Value must be positive'),
   isGlobal: z.boolean().optional(),
-});
+}).refine(
+  (data) => data.discountType !== 'PERCENTAGE' || data.discountValue <= 100,
+  { message: 'Percentage discount cannot exceed 100%', path: ['discountValue'] }
+);
 
 const adminUserSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),

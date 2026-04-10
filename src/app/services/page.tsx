@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
 
@@ -75,10 +76,12 @@ export default async function ServicesPage() {
       {/* Hero Section */}
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
-          <img
+          <Image
             src="/images/services-hero.png"
             alt="Hair styling services at Harbour Hair Salon Leeds"
-            className="w-full h-full object-cover opacity-40"
+            fill
+            priority
+            className="object-cover opacity-40"
           />
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">

@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { timingSafeEqual } from 'crypto';
 import prisma from '@/app/lib/prisma';
 import { sendAppointmentReminder } from '@/app/services/email-service';
 
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 export async function GET(request: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error('CRON_SECRET is not configured');
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+  }
+
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!authHeader || !safeCompare(authHeader, `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -16,7 +28,7 @@ export async function GET(request: NextRequest) {
       status: 'CONFIRMED',
       reminderSent: false,
       date: {
-        gte: now,
+        gt: now,
         lte: twentyFourHoursFromNow,
       },
     },
@@ -27,7 +39,9 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  let sent = 0;
+  const sentIds: string[] = [];
+  const failedIds: string[] = [];
+
   for (const appointment of appointments) {
     try {
       await sendAppointmentReminder({
@@ -37,15 +51,20 @@ export async function GET(request: NextRequest) {
         stylist: appointment.stylist,
         service: { ...appointment.service, price: Number(appointment.service.price) },
       });
-      await prisma.appointment.update({
-        where: { id: appointment.id },
-        data: { reminderSent: true },
-      });
-      sent++;
+      sentIds.push(appointment.id);
     } catch (error) {
       console.error(`Failed to send reminder for appointment ${appointment.id}:`, error);
+      failedIds.push(appointment.id);
     }
   }
 
-  return NextResponse.json({ sent, total: appointments.length });
+  // Batch update all successfully sent reminders
+  if (sentIds.length > 0) {
+    await prisma.appointment.updateMany({
+      where: { id: { in: sentIds } },
+      data: { reminderSent: true },
+    });
+  }
+
+  return NextResponse.json({ sent: sentIds.length, failed: failedIds.length, total: appointments.length });
 }

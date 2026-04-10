@@ -60,12 +60,15 @@ export async function getAvailableSlots(
 
   let currentSlot = setMinutes(setHours(startOfDayDate, startHour), startMinute);
   const endTime = setMinutes(setHours(startOfDayDate, endHour), endMinute);
-  // Use London timezone for "now" comparison to filter past slots correctly
-  const now = toZonedTime(new Date(), SALON_TIMEZONE);
+  // Convert "now" to the same date-basis as slots for consistent comparison
+  const nowUtc = new Date();
+  const nowInLondon = toZonedTime(nowUtc, SALON_TIMEZONE);
+  // Build a comparable "now" on the same startOfDay date-basis used by slots
+  const nowComparable = setMinutes(setHours(startOfDayDate, nowInLondon.getHours()), nowInLondon.getMinutes());
 
   while (addMinutes(currentSlot, serviceDuration) <= endTime) {
-    // Skip slots that have already passed today
-    if (currentSlot <= now) {
+    // Skip slots that have already passed today (same-day only)
+    if (date.toDateString() === nowInLondon.toDateString() && currentSlot <= nowComparable) {
       currentSlot = addMinutes(currentSlot, 30);
       continue;
     }

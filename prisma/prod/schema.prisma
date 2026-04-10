@@ -58,16 +58,16 @@ model Appointment {
   updatedAt DateTime @updatedAt
 
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   stylistId String
-  stylist   Stylist  @relation(fields: [stylistId], references: [id])
-  
+  stylist   Stylist  @relation(fields: [stylistId], references: [id], onDelete: Restrict)
+
   serviceId String
-  service   Service  @relation(fields: [serviceId], references: [id])
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
 
   discountCodeId String?
-  discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id])
+  discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
 
   @@index([stylistId, date])
   @@index([userId, status])
@@ -82,7 +82,7 @@ model Availability {
   isOff     Boolean  @default(false)
 
   stylistId String
-  stylist   Stylist  @relation(fields: [stylistId], references: [id])
+  stylist   Stylist  @relation(fields: [stylistId], references: [id], onDelete: Cascade)
 
   @@index([stylistId, dayOfWeek])
 }

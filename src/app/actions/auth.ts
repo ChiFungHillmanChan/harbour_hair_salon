@@ -92,6 +92,12 @@ export async function login(prevState: unknown, formData: FormData) {
 }
 
 export async function register(prevState: unknown, formData: FormData) {
+  const headersList = await headers();
+  const ip = getClientIp(headersList);
+  if (!checkRateLimit(ip)) {
+    return { error: 'Too many registration attempts. Please try again in 15 minutes.' };
+  }
+
   const result = registerSchema.safeParse(Object.fromEntries(formData));
 
   if (!result.success) {

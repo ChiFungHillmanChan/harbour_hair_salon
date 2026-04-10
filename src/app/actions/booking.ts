@@ -105,6 +105,39 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
   const validData = result.data;
 
+  // Parse time HH:mm in salon timezone (Europe/London)
+  // fromZonedTime converts a "London local time" to the correct UTC Date
+  const { fromZonedTime } = await import('date-fns-tz');
+  const [hours, minutes] = validData.time.split(':').map(Number);
+  const localDate = new Date(validData.date);
+  localDate.setHours(hours, minutes, 0, 0);
+  const fullDate = fromZonedTime(localDate, 'Europe/London');
+
+  // Prevent booking in the past
+  if (fullDate <= new Date()) {
+    return { success: false, error: 'Cannot book a time in the past' };
+  }
+
+  // Validate time falls within stylist availability for this day
+  const dayOfWeek = localDate.getDay();
+  const availability = await prisma.availability.findFirst({
+    where: { stylistId: validData.stylistId, dayOfWeek, isOff: false },
+  });
+
+  if (!availability) {
+    return { success: false, error: 'Stylist is not available on this day' };
+  }
+
+  const bookingTimeMinutes = hours * 60 + minutes;
+  const [availStartH, availStartM] = availability.startTime.split(':').map(Number);
+  const [availEndH, availEndM] = availability.endTime.split(':').map(Number);
+  const availStart = availStartH * 60 + availStartM;
+  const availEnd = availEndH * 60 + availEndM;
+
+  if (bookingTimeMinutes < availStart || bookingTimeMinutes >= availEnd) {
+    return { success: false, error: 'Selected time is outside business hours' };
+  }
+
   // Atomically validate and claim the discount code within a transaction
   let discountCodeId = undefined;
   if (validData.discountCode) {
@@ -126,18 +159,9 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
         return discount.id;
       }, { isolationLevel: 'Serializable' });
     } catch {
-      // Discount claim failed (concurrent usage) — proceed without discount
-      discountCodeId = undefined;
+      return { success: false, error: 'Discount code could not be applied. It may have been fully claimed.' };
     }
   }
-
-  // Parse time HH:mm in salon timezone (Europe/London)
-  // fromZonedTime converts a "London local time" to the correct UTC Date
-  const { fromZonedTime } = await import('date-fns-tz');
-  const [hours, minutes] = validData.time.split(':').map(Number);
-  const localDate = new Date(validData.date);
-  localDate.setHours(hours, minutes, 0, 0);
-  const fullDate = fromZonedTime(localDate, 'Europe/London');
 
   try {
     const appointment = await createBooking({

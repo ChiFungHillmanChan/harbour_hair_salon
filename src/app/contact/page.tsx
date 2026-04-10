@@ -73,31 +73,31 @@ export default function ContactPage() {
               <ul className="space-y-2 text-lg text-zinc-600">
                 <li className="flex justify-between border-b border-zinc-100 pb-1">
                   <span className="font-medium text-zinc-900">Monday</span>
-                  <span>10:00 AM – 7:30 PM</span>
+                  <span>10:00 – 19:30</span>
                 </li>
                 <li className="flex justify-between border-b border-zinc-100 pb-1">
                   <span className="font-medium text-zinc-900">Tuesday</span>
-                  <span>10:00 AM – 7:30 PM</span>
+                  <span>10:00 – 19:30</span>
                 </li>
                 <li className="flex justify-between border-b border-zinc-100 pb-1">
                   <span className="font-medium text-zinc-900">Wednesday</span>
-                  <span>10:00 AM – 7:30 PM</span>
+                  <span>10:00 – 19:30</span>
                 </li>
                 <li className="flex justify-between border-b border-zinc-100 pb-1">
                   <span className="font-medium text-zinc-900">Thursday</span>
-                  <span>10:00 AM – 7:30 PM</span>
+                  <span>10:00 – 19:30</span>
                 </li>
                 <li className="flex justify-between border-b border-zinc-100 pb-1">
                   <span className="font-medium text-zinc-900">Friday</span>
-                  <span>10:00 AM – 7:30 PM</span>
+                  <span>10:00 – 19:30</span>
                 </li>
                 <li className="flex justify-between border-b border-zinc-100 pb-1">
                   <span className="font-medium text-zinc-900">Saturday</span>
-                  <span>10:30 AM – 6:00 PM</span>
+                  <span>10:30 – 18:00</span>
                 </li>
                 <li className="flex justify-between">
                   <span className="font-medium text-zinc-900">Sunday</span>
-                  <span>10:30 AM – 6:00 PM</span>
+                  <span>10:30 – 18:00</span>
                 </li>
               </ul>
             </div>
