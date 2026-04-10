@@ -73,9 +73,9 @@ export function ServiceMenu({ services, activeOffer, title = "Our Services", fla
     <section id="services" className="py-24 bg-white text-zinc-900">
       <div className="container mx-auto px-4">
         <div className="text-center mb-16">
-          <p className="text-sm uppercase tracking-[0.3em] text-[var(--accent)] mb-4 font-medium">What We Offer</p>
+          <p className="text-sm uppercase tracking-[0.3em] text-accent mb-4 font-medium">What We Offer</p>
           <h2 className="text-3xl md:text-5xl font-serif mb-4">{title}</h2>
-          <div className="w-16 h-[2px] bg-[var(--accent)] mx-auto" />
+          <div className="w-16 h-[2px] bg-accent mx-auto" />
         </div>
 
         {flatList ? (
@@ -105,13 +105,13 @@ export function ServiceMenu({ services, activeOffer, title = "Our Services", fla
         <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mt-16">
           <Link
             href="/services"
-            className="text-sm uppercase tracking-[0.2em] font-medium text-zinc-600 hover:text-[var(--accent)] transition-colors border-b border-zinc-300 hover:border-[var(--accent)] pb-1"
+            className="text-sm uppercase tracking-[0.2em] font-medium text-zinc-600 hover:text-accent transition-colors border-b border-zinc-300 hover:border-accent pb-1"
           >
             View Full Menu
           </Link>
           <Link
             href="/book"
-            className="inline-block bg-[var(--accent)] text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all"
+            className="inline-block bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
           >
             Book Appointment
           </Link>

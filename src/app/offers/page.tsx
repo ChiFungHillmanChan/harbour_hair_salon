@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   title: 'Special Offers & Promotions in Leeds',
   description: 'Exclusive seasonal promotions and special offers at Harbour Hair Salon, Leeds city centre. Save on haircuts, colours and treatments.',
   alternates: { canonical: '/offers' },
+  openGraph: {
+    title: 'Special Offers | Harbour Hair Salon Leeds',
+    description: 'Exclusive seasonal promotions. Save on haircuts, colours and treatments at our Leeds city centre salon.',
+  },
 };
 
 // Revalidate data every hour
@@ -29,6 +33,19 @@ export default async function OffersPage() {
 
   return (
     <div className="min-h-screen bg-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://harbourhairsalon.co.uk' },
+              { '@type': 'ListItem', position: 2, name: 'Special Offers', item: 'https://harbourhairsalon.co.uk/offers' },
+            ],
+          }),
+        }}
+      />
       {/* Hero Section */}
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
@@ -41,7 +58,7 @@ export default async function OffersPage() {
           />
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
             Special <span className="italic text-zinc-400">Offers</span>
           </h1>

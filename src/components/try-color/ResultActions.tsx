@@ -8,7 +8,7 @@ export function ResultActions({ onDownload }: ResultActionsProps) {
   return (
     <button
       onClick={onDownload}
-      className="w-full bg-[var(--accent)] text-black py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all duration-300 hover:scale-[1.01] flex items-center justify-center gap-2 rounded-lg shadow-lg shadow-[var(--accent)]/10"
+      className="w-full bg-accent text-black py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-300 hover:scale-[1.01] flex items-center justify-center gap-2 rounded-lg shadow-lg shadow-accent/10"
     >
       <svg
         className="w-4 h-4"

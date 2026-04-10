@@ -1,23 +1,80 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Contact & Find Us in Leeds City Centre',
   description: 'Visit Harbour Hair Salon at Unit 15 Central Arcade, Leeds LS1 6DX. Opening hours, directions from Leeds station, and contact details.',
   alternates: { canonical: '/contact' },
+  openGraph: {
+    title: 'Contact Harbour Hair Salon | Leeds City Centre',
+    description: 'Visit us at Central Arcade, Leeds LS1 6DX. Opening hours, directions, and contact details.',
+  },
 };
 
 export default function ContactPage() {
   return (
     <div className="min-h-screen bg-white">
-      {/* Header Section */}
-      <div className="bg-zinc-900 text-white py-14">
-        <div className="container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
-          <h1 className="text-3xl md:text-5xl font-serif mb-4 tracking-tight">Contact <span className="italic text-zinc-400">Us</span></h1>
-          <p className="text-lg text-zinc-300 font-light">Find us in the heart of Leeds city centre</p>
+      {/* Hero Section */}
+      <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
+        <div className="absolute inset-0">
+          <Image
+            src="/images/hero-salon.png"
+            alt="Harbour Hair Salon location in Leeds Central Arcade"
+            fill
+            priority
+            className="object-cover opacity-40"
+          />
         </div>
-      </div>
+        <div className="relative z-10 container mx-auto px-4 text-center">
+          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">Contact <span className="italic text-zinc-400">Us</span></h1>
+          <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">Find us in the heart of Leeds city centre</p>
+        </div>
+      </section>
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://harbourhairsalon.co.uk' },
+              { '@type': 'ListItem', position: 2, name: 'Contact', item: 'https://harbourhairsalon.co.uk/contact' },
+            ],
+          }),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'HairSalon',
+            name: 'Harbour Hair Salon',
+            url: 'https://harbourhairsalon.co.uk',
+            telephone: '+447831830898',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: 'Upper Floor, Unit 15 Central Arcade, Central Rd',
+              addressLocality: 'Leeds',
+              addressRegion: 'West Yorkshire',
+              postalCode: 'LS1 6DX',
+              addressCountry: 'GB',
+            },
+            geo: {
+              '@type': 'GeoCoordinates',
+              latitude: 53.7965911,
+              longitude: -1.5416801,
+            },
+            openingHoursSpecification: [
+              { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday','Tuesday','Wednesday','Thursday','Friday'], opens: '10:00', closes: '19:30' },
+              { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Saturday','Sunday'], opens: '10:30', closes: '18:00' },
+            ],
+          }),
+        }}
+      />
 
       <div className="container mx-auto px-4 py-12 md:py-20">
         <div className="grid md:grid-cols-2 gap-12 max-w-6xl mx-auto">
@@ -111,8 +168,9 @@ export default function ContactPage() {
               height="100%" 
               style={{ border: 0, minHeight: '500px' }} 
               allowFullScreen 
-              loading="lazy" 
+              loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
+              title="Harbour Hair Salon location on Google Maps - Central Arcade, Leeds LS1 6DX"
               className="transition-all duration-500"
             ></iframe>
           </div>
@@ -120,14 +178,14 @@ export default function ContactPage() {
 
         {/* CTA Section */}
         <div className="mt-20 text-center bg-zinc-900 p-16">
-          <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-8" />
+          <div className="w-12 h-[2px] bg-accent mx-auto mb-8" />
           <h2 className="text-3xl font-serif text-white mb-6">Ready for a fresh look?</h2>
           <p className="text-zinc-400 mb-10 max-w-xl mx-auto font-light">
             Book your appointment online today and let our expert stylists take care of you.
           </p>
           <Link
             href="/book"
-            className="inline-block bg-[var(--accent)] text-black px-12 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all"
+            className="inline-block bg-accent text-black px-12 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
           >
             Book Appointment
           </Link>

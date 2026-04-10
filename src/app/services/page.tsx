@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   title: 'Hair Services & Pricing in Leeds',
   description: 'Full menu of haircuts, colouring, perms and treatments at Harbour Hair Salon, Leeds city centre. Prices from £8. Book online.',
   alternates: { canonical: '/services' },
+  openGraph: {
+    title: 'Hair Services & Pricing | Harbour Hair Salon Leeds',
+    description: 'Full menu of haircuts, colouring, perms and treatments. Prices from £8. Book online.',
+  },
 };
 
 // Revalidate data every hour
@@ -71,8 +75,48 @@ export default async function ServicesPage() {
     return a.localeCompare(b);
   });
 
+  // Build Service structured data
+  const serviceSchemaItems = services.map(service => ({
+    '@type': 'Service' as const,
+    name: service.name,
+    description: service.description || `${service.name} at Harbour Hair Salon`,
+    offers: {
+      '@type': 'Offer' as const,
+      price: service.price.toFixed(2),
+      priceCurrency: 'GBP',
+    },
+    provider: {
+      '@type': 'HairSalon' as const,
+      name: 'Harbour Hair Salon',
+    },
+  }));
+
   return (
     <div className="min-h-screen bg-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'OfferCatalog',
+            name: 'Harbour Hair Salon Services',
+            itemListElement: serviceSchemaItems,
+          }),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://harbourhairsalon.co.uk' },
+              { '@type': 'ListItem', position: 2, name: 'Services & Pricing', item: 'https://harbourhairsalon.co.uk/services' },
+            ],
+          }),
+        }}
+      />
       {/* Hero Section */}
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
@@ -85,7 +129,7 @@ export default async function ServicesPage() {
           />
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
             Services & <span className="italic text-zinc-400">Pricing</span>
           </h1>
@@ -115,7 +159,7 @@ export default async function ServicesPage() {
         <div className="mt-20 text-center">
            <Link
              href="/book"
-             className="inline-block bg-[var(--accent)] text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all"
+             className="inline-block bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
            >
              Book Appointment
            </Link>

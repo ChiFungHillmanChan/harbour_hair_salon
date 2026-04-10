@@ -25,18 +25,15 @@ export const metadata: Metadata = {
   },
   description:
     "Professional hair salon in Leeds city centre. Expert cuts, colours, perms and treatments by Hong Kong trained stylists. Book online at Central Arcade, LS1 6DX.",
-  keywords: [
-    "hair salon Leeds",
-    "hairdresser Leeds city centre",
-    "Hong Kong barber Leeds",
-    "haircut Leeds",
-    "hair colouring Leeds",
-    "Central Arcade Leeds",
-  ],
   icons: {
-    icon: "/images/favicon.png",
-    apple: "/images/favicon.png",
+    icon: [
+      { url: "/images/favicon.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: [
+      { url: "/images/favicon.png", sizes: "180x180" },
+    ],
   },
+  manifest: "/site.webmanifest",
   openGraph: {
     type: "website",
     locale: "en_GB",

@@ -22,7 +22,7 @@ export function ColorPalette({
       {/* Active color display */}
       <div className="flex items-center gap-3">
         <div
-          className="w-8 h-8 rounded-full border-2 border-[var(--accent)]/40 shadow-lg shadow-black/20"
+          className="w-8 h-8 rounded-full border-2 border-accent/40 shadow-lg shadow-black/20"
           style={{ backgroundColor: selectedHex }}
         />
         <div>
@@ -37,7 +37,7 @@ export function ColorPalette({
 
       {/* Preset swatches */}
       <div>
-        <p className="text-[var(--accent)] text-xs uppercase tracking-[0.2em] font-medium mb-3">
+        <p className="text-accent text-xs uppercase tracking-[0.2em] font-medium mb-3">
           Select Colour
         </p>
         <div className="flex flex-wrap gap-2.5 pb-1">
@@ -51,7 +51,7 @@ export function ColorPalette({
               <div
                 className={`w-9 h-9 rounded-full transition-all duration-300 ${
                   selectedHex === color.hex
-                    ? 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-zinc-900 scale-110'
+                    ? 'ring-2 ring-accent ring-offset-2 ring-offset-zinc-900 scale-110'
                     : 'hover:scale-105 border border-zinc-700 group-hover:border-zinc-500'
                 }`}
                 style={{ backgroundColor: color.hex }}
@@ -59,7 +59,7 @@ export function ColorPalette({
               <span
                 className={`text-[9px] leading-tight text-center max-w-[2.5rem] transition-colors truncate ${
                   selectedHex === color.hex
-                    ? 'text-[var(--accent)]'
+                    ? 'text-accent'
                     : 'text-zinc-600 group-hover:text-zinc-400'
                 }`}
               >
@@ -72,7 +72,7 @@ export function ColorPalette({
             <div
               className={`w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center transition-all duration-300 ${
                 !PRESET_COLORS.some((c) => c.hex === selectedHex)
-                  ? 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-zinc-900 scale-110 border-[var(--accent)]'
+                  ? 'ring-2 ring-accent ring-offset-2 ring-offset-zinc-900 scale-110 border-accent'
                   : 'border-zinc-700 group-hover:border-zinc-500 hover:scale-105'
               }`}
             >
@@ -99,7 +99,7 @@ export function ColorPalette({
 
       {/* Intensity slider */}
       <div>
-        <p className="text-[var(--accent)] text-xs uppercase tracking-[0.2em] font-medium mb-2">
+        <p className="text-accent text-xs uppercase tracking-[0.2em] font-medium mb-2">
           Intensity
         </p>
         <div className="flex items-center gap-4">
@@ -110,7 +110,7 @@ export function ColorPalette({
             max={100}
             value={intensity}
             onChange={(e) => onIntensityChange(Number(e.target.value))}
-            className="flex-1 h-1.5 accent-[var(--accent)] cursor-pointer"
+            className="flex-1 h-1.5 accent-accent cursor-pointer"
           />
           <span className="text-zinc-600 text-xs">Bold</span>
         </div>

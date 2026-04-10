@@ -363,9 +363,9 @@ export default function TryColorClient() {
 
           <div className="relative z-10 container mx-auto px-4 text-center">
             <div className="animate-fade-in">
-              <div className="w-16 h-[2px] bg-[var(--accent)] mx-auto mb-8" />
+              <div className="w-16 h-[2px] bg-accent mx-auto mb-8" />
 
-              <p className="text-[var(--accent)] text-sm uppercase tracking-[0.3em] font-medium mb-6">
+              <p className="text-accent text-sm uppercase tracking-[0.3em] font-medium mb-6">
                 Virtual Experience
               </p>
 
@@ -382,7 +382,7 @@ export default function TryColorClient() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
                 <button
                   onClick={startCamera}
-                  className="bg-[var(--accent)] text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all duration-300 hover:scale-105"
+                  className="bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-300 hover:scale-[1.02]"
                 >
                   Open Camera
                 </button>
@@ -394,7 +394,7 @@ export default function TryColorClient() {
                 </button>
               </div>
 
-              <div className="w-16 h-[2px] bg-[var(--accent)] mx-auto mb-6" />
+              <div className="w-16 h-[2px] bg-accent mx-auto mb-6" />
 
               <div className="space-y-2 text-xs text-zinc-500 max-w-md mx-auto">
                 <p>Your photos never leave your browser. All processing happens on-device.</p>
@@ -417,7 +417,7 @@ export default function TryColorClient() {
                 { step: '03', title: 'Download', desc: 'Save your favourite look as a JPEG' },
               ].map((item) => (
                 <div key={item.step}>
-                  <p className="text-[var(--accent)] text-xs tracking-[0.3em] font-medium mb-3">
+                  <p className="text-accent text-xs tracking-[0.3em] font-medium mb-3">
                     {item.step}
                   </p>
                   <h3 className="font-serif text-xl mb-2">{item.title}</h3>
@@ -472,7 +472,7 @@ export default function TryColorClient() {
         {/* Loading */}
         {loading && (
           <div className="flex items-center justify-center gap-3 py-12 text-zinc-400">
-            <div className="w-5 h-5 border-2 border-zinc-700 border-t-[var(--accent)] rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-zinc-700 border-t-accent rounded-full animate-spin" />
             <span className="text-sm font-light">Loading hair detection model...</span>
           </div>
         )}
@@ -533,7 +533,7 @@ export default function TryColorClient() {
           {mode === 'camera' ? (
             <button
               onClick={startUpload}
-              className="text-zinc-500 hover:text-[var(--accent)] text-sm transition-colors"
+              className="text-zinc-500 hover:text-accent text-sm transition-colors"
             >
               Upload a photo instead
             </button>
@@ -545,14 +545,14 @@ export default function TryColorClient() {
                     setHasUploadedImage(false);
                     uploadDataRef.current = null;
                   }}
-                  className="text-zinc-500 hover:text-[var(--accent)] text-sm transition-colors"
+                  className="text-zinc-500 hover:text-accent text-sm transition-colors"
                 >
                   Change photo
                 </button>
               )}
               <button
                 onClick={startCamera}
-                className="text-zinc-500 hover:text-[var(--accent)] text-sm transition-colors"
+                className="text-zinc-500 hover:text-accent text-sm transition-colors"
               >
                 Use camera instead
               </button>

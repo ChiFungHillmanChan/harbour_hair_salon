@@ -1,0 +1,21 @@
+{
+  "name": "Harbour Hair Salon",
+  "short_name": "Harbour Hair",
+  "description": "Professional hair salon in Leeds city centre. Expert cuts, colours, and treatments.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#174F7F",
+  "icons": [
+    {
+      "src": "/images/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

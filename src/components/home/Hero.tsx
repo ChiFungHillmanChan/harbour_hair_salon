@@ -18,9 +18,9 @@ export function Hero() {
 
       <div className="relative z-10 text-center max-w-4xl px-4 animate-fade-in">
         {/* Gold accent line */}
-        <div className="w-16 h-[2px] bg-[var(--accent)] mx-auto mb-8" />
+        <div className="w-16 h-[2px] bg-accent mx-auto mb-8" />
 
-        <p className="text-sm uppercase tracking-[0.3em] text-[var(--accent)] mb-6 font-medium">
+        <p className="text-sm uppercase tracking-[0.3em] text-accent mb-6 font-medium">
           Leeds City Centre
         </p>
 
@@ -38,7 +38,7 @@ export function Hero() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
             href="/book"
-            className="inline-block bg-[var(--accent)] text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-[var(--accent-light)] transition-all duration-300 hover:scale-105"
+            className="inline-block bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-300"
           >
             Book Appointment
           </Link>
@@ -51,7 +51,7 @@ export function Hero() {
         </div>
 
         {/* Gold accent line */}
-        <div className="w-16 h-[2px] bg-[var(--accent)] mx-auto mt-12" />
+        <div className="w-16 h-[2px] bg-accent mx-auto mt-12" />
       </div>
 
       {/* Scroll indicator */}
