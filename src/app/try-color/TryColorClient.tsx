@@ -25,12 +25,15 @@ import {
   SLOW_FRAME_THRESHOLD_MS,
   SLOW_FRAME_WINDOW,
   WARMUP_FRAMES,
+  type BleachState,
   type HairAnalysis,
   type HairLevel,
   type HairLevelMode,
   type RecolorRequest,
   type ShadePreset,
 } from '@/components/try-color/constants';
+
+const ENABLE_LIVE_CAMERA = false; // disabled per client request; code retained for re-enable
 
 type Mode = 'landing' | 'camera' | 'upload';
 const DEFAULT_SHADE = PRESET_COLORS[3];
@@ -88,12 +91,14 @@ function buildRecolorRequest(
   previewStrength: number,
   baseLevelMode: HairLevelMode,
   manualBaseLevel: HairLevel,
+  bleachState: BleachState,
 ): RecolorRequest {
   return {
     preset,
     previewStrength,
     baseLevelMode,
     manualBaseLevel: baseLevelMode === 'manual' ? manualBaseLevel : undefined,
+    bleachState,
   };
 }
 
@@ -103,6 +108,7 @@ export default function TryColorClient() {
   const [previewStrength, setPreviewStrength] = useState(DEFAULT_INTENSITY);
   const [baseLevelMode, setBaseLevelMode] = useState<HairLevelMode>('auto');
   const [manualBaseLevel, setManualBaseLevel] = useState<HairLevel>(5);
+  const [bleachState, setBleachState] = useState<BleachState>('pre');
   const [hairAnalysis, setHairAnalysis] = useState<HairAnalysis | null>(null);
   const [recolorContext, setRecolorContext] = useState<ResolvedRecolorContext | null>(null);
   const [loading, setLoading] = useState(false);
@@ -120,7 +126,7 @@ export default function TryColorClient() {
   const previewRef = useRef<PreviewCanvasHandle>(null);
   const workerRef = useRef<Worker | null>(null);
   const requestRef = useRef<RecolorRequest>(
-    buildRecolorRequest(DEFAULT_SHADE, DEFAULT_INTENSITY, 'auto', 5),
+    buildRecolorRequest(DEFAULT_SHADE, DEFAULT_INTENSITY, 'auto', 5, 'pre'),
   );
   const frameTimesRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
@@ -146,8 +152,9 @@ export default function TryColorClient() {
       previewStrength,
       baseLevelMode,
       manualBaseLevel,
+      bleachState,
     );
-  }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel]);
+  }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel, bleachState]);
 
   useEffect(() => {
     setLiveProfile(detectLivePreviewProfile());
@@ -454,7 +461,7 @@ export default function TryColorClient() {
     });
 
     return () => cancelAnimationFrame(rafId);
-  }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel, mode]);
+  }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel, bleachState, mode]);
 
   const startCamera = () => {
     setError(null);
@@ -543,17 +550,19 @@ export default function TryColorClient() {
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
                 <button
-                  onClick={startCamera}
-                  className="bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-300 hover:scale-[1.02]"
-                >
-                  Open Camera
-                </button>
-                <button
                   onClick={startUpload}
-                  className="border border-white/30 text-white px-10 py-4 text-sm uppercase tracking-[0.2em] font-medium hover:bg-white/10 transition-all duration-300"
+                  className="bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-300 hover:scale-[1.02]"
                 >
                   Upload Photo
                 </button>
+                {ENABLE_LIVE_CAMERA && (
+                  <button
+                    onClick={startCamera}
+                    className="border border-white/30 text-white px-10 py-4 text-sm uppercase tracking-[0.2em] font-medium hover:bg-white/10 transition-all duration-300"
+                  >
+                    Open Camera
+                  </button>
+                )}
               </div>
 
               <div className="w-16 h-[2px] bg-accent mx-auto mb-6" />
@@ -689,10 +698,12 @@ export default function TryColorClient() {
             detectedBaseLevel={detectedBaseLevel}
             effectiveBaseLevel={effectiveBaseLevel}
             expectedResultNotice={expectedResultNotice}
+            bleachState={bleachState}
             onShadeChange={handleShadeChange}
             onPreviewStrengthChange={setPreviewStrength}
             onBaseLevelModeChange={handleBaseLevelModeChange}
             onManualBaseLevelChange={handleManualBaseLevelChange}
+            onBleachStateChange={setBleachState}
           />
         </div>
 
@@ -724,12 +735,14 @@ export default function TryColorClient() {
                   Change photo
                 </button>
               )}
-              <button
-                onClick={startCamera}
-                className="text-zinc-500 hover:text-accent text-sm transition-colors"
-              >
-                Use camera instead
-              </button>
+              {ENABLE_LIVE_CAMERA && (
+                <button
+                  onClick={startCamera}
+                  className="text-zinc-500 hover:text-accent text-sm transition-colors"
+                >
+                  Use camera instead
+                </button>
+              )}
             </>
           )}
         </div>
