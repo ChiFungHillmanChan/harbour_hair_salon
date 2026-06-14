@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { CameraView } from '@/components/try-color/CameraView';
 import { UploadDropzone } from '@/components/try-color/UploadDropzone';
+import { VideoTryOn } from '@/components/try-color/VideoTryOn';
 import {
   PreviewCanvas,
   type PreviewCanvasHandle,
@@ -35,7 +36,7 @@ import {
 
 const ENABLE_LIVE_CAMERA = false; // disabled per client request; code retained for re-enable
 
-type Mode = 'landing' | 'camera' | 'upload';
+type Mode = 'landing' | 'camera' | 'upload' | 'video';
 const DEFAULT_SHADE = PRESET_COLORS[3];
 
 interface LivePreviewProfile {
@@ -479,6 +480,16 @@ export default function TryColorClient() {
     setRecolorContext(null);
   };
 
+  const startVideo = () => {
+    cleanupCameraState();
+    setError(null);
+    setMode('video');
+    setHasUploadedImage(false);
+    uploadDataRef.current = null;
+    setHairAnalysis(null);
+    setRecolorContext(null);
+  };
+
   const handleShadeChange = (shade: ShadePreset) => {
     setSelectedShade(shade);
   };
@@ -554,6 +565,12 @@ export default function TryColorClient() {
                   className="bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-300 hover:scale-[1.02]"
                 >
                   Upload Photo
+                </button>
+                <button
+                  onClick={startVideo}
+                  className="border border-white/30 text-white px-10 py-4 text-sm uppercase tracking-[0.2em] font-medium hover:bg-white/10 transition-all duration-300"
+                >
+                  Upload Video
                 </button>
                 {ENABLE_LIVE_CAMERA && (
                   <button
@@ -650,42 +667,54 @@ export default function TryColorClient() {
           </div>
         )}
 
-        {/* Preview area */}
-        <div className="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden border border-zinc-800 shadow-2xl shadow-black/50">
-          {mode === 'camera' && (
-            <>
-              <CameraView
-                onFrame={handleFrame}
-                onError={(msg) => {
-                  cleanupCameraState();
-                  setError(msg);
-                  setMode('upload');
-                }}
-                active={mode === 'camera'}
-                targetFps={liveProfile.targetFps}
-                onFacingModeChange={setFacingMode}
-              />
-              <canvas
-                ref={displayCanvasRef}
+        {/* Preview area (camera / photo). Video mode renders its own preview. */}
+        {mode === 'video' ? (
+          <VideoTryOn
+            request={buildRecolorRequest(
+              selectedShade,
+              previewStrength,
+              baseLevelMode,
+              manualBaseLevel,
+              bleachState,
+            )}
+          />
+        ) : (
+          <div className="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden border border-zinc-800 shadow-2xl shadow-black/50">
+            {mode === 'camera' && (
+              <>
+                <CameraView
+                  onFrame={handleFrame}
+                  onError={(msg) => {
+                    cleanupCameraState();
+                    setError(msg);
+                    setMode('upload');
+                  }}
+                  active={mode === 'camera'}
+                  targetFps={liveProfile.targetFps}
+                  onFacingModeChange={setFacingMode}
+                />
+                <canvas
+                  ref={displayCanvasRef}
+                  width={dimensions.width}
+                  height={dimensions.height}
+                  className="absolute inset-0 z-10 w-full h-full object-cover rounded-lg"
+                />
+              </>
+            )}
+
+            {mode === 'upload' && !hasUploadedImage && !loading && (
+              <UploadDropzone onImageLoaded={handleImageLoaded} />
+            )}
+
+            {mode === 'upload' && hasUploadedImage && (
+              <PreviewCanvas
+                ref={previewRef}
                 width={dimensions.width}
                 height={dimensions.height}
-                className="absolute inset-0 z-10 w-full h-full object-cover rounded-lg"
               />
-            </>
-          )}
-
-          {mode === 'upload' && !hasUploadedImage && !loading && (
-            <UploadDropzone onImageLoaded={handleImageLoaded} />
-          )}
-
-          {mode === 'upload' && hasUploadedImage && (
-            <PreviewCanvas
-              ref={previewRef}
-              width={dimensions.width}
-              height={dimensions.height}
-            />
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Color controls panel */}
         <div className="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
@@ -707,15 +736,24 @@ export default function TryColorClient() {
           />
         </div>
 
-        {/* Download */}
-        <ResultActions
-          onDownload={handleDownload}
-          disabled={loading || (mode === 'upload' && !hasUploadedImage) || (mode === 'camera' && frameCountRef.current === 0)}
-        />
+        {/* Download (camera / photo only — video has its own frame download) */}
+        {mode !== 'video' && (
+          <ResultActions
+            onDownload={handleDownload}
+            disabled={loading || (mode === 'upload' && !hasUploadedImage) || (mode === 'camera' && frameCountRef.current === 0)}
+          />
+        )}
 
         {/* Mode switch */}
         <div className="flex justify-center gap-6 pb-6">
           {mode === 'camera' ? (
+            <button
+              onClick={startUpload}
+              className="text-zinc-500 hover:text-accent text-sm transition-colors"
+            >
+              Upload a photo instead
+            </button>
+          ) : mode === 'video' ? (
             <button
               onClick={startUpload}
               className="text-zinc-500 hover:text-accent text-sm transition-colors"
@@ -735,6 +773,12 @@ export default function TryColorClient() {
                   Change photo
                 </button>
               )}
+              <button
+                onClick={startVideo}
+                className="text-zinc-500 hover:text-accent text-sm transition-colors"
+              >
+                Upload a video instead
+              </button>
               {ENABLE_LIVE_CAMERA && (
                 <button
                   onClick={startCamera}
