@@ -4,6 +4,7 @@ import {
   buildCustomShadePreset,
   HAIR_LEVEL_OPTIONS,
   PRESET_COLORS,
+  type BleachState,
   type HairLevel,
   type HairLevelMode,
   type ShadePreset,
@@ -18,10 +19,12 @@ interface ColorPaletteProps {
   detectedBaseLevel: HairLevel | null;
   effectiveBaseLevel: HairLevel | null;
   expectedResultNotice: string | null;
+  bleachState: BleachState;
   onShadeChange: (shade: ShadePreset) => void;
   onPreviewStrengthChange: (value: number) => void;
   onBaseLevelModeChange: (mode: HairLevelMode) => void;
   onManualBaseLevelChange: (value: HairLevel) => void;
+  onBleachStateChange: (value: BleachState) => void;
 }
 
 export function ColorPalette({
@@ -33,10 +36,12 @@ export function ColorPalette({
   detectedBaseLevel,
   effectiveBaseLevel,
   expectedResultNotice,
+  bleachState,
   onShadeChange,
   onPreviewStrengthChange,
   onBaseLevelModeChange,
   onManualBaseLevelChange,
+  onBleachStateChange,
 }: ColorPaletteProps) {
   const isPreset = PRESET_COLORS.some(
     (color) => color.swatchHex.toLowerCase() === selectedHex.toLowerCase(),
@@ -57,6 +62,35 @@ export function ColorPalette({
             {selectedHex} · {previewStrength}% preview
           </p>
         </div>
+      </div>
+
+      <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+        <p className="text-accent text-xs uppercase tracking-[0.2em] font-medium">Colour Method</p>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            ['pre', '漂前 · No Bleach', 'Colour over your natural hair'],
+            ['post', '漂後上色 · Pre-Bleached', 'Colour on pre-lightened hair'],
+          ] as const).map(([value, label, hint]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onBleachStateChange(value)}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                bleachState === value
+                  ? 'border-accent bg-accent/10 text-white'
+                  : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500'
+              }`}
+            >
+              <span className="block text-sm font-medium">{label}</span>
+              <span className="block text-[10px] text-zinc-500">{hint}</span>
+            </button>
+          ))}
+        </div>
+        <p className="text-zinc-500 text-[11px]">
+          {bleachState === 'post'
+            ? 'Showing the colour as it appears on pre-bleached hair — close to the true shade.'
+            : 'Showing a realistic deposit result — vivid shades look muted on darker hair without bleaching.'}
+        </p>
       </div>
 
       <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
