@@ -1,6 +1,10 @@
 import prisma from '@/app/lib/prisma';
 import { addMinutes, format, setHours, setMinutes, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
+import {
+  evaluatePatchTestEligibility,
+  type EligibilityResult,
+} from './patch-test-eligibility';
 
 const SALON_TIMEZONE = 'Europe/London';
 
@@ -162,4 +166,21 @@ export async function createBooking(data: {
   }, { isolationLevel: 'Serializable' });
 
   return appointment;
+}
+
+/**
+ * Eligibility for booking a colour service on `colourDate`:
+ * the user must have a COMPLETED patch-test appointment >=48h before and within 6 months.
+ */
+export async function getValidPatchTest(
+  userId: string,
+  colourDate: Date,
+): Promise<EligibilityResult> {
+  const tests = await prisma.appointment.findMany({
+    where: { userId, service: { isPatchTest: true } },
+    select: { date: true, status: true },
+    orderBy: { date: 'desc' },
+    take: 20,
+  });
+  return evaluatePatchTestEligibility(tests, colourDate);
 }
