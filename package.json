@@ -8,7 +8,7 @@
     "vercel-build": "prisma db push --schema prisma/vercel/schema.prisma && next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/components/try-color/colorMath.test.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "db:switch:dev": "prisma generate --schema prisma/dev/schema.prisma",
     "db:switch:prod": "prisma generate --schema prisma/prod/schema.prisma",
     "db:dev:migrate": "prisma migrate dev --schema prisma/dev/schema.prisma",
