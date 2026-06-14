@@ -316,3 +316,37 @@ test('root retention leaves upper hair less altered than lower hair', () => {
 
   assert.ok(topDelta < bottomDelta);
 });
+
+test('post-bleach mode bypasses the lift cap regardless of dark base', () => {
+  const platinum = PRESET_COLORS.find((p) => p.name === 'Platinum Blonde');
+  assert.ok(platinum);
+  const analysis = {
+    meanLuminance: 0.1, p95Luminance: 0.16, chroma: 0.1,
+    warmCoolBias: 0.25, estimatedBaseLevel: 2 as const, confidence: 1,
+  };
+  const resolved = resolveRecolorContext(
+    { preset: platinum!, previewStrength: 70, baseLevelMode: 'auto', bleachState: 'post' },
+    analysis,
+  );
+  assert.equal(resolved.achievedLevel, 10);
+  assert.equal(resolved.constrained, false);
+  assert.equal(resolved.expectedResultNotice, null);
+});
+
+test('post-bleach renders a vivid target on dark hair; pre-bleach mutes it', () => {
+  const blue = PRESET_COLORS.find((p) => p.name === 'Blue');
+  assert.ok(blue);
+  function recolouredChroma(bleachState: 'pre' | 'post'): number {
+    const { imageData, mask } = createSolidImageData([[28, 20, 14]]);
+    const hairMask = createHairMaskData(imageData, Array.from(mask));
+    applyRecolorToImageDataWithAlpha(imageData, hairMask, {
+      preset: blue!, previewStrength: 100, baseLevelMode: 'manual', manualBaseLevel: 2, bleachState,
+    });
+    const [r, g, b] = [imageData.data[0], imageData.data[1], imageData.data[2]];
+    return Math.max(r, g, b) - Math.min(r, g, b);
+  }
+  const post = recolouredChroma('post');
+  const pre = recolouredChroma('pre');
+  assert.ok(post > pre + 20, `expected post (${post}) much more vivid than pre (${pre})`);
+  assert.ok(post > 40, `expected post chroma vivid, got ${post}`);
+});

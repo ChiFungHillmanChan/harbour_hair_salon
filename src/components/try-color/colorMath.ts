@@ -315,6 +315,28 @@ export function resolveRecolorContext(
       ? request.manualBaseLevel
       : analysis.estimatedBaseLevel;
 
+  const bleachState = request.bleachState ?? 'pre';
+
+  if (bleachState === 'post') {
+    const targetLinear = mixRgb(
+      hexToLinearRgb(request.preset.swatchHex),
+      hexToLinearRgb(getUnderlyingPigmentHex(10)), // faint residual pale-yellow
+      0.04,
+    );
+    return {
+      analysis,
+      effectiveBaseLevel,
+      achievedLevel: request.preset.targetLevel,
+      constrained: false,
+      expectedResultNotice: null,
+      requestedLift: Math.max(0, request.preset.targetLevel - effectiveBaseLevel),
+      achievedLift: Math.max(0, request.preset.targetLevel - effectiveBaseLevel),
+      resolvedRefL: clamp01(request.preset.refL),
+      targetLinear,
+      strength: clamp01(request.previewStrength / 100),
+    };
+  }
+
   const requestedLift = Math.max(0, request.preset.targetLevel - effectiveBaseLevel);
   let achievedLevel = request.preset.targetLevel;
 
@@ -367,6 +389,10 @@ function buildModeBaseColor(
   request: RecolorRequest,
   state: ResolvedShadeState,
 ): LinearRgb {
+  if ((request.bleachState ?? 'pre') === 'post') {
+    return withLuminance(state.targetLinear, desiredLuminance);
+  }
+
   const targetAtLuminance = withLuminance(state.targetLinear, desiredLuminance);
 
   if (request.preset.mode === 'deposit') {
@@ -415,6 +441,7 @@ export function applyRecolorToImageDataWithAlpha(
   const maskHeight = Math.max(1, maskBounds.bottom - maskBounds.top + 1);
   const warmPigment = hexToLinearRgb(getUnderlyingPigmentHex(state.effectiveBaseLevel));
   const goldenHighlight = mixRgb(state.targetLinear, [1, 0.86, 0.58], 0.24);
+  const undertoneScale = (request.bleachState ?? 'pre') === 'post' ? 0.15 : 1;
 
   for (let i = 0; i < hairMask.alphaMask.length; i++) {
     const alpha = clamp01(hairMask.alphaMask[i]);
@@ -447,8 +474,8 @@ export function applyRecolorToImageDataWithAlpha(
       );
     }
     let modeBase = buildModeBaseColor(source, desiredLuminance, request, state);
-    modeBase = mixRgb(modeBase, goldenHighlight, highlightWeight * 0.12);
-    modeBase = mixRgb(modeBase, warmPigment, shadowWeight * 0.14);
+    modeBase = mixRgb(modeBase, goldenHighlight, highlightWeight * 0.12 * undertoneScale);
+    modeBase = mixRgb(modeBase, warmPigment, shadowWeight * 0.14 * undertoneScale);
     if (fringeAlpha > 0) {
       modeBase = desaturateRgb(modeBase, fringeAlpha * 0.3);
     }
@@ -457,6 +484,7 @@ export function applyRecolorToImageDataWithAlpha(
     if (request.preset.mode === 'deposit') blendAlpha *= 0.92;
     if (request.preset.mode === 'tone') blendAlpha *= 0.78;
     if (request.preset.mode === 'lift') blendAlpha *= 0.88;
+    if ((request.bleachState ?? 'pre') === 'post') blendAlpha = alpha * state.strength;
 
     if (isHighlight) {
       blendAlpha *= request.preset.highlightBlend * 0.5;
