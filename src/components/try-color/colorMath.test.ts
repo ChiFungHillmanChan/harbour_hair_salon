@@ -350,3 +350,18 @@ test('post-bleach renders a vivid target on dark hair; pre-bleach mutes it', () 
   assert.ok(post > pre + 20, `expected post (${post}) much more vivid than pre (${pre})`);
   assert.ok(post > 40, `expected post chroma vivid, got ${post}`);
 });
+
+test('pre-bleach mutes a vivid cool target on dark hair (deposit reality)', () => {
+  const blue = PRESET_COLORS.find((p) => p.name === 'Blue');
+  assert.ok(blue);
+  const { imageData, mask } = createSolidImageData([[30, 22, 16]]);
+  const hairMask = createHairMaskData(imageData, Array.from(mask));
+  applyRecolorToImageDataWithAlpha(imageData, hairMask, {
+    preset: blue!, previewStrength: 100, baseLevelMode: 'manual', manualBaseLevel: 2, bleachState: 'pre',
+  });
+  const [r, g, b] = [imageData.data[0], imageData.data[1], imageData.data[2]];
+  const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  assert.ok(chroma < 35, `expected muted chroma on dark hair, got ${chroma}`);
+  assert.ok(lum < 90, `expected result to stay dark, got ${lum}`);
+});

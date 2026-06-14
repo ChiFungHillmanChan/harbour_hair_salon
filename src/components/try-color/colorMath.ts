@@ -442,6 +442,9 @@ export function applyRecolorToImageDataWithAlpha(
   const warmPigment = hexToLinearRgb(getUnderlyingPigmentHex(state.effectiveBaseLevel));
   const goldenHighlight = mixRgb(state.targetLinear, [1, 0.86, 0.58], 0.24);
   const undertoneScale = (request.bleachState ?? 'pre') === 'post' ? 0.15 : 1;
+  const bleach = request.bleachState ?? 'pre';
+  const overreach = Math.max(0, request.preset.targetLevel - state.effectiveBaseLevel);
+  const preMute = bleach === 'pre' && state.constrained ? clamp01(overreach * 0.18) : 0;
 
   for (let i = 0; i < hairMask.alphaMask.length; i++) {
     const alpha = clamp01(hairMask.alphaMask[i]);
@@ -478,6 +481,11 @@ export function applyRecolorToImageDataWithAlpha(
     modeBase = mixRgb(modeBase, warmPigment, shadowWeight * 0.14 * undertoneScale);
     if (fringeAlpha > 0) {
       modeBase = desaturateRgb(modeBase, fringeAlpha * 0.3);
+    }
+
+    if (preMute > 0) {
+      modeBase = desaturateRgb(modeBase, preMute * 0.8);
+      modeBase = mixRgb(modeBase, warmPigment, preMute * 0.4);
     }
 
     let blendAlpha = alpha * state.strength;
