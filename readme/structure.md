@@ -16,24 +16,36 @@ This document tracks the architectural structure of the Harbour Hair Salon proje
 
 ### Try-Color (Virtual Hair Color Try-On)
 - `src/app/try-color/page.tsx` — Server page with metadata
-- `src/app/try-color/TryColorClient.tsx` — Main client orchestrator (camera/upload modes, single-canvas compositing render loop, worker lifecycle)
-- `src/components/try-color/CameraView.tsx` — Camera feed, device flip, FPS-throttled frame dispatch
-- `src/components/try-color/PreviewCanvas.tsx` — Preview surface for upload mode (drawBitmap, drawImageData, clearCanvas, downloadJpeg)
-- `src/components/try-color/segmentation.worker.ts` — Worker: MediaPipe segmentation with GPU delegate, mask erosion, edge feathering, temporal smoothing, light-color alpha reduction
-- `src/components/try-color/HairSegmentation.ts` — Singleton ImageSegmenter + `segmentStill()` for uploaded photos
-- `src/components/try-color/colorMath.ts` — Color utilities: `hexToRgb`, `rgbToHsl`, `hslToRgb`, `recolorPixel`, `getHexSaturation`, `applyRecolorToImageData`
-- `src/components/try-color/constants.ts` — Preset colors (22), model URLs, performance thresholds, hair category index
-- `src/components/try-color/ColorPalette.tsx` — Color swatches (wrapping grid), custom picker, intensity slider
-- `src/components/try-color/UploadDropzone.tsx` — Upload flow and image validation (max 1024px resize)
+- `src/app/try-color/TryColorClient.tsx` — Main client orchestrator. Modes: `upload` (photo) and `video`; live camera is retained but disabled behind the `ENABLE_LIVE_CAMERA = false` flag. Holds the `bleachState` ('pre'/'post') state and threads it into every recolor request via `buildRecolorRequest`.
+- `src/components/try-color/CameraView.tsx` — Camera feed (currently flag-disabled, code retained)
+- `src/components/try-color/VideoTryOn.tsx` — Video-clip try-on: uploads a short clip, extracts/segments frames (`segmentStill`), recolors each frame with the engine, and plays them back with scrub + download-still. Guardrails: `VIDEO_MAX_SECONDS`, `VIDEO_MAX_DIM`, `VIDEO_TARGET_FPS`, `VIDEO_MAX_FRAMES`, `VIDEO_MAX_FILE_BYTES`, plus a slow-device fallback.
+- `src/components/try-color/PreviewCanvas.tsx` — Preview surface for upload mode
+- `src/components/try-color/segmentation.worker.ts` — Worker: MediaPipe segmentation (used by the flag-disabled live path)
+- `src/components/try-color/HairSegmentation.ts` — Singleton ImageSegmenter + `segmentStill()` for photos and video frames
+- `src/components/try-color/colorMath.ts` — Recolor engine. `bleachState` master mode: **漂前 ('pre')** = deposit-only (base-dominated, vivid shades mute on dark hair, warm-pigment bleed, lift capped); **漂後上色 ('post')** = pre-bleached canvas, target shown vivid/true via luminance (gray-level) mapping, original colour ignored. Key fns: `resolveRecolorContext`, `buildModeBaseColor`, `applyRecolorToImageDataWithAlpha`, `analyzeHair`.
+- `src/components/try-color/constants.ts` — `BleachState` type, `RecolorRequest`, preset colors, hair-level/underlying-pigment tables, MediaPipe + video constants
+- `src/components/try-color/ColorPalette.tsx` — Color swatches, custom picker, intensity slider, and the 漂前/漂後 method toggle
+- `src/components/try-color/UploadDropzone.tsx` — Photo upload flow and validation
 - `src/components/try-color/ResultActions.tsx` — Download button
 
+### Colour Booking Gate (Consultation & Patch Test)
+Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation & Patch Test (`Service.isPatchTest`) appointment ≥48h before and within 6 months of the colour date.
+- `src/app/services/patch-test-eligibility.ts` — Pure logic: `evaluatePatchTestEligibility(tests, colourDate)` → `{ ok, testDate, reason }`; constants `PATCH_TEST_MIN_LEAD_HOURS` (48), `PATCH_TEST_VALIDITY_DAYS` (183). Unit-tested in `patch-test-eligibility.test.ts`.
+- `src/app/services/booking-service.ts` — `getValidPatchTest(userId, colourDate)` queries the user's patch-test appointments and delegates to the pure function.
+- `src/app/actions/booking.ts` — `submitBooking` and `rescheduleAppointment` enforce the gate server-side; `checkColourEligibility(serviceId, dateIso)` powers the wizard UX.
+- `src/components/booking/BookingWizard.tsx` — Shows a blocking gate panel + "book Consultation & Patch Test first" CTA at the CONFIRM step; disables submit when ineligible.
+- `src/app/actions/admin.ts` — `updateAppointmentStatus(appointmentId, status)` (admin-only) marks appointments COMPLETED — the signal that unlocks colour booking.
+- `src/components/admin/ScheduleCalendar.tsx` — "Mark completed" control on CONFIRMED appointments.
+- `src/components/admin/ServiceForm.tsx` + `src/app/actions/admin-services.ts` — manage `requiresPatchTest`/`isPatchTest` per service.
+
 ## Services
-(To be populated as we build)
+- `booking-service.ts` — slot availability, booking creation, patch-test eligibility query
+- `email-service.ts` — Resend + React Email templates
+- `patch-test-eligibility.ts` — pure colour-gate eligibility logic
 
 ## Database Models
 - User
 - Stylist
-- Service
-- Appointment
+- Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the Consultation & Patch Test service) booleans
+- Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED)
 - Availability
-
