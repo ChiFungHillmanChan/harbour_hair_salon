@@ -298,6 +298,20 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
     return { success: false, error: 'Cannot reschedule within 24 hours of appointment' };
   }
 
+  // Re-validate the colour patch-test gate against the NEW date.
+  if (appointment.service.requiresPatchTest) {
+    const eligibility = await getValidPatchTest(session.userId, newDate);
+    if (!eligibility.ok) {
+      const message =
+        eligibility.reason === 'too_soon'
+          ? 'Your patch test must be at least 48 hours before a colour appointment.'
+          : eligibility.reason === 'expired'
+            ? 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.'
+            : 'Colour services require a completed Consultation & Patch Test first.';
+      return { success: false, error: message };
+    }
+  }
+
   try {
     const oldDate = appointment.date;
 

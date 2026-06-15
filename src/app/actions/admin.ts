@@ -232,10 +232,11 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
   if (!ALLOWED_APPOINTMENT_STATUSES.includes(status as AppointmentStatus)) {
     return { success: false, error: 'Invalid status' };
   }
-  await prisma.appointment.update({
-    where: { id: appointmentId },
-    data: { status },
-  });
+  try {
+    await prisma.appointment.update({ where: { id: appointmentId }, data: { status } });
+  } catch {
+    return { success: false, error: 'Appointment not found' };
+  }
   revalidatePath('/admin');
   revalidatePath('/appointments');
   return { success: true };
