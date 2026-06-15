@@ -37,7 +37,10 @@ export async function createService(
     return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid input' };
   }
 
-  const created = await prisma.service.create({ data: parsed.data });
+  const requiresPatchTest = formData.get('requiresPatchTest') === 'on';
+  const isPatchTest = formData.get('isPatchTest') === 'on';
+
+  const created = await prisma.service.create({ data: { ...parsed.data, requiresPatchTest, isPatchTest } });
 
   revalidatePath('/services');
   revalidatePath('/admin/services');
@@ -64,7 +67,10 @@ export async function updateService(
     return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid input' };
   }
 
-  await prisma.service.update({ where: { id }, data: parsed.data });
+  const requiresPatchTest = formData.get('requiresPatchTest') === 'on';
+  const isPatchTest = formData.get('isPatchTest') === 'on';
+
+  await prisma.service.update({ where: { id }, data: { ...parsed.data, requiresPatchTest, isPatchTest } });
 
   revalidatePath('/services');
   revalidatePath(`/services/${existing.category.toLowerCase()}`);
