@@ -54,3 +54,22 @@ test('picks the most recent qualifying test', () => {
   assert.equal(r.ok, true);
   assert.equal(r.testDate?.toISOString(), new Date(colour.getTime() - 5 * DAY).toISOString());
 });
+
+test('most-recent too_soon but older test is valid → eligible via older test', () => {
+  const r = evaluatePatchTestEligibility([
+    { date: new Date(colour.getTime() - 24 * HOUR), status: 'COMPLETED' }, // too_soon
+    { date: new Date(colour.getTime() - 5 * DAY), status: 'COMPLETED' }, // valid
+  ], colour);
+  assert.equal(r.ok, true);
+  assert.equal(r.reason, 'eligible');
+  assert.equal(r.testDate?.toISOString(), new Date(colour.getTime() - 5 * DAY).toISOString());
+});
+
+test('mixed too_soon + expired (none qualifying) → too_soon takes precedence', () => {
+  const r = evaluatePatchTestEligibility([
+    { date: new Date(colour.getTime() - 24 * HOUR), status: 'COMPLETED' }, // too_soon
+    { date: new Date(colour.getTime() - 200 * DAY), status: 'COMPLETED' }, // expired
+  ], colour);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'too_soon');
+});
