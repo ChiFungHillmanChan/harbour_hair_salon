@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, isToday, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { Appointment, Service, Stylist } from '@prisma/client';
 
@@ -124,9 +125,10 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
 interface DayViewProps {
   currentDate: Date;
   dayAppts: AppointmentWithDetails[];
+  onRefresh: () => void;
 }
 
-const DayView = ({ currentDate, dayAppts }: DayViewProps) => {
+const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
   return (
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden flex flex-col">
       <div className="p-4 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center">
@@ -148,7 +150,7 @@ const DayView = ({ currentDate, dayAppts }: DayViewProps) => {
                                   <h4 className="font-semibold text-blue-900">{appt.user.name}</h4>
                                   <p className="text-blue-700 text-sm">{appt.service.name} • {appt.service.duration} mins</p>
                               </div>
-                              <span className={`text-xs px-2 py-1 rounded-full font-medium 
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium
                                   ${appt.status === 'CONFIRMED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}
                               `}>
                                   {appt.status}
@@ -158,6 +160,19 @@ const DayView = ({ currentDate, dayAppts }: DayViewProps) => {
                               <span>Stylist: {appt.stylist.name}</span>
                               <span>£{Number(appt.service.price).toFixed(2)}</span>
                           </div>
+                          {appt.status === 'CONFIRMED' && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const { updateAppointmentStatus } = await import('@/app/actions/admin');
+                                const res = await updateAppointmentStatus(appt.id, 'COMPLETED');
+                                if (res.success) { onRefresh(); } else { alert(res.error ?? 'Failed to update'); }
+                              }}
+                              className="mt-2 rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                            >
+                              Mark completed
+                            </button>
+                          )}
                       </div>
                   </div>
               ))
@@ -168,6 +183,7 @@ const DayView = ({ currentDate, dayAppts }: DayViewProps) => {
 };
 
 export function ScheduleCalendar({ appointments }: { appointments: AppointmentWithDetails[] }) {
+  const router = useRouter();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -250,9 +266,10 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
           />
         )}
         {viewMode === 'day' && (
-          <DayView 
+          <DayView
             currentDate={currentDate}
             dayAppts={getDayAppointments(currentDate)}
+            onRefresh={() => router.refresh()}
           />
         )}
       </div>
@@ -269,8 +286,23 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
                                      <p className="font-medium text-zinc-900">{format(new Date(appt.date), 'HH:mm')} - {appt.user.name}</p>
                                      <p className="text-sm text-zinc-500">{appt.service.name} with {appt.stylist.name}</p>
                                  </div>
-                                 <div className={`text-xs px-2 py-1 rounded font-medium ${appt.status === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-gray-100'}`}>
-                                     {appt.status}
+                                 <div className="flex items-center gap-2">
+                                     <div className={`text-xs px-2 py-1 rounded font-medium ${appt.status === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-gray-100'}`}>
+                                         {appt.status}
+                                     </div>
+                                     {appt.status === 'CONFIRMED' && (
+                                       <button
+                                         type="button"
+                                         onClick={async () => {
+                                           const { updateAppointmentStatus } = await import('@/app/actions/admin');
+                                           const res = await updateAppointmentStatus(appt.id, 'COMPLETED');
+                                           if (res.success) { router.refresh(); } else { alert(res.error ?? 'Failed to update'); }
+                                         }}
+                                         className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                                       >
+                                         Mark completed
+                                       </button>
+                                     )}
                                  </div>
                              </div>
                          ))}
