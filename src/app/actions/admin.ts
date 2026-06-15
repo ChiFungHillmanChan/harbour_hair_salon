@@ -221,6 +221,26 @@ export async function deleteAdminUser(id: string) {
   revalidatePath('/admin/users');
 }
 
+const ALLOWED_APPOINTMENT_STATUSES = ['CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
+type AppointmentStatus = (typeof ALLOWED_APPOINTMENT_STATUSES)[number];
+
+export async function updateAppointmentStatus(appointmentId: string, status: string) {
+  const session = await verifySession();
+  if (session.role !== 'ADMIN') {
+    return { success: false, error: 'Not authorised' };
+  }
+  if (!ALLOWED_APPOINTMENT_STATUSES.includes(status as AppointmentStatus)) {
+    return { success: false, error: 'Invalid status' };
+  }
+  await prisma.appointment.update({
+    where: { id: appointmentId },
+    data: { status },
+  });
+  revalidatePath('/admin');
+  revalidatePath('/appointments');
+  return { success: true };
+}
+
 export async function resetUserPassword(userId: string, newPassword: string) {
   const { error } = await requireAdmin();
   if (error) return { error };
