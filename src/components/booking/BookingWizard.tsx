@@ -34,6 +34,9 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
+  // Colour patch-test gate: populated when a colour service + date are selected
+  const [colourGate, setColourGate] = useState<{ eligible: boolean; reason: string; testDate: string | null } | null>(null);
+
   // Search and Category Logic
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Haircuts');
@@ -58,6 +61,25 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
       loadSlots();
     }
   }, [selectedStylist, selectedDate, selectedService]);
+
+  // Check colour patch-test eligibility whenever a colour service + date is selected
+  useEffect(() => {
+    if (!selectedService || !selectedService.requiresPatchTest) {
+      setColourGate(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { checkColourEligibility } = await import('@/app/actions/booking');
+      const res = await checkColourEligibility(selectedService.id, selectedDate.toISOString());
+      if (!cancelled) {
+        setColourGate({ eligible: res.eligible, reason: res.reason, testDate: res.testDate });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedService, selectedDate]);
 
   const handleApplyDiscount = async () => {
     if (!discountCode.trim()) return;
@@ -95,6 +117,8 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStylist || !selectedService || !selectedTime) return;
+    // Block ineligible colour bookings client-side (server is still source of truth)
+    if (colourGate && !colourGate.eligible) return;
 
     setIsLoading(true);
     setBookingError(null);
@@ -542,6 +566,30 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
             {discountError && <p className="text-red-600 text-xs mt-1.5">{discountError}</p>}
           </div>
 
+          {colourGate && !colourGate.eligible && (
+            <div className="rounded-lg border border-amber-400 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-medium">Consultation &amp; Patch Test required</p>
+              <p className="mt-1">
+                Colour services need a completed consultation &amp; patch test at least 48 hours beforehand
+                {colourGate.reason === 'expired' ? ' (your previous test has expired)' : ''}.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const test = services.find((s) => s.isPatchTest);
+                  if (test) {
+                    setSelectedService(test);
+                    setSelectedTime(null);
+                    setStep('DATE');
+                  }
+                }}
+                className="mt-3 rounded bg-amber-600 px-3 py-1.5 text-white hover:bg-amber-700"
+              >
+                Book Consultation &amp; Patch Test first
+              </button>
+            </div>
+          )}
+
           {bookingError && (
             <div className="p-4 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">
               {bookingError}
@@ -557,8 +605,8 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
              </button>
              <button
                type="submit"
-               disabled={isLoading}
-               className="bg-[#174F7F] text-white px-8 py-3.5 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-[#123c61] disabled:opacity-70 shadow-md transition-all transform hover:-translate-y-0.5"
+               disabled={isLoading || (colourGate !== null && !colourGate.eligible)}
+               className="bg-[#174F7F] text-white px-8 py-3.5 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-[#123c61] disabled:opacity-70 disabled:cursor-not-allowed shadow-md transition-all transform hover:-translate-y-0.5"
              >
                {isLoading ? (
                  <span className="flex items-center gap-2">
