@@ -22,7 +22,7 @@ interface AppointmentReminderProps {
   appointment: AppointmentWithDetails;
 }
 
-const BRAND = '#174F7F';
+const BRAND = '#18181b';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
@@ -49,7 +49,7 @@ export function AppointmentReminder({ appointment }: AppointmentReminderProps) {
             <Text style={{ color: '#ffffff', fontSize: '22px', fontWeight: 'bold', margin: 0, letterSpacing: '0.05em' }}>
               Harbour Hair Salon
             </Text>
-            <Text style={{ color: '#bfdbfe', fontSize: '13px', margin: '4px 0 0' }}>
+            <Text style={{ color: '#D4C5A0', fontSize: '13px', margin: '4px 0 0' }}>
               {SALON_ADDRESS}
             </Text>
           </Section>
@@ -75,7 +75,7 @@ export function AppointmentReminder({ appointment }: AppointmentReminderProps) {
             </Section>
 
             {/* Address */}
-            <Section style={{ backgroundColor: '#eff6ff', borderRadius: '8px', padding: '16px 20px', marginBottom: '24px', border: `1px solid #bfdbfe` }}>
+            <Section style={{ backgroundColor: '#faf7f0', borderRadius: '8px', padding: '16px 20px', marginBottom: '24px', border: `1px solid #e8dcc4` }}>
               <Text style={{ fontSize: '11px', color: BRAND, fontWeight: 'bold', margin: '0 0 6px', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'sans-serif' }}>
                 Location
               </Text>
