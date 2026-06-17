@@ -34,6 +34,7 @@ async function main() {
     // Haircuts
     { name: 'Long Hair - Wash, Haircut & Blow Dry (Student & NHS)', price: 40.00, duration: 85, category: 'Haircuts', description: 'Wash, haircut and blow dry for long hair (Student & NHS rate).' },
     { name: 'Long Hair - Wash, Haircut & Blow Dry', price: 44.00, duration: 85, category: 'Haircuts', description: 'Wash, haircut and blow dry for long hair.' },
+    { name: 'Extra Long Hair - Wash, Haircut & Blow Dry', price: 50.00, duration: 85, category: 'Haircuts', description: 'Wash, haircut and blow dry for extra long hair.' },
     { name: 'Short Over Ears - Wash, Haircut & Blow Dry (Student & NHS)', price: 30.00, duration: 55, category: 'Haircuts', description: 'Wash, haircut and blow dry for short hair (Student & NHS rate).' },
     { name: 'Short Over Ears - Wash, Haircut & Blow Dry', price: 33.00, duration: 55, category: 'Haircuts', description: 'Wash, haircut and blow dry for short hair.' },
     { name: 'Children (Up to 12Yr) - Short Over Ears', price: 17.00, duration: 60, category: 'Haircuts', description: 'Wash, haircut and blow dry for children under 12 with short hair.' },
@@ -65,7 +66,7 @@ async function main() {
     { name: 'Balayage, Haircut & Blow Dry (NHS)', price: 275.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Balayage with haircut and blow dry (NHS rate).' },
     { name: 'Balayage, Haircut & Blow Dry (Adult)', price: 308.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Balayage with haircut and blow dry.' },
 
-    { name: 'Consultation & Patch Test', price: 10.00, duration: 15, category: 'Colouring', isPatchTest: true, description: 'Required consultation and allergy patch test before any colour service (book at least 48h ahead).' },
+    { name: 'Consultation & Patch Test', price: 10.00, duration: 5, category: 'Colouring', isPatchTest: true, description: 'Required consultation and allergy patch test before any colour service (book at least 48h ahead).' },
 
     // Perms
     { name: 'Cold Perm Half Head (NHS)', price: 129.00, duration: 150, category: 'Perms', description: 'Cold perm for half head (NHS rate).' },
@@ -85,6 +86,7 @@ async function main() {
     { name: 'Dr.Jr. TOKIO Inkarami System Treatment', price: 145.00, duration: 120, category: 'Treatments', description: 'Dr.Jr. TOKIO Inkarami System treatment.' },
 
     // Styling
+    { name: 'Shampoo & Dry & Set', price: 10.00, duration: 45, category: 'Styling', description: 'Shampoo, dry and set. From £10 depending on hair length.' },
     { name: 'Heat Set Add-on', price: 10.00, duration: 45, category: 'Styling', description: 'Additional heat styling service.' },
     { name: 'Shampoo & Blow Dry - Short Over Ears (Student & NHS)', price: 24.00, duration: 45, category: 'Styling', description: 'Shampoo and blow dry for short hair (Student & NHS rate).' },
     { name: 'Shampoo & Blow Dry - Short Over Ears', price: 28.00, duration: 45, category: 'Styling', description: 'Shampoo and blow dry for short hair.' },
@@ -104,28 +106,54 @@ async function main() {
 
   console.log(`Created ${serviceList.length} services`)
 
-  // Create Stylists
-  const stylists = await Promise.all([
-    prisma.stylist.create({
-      data: {
-        name: 'Chan',
-        role: 'Lead Stylist',
-        bio: 'Experienced barber delivering tailored haircuts and grooming services with meticulous attention to detail. Led by Hong Kong Stylist standards.',
-        imageUrl: null,
-        availabilities: {
-          create: [
-            { dayOfWeek: 1, startTime: '10:00', endTime: '19:30' }, // Mon
-            { dayOfWeek: 2, startTime: '10:00', endTime: '19:30' }, // Tue
-            { dayOfWeek: 3, startTime: '10:00', endTime: '19:30' }, // Wed
-            { dayOfWeek: 4, startTime: '10:00', endTime: '19:30' }, // Thu
-            { dayOfWeek: 5, startTime: '10:00', endTime: '19:30' }, // Fri
-            { dayOfWeek: 6, startTime: '10:30', endTime: '18:00' }, // Sat
-            { dayOfWeek: 0, startTime: '10:30', endTime: '18:00' }, // Sun
-          ]
+  // Create Stylists. All four share the salon's opening hours; per-stylist
+  // schedules can be tailored later in the admin panel.
+  const salonHours = [
+    { dayOfWeek: 1, startTime: '10:00', endTime: '19:30' }, // Mon
+    { dayOfWeek: 2, startTime: '10:00', endTime: '19:30' }, // Tue
+    { dayOfWeek: 3, startTime: '10:00', endTime: '19:30' }, // Wed
+    { dayOfWeek: 4, startTime: '10:00', endTime: '19:30' }, // Thu
+    { dayOfWeek: 5, startTime: '10:00', endTime: '19:30' }, // Fri
+    { dayOfWeek: 6, startTime: '10:30', endTime: '18:00' }, // Sat
+    { dayOfWeek: 0, startTime: '10:30', endTime: '18:00' }, // Sun
+  ];
+
+  const stylistSeed = [
+    {
+      name: 'Chan',
+      role: 'Lead Stylist',
+      bio: 'Experienced barber delivering tailored haircuts and grooming services with meticulous attention to detail. Led by Hong Kong Stylist standards.',
+    },
+    {
+      name: 'Ivan',
+      role: 'Senior Stylist',
+      bio: 'Precision cuts and grooming with a consistent five-star touch.',
+    },
+    {
+      name: 'Lox',
+      role: 'Stylist',
+      bio: 'Friendly, detail-focused stylist for cuts, blow-dries and styling.',
+    },
+    {
+      name: 'Funky',
+      role: 'Stylist',
+      bio: 'Creative styling and modern cuts tailored to you.',
+    },
+  ];
+
+  const stylists = await Promise.all(
+    stylistSeed.map(stylist =>
+      prisma.stylist.create({
+        data: {
+          name: stylist.name,
+          role: stylist.role,
+          bio: stylist.bio,
+          imageUrl: null,
+          availabilities: { create: salonHours.map(hours => ({ ...hours })) },
         }
-      }
-    })
-  ])
+      })
+    )
+  )
 
   console.log(`Created ${stylists.length} stylists`)
 
