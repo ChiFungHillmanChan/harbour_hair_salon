@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getAllStylistsWithSlug, getStylistBySlug } from '../slug';
@@ -115,11 +116,11 @@ export default async function StylistDetailPage({
     <div className="min-h-screen bg-white">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(breadcrumbSchema) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(personSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(personSchema) }}
       />
 
       {/* Hero */}

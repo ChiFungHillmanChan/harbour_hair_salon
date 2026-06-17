@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getPublishedPosts } from '@/app/services/blog-service';
@@ -63,11 +64,11 @@ export default async function BlogIndexPage() {
     <div className="min-h-screen bg-white">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(breadcrumbSchema) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(blogSchema) }}
       />
 
       <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">

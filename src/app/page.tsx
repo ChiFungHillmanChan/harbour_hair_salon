@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { jsonLdScript } from '@/app/lib/json-ld';
 import prisma from '@/app/lib/prisma';
 import { Hero } from '@/components/home/Hero';
 import { ServiceMenu } from '@/components/home/ServiceMenu';
@@ -148,7 +149,7 @@ export default async function Home() {
     <div className="flex flex-col min-h-screen">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(hairSalonSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(hairSalonSchema) }}
       />
       <Hero />
       <SocialProofBar average={aggregateRating.average} count={aggregateRating.count} />

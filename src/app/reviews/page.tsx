@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import { getApprovedReviews, getAggregateRating } from '@/app/services/review-service';
 import { SITE_URL } from '@/app/lib/site-url';
@@ -97,12 +98,12 @@ export default async function ReviewsPage() {
     <div className="min-h-screen bg-white">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(breadcrumbSchema) }}
       />
       {reviewsSchema && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewsSchema) }}
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(reviewsSchema) }}
         />
       )}
 
