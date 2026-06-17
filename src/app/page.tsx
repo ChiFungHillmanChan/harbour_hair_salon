@@ -3,6 +3,7 @@ import prisma from '@/app/lib/prisma';
 import { Hero } from '@/components/home/Hero';
 import { ServiceMenu } from '@/components/home/ServiceMenu';
 import { StylistShowcase } from '@/components/home/StylistShowcase';
+import { SocialProofBar } from '@/components/home/SocialProofBar';
 import { Faq } from '@/components/seo/Faq';
 import { getAggregateRating } from '@/app/services/review-service';
 import {
@@ -150,6 +151,7 @@ export default async function Home() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(hairSalonSchema) }}
       />
       <Hero />
+      <SocialProofBar average={aggregateRating.average} count={aggregateRating.count} />
       <ServiceMenu
         services={services}
         activeOffer={activeOffer}
