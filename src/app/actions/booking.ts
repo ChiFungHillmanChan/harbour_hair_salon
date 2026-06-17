@@ -1,6 +1,7 @@
 'use server';
 
 import { createBooking, getAvailableSlots, getValidPatchTest } from '@/app/services/booking-service';
+import { resolveSalonDateTime, isWithinAvailability, type SalonDateTime } from '@/app/services/salon-time';
 import { sendBookingConfirmation, sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
@@ -28,6 +29,24 @@ const createBookingSchema = z.object({
   time: z.string(), // HH:mm
   discountCode: z.string().optional(),
 }) satisfies z.ZodType<CreateBookingInput>;
+
+// Shared business-hours guard for a resolved salon date/time against a stylist's
+// availability for that weekday. Used by both the create and reschedule paths.
+async function checkStylistHours(
+  stylistId: string,
+  salon: SalonDateTime,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const availability = await prisma.availability.findFirst({
+    where: { stylistId, dayOfWeek: salon.dayOfWeek, isOff: false },
+  });
+  if (!availability) {
+    return { ok: false, error: 'Stylist is not available on this day' };
+  }
+  if (!isWithinAvailability(salon.timeMinutes, availability.startTime, availability.endTime)) {
+    return { ok: false, error: 'Selected time is outside business hours' };
+  }
+  return { ok: true };
+}
 
 export async function getAvailableSlotsAction(prevState: unknown, formData: FormData) {
   const stylistId = formData.get('stylistId') as string;
@@ -106,13 +125,10 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
   const validData = result.data;
 
-  // Parse time HH:mm in salon timezone (Europe/London)
-  // fromZonedTime converts a "London local time" to the correct UTC Date
-  const { fromZonedTime } = await import('date-fns-tz');
-  const [hours, minutes] = validData.time.split(':').map(Number);
-  const localDate = new Date(validData.date);
-  localDate.setHours(hours, minutes, 0, 0);
-  const fullDate = fromZonedTime(localDate, 'Europe/London');
+  // Resolve the salon wall-clock time to the correct absolute UTC instant
+  // (handles BST/GMT). Host-timezone independent — see salon-time.ts.
+  const salon = resolveSalonDateTime(validData.date, validData.time);
+  const fullDate = salon.utc;
 
   // Prevent booking in the past
   if (fullDate <= new Date()) {
@@ -120,23 +136,9 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   }
 
   // Validate time falls within stylist availability for this day
-  const dayOfWeek = localDate.getDay();
-  const availability = await prisma.availability.findFirst({
-    where: { stylistId: validData.stylistId, dayOfWeek, isOff: false },
-  });
-
-  if (!availability) {
-    return { success: false, error: 'Stylist is not available on this day' };
-  }
-
-  const bookingTimeMinutes = hours * 60 + minutes;
-  const [availStartH, availStartM] = availability.startTime.split(':').map(Number);
-  const [availEndH, availEndM] = availability.endTime.split(':').map(Number);
-  const availStart = availStartH * 60 + availStartM;
-  const availEnd = availEndH * 60 + availEndM;
-
-  if (bookingTimeMinutes < availStart || bookingTimeMinutes >= availEnd) {
-    return { success: false, error: 'Selected time is outside business hours' };
+  const hoursCheck = await checkStylistHours(validData.stylistId, salon);
+  if (!hoursCheck.ok) {
+    return { success: false, error: hoursCheck.error };
   }
 
   // Colour services require a completed Consultation & Patch Test first.
@@ -273,7 +275,7 @@ export async function checkColourEligibility(serviceId: string, dateIso: string)
   };
 }
 
-export async function rescheduleAppointment(appointmentId: string, newDate: Date) {
+export async function rescheduleAppointment(appointmentId: string, dateStr: string, time: string) {
   const session = await verifySession();
 
   const appointment = await prisma.appointment.findUnique({
@@ -296,6 +298,22 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
   const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
   if (hoursUntil < 24) {
     return { success: false, error: 'Cannot reschedule within 24 hours of appointment' };
+  }
+
+  // Resolve the new salon wall-clock time to the correct absolute UTC instant
+  // (handles BST/GMT) — the create path did this but reschedule previously did not.
+  const salon = resolveSalonDateTime(dateStr, time);
+  const newDate = salon.utc;
+
+  // Prevent rescheduling into the past
+  if (newDate <= new Date()) {
+    return { success: false, error: 'Cannot reschedule to a time in the past' };
+  }
+
+  // Validate the new time falls within stylist availability for this day
+  const hoursCheck = await checkStylistHours(appointment.stylistId, salon);
+  if (!hoursCheck.ok) {
+    return { success: false, error: hoursCheck.error };
   }
 
   // Re-validate the colour patch-test gate against the NEW date.

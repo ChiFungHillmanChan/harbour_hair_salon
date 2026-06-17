@@ -58,11 +58,9 @@ export function RescheduleModal({
     setSubmitting(true);
     setError(null);
 
-    const [hours, minutes] = selectedSlot.split(':').map(Number);
-    const newDate = new Date(selectedDate);
-    newDate.setHours(hours, minutes, 0, 0);
-
-    const result = await rescheduleAppointment(appointmentId, newDate);
+    // Pass the salon-local date + time as plain strings; the server resolves them
+    // to the correct UTC instant in the salon timezone (Europe/London).
+    const result = await rescheduleAppointment(appointmentId, selectedDate, selectedSlot);
 
     if (result.success) {
       onClose();
