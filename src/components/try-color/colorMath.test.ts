@@ -18,6 +18,7 @@ function perceivedLuminance(r: number, g: number, b: number): number {
 function createSolidImageData(
   colors: Array<[number, number, number]>,
   alphaMask?: number[],
+  dims?: { width: number; height: number },
 ): { imageData: ImageData; mask: Float32Array } {
   const data = new Uint8ClampedArray(colors.length * 4);
 
@@ -32,8 +33,8 @@ function createSolidImageData(
   return {
     imageData: {
       data,
-      width: colors.length,
-      height: 1,
+      width: dims?.width ?? colors.length,
+      height: dims?.height ?? 1,
     } as ImageData,
     mask: new Float32Array(alphaMask ?? new Array(colors.length).fill(1)),
   };
@@ -204,9 +205,7 @@ test('mask refinement fills pinholes and produces both core and fringe masks', (
     [150, 120, 78],
     [155, 125, 81],
     [160, 130, 84],
-  ]);
-  imageData.width = 3;
-  imageData.height = 3;
+  ], undefined, { width: 3, height: 3 });
   const rawMask = new Float32Array([
     0.72, 0.7, 0.68,
     0.7, 0.02, 0.45,
@@ -292,9 +291,7 @@ test('root retention leaves upper hair less altered than lower hair', () => {
     [125, 95, 70],
     [125, 95, 70],
     [125, 95, 70],
-  ]);
-  imageData.width = 2;
-  imageData.height = 2;
+  ], undefined, { width: 2, height: 2 });
   const before = new Uint8ClampedArray(imageData.data);
   const hairMask = createHairMaskData(imageData, [1, 1, 1, 1], [1, 1, 1, 1]);
 
