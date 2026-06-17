@@ -2,6 +2,19 @@ import { fromZonedTime } from 'date-fns-tz';
 
 export const SALON_TIMEZONE = 'Europe/London';
 
+/** Strict "HH:mm" (00:00–23:59). */
+export const SALON_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** Strict "YYYY-MM-DD". */
+export const SALON_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isValidSalonTime(time: string): boolean {
+  return SALON_TIME_RE.test(time);
+}
+
+export function isValidSalonDate(date: string): boolean {
+  return SALON_DATE_RE.test(date);
+}
+
 export type SalonDateTime = {
   /** Absolute instant (UTC) for the requested salon wall-clock time. */
   utc: Date;
@@ -46,6 +59,25 @@ export function resolveSalonDateTime(date: string | Date, time: string): SalonDa
   const dayOfWeek = new Date(`${dateStr}T12:00:00.000Z`).getUTCDay();
 
   return { utc, dateStr, timeMinutes: hours * 60 + minutes, dayOfWeek };
+}
+
+/**
+ * The UTC instants bounding the salon-local calendar day that `instant` falls
+ * on. Used to scan a day's appointments correctly regardless of the server's
+ * timezone or how the salon day maps onto UTC (DST included). Replaces the
+ * fragile `startOfDay(instant)` + `setHours(23,59,59,999)` (server-local) pattern.
+ */
+export function salonDayWindow(instant: Date): { start: Date; end: Date } {
+  const dateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SALON_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+  return {
+    start: fromZonedTime(`${dateStr}T00:00:00.000`, SALON_TIMEZONE),
+    end: fromZonedTime(`${dateStr}T23:59:59.999`, SALON_TIMEZONE),
+  };
 }
 
 /**

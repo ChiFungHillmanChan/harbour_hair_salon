@@ -1,11 +1,14 @@
 import prisma from '@/app/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { addMinutes, format, setHours, setMinutes, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import {
   evaluatePatchTestEligibility,
   type EligibilityResult,
 } from './patch-test-eligibility';
+import { salonDayWindow } from './salon-time';
 import { firstFreeStylist, type BookedInterval } from './scheduling';
+import { SlotUnavailableError, DiscountUnavailableError } from './booking-errors';
 
 const SALON_TIMEZONE = 'Europe/London';
 
@@ -13,6 +16,59 @@ export type TimeSlot = {
   time: string;
   available: boolean;
 };
+
+type SlotAppointment = { date: Date; service: { duration: number } };
+
+/**
+ * Build the bookable slot start-times for one stylist from already-fetched
+ * availability + appointments. Pure aside from "now" (used to hide past slots on
+ * the current day). Shared by the single-stylist and "Anyone" union paths so
+ * both compute slots identically.
+ */
+function buildStylistSlots(
+  availability: { startTime: string; endTime: string },
+  existingAppointments: SlotAppointment[],
+  date: Date,
+  serviceDuration: number,
+): TimeSlot[] {
+  const slots: TimeSlot[] = [];
+  const startOfDayDate = startOfDay(date);
+
+  const [startHour, startMinute] = availability.startTime.split(':').map(Number);
+  const [endHour, endMinute] = availability.endTime.split(':').map(Number);
+
+  let currentSlot = setMinutes(setHours(startOfDayDate, startHour), startMinute);
+  const endTime = setMinutes(setHours(startOfDayDate, endHour), endMinute);
+  const nowInLondon = toZonedTime(new Date(), SALON_TIMEZONE);
+  const nowComparable = setMinutes(setHours(startOfDayDate, nowInLondon.getHours()), nowInLondon.getMinutes());
+
+  while (addMinutes(currentSlot, serviceDuration) <= endTime) {
+    // Skip slots that have already passed today (same-day only)
+    if (date.toDateString() === nowInLondon.toDateString() && currentSlot <= nowComparable) {
+      currentSlot = addMinutes(currentSlot, 30);
+      continue;
+    }
+    const slotEnd = addMinutes(currentSlot, serviceDuration);
+
+    const isBusy = existingAppointments.some((appt) => {
+      const apptStart = new Date(appt.date);
+      const apptEnd = addMinutes(apptStart, appt.service.duration);
+      return (
+        (currentSlot >= apptStart && currentSlot < apptEnd) ||
+        (slotEnd > apptStart && slotEnd <= apptEnd) ||
+        (currentSlot <= apptStart && slotEnd >= apptEnd)
+      );
+    });
+
+    if (!isBusy) {
+      slots.push({ time: format(currentSlot, 'HH:mm'), available: true });
+    }
+
+    currentSlot = addMinutes(currentSlot, 30);
+  }
+
+  return slots;
+}
 
 export async function getAvailableSlots(
   stylistId: string,
@@ -23,14 +79,8 @@ export async function getAvailableSlots(
 
   // 1. Get stylist availability for this day
   const availability = await prisma.availability.findFirst({
-    where: {
-      stylistId,
-      dayOfWeek,
-      isOff: false, // Only get slots if the stylist is NOT off
-    },
+    where: { stylistId, dayOfWeek, isOff: false },
   });
-
-  // If no availability record found or isOff is true (though filtered above), return no slots
   if (!availability) {
     return [];
   }
@@ -43,69 +93,92 @@ export async function getAvailableSlots(
   const existingAppointments = await prisma.appointment.findMany({
     where: {
       stylistId,
-      date: {
-        gte: startOfDayDate,
-        lte: endOfDayDate,
-      },
-      status: {
-        not: 'CANCELLED',
-      },
+      date: { gte: startOfDayDate, lte: endOfDayDate },
+      status: { not: 'CANCELLED' },
     },
-    include: {
-      service: true,
-    },
+    include: { service: { select: { duration: true } } },
   });
 
   // 3. Generate slots
-  const slots: TimeSlot[] = [];
+  return buildStylistSlots(availability, existingAppointments, date, serviceDuration);
+}
 
-  // Parse start and end times from availability string "HH:mm"
-  const [startHour, startMinute] = availability.startTime.split(':').map(Number);
-  const [endHour, endMinute] = availability.endTime.split(':').map(Number);
+/**
+ * Union of available slot start-times across every stylist for a given date —
+ * used by the "Anyone / first available" booking path so the customer sees a
+ * slot whenever at least one stylist is free.
+ *
+ * Two batched queries total (availability for the weekday + appointments for all
+ * stylists in the day window), independent of stylist count — no per-stylist fan-out.
+ */
+export async function getAvailableSlotsUnion(
+  date: Date,
+  serviceDuration: number,
+): Promise<TimeSlot[]> {
+  const dayOfWeek = date.getDay();
 
-  let currentSlot = setMinutes(setHours(startOfDayDate, startHour), startMinute);
-  const endTime = setMinutes(setHours(startOfDayDate, endHour), endMinute);
-  // Convert "now" to the same date-basis as slots for consistent comparison
-  const nowUtc = new Date();
-  const nowInLondon = toZonedTime(nowUtc, SALON_TIMEZONE);
-  // Build a comparable "now" on the same startOfDay date-basis used by slots
-  const nowComparable = setMinutes(setHours(startOfDayDate, nowInLondon.getHours()), nowInLondon.getMinutes());
+  const availabilities = await prisma.availability.findMany({
+    where: { dayOfWeek, isOff: false },
+    select: { stylistId: true, startTime: true, endTime: true },
+  });
+  if (availabilities.length === 0) return [];
 
-  while (addMinutes(currentSlot, serviceDuration) <= endTime) {
-    // Skip slots that have already passed today (same-day only)
-    if (date.toDateString() === nowInLondon.toDateString() && currentSlot <= nowComparable) {
-      currentSlot = addMinutes(currentSlot, 30);
-      continue;
-    }
-    const slotEnd = addMinutes(currentSlot, serviceDuration);
+  const stylistIds = availabilities.map((a) => a.stylistId);
 
-    // Check collision with existing appointments
-    const isBusy = existingAppointments.some((appt) => {
-      const apptStart = new Date(appt.date);
-      const apptEnd = addMinutes(apptStart, appt.service.duration);
+  const startOfDayDate = startOfDay(date);
+  const endOfDayDate = new Date(startOfDayDate);
+  endOfDayDate.setHours(23, 59, 59, 999);
 
-      // Check for overlap
-      return (
-        (currentSlot >= apptStart && currentSlot < apptEnd) ||
-        (slotEnd > apptStart && slotEnd <= apptEnd) ||
-        (currentSlot <= apptStart && slotEnd >= apptEnd)
-      );
-    });
+  const appointments = await prisma.appointment.findMany({
+    where: {
+      stylistId: { in: stylistIds },
+      date: { gte: startOfDayDate, lte: endOfDayDate },
+      status: { not: 'CANCELLED' },
+    },
+    include: { service: { select: { duration: true } } },
+  });
 
-    // Only add the slot if it is not busy
-    if (!isBusy) {
-      slots.push({
-        time: format(currentSlot, 'HH:mm'),
-        available: true,
-      });
-    }
-
-    // Interval - let's assume 30 min slots for start times, or dynamic based on logic
-    // For simplicity, increment by 30 mins
-    currentSlot = addMinutes(currentSlot, 30);
+  const apptsByStylist = new Map<string, SlotAppointment[]>();
+  for (const appt of appointments) {
+    const list = apptsByStylist.get(appt.stylistId) ?? [];
+    list.push(appt);
+    apptsByStylist.set(appt.stylistId, list);
   }
 
-  return slots;
+  const times = new Set<string>();
+  for (const availability of availabilities) {
+    const slots = buildStylistSlots(
+      availability,
+      apptsByStylist.get(availability.stylistId) ?? [],
+      date,
+      serviceDuration,
+    );
+    for (const slot of slots) {
+      if (slot.available) times.add(slot.time);
+    }
+  }
+
+  return Array.from(times)
+    .sort()
+    .map((time) => ({ time, available: true }));
+}
+
+/**
+ * Validate and claim a discount code INSIDE a booking transaction, so a booking
+ * that later rolls back also rolls back the `usedCount` increment. Throws
+ * DiscountUnavailableError if the code can't be claimed.
+ */
+async function claimDiscountInTx(tx: Prisma.TransactionClient, code: string): Promise<string> {
+  const discount = await tx.discountCode.findUnique({ where: { code } });
+  if (!discount || !discount.isActive) throw new DiscountUnavailableError();
+  if (discount.expiresAt && new Date() > discount.expiresAt) throw new DiscountUnavailableError();
+  if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) throw new DiscountUnavailableError();
+
+  await tx.discountCode.update({
+    where: { id: discount.id },
+    data: { usedCount: { increment: 1 } },
+  });
+  return discount.id;
 }
 
 export async function createBooking(data: {
@@ -113,18 +186,15 @@ export async function createBooking(data: {
   serviceId: string;
   date: Date;
   userId: string;
-  discountCodeId?: string;
+  discountCode?: string;
 }) {
   // Use Serializable transaction to prevent double-booking race conditions
   const appointment = await prisma.$transaction(async (tx) => {
-    // Check for conflicting appointments within the time range
     const service = await tx.service.findUnique({ where: { id: data.serviceId } });
     if (!service) throw new Error('Service not found');
 
     const appointmentEnd = addMinutes(data.date, service.duration);
-    const dayStart = startOfDay(data.date);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setHours(23, 59, 59, 999);
+    const { start: dayStart, end: dayEnd } = salonDayWindow(data.date);
 
     const existingAppointments = await tx.appointment.findMany({
       where: {
@@ -132,7 +202,7 @@ export async function createBooking(data: {
         date: { gte: dayStart, lte: dayEnd },
         status: { not: 'CANCELLED' },
       },
-      include: { service: true },
+      include: { service: { select: { duration: true } } },
     });
 
     const hasConflict = existingAppointments.some((appt) => {
@@ -146,8 +216,11 @@ export async function createBooking(data: {
     });
 
     if (hasConflict) {
-      throw new Error('This time slot is no longer available. Please choose another time.');
+      throw new SlotUnavailableError();
     }
+
+    // Claim the discount in the same transaction (rolls back if the create fails).
+    const discountCodeId = data.discountCode ? await claimDiscountInTx(tx, data.discountCode) : undefined;
 
     return tx.appointment.create({
       data: {
@@ -156,7 +229,7 @@ export async function createBooking(data: {
         serviceId: data.serviceId,
         userId: data.userId,
         status: 'CONFIRMED',
-        discountCodeId: data.discountCodeId,
+        discountCodeId,
       },
       include: {
         user: { select: { email: true, name: true } },
@@ -170,32 +243,6 @@ export async function createBooking(data: {
 }
 
 /**
- * Union of available slot start-times across every stylist for a given date —
- * used by the "Anyone / first available" booking path so the customer sees a
- * slot whenever at least one stylist is free.
- */
-export async function getAvailableSlotsUnion(
-  date: Date,
-  serviceDuration: number,
-): Promise<TimeSlot[]> {
-  const stylists = await prisma.stylist.findMany({ select: { id: true } });
-  const perStylist = await Promise.all(
-    stylists.map((s) => getAvailableSlots(s.id, date, serviceDuration)),
-  );
-
-  const times = new Set<string>();
-  for (const slots of perStylist) {
-    for (const slot of slots) {
-      if (slot.available) times.add(slot.time);
-    }
-  }
-
-  return Array.from(times)
-    .sort()
-    .map((time) => ({ time, available: true }));
-}
-
-/**
  * Create a booking for the first stylist (in the given priority order) who is
  * free for the whole appointment. Stylist resolution and the conflict check run
  * inside one Serializable transaction so two concurrent "Anyone" bookings can't
@@ -206,15 +253,13 @@ export async function createBookingForFirstAvailable(data: {
   serviceId: string;
   date: Date;
   userId: string;
-  discountCodeId?: string;
+  discountCode?: string;
 }) {
   const appointment = await prisma.$transaction(async (tx) => {
     const service = await tx.service.findUnique({ where: { id: data.serviceId } });
     if (!service) throw new Error('Service not found');
 
-    const dayStart = startOfDay(data.date);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setHours(23, 59, 59, 999);
+    const { start: dayStart, end: dayEnd } = salonDayWindow(data.date);
 
     const existing = await tx.appointment.findMany({
       where: {
@@ -222,7 +267,7 @@ export async function createBookingForFirstAvailable(data: {
         date: { gte: dayStart, lte: dayEnd },
         status: { not: 'CANCELLED' },
       },
-      include: { service: true },
+      include: { service: { select: { duration: true } } },
     });
 
     const bookedByStylist = new Map<string, BookedInterval[]>();
@@ -240,8 +285,10 @@ export async function createBookingForFirstAvailable(data: {
     );
 
     if (!stylistId) {
-      throw new Error('No stylist is available at this time. Please choose another time.');
+      throw new SlotUnavailableError('No stylist is available at this time. Please choose another time.');
     }
+
+    const discountCodeId = data.discountCode ? await claimDiscountInTx(tx, data.discountCode) : undefined;
 
     return tx.appointment.create({
       data: {
@@ -250,7 +297,7 @@ export async function createBookingForFirstAvailable(data: {
         serviceId: data.serviceId,
         userId: data.userId,
         status: 'CONFIRMED',
-        discountCodeId: data.discountCodeId,
+        discountCodeId,
       },
       include: {
         user: { select: { email: true, name: true } },

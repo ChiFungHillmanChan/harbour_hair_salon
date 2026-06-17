@@ -54,15 +54,19 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   // Fetch slots when stylist or date changes
   useEffect(() => {
     if (selectedStylist && selectedDate && selectedService) {
+      let cancelled = false;
       const loadSlots = async () => {
         setIsLoading(true);
         // Reset selected time when date/stylist changes
         setSelectedTime(null);
         const slots = await fetchSlots(selectedStylist.id, selectedDate, selectedService.duration);
+        // Ignore a response that arrived after the inputs changed (out-of-order guard)
+        if (cancelled) return;
         setAvailableSlots(slots.filter(s => s.available).map(s => s.time));
         setIsLoading(false);
       };
       loadSlots();
+      return () => { cancelled = true; };
     }
   }, [selectedStylist, selectedDate, selectedService]);
 

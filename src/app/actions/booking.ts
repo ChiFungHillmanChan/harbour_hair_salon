@@ -1,7 +1,8 @@
 'use server';
 
 import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest } from '@/app/services/booking-service';
-import { resolveSalonDateTime, isWithinAvailability, type SalonDateTime } from '@/app/services/salon-time';
+import { resolveSalonDateTime, isWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, type SalonDateTime } from '@/app/services/salon-time';
+import { SlotUnavailableError, BookingError } from '@/app/services/booking-errors';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { sendBookingConfirmation, sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
 import { verifySession } from '@/app/lib/session';
@@ -27,7 +28,7 @@ const createBookingSchema = z.object({
   stylistId: z.string(),
   serviceId: z.string(),
   date: z.coerce.date(),
-  time: z.string(), // HH:mm
+  time: z.string().regex(SALON_TIME_RE, 'Invalid time'), // strict HH:mm
   discountCode: z.string().optional(),
 }) satisfies z.ZodType<CreateBookingInput>;
 
@@ -150,6 +151,11 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   const salon = resolveSalonDateTime(validData.date, validData.time);
   const fullDate = salon.utc;
 
+  // Defensive: reject an unparseable date/time before it reaches the DB.
+  if (Number.isNaN(fullDate.getTime())) {
+    return { success: false, error: 'Invalid date or time' };
+  }
+
   // Prevent booking in the past
   if (fullDate <= new Date()) {
     return { success: false, error: 'Cannot book a time in the past' };
@@ -189,46 +195,23 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     }
   }
 
-  // Atomically validate and claim the discount code within a transaction
-  let discountCodeId = undefined;
-  if (validData.discountCode) {
-    try {
-      discountCodeId = await prisma.$transaction(async (tx) => {
-        const discount = await tx.discountCode.findUnique({
-          where: { code: validData.discountCode },
-        });
-
-        if (!discount || !discount.isActive) return undefined;
-        if (discount.expiresAt && new Date() > discount.expiresAt) return undefined;
-        if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) return undefined;
-
-        await tx.discountCode.update({
-          where: { id: discount.id },
-          data: { usedCount: { increment: 1 } },
-        });
-
-        return discount.id;
-      }, { isolationLevel: 'Serializable' });
-    } catch {
-      return { success: false, error: 'Discount code could not be applied. It may have been fully claimed.' };
-    }
-  }
-
   try {
+    // The discount code is validated + claimed INSIDE the booking transaction
+    // (see booking-service), so a failed booking never burns a code's usedCount.
     const appointment = isAnyStylist
       ? await createBookingForFirstAvailable({
           candidateStylistIds,
           serviceId: validData.serviceId,
           date: fullDate,
           userId: session.userId,
-          discountCodeId,
+          discountCode: validData.discountCode,
         })
       : await createBooking({
           stylistId: validData.stylistId,
           serviceId: validData.serviceId,
           date: fullDate,
           userId: session.userId,
-          discountCodeId,
+          discountCode: validData.discountCode,
         });
 
     // Send confirmation email (fail silently — handled in email-service)
@@ -250,11 +233,9 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     return { success: true };
   } catch (error) {
     console.error('Booking failed:', error);
-    // Surface the "slot/stylist no longer available" messages; hide other internals.
-    const message =
-      error instanceof Error && error.message.includes('available')
-        ? error.message
-        : 'Failed to create booking';
+    // Only surface customer-safe messages (slot taken, discount unavailable);
+    // anything else (Prisma/internal) becomes a generic message.
+    const message = error instanceof BookingError ? error.message : 'Failed to create booking';
     return { success: false, error: message };
   }
 }
@@ -321,6 +302,11 @@ export async function checkColourEligibility(serviceId: string, dateIso: string)
 export async function rescheduleAppointment(appointmentId: string, dateStr: string, time: string) {
   const session = await verifySession();
 
+  // Reject malformed date/time before any DB work (no Zod schema on this path).
+  if (!isValidSalonDate(dateStr) || !isValidSalonTime(time)) {
+    return { success: false, error: 'Invalid date or time' };
+  }
+
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
     include: {
@@ -347,6 +333,11 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
   // (handles BST/GMT) — the create path did this but reschedule previously did not.
   const salon = resolveSalonDateTime(dateStr, time);
   const newDate = salon.utc;
+
+  // Defensive: reject an unparseable instant before it reaches the DB.
+  if (Number.isNaN(newDate.getTime())) {
+    return { success: false, error: 'Invalid date or time' };
+  }
 
   // Prevent rescheduling into the past
   if (newDate <= new Date()) {
@@ -377,13 +368,9 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
     const oldDate = appointment.date;
 
     await prisma.$transaction(async (tx) => {
-      // Check for overlapping appointments using duration-based range
-      const { startOfDay } = await import('date-fns');
+      // Check for overlapping appointments within the salon-local day window.
       const { addMinutes } = await import('date-fns');
-
-      const dayStart = startOfDay(newDate);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setHours(23, 59, 59, 999);
+      const { start: dayStart, end: dayEnd } = salonDayWindow(newDate);
       const newEnd = addMinutes(newDate, appointment.service.duration);
 
       const existingAppointments = await tx.appointment.findMany({
@@ -393,7 +380,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
           status: { not: 'CANCELLED' },
           id: { not: appointmentId },
         },
-        include: { service: true },
+        include: { service: { select: { duration: true } } },
       });
 
       const hasConflict = existingAppointments.some((appt) => {
@@ -407,7 +394,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
       });
 
       if (hasConflict) {
-        throw new Error('This time slot is no longer available');
+        throw new SlotUnavailableError('This time slot is no longer available.');
       }
 
       await tx.appointment.update({
@@ -437,7 +424,8 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
     revalidatePath('/book');
     return { success: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Reschedule failed';
+    console.error('Reschedule failed:', error);
+    const message = error instanceof BookingError ? error.message : 'Reschedule failed. Please try again.';
     return { success: false, error: message };
   }
 }
