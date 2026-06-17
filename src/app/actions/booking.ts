@@ -1,6 +1,6 @@
 'use server';
 
-import { createBooking, getAvailableSlots } from '@/app/services/booking-service';
+import { createBooking, getAvailableSlots, getValidPatchTest } from '@/app/services/booking-service';
 import { sendBookingConfirmation, sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
@@ -139,6 +139,24 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     return { success: false, error: 'Selected time is outside business hours' };
   }
 
+  // Colour services require a completed Consultation & Patch Test first.
+  const service = await prisma.service.findUnique({
+    where: { id: validData.serviceId },
+    select: { requiresPatchTest: true },
+  });
+  if (service?.requiresPatchTest) {
+    const eligibility = await getValidPatchTest(session.userId, fullDate);
+    if (!eligibility.ok) {
+      const message =
+        eligibility.reason === 'too_soon'
+          ? 'Your patch test must be at least 48 hours before a colour appointment.'
+          : eligibility.reason === 'expired'
+            ? 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.'
+            : 'Colour services require a completed Consultation & Patch Test first. Please book that appointment.';
+      return { success: false, error: message };
+    }
+  }
+
   // Atomically validate and claim the discount code within a transaction
   let discountCodeId = undefined;
   if (validData.discountCode) {
@@ -237,6 +255,24 @@ export async function cancelAppointment(appointmentId: string) {
   return { success: true };
 }
 
+export async function checkColourEligibility(serviceId: string, dateIso: string) {
+  const session = await verifySession();
+  const service = await prisma.service.findUnique({
+    where: { id: serviceId },
+    select: { requiresPatchTest: true },
+  });
+  if (!service?.requiresPatchTest) {
+    return { requiresTest: false, eligible: true, reason: 'eligible' as const, testDate: null };
+  }
+  const eligibility = await getValidPatchTest(session.userId, new Date(dateIso));
+  return {
+    requiresTest: true,
+    eligible: eligibility.ok,
+    reason: eligibility.reason,
+    testDate: eligibility.testDate ? eligibility.testDate.toISOString() : null,
+  };
+}
+
 export async function rescheduleAppointment(appointmentId: string, newDate: Date) {
   const session = await verifySession();
 
@@ -260,6 +296,20 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
   const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
   if (hoursUntil < 24) {
     return { success: false, error: 'Cannot reschedule within 24 hours of appointment' };
+  }
+
+  // Re-validate the colour patch-test gate against the NEW date.
+  if (appointment.service.requiresPatchTest) {
+    const eligibility = await getValidPatchTest(session.userId, newDate);
+    if (!eligibility.ok) {
+      const message =
+        eligibility.reason === 'too_soon'
+          ? 'Your patch test must be at least 48 hours before a colour appointment.'
+          : eligibility.reason === 'expired'
+            ? 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.'
+            : 'Colour services require a completed Consultation & Patch Test first.';
+      return { success: false, error: message };
+    }
   }
 
   try {

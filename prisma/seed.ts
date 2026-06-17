@@ -40,32 +40,32 @@ async function main() {
     { name: 'Children (Up to 12Yr) - Long Hair', price: 22.00, duration: 60, category: 'Haircuts', description: 'Wash, haircut and blow dry for children under 12 with long hair.' },
 
     // Colouring
-    { name: 'Full Head Colour & Blow Dry - Short Hair (NHS)', price: 99.00, duration: 150, category: 'Colouring', description: 'Full head colour application including blow dry for short hair (NHS rate).' },
-    { name: 'Full Head Colour & Blow Dry - Short Hair', price: 110.00, duration: 150, category: 'Colouring', description: 'Full head colour application including blow dry for short hair.' },
-    { name: 'Full Head Colour & Blow Dry - Medium Hair (NHS)', price: 119.00, duration: 150, category: 'Colouring', description: 'Full head colour application including blow dry for medium length hair (NHS rate).' },
-    { name: 'Full Head Colour & Blow Dry - Medium Hair', price: 132.00, duration: 150, category: 'Colouring', description: 'Full head colour application including blow dry for medium length hair.' },
-    { name: 'Full Head Colour & Blow Dry - Long Hair (NHS)', price: 129.00, duration: 150, category: 'Colouring', description: 'Full head colour application including blow dry for long hair (NHS rate).' },
-    { name: 'Full Head Colour & Blow Dry - Long Hair', price: 143.00, duration: 150, category: 'Colouring', description: 'Full head colour application including blow dry for long hair.' },
+    { name: 'Full Head Colour & Blow Dry - Short Hair (NHS)', price: 99.00, duration: 150, category: 'Colouring', requiresPatchTest: true, description: 'Full head colour application including blow dry for short hair (NHS rate).' },
+    { name: 'Full Head Colour & Blow Dry - Short Hair', price: 110.00, duration: 150, category: 'Colouring', requiresPatchTest: true, description: 'Full head colour application including blow dry for short hair.' },
+    { name: 'Full Head Colour & Blow Dry - Medium Hair (NHS)', price: 119.00, duration: 150, category: 'Colouring', requiresPatchTest: true, description: 'Full head colour application including blow dry for medium length hair (NHS rate).' },
+    { name: 'Full Head Colour & Blow Dry - Medium Hair', price: 132.00, duration: 150, category: 'Colouring', requiresPatchTest: true, description: 'Full head colour application including blow dry for medium length hair.' },
+    { name: 'Full Head Colour & Blow Dry - Long Hair (NHS)', price: 129.00, duration: 150, category: 'Colouring', requiresPatchTest: true, description: 'Full head colour application including blow dry for long hair (NHS rate).' },
+    { name: 'Full Head Colour & Blow Dry - Long Hair', price: 143.00, duration: 150, category: 'Colouring', requiresPatchTest: true, description: 'Full head colour application including blow dry for long hair.' },
 
-    { name: 'Half Head Highlights & Blow Dry - Short Hair (NHS)', price: 149.00, duration: 165, category: 'Colouring', description: 'Half head highlights including blow dry for short hair (NHS rate).' },
-    { name: 'Half Head Highlights & Blow Dry - Short Hair', price: 198.00, duration: 165, category: 'Colouring', description: 'Half head highlights including blow dry for short hair.' },
-    { name: 'Half Head Highlights & Blow Dry - Long Hair (NHS)', price: 178.00, duration: 165, category: 'Colouring', description: 'Half head highlights including blow dry for long hair (NHS rate).' },
-    { name: 'Half Head Highlights & Blow Dry - Long Hair', price: 198.00, duration: 165, category: 'Colouring', description: 'Half head highlights including blow dry for long hair.' },
+    { name: 'Half Head Highlights & Blow Dry - Short Hair (NHS)', price: 149.00, duration: 165, category: 'Colouring', requiresPatchTest: true, description: 'Half head highlights including blow dry for short hair (NHS rate).' },
+    { name: 'Half Head Highlights & Blow Dry - Short Hair', price: 198.00, duration: 165, category: 'Colouring', requiresPatchTest: true, description: 'Half head highlights including blow dry for short hair.' },
+    { name: 'Half Head Highlights & Blow Dry - Long Hair (NHS)', price: 178.00, duration: 165, category: 'Colouring', requiresPatchTest: true, description: 'Half head highlights including blow dry for long hair (NHS rate).' },
+    { name: 'Half Head Highlights & Blow Dry - Long Hair', price: 198.00, duration: 165, category: 'Colouring', requiresPatchTest: true, description: 'Half head highlights including blow dry for long hair.' },
 
-    { name: 'Full Head Highlights & Blow Dry - Short Hair (NHS)', price: 178.00, duration: 225, category: 'Colouring', description: 'Full head highlights including blow dry for short hair (NHS rate).' },
-    { name: 'Full Head Highlights & Blow Dry - Short Hair', price: 192.00, duration: 225, category: 'Colouring', description: 'Full head highlights including blow dry for short hair.' },
-    { name: 'Full Head Highlights & Blow Dry - Long Hair (NHS)', price: 228.00, duration: 225, category: 'Colouring', description: 'Full head highlights including blow dry for long hair (NHS rate).' },
-    { name: 'Full Head Highlights & Blow Dry - Long Hair', price: 253.00, duration: 225, category: 'Colouring', description: 'Full head highlights including blow dry for long hair.' },
+    { name: 'Full Head Highlights & Blow Dry - Short Hair (NHS)', price: 178.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Full head highlights including blow dry for short hair (NHS rate).' },
+    { name: 'Full Head Highlights & Blow Dry - Short Hair', price: 192.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Full head highlights including blow dry for short hair.' },
+    { name: 'Full Head Highlights & Blow Dry - Long Hair (NHS)', price: 228.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Full head highlights including blow dry for long hair (NHS rate).' },
+    { name: 'Full Head Highlights & Blow Dry - Long Hair', price: 253.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Full head highlights including blow dry for long hair.' },
 
-    { name: 'Partial Highlights & Blow Dry - Short Hair (NHS)', price: 149.00, duration: 225, category: 'Colouring', description: 'Partial highlights including blow dry for short hair (NHS rate).' },
-    { name: 'Partial Highlights & Blow Dry - Short Hair', price: 165.00, duration: 225, category: 'Colouring', description: 'Partial highlights including blow dry for short hair.' },
-    { name: 'Partial Highlights & Blow Dry - Long Hair (NHS)', price: 228.00, duration: 225, category: 'Colouring', description: 'Partial highlights including blow dry for long hair (NHS rate).' },
-    { name: 'Partial Highlights & Blow Dry - Long Hair', price: 253.00, duration: 225, category: 'Colouring', description: 'Partial highlights including blow dry for long hair.' },
+    { name: 'Partial Highlights & Blow Dry - Short Hair (NHS)', price: 149.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Partial highlights including blow dry for short hair (NHS rate).' },
+    { name: 'Partial Highlights & Blow Dry - Short Hair', price: 165.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Partial highlights including blow dry for short hair.' },
+    { name: 'Partial Highlights & Blow Dry - Long Hair (NHS)', price: 228.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Partial highlights including blow dry for long hair (NHS rate).' },
+    { name: 'Partial Highlights & Blow Dry - Long Hair', price: 253.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Partial highlights including blow dry for long hair.' },
 
-    { name: 'Balayage, Haircut & Blow Dry (NHS)', price: 275.00, duration: 225, category: 'Colouring', description: 'Balayage with haircut and blow dry (NHS rate).' },
-    { name: 'Balayage, Haircut & Blow Dry (Adult)', price: 308.00, duration: 225, category: 'Colouring', description: 'Balayage with haircut and blow dry.' },
+    { name: 'Balayage, Haircut & Blow Dry (NHS)', price: 275.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Balayage with haircut and blow dry (NHS rate).' },
+    { name: 'Balayage, Haircut & Blow Dry (Adult)', price: 308.00, duration: 225, category: 'Colouring', requiresPatchTest: true, description: 'Balayage with haircut and blow dry.' },
 
-    { name: 'Patch Test', price: 10.00, duration: 5, category: 'Colouring', description: 'Patch test for colour or perm services.' },
+    { name: 'Consultation & Patch Test', price: 10.00, duration: 15, category: 'Colouring', isPatchTest: true, description: 'Required consultation and allergy patch test before any colour service (book at least 48h ahead).' },
 
     // Perms
     { name: 'Cold Perm Half Head (NHS)', price: 129.00, duration: 150, category: 'Perms', description: 'Cold perm for half head (NHS rate).' },

@@ -4,6 +4,7 @@ export type HairLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 export type HairTone = 'neutral' | 'ash' | 'gold' | 'copper' | 'red' | 'violet';
 export type RecolorMode = 'deposit' | 'tone' | 'lift';
 export type HairLevelMode = 'auto' | 'manual';
+export type BleachState = 'pre' | 'post'; // 漂前 (colour over natural hair) | 漂後上色 (colour on pre-bleached hair)
 
 export interface ShadePreset {
   name: string;
@@ -31,6 +32,7 @@ export interface RecolorRequest {
   previewStrength: number;
   baseLevelMode: HairLevelMode;
   manualBaseLevel?: HairLevel;
+  bleachState?: BleachState;
 }
 
 export const HAIR_LEVEL_OPTIONS: HairLevel[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -205,3 +207,10 @@ export const WARMUP_FRAMES = 15;
 export const OVERLAY_STALE_MS = 150;
 
 export const HAIR_CONFIDENCE_FLOOR = 0.2;
+
+// Video try-on guardrails (per-frame recolor is heavy; keep clips short)
+export const VIDEO_MAX_SECONDS = 10;
+export const VIDEO_MAX_DIM = 480;
+export const VIDEO_TARGET_FPS = 12;
+export const VIDEO_MAX_FRAMES = 150;
+export const VIDEO_MAX_FILE_BYTES = 50 * 1024 * 1024;

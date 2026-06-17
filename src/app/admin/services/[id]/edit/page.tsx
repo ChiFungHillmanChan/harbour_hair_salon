@@ -34,6 +34,8 @@ export default async function EditServicePage({
     duration: service.duration,
     category: service.category,
     imageUrl: service.imageUrl,
+    requiresPatchTest: service.requiresPatchTest,
+    isPatchTest: service.isPatchTest,
   };
 
   return (

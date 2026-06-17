@@ -45,15 +45,17 @@ model Stylist {
 }
 
 model Service {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  price       Decimal
-  duration    Int      // in minutes
-  category    String   // e.g., Cut, Color, Treatment
-  imageUrl    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  name               String
+  description        String?
+  price              Decimal
+  duration           Int      // in minutes
+  category           String   // e.g., Cut, Color, Treatment
+  requiresPatchTest  Boolean  @default(false)
+  isPatchTest        Boolean  @default(false)
+  imageUrl           String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
   appointments Appointment[]
 }
 

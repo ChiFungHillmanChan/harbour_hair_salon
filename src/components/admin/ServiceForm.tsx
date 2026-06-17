@@ -14,6 +14,8 @@ type ServiceLite = {
   duration: number;
   category: string;
   imageUrl: string | null;
+  requiresPatchTest: boolean;
+  isPatchTest: boolean;
 };
 
 interface ServiceFormProps {
@@ -147,6 +149,28 @@ export function ServiceForm({ mode, action, service, saved, existingCategories }
             placeholder="/images/services-hero.webp or https://..."
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
           />
+        </div>
+
+        <div className="space-y-3 pt-2">
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-600">Colour service flags</p>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="requiresPatchTest"
+              defaultChecked={service?.requiresPatchTest ?? false}
+              className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+            />
+            <span className="text-sm text-zinc-700">Requires patch test <span className="text-zinc-400">(colour service — customer must have a completed patch test to book)</span></span>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="isPatchTest"
+              defaultChecked={service?.isPatchTest ?? false}
+              className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+            />
+            <span className="text-sm text-zinc-700">This IS the consultation &amp; patch test service</span>
+          </label>
         </div>
       </section>
 
