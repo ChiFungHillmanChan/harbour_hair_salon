@@ -1,7 +1,8 @@
 'use server';
 
-import { createBooking, getAvailableSlots, getValidPatchTest } from '@/app/services/booking-service';
+import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest } from '@/app/services/booking-service';
 import { resolveSalonDateTime, isWithinAvailability, type SalonDateTime } from '@/app/services/salon-time';
+import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { sendBookingConfirmation, sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
@@ -76,14 +77,33 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
   }
 }
 
-// Helper for client-side fetching without form state
+// Helper for client-side fetching without form state. The "Anyone" option
+// returns the union of every stylist's availability.
 export async function fetchSlots(stylistId: string, date: Date, serviceDuration: number) {
   try {
+    if (stylistId === ANY_STYLIST_ID) {
+      return await getAvailableSlotsUnion(date, serviceDuration);
+    }
     return await getAvailableSlots(stylistId, date, serviceDuration);
   } catch (error) {
     console.error(error);
     return [];
   }
+}
+
+// Stylists available on a given weekday/time, in display (name) order — the
+// candidate pool for resolving an "Anyone / first available" booking.
+async function eligibleStylistIds(salon: SalonDateTime): Promise<string[]> {
+  const stylists = await prisma.stylist.findMany({
+    where: { availabilities: { some: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
+    orderBy: { name: 'asc' },
+    include: { availabilities: { where: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
+  });
+  return stylists
+    .filter((s) =>
+      s.availabilities.some((a) => isWithinAvailability(salon.timeMinutes, a.startTime, a.endTime)),
+    )
+    .map((s) => s.id);
 }
 
 export async function validateDiscountCode(code: string) {
@@ -135,10 +155,20 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     return { success: false, error: 'Cannot book a time in the past' };
   }
 
-  // Validate time falls within stylist availability for this day
-  const hoursCheck = await checkStylistHours(validData.stylistId, salon);
-  if (!hoursCheck.ok) {
-    return { success: false, error: hoursCheck.error };
+  // Resolve which stylist(s) can take this slot. For a named stylist we validate
+  // their hours; for "Anyone" we gather every stylist available at this time.
+  const isAnyStylist = validData.stylistId === ANY_STYLIST_ID;
+  let candidateStylistIds: string[] = [];
+  if (isAnyStylist) {
+    candidateStylistIds = await eligibleStylistIds(salon);
+    if (candidateStylistIds.length === 0) {
+      return { success: false, error: 'No stylist is available at this time' };
+    }
+  } else {
+    const hoursCheck = await checkStylistHours(validData.stylistId, salon);
+    if (!hoursCheck.ok) {
+      return { success: false, error: hoursCheck.error };
+    }
   }
 
   // Colour services require a completed Consultation & Patch Test first.
@@ -185,13 +215,21 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   }
 
   try {
-    const appointment = await createBooking({
-      stylistId: validData.stylistId,
-      serviceId: validData.serviceId,
-      date: fullDate,
-      userId: session.userId,
-      discountCodeId,
-    });
+    const appointment = isAnyStylist
+      ? await createBookingForFirstAvailable({
+          candidateStylistIds,
+          serviceId: validData.serviceId,
+          date: fullDate,
+          userId: session.userId,
+          discountCodeId,
+        })
+      : await createBooking({
+          stylistId: validData.stylistId,
+          serviceId: validData.serviceId,
+          date: fullDate,
+          userId: session.userId,
+          discountCodeId,
+        });
 
     // Send confirmation email (fail silently — handled in email-service)
     await sendBookingConfirmation({
@@ -212,7 +250,12 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     return { success: true };
   } catch (error) {
     console.error('Booking failed:', error);
-    return { success: false, error: 'Failed to create booking' };
+    // Surface the "slot/stylist no longer available" messages; hide other internals.
+    const message =
+      error instanceof Error && error.message.includes('available')
+        ? error.message
+        : 'Failed to create booking';
+    return { success: false, error: message };
   }
 }
 

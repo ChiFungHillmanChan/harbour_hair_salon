@@ -4,9 +4,13 @@ import { Service, Stylist } from '@prisma/client';
 import { format, addDays, startOfToday, isSameDay } from 'date-fns';
 import { useState, useEffect } from 'react';
 import { fetchSlots, submitBooking, validateDiscountCode } from '@/app/actions/booking';
+import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 
 // Define a ClientService type where price is number instead of Decimal
 type ClientService = Omit<Service, 'price'> & { price: number };
+
+// A named stylist or the synthetic "Anyone / first available" option.
+type SelectedStylist = Pick<Stylist, 'id' | 'name' | 'role'>;
 
 type Step = 'SERVICE' | 'STYLIST' | 'DATE' | 'CONFIRM';
 
@@ -26,7 +30,7 @@ const CATEGORIES = [
 export function BookingWizard({ services, stylists }: BookingWizardProps) {
   const [step, setStep] = useState<Step>('SERVICE');
   const [selectedService, setSelectedService] = useState<ClientService | null>(null);
-  const [selectedStylist, setSelectedStylist] = useState<Stylist | null>(null);
+  const [selectedStylist, setSelectedStylist] = useState<SelectedStylist | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
@@ -309,6 +313,19 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
       {step === 'STYLIST' && (
         <div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+            <button
+              type="button"
+              onClick={() => { setSelectedStylist({ id: ANY_STYLIST_ID, name: 'Anyone', role: 'First available' }); setStep('DATE'); }}
+              className="border border-dashed border-zinc-300 p-6 rounded-lg text-center hover:border-[#174F7F] hover:bg-blue-50/30 cursor-pointer transition-all shadow-sm group"
+            >
+              <div className="w-24 h-24 bg-zinc-100 rounded-full mx-auto mb-4 flex items-center justify-center ring-2 ring-offset-2 ring-transparent group-hover:ring-[#174F7F] transition-all">
+                <svg className="w-10 h-10 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a3 3 0 10-3-3" />
+                </svg>
+              </div>
+              <h3 className="font-medium text-zinc-900 text-lg">Anyone</h3>
+              <p className="text-sm text-zinc-600 mt-1">First available</p>
+            </button>
             {stylists.map(stylist => (
               <div
                 key={stylist.id}

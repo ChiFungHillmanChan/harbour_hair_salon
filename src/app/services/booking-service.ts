@@ -5,6 +5,7 @@ import {
   evaluatePatchTestEligibility,
   type EligibilityResult,
 } from './patch-test-eligibility';
+import { firstFreeStylist, type BookedInterval } from './scheduling';
 
 const SALON_TIMEZONE = 'Europe/London';
 
@@ -152,6 +153,100 @@ export async function createBooking(data: {
       data: {
         date: data.date,
         stylistId: data.stylistId,
+        serviceId: data.serviceId,
+        userId: data.userId,
+        status: 'CONFIRMED',
+        discountCodeId: data.discountCodeId,
+      },
+      include: {
+        user: { select: { email: true, name: true } },
+        stylist: { select: { name: true } },
+        service: { select: { name: true, price: true, duration: true } },
+      },
+    });
+  }, { isolationLevel: 'Serializable' });
+
+  return appointment;
+}
+
+/**
+ * Union of available slot start-times across every stylist for a given date —
+ * used by the "Anyone / first available" booking path so the customer sees a
+ * slot whenever at least one stylist is free.
+ */
+export async function getAvailableSlotsUnion(
+  date: Date,
+  serviceDuration: number,
+): Promise<TimeSlot[]> {
+  const stylists = await prisma.stylist.findMany({ select: { id: true } });
+  const perStylist = await Promise.all(
+    stylists.map((s) => getAvailableSlots(s.id, date, serviceDuration)),
+  );
+
+  const times = new Set<string>();
+  for (const slots of perStylist) {
+    for (const slot of slots) {
+      if (slot.available) times.add(slot.time);
+    }
+  }
+
+  return Array.from(times)
+    .sort()
+    .map((time) => ({ time, available: true }));
+}
+
+/**
+ * Create a booking for the first stylist (in the given priority order) who is
+ * free for the whole appointment. Stylist resolution and the conflict check run
+ * inside one Serializable transaction so two concurrent "Anyone" bookings can't
+ * be assigned the same stylist for the same slot.
+ */
+export async function createBookingForFirstAvailable(data: {
+  candidateStylistIds: string[];
+  serviceId: string;
+  date: Date;
+  userId: string;
+  discountCodeId?: string;
+}) {
+  const appointment = await prisma.$transaction(async (tx) => {
+    const service = await tx.service.findUnique({ where: { id: data.serviceId } });
+    if (!service) throw new Error('Service not found');
+
+    const dayStart = startOfDay(data.date);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const existing = await tx.appointment.findMany({
+      where: {
+        stylistId: { in: data.candidateStylistIds },
+        date: { gte: dayStart, lte: dayEnd },
+        status: { not: 'CANCELLED' },
+      },
+      include: { service: true },
+    });
+
+    const bookedByStylist = new Map<string, BookedInterval[]>();
+    for (const appt of existing) {
+      const list = bookedByStylist.get(appt.stylistId) ?? [];
+      list.push({ start: new Date(appt.date), durationMin: appt.service.duration });
+      bookedByStylist.set(appt.stylistId, list);
+    }
+
+    const stylistId = firstFreeStylist(
+      data.candidateStylistIds,
+      data.date,
+      service.duration,
+      bookedByStylist,
+    );
+
+    if (!stylistId) {
+      throw new Error('No stylist is available at this time. Please choose another time.');
+    }
+
+    return tx.appointment.create({
+      data: {
+        date: data.date,
+        stylistId,
         serviceId: data.serviceId,
         userId: data.userId,
         status: 'CONFIRMED',
