@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
+import { jsonLdScript } from '@/app/lib/json-ld';
 import prisma from '@/app/lib/prisma';
 import { Hero } from '@/components/home/Hero';
 import { ServiceMenu } from '@/components/home/ServiceMenu';
 import { StylistShowcase } from '@/components/home/StylistShowcase';
+import { SocialProofBar } from '@/components/home/SocialProofBar';
 import { Faq } from '@/components/seo/Faq';
 import { getAggregateRating } from '@/app/services/review-service';
 import {
@@ -147,9 +149,10 @@ export default async function Home() {
     <div className="flex flex-col min-h-screen">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(hairSalonSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(hairSalonSchema) }}
       />
       <Hero />
+      <SocialProofBar average={aggregateRating.average} count={aggregateRating.count} />
       <ServiceMenu
         services={services}
         activeOffer={activeOffer}

@@ -24,7 +24,7 @@ interface BookingRescheduleProps {
   oldDate: Date;
 }
 
-const BRAND = '#174F7F';
+const BRAND = '#18181b';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 
 export function BookingReschedule({ appointment, oldDate }: BookingRescheduleProps) {
@@ -60,7 +60,7 @@ export function BookingReschedule({ appointment, oldDate }: BookingReschedulePro
             <Text style={{ color: '#ffffff', fontSize: '22px', fontWeight: 'bold', margin: 0, letterSpacing: '0.05em' }}>
               Harbour Hair Salon
             </Text>
-            <Text style={{ color: '#bfdbfe', fontSize: '13px', margin: '4px 0 0' }}>
+            <Text style={{ color: '#D4C5A0', fontSize: '13px', margin: '4px 0 0' }}>
               {SALON_ADDRESS}
             </Text>
           </Section>
@@ -87,7 +87,7 @@ export function BookingReschedule({ appointment, oldDate }: BookingReschedulePro
             </Section>
 
             {/* New Date */}
-            <Section style={{ backgroundColor: '#eff6ff', borderRadius: '8px', padding: '20px 24px', marginBottom: '24px', border: `1px solid ${BRAND}` }}>
+            <Section style={{ backgroundColor: '#faf7f0', borderRadius: '8px', padding: '20px 24px', marginBottom: '24px', border: `1px solid ${BRAND}` }}>
               <Text style={{ fontSize: '11px', color: BRAND, fontWeight: 'bold', margin: '0 0 12px', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'sans-serif' }}>
                 New Appointment
               </Text>

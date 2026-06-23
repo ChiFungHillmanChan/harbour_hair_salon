@@ -52,15 +52,15 @@ export function StylistShowcase({ stylists }: { stylists: Stylist[] }) {
             Our Team
           </p>
           <h2 className="text-4xl md:text-6xl font-serif mb-6 tracking-tight">
-            Meet The <span className="italic text-zinc-400">Stylist</span>
+            Meet The <span className="italic text-zinc-400">Stylists</span>
           </h2>
           <div className="w-16 h-[2px] bg-accent mx-auto mb-6" />
           <p className="text-zinc-400 max-w-2xl mx-auto font-light leading-relaxed">
-            Chan, an experienced stylist with Hong Kong training, delivers tailored haircuts and grooming services with meticulous attention to detail.
+            Our Hong Kong trained stylists deliver tailored haircuts and grooming services with meticulous attention to detail.
           </p>
         </Reveal>
 
-        <div className="grid md:grid-cols-1 md:max-w-lg gap-8 mx-auto">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
           {stylists.map((stylist, index) => (
             <Reveal
               key={stylist.id}

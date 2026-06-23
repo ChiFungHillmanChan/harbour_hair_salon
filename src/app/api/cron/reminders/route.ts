@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
       stylist: { select: { name: true } },
       service: { select: { name: true, price: true, duration: true } },
     },
+    orderBy: { date: 'asc' },
+    take: 100, // bound work per run so a backlog can't time out the function
   });
 
   const sentIds: string[] = [];
@@ -51,19 +53,16 @@ export async function GET(request: NextRequest) {
         stylist: appointment.stylist,
         service: { ...appointment.service, price: Number(appointment.service.price) },
       });
+      // Mark sent immediately so a mid-run timeout never re-sends this reminder.
+      await prisma.appointment.update({
+        where: { id: appointment.id },
+        data: { reminderSent: true },
+      });
       sentIds.push(appointment.id);
     } catch (error) {
       console.error(`Failed to send reminder for appointment ${appointment.id}:`, error);
       failedIds.push(appointment.id);
     }
-  }
-
-  // Batch update all successfully sent reminders
-  if (sentIds.length > 0) {
-    await prisma.appointment.updateMany({
-      where: { id: { in: sentIds } },
-      data: { reminderSent: true },
-    });
   }
 
   // Review request emails: past appointments from 1-14 days ago without a review

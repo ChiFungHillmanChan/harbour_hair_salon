@@ -1,6 +1,7 @@
 import prisma from '@/app/lib/prisma';
 import Image from 'next/image';
 import { BookingWizard } from '@/components/booking/BookingWizard';
+import { getAggregateRating } from '@/app/services/review-service';
 
 export const metadata = {
   title: 'Book Your Hair Appointment in Leeds',
@@ -35,9 +36,10 @@ async function getStylists() {
 }
 
 export default async function BookPage() {
-  const [services, stylists] = await Promise.all([
+  const [services, stylists, aggregateRating] = await Promise.all([
     getServices(),
     getStylists(),
+    getAggregateRating(),
   ]);
 
   return (
@@ -62,6 +64,14 @@ export default async function BookPage() {
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
             Select your service, stylist, and preferred time.
           </p>
+          {aggregateRating.count > 0 && (
+            <p className="mt-6 inline-flex items-center gap-2 text-sm text-zinc-300">
+              <span className="text-accent" aria-hidden="true">★</span>
+              <span className="font-semibold text-white">{aggregateRating.average.toFixed(1)}</span>
+              <span aria-hidden="true">·</span>
+              <span>{aggregateRating.count} verified reviews</span>
+            </p>
+          )}
         </div>
       </section>
 

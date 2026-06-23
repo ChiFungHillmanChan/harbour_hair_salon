@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { jsonLdScript } from '@/app/lib/json-ld';
 
 export type FaqItem = {
   question: string;
@@ -30,7 +31,7 @@ export function Faq({ title = 'Frequently Asked Questions', intro, items, classN
     <section className={`container mx-auto px-4 py-20 max-w-3xl ${className}`.trim()}>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(schema) }}
       />
       <div className="text-center mb-12">
         <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />

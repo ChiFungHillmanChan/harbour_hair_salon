@@ -1,6 +1,9 @@
 'use server';
 
-import { createBooking, getAvailableSlots, getValidPatchTest } from '@/app/services/booking-service';
+import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest } from '@/app/services/booking-service';
+import { resolveSalonDateTime, isWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, type SalonDateTime } from '@/app/services/salon-time';
+import { SlotUnavailableError, BookingError } from '@/app/services/booking-errors';
+import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { sendBookingConfirmation, sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
@@ -25,9 +28,27 @@ const createBookingSchema = z.object({
   stylistId: z.string(),
   serviceId: z.string(),
   date: z.coerce.date(),
-  time: z.string(), // HH:mm
+  time: z.string().regex(SALON_TIME_RE, 'Invalid time'), // strict HH:mm
   discountCode: z.string().optional(),
 }) satisfies z.ZodType<CreateBookingInput>;
+
+// Shared business-hours guard for a resolved salon date/time against a stylist's
+// availability for that weekday. Used by both the create and reschedule paths.
+async function checkStylistHours(
+  stylistId: string,
+  salon: SalonDateTime,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const availability = await prisma.availability.findFirst({
+    where: { stylistId, dayOfWeek: salon.dayOfWeek, isOff: false },
+  });
+  if (!availability) {
+    return { ok: false, error: 'Stylist is not available on this day' };
+  }
+  if (!isWithinAvailability(salon.timeMinutes, availability.startTime, availability.endTime)) {
+    return { ok: false, error: 'Selected time is outside business hours' };
+  }
+  return { ok: true };
+}
 
 export async function getAvailableSlotsAction(prevState: unknown, formData: FormData) {
   const stylistId = formData.get('stylistId') as string;
@@ -57,14 +78,33 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
   }
 }
 
-// Helper for client-side fetching without form state
+// Helper for client-side fetching without form state. The "Anyone" option
+// returns the union of every stylist's availability.
 export async function fetchSlots(stylistId: string, date: Date, serviceDuration: number) {
   try {
+    if (stylistId === ANY_STYLIST_ID) {
+      return await getAvailableSlotsUnion(date, serviceDuration);
+    }
     return await getAvailableSlots(stylistId, date, serviceDuration);
   } catch (error) {
     console.error(error);
     return [];
   }
+}
+
+// Stylists available on a given weekday/time, in display (name) order — the
+// candidate pool for resolving an "Anyone / first available" booking.
+async function eligibleStylistIds(salon: SalonDateTime): Promise<string[]> {
+  const stylists = await prisma.stylist.findMany({
+    where: { availabilities: { some: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
+    orderBy: { name: 'asc' },
+    include: { availabilities: { where: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
+  });
+  return stylists
+    .filter((s) =>
+      s.availabilities.some((a) => isWithinAvailability(salon.timeMinutes, a.startTime, a.endTime)),
+    )
+    .map((s) => s.id);
 }
 
 export async function validateDiscountCode(code: string) {
@@ -106,37 +146,35 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
   const validData = result.data;
 
-  // Parse time HH:mm in salon timezone (Europe/London)
-  // fromZonedTime converts a "London local time" to the correct UTC Date
-  const { fromZonedTime } = await import('date-fns-tz');
-  const [hours, minutes] = validData.time.split(':').map(Number);
-  const localDate = new Date(validData.date);
-  localDate.setHours(hours, minutes, 0, 0);
-  const fullDate = fromZonedTime(localDate, 'Europe/London');
+  // Resolve the salon wall-clock time to the correct absolute UTC instant
+  // (handles BST/GMT). Host-timezone independent — see salon-time.ts.
+  const salon = resolveSalonDateTime(validData.date, validData.time);
+  const fullDate = salon.utc;
+
+  // Defensive: reject an unparseable date/time before it reaches the DB.
+  if (Number.isNaN(fullDate.getTime())) {
+    return { success: false, error: 'Invalid date or time' };
+  }
 
   // Prevent booking in the past
   if (fullDate <= new Date()) {
     return { success: false, error: 'Cannot book a time in the past' };
   }
 
-  // Validate time falls within stylist availability for this day
-  const dayOfWeek = localDate.getDay();
-  const availability = await prisma.availability.findFirst({
-    where: { stylistId: validData.stylistId, dayOfWeek, isOff: false },
-  });
-
-  if (!availability) {
-    return { success: false, error: 'Stylist is not available on this day' };
-  }
-
-  const bookingTimeMinutes = hours * 60 + minutes;
-  const [availStartH, availStartM] = availability.startTime.split(':').map(Number);
-  const [availEndH, availEndM] = availability.endTime.split(':').map(Number);
-  const availStart = availStartH * 60 + availStartM;
-  const availEnd = availEndH * 60 + availEndM;
-
-  if (bookingTimeMinutes < availStart || bookingTimeMinutes >= availEnd) {
-    return { success: false, error: 'Selected time is outside business hours' };
+  // Resolve which stylist(s) can take this slot. For a named stylist we validate
+  // their hours; for "Anyone" we gather every stylist available at this time.
+  const isAnyStylist = validData.stylistId === ANY_STYLIST_ID;
+  let candidateStylistIds: string[] = [];
+  if (isAnyStylist) {
+    candidateStylistIds = await eligibleStylistIds(salon);
+    if (candidateStylistIds.length === 0) {
+      return { success: false, error: 'No stylist is available at this time' };
+    }
+  } else {
+    const hoursCheck = await checkStylistHours(validData.stylistId, salon);
+    if (!hoursCheck.ok) {
+      return { success: false, error: hoursCheck.error };
+    }
   }
 
   // Colour services require a completed Consultation & Patch Test first.
@@ -157,39 +195,24 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     }
   }
 
-  // Atomically validate and claim the discount code within a transaction
-  let discountCodeId = undefined;
-  if (validData.discountCode) {
-    try {
-      discountCodeId = await prisma.$transaction(async (tx) => {
-        const discount = await tx.discountCode.findUnique({
-          where: { code: validData.discountCode },
-        });
-
-        if (!discount || !discount.isActive) return undefined;
-        if (discount.expiresAt && new Date() > discount.expiresAt) return undefined;
-        if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) return undefined;
-
-        await tx.discountCode.update({
-          where: { id: discount.id },
-          data: { usedCount: { increment: 1 } },
-        });
-
-        return discount.id;
-      }, { isolationLevel: 'Serializable' });
-    } catch {
-      return { success: false, error: 'Discount code could not be applied. It may have been fully claimed.' };
-    }
-  }
-
   try {
-    const appointment = await createBooking({
-      stylistId: validData.stylistId,
-      serviceId: validData.serviceId,
-      date: fullDate,
-      userId: session.userId,
-      discountCodeId,
-    });
+    // The discount code is validated + claimed INSIDE the booking transaction
+    // (see booking-service), so a failed booking never burns a code's usedCount.
+    const appointment = isAnyStylist
+      ? await createBookingForFirstAvailable({
+          candidateStylistIds,
+          serviceId: validData.serviceId,
+          date: fullDate,
+          userId: session.userId,
+          discountCode: validData.discountCode,
+        })
+      : await createBooking({
+          stylistId: validData.stylistId,
+          serviceId: validData.serviceId,
+          date: fullDate,
+          userId: session.userId,
+          discountCode: validData.discountCode,
+        });
 
     // Send confirmation email (fail silently — handled in email-service)
     await sendBookingConfirmation({
@@ -210,7 +233,10 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     return { success: true };
   } catch (error) {
     console.error('Booking failed:', error);
-    return { success: false, error: 'Failed to create booking' };
+    // Only surface customer-safe messages (slot taken, discount unavailable);
+    // anything else (Prisma/internal) becomes a generic message.
+    const message = error instanceof BookingError ? error.message : 'Failed to create booking';
+    return { success: false, error: message };
   }
 }
 
@@ -273,8 +299,13 @@ export async function checkColourEligibility(serviceId: string, dateIso: string)
   };
 }
 
-export async function rescheduleAppointment(appointmentId: string, newDate: Date) {
+export async function rescheduleAppointment(appointmentId: string, dateStr: string, time: string) {
   const session = await verifySession();
+
+  // Reject malformed date/time before any DB work (no Zod schema on this path).
+  if (!isValidSalonDate(dateStr) || !isValidSalonTime(time)) {
+    return { success: false, error: 'Invalid date or time' };
+  }
 
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
@@ -298,6 +329,27 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
     return { success: false, error: 'Cannot reschedule within 24 hours of appointment' };
   }
 
+  // Resolve the new salon wall-clock time to the correct absolute UTC instant
+  // (handles BST/GMT) — the create path did this but reschedule previously did not.
+  const salon = resolveSalonDateTime(dateStr, time);
+  const newDate = salon.utc;
+
+  // Defensive: reject an unparseable instant before it reaches the DB.
+  if (Number.isNaN(newDate.getTime())) {
+    return { success: false, error: 'Invalid date or time' };
+  }
+
+  // Prevent rescheduling into the past
+  if (newDate <= new Date()) {
+    return { success: false, error: 'Cannot reschedule to a time in the past' };
+  }
+
+  // Validate the new time falls within stylist availability for this day
+  const hoursCheck = await checkStylistHours(appointment.stylistId, salon);
+  if (!hoursCheck.ok) {
+    return { success: false, error: hoursCheck.error };
+  }
+
   // Re-validate the colour patch-test gate against the NEW date.
   if (appointment.service.requiresPatchTest) {
     const eligibility = await getValidPatchTest(session.userId, newDate);
@@ -316,13 +368,9 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
     const oldDate = appointment.date;
 
     await prisma.$transaction(async (tx) => {
-      // Check for overlapping appointments using duration-based range
-      const { startOfDay } = await import('date-fns');
+      // Check for overlapping appointments within the salon-local day window.
       const { addMinutes } = await import('date-fns');
-
-      const dayStart = startOfDay(newDate);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setHours(23, 59, 59, 999);
+      const { start: dayStart, end: dayEnd } = salonDayWindow(newDate);
       const newEnd = addMinutes(newDate, appointment.service.duration);
 
       const existingAppointments = await tx.appointment.findMany({
@@ -332,7 +380,7 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
           status: { not: 'CANCELLED' },
           id: { not: appointmentId },
         },
-        include: { service: true },
+        include: { service: { select: { duration: true } } },
       });
 
       const hasConflict = existingAppointments.some((appt) => {
@@ -346,7 +394,7 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
       });
 
       if (hasConflict) {
-        throw new Error('This time slot is no longer available');
+        throw new SlotUnavailableError('This time slot is no longer available.');
       }
 
       await tx.appointment.update({
@@ -376,7 +424,8 @@ export async function rescheduleAppointment(appointmentId: string, newDate: Date
     revalidatePath('/book');
     return { success: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Reschedule failed';
+    console.error('Reschedule failed:', error);
+    const message = error instanceof BookingError ? error.message : 'Reschedule failed. Please try again.';
     return { success: false, error: message };
   }
 }

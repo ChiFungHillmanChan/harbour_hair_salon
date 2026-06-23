@@ -10,7 +10,7 @@ import {
   Preview,
 } from '@react-email/components';
 
-const BRAND = '#174F7F';
+const BRAND = '#18181b';
 const ACCENT = '#c9a96e';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
@@ -26,7 +26,7 @@ export function NewsletterWelcome() {
             <Text style={{ color: '#ffffff', fontSize: '22px', fontWeight: 'bold', margin: 0, letterSpacing: '0.05em' }}>
               Harbour Hair Salon
             </Text>
-            <Text style={{ color: '#bfdbfe', fontSize: '13px', margin: '4px 0 0' }}>
+            <Text style={{ color: '#D4C5A0', fontSize: '13px', margin: '4px 0 0' }}>
               {SALON_ADDRESS}
             </Text>
           </Section>
