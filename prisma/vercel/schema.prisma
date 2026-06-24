@@ -237,6 +237,7 @@ model Employee {
 
   timeEntries  TimeEntry[]
   payrollLines PayrollLine[]
+  shifts       Shift[]
 
   @@index([isActive])
 }
@@ -295,4 +296,18 @@ model PayrollLine {
   updatedAt             DateTime      @updatedAt
 
   @@unique([periodId, employeeId])
+}
+
+model Shift {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date       DateTime // salon-local calendar date, stored as that day's UTC midnight
+  startTime  String   // HH:mm (salon local)
+  endTime    String   // HH:mm (salon local)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([employeeId, date])
+  @@index([date])
 }
