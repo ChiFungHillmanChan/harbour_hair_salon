@@ -26,6 +26,10 @@ export async function runPayroll(year: number, month: number) {
     create: { year, month, status: 'DRAFT' },
   });
 
+  if (period.status === 'FINALIZED') {
+    throw new Error(`Payroll period ${year}-${month} is already finalized and cannot be recomputed.`);
+  }
+
   const employees = await prisma.employee.findMany({ where: { isActive: true } });
 
   for (const e of employees) {
@@ -96,11 +100,30 @@ export async function updateAdjustment(lineId: string, amount: number, note: str
 
 export async function finalizePayroll(periodId: string, adminId: string) {
   const lines = await prisma.payrollLine.findMany({ where: { periodId } });
-  for (const l of lines) {
-    await prisma.payrollLine.update({ where: { id: l.id }, data: { snapshotJson: JSON.stringify(l) } });
-  }
-  await prisma.payrollPeriod.update({
-    where: { id: periodId },
-    data: { status: 'FINALIZED', finalizedByAdminId: adminId, finalizedAt: new Date() },
-  });
+  const lineUpdates = lines.map((l) =>
+    prisma.payrollLine.update({
+      where: { id: l.id },
+      data: {
+        snapshotJson: JSON.stringify({
+          totalHours: num(l.totalHours),
+          regularHours: num(l.regularHours),
+          overtimeHours: num(l.overtimeHours),
+          basePay: num(l.basePay),
+          overtimePay: num(l.overtimePay),
+          commissionableRevenue: num(l.commissionableRevenue),
+          commissionPay: num(l.commissionPay),
+          adjustments: num(l.adjustments),
+          adjustmentNote: l.adjustmentNote,
+          grossPay: num(l.grossPay),
+        }),
+      },
+    }),
+  );
+  await prisma.$transaction([
+    ...lineUpdates,
+    prisma.payrollPeriod.update({
+      where: { id: periodId },
+      data: { status: 'FINALIZED', finalizedByAdminId: adminId, finalizedAt: new Date() },
+    }),
+  ]);
 }

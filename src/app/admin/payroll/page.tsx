@@ -4,6 +4,7 @@ import { toZonedTime } from 'date-fns-tz';
 import { SALON_TIMEZONE } from '@/app/services/salon-time';
 import { toPayrollCsv } from '@/app/services/payroll-csv';
 import { runPayrollAction, finalizePayrollAction } from '@/app/actions/payroll';
+import PayrollAdjustmentForm from '@/components/admin/PayrollAdjustmentForm';
 
 export default async function PayrollPage({ searchParams }: { searchParams: Promise<{ year?: string; month?: string }> }) {
   const sp = await searchParams;
@@ -36,9 +37,11 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
       <h1 className="font-serif text-3xl text-brand">Payroll — {year}-{String(month).padStart(2, '0')}</h1>
       <p className="text-sm text-zinc-500">Gross pay only. Phase 1: commission excluded (added in Phase 2).</p>
 
-      <form action={async () => { 'use server'; await runPayrollAction(year, month); }}>
-        <button className="bg-brand text-white px-4 py-2 rounded">Run / recompute from approved timesheets</button>
-      </form>
+      {period?.status !== 'FINALIZED' && (
+        <form action={async () => { 'use server'; await runPayrollAction(year, month); }}>
+          <button className="bg-brand text-white px-4 py-2 rounded">Run / recompute from approved timesheets</button>
+        </form>
+      )}
 
       {period && (
         <>
@@ -57,7 +60,13 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
                   <td className="p-2">£{Number(l.basePay.toString()).toFixed(2)}</td>
                   <td className="p-2">£{Number(l.overtimePay.toString()).toFixed(2)}</td>
                   <td className="p-2">£{Number(l.commissionPay.toString()).toFixed(2)}</td>
-                  <td className="p-2">£{Number(l.adjustments.toString()).toFixed(2)}</td>
+                  <td className="p-2">
+                    {period.status === 'DRAFT' ? (
+                      <PayrollAdjustmentForm lineId={l.id} amount={Number(l.adjustments.toString())} note={l.adjustmentNote ?? ''} />
+                    ) : (
+                      <span>£{Number(l.adjustments.toString()).toFixed(2)}</span>
+                    )}
+                  </td>
                   <td className="p-2 font-bold">£{Number(l.grossPay.toString()).toFixed(2)}</td>
                 </tr>
               ))}
