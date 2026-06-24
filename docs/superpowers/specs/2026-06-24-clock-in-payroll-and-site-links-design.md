@@ -86,7 +86,7 @@ Employees aren't customers and authenticate by PIN on a shared device, so they g
 - `hourlyRate` (Decimal, nullable)
 - `monthlySalary` (Decimal, nullable)
 - `commissionRate` (Decimal, nullable — percent, e.g. 0.40)
-- `overtimeEnabled` (Boolean, default false), `overtimeThresholdHours` (Decimal, per week, nullable), `overtimeMultiplier` (Decimal, nullable, e.g. 1.5)
+- `overtimeEnabled` (Boolean, default false), `overtimeThresholdHours` (Decimal, per pay period (one month), nullable), `overtimeMultiplier` (Decimal, nullable, e.g. 1.5)
 - `unpaidBreakMinutes` (Int, nullable — fixed auto-deduct rule, if used)
 - `isActive` (Boolean, default true)
 - `hireDate` (DateTime)

@@ -222,7 +222,7 @@ model Employee {
   monthlySalary          Decimal?
   commissionRate         Decimal? // fraction, e.g. 0.40 = 40%
   overtimeEnabled        Boolean  @default(false)
-  overtimeThresholdHours Decimal? // hours per pay period before overtime
+  overtimeThresholdHours Decimal? // hours per pay period (one month) before overtime
   overtimeMultiplier     Decimal? // e.g. 1.5
   unpaidBreakMinutes     Int?     // fixed auto-deduct (Phase 3); unused in Phase 1
   isActive               Boolean  @default(true)

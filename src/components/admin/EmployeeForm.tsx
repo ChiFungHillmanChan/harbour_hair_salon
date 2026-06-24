@@ -47,7 +47,7 @@ export default function EmployeeForm({
       <label className="flex items-center gap-2">
         <input name="overtimeEnabled" type="checkbox" defaultChecked={employee?.overtimeEnabled} /> Enable overtime
       </label>
-      <input name="overtimeThresholdHours" type="number" step="0.5" defaultValue={employee?.overtimeThresholdHours ?? ''} placeholder="Overtime threshold (hours/month)" className="w-full border p-2 rounded" />
+      <input name="overtimeThresholdHours" type="number" step="0.5" defaultValue={employee?.overtimeThresholdHours ?? ''} placeholder="Overtime threshold (hours per month)" className="w-full border p-2 rounded" />
       <input name="overtimeMultiplier" type="number" step="0.1" min="1" defaultValue={employee?.overtimeMultiplier ?? ''} placeholder="Overtime multiplier (e.g. 1.5)" className="w-full border p-2 rounded" />
       <select name="stylistId" defaultValue={employee?.stylistId ?? ''} className="w-full border p-2 rounded">
         <option value="">— Not a bookable stylist —</option>

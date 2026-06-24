@@ -30,7 +30,27 @@ export async function runPayroll(year: number, month: number) {
     throw new Error(`Payroll period ${year}-${month} is already finalized and cannot be recomputed.`);
   }
 
-  const employees = await prisma.employee.findMany({ where: { isActive: true } });
+  // Include active employees AND anyone with approved in-month hours or an existing
+  // line for this period, so leavers (deactivated mid-month) are still paid and their
+  // lines are refreshed rather than left stale.
+  const approvedEntryEmployees = await prisma.timeEntry.findMany({
+    where: { status: 'APPROVED', clockOut: { not: null }, clockIn: { gte: start, lt: end } },
+    select: { employeeId: true },
+    distinct: ['employeeId'],
+  });
+  const existingLineEmployees = await prisma.payrollLine.findMany({
+    where: { periodId: period.id },
+    select: { employeeId: true },
+  });
+  const includeIds = Array.from(
+    new Set([
+      ...approvedEntryEmployees.map((e) => e.employeeId),
+      ...existingLineEmployees.map((l) => l.employeeId),
+    ]),
+  );
+  const employees = await prisma.employee.findMany({
+    where: { OR: [{ isActive: true }, { id: { in: includeIds } }] },
+  });
 
   for (const e of employees) {
     const entries = await prisma.timeEntry.findMany({
