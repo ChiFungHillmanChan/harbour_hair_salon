@@ -1,6 +1,7 @@
 import prisma from '@/app/lib/prisma';
 import EmployeeForm from '@/components/admin/EmployeeForm';
 import { createEmployee } from '@/app/actions/employees';
+import KioskModeButton from '@/components/admin/KioskModeButton';
 
 export default async function AdminEmployeesPage() {
   const [employees, stylists] = await Promise.all([
@@ -11,6 +12,7 @@ export default async function AdminEmployeesPage() {
   return (
     <div className="p-6 space-y-8">
       <h1 className="font-serif text-3xl text-brand">Employees</h1>
+      <KioskModeButton />
 
       <section>
         <h2 className="text-xl mb-3">Add employee</h2>
