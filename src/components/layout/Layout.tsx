@@ -2,10 +2,13 @@ import React from 'react';
 import Link from 'next/link';
 import prisma from '@/app/lib/prisma';
 import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
+import SocialLinks from '@/components/layout/SocialLinks';
+import { getSiteSettings } from '@/app/services/site-settings-service';
 
 export async function Footer() {
   const activeOffersCount = await prisma.offer.count({ where: { isActive: true } });
   const hasOffers = activeOffersCount > 0;
+  const settings = await getSiteSettings();
 
   return (
     <footer className="bg-zinc-900 text-white" id="contact">
@@ -100,20 +103,8 @@ export async function Footer() {
             </ul>
 
             {/* Social */}
-            <div className="mt-6 flex items-center gap-4">
-              <a
-                href="https://www.instagram.com/harbourhair_leeds/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-zinc-500 hover:text-accent transition-colors"
-                aria-label="Follow us on Instagram"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-                </svg>
-              </a>
+            <div className="mt-6">
+              <SocialLinks settings={settings} />
             </div>
           </div>
         </div>
