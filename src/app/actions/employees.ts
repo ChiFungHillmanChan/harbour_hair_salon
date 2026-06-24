@@ -24,6 +24,7 @@ const employeeSchema = z.object({
   overtimeEnabled: z.boolean().optional(),
   overtimeThresholdHours: z.coerce.number().nonnegative().nullable().optional(),
   overtimeMultiplier: z.coerce.number().min(1).nullable().optional(),
+  unpaidBreakMinutes: z.coerce.number().int().min(0).max(480).nullable().optional(),
   stylistId: z.string().nullable().optional(),
 });
 
@@ -38,6 +39,7 @@ function parseEmployeeForm(formData: FormData) {
     overtimeEnabled: formData.get('overtimeEnabled') === 'on',
     overtimeThresholdHours: formData.get('overtimeThresholdHours') || null,
     overtimeMultiplier: formData.get('overtimeMultiplier') || null,
+    unpaidBreakMinutes: formData.get('unpaidBreakMinutes') || null,
     stylistId: (formData.get('stylistId') as string) || null,
   });
 }
@@ -65,6 +67,7 @@ export async function createEmployee(formData: FormData) {
       overtimeEnabled: d.overtimeEnabled ?? false,
       overtimeThresholdHours: d.overtimeThresholdHours ?? null,
       overtimeMultiplier: d.overtimeMultiplier ?? null,
+      unpaidBreakMinutes: d.unpaidBreakMinutes ?? null,
       stylistId: d.stylistId || null,
     },
   });
@@ -92,6 +95,7 @@ export async function updateEmployee(id: string, formData: FormData) {
       overtimeEnabled: d.overtimeEnabled ?? false,
       overtimeThresholdHours: d.overtimeThresholdHours ?? null,
       overtimeMultiplier: d.overtimeMultiplier ?? null,
+      unpaidBreakMinutes: d.unpaidBreakMinutes ?? null,
       stylistId: d.stylistId || null,
     },
   });

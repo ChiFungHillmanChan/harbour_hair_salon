@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { segmentWorkedMinutes, totalWorkedHours, splitRegularOvertime } from './timesheet-calc';
+import { segmentWorkedMinutes, splitRegularOvertime, totalWorkedMinutes, applyBreakDeduction } from './timesheet-calc';
 
 const seg = (inH: number, outH: number, brk = 0) => ({
   clockIn: new Date(`2026-06-01T${String(inH).padStart(2, '0')}:00:00Z`),
@@ -14,10 +14,6 @@ test('segmentWorkedMinutes subtracts break minutes', () => {
 
 test('segmentWorkedMinutes never returns negative', () => {
   assert.equal(segmentWorkedMinutes(seg(9, 9, 30)), 0);
-});
-
-test('totalWorkedHours sums segments in hours', () => {
-  assert.equal(totalWorkedHours([seg(9, 13), seg(14, 18)]), 8); // 4 + 4
 });
 
 test('splitRegularOvertime returns all-regular when disabled', () => {
@@ -39,4 +35,15 @@ test('splitRegularOvertime — under threshold yields no overtime', () => {
     regularHours: 30,
     overtimeHours: 0,
   });
+});
+
+test('totalWorkedMinutes sums segment minutes', () => {
+  assert.equal(totalWorkedMinutes([seg(9, 13), seg(14, 18)]), 8 * 60);
+});
+
+test('applyBreakDeduction subtracts perDay break × days, floored at 0', () => {
+  assert.equal(applyBreakDeduction(480, 2, 30), 420);
+  assert.equal(applyBreakDeduction(20, 5, 30), 0);
+  assert.equal(applyBreakDeduction(480, 3, 0), 480);
+  assert.equal(applyBreakDeduction(480, 2, -10), 480); // negative perDay treated as 0
 });

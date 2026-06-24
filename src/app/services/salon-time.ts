@@ -61,6 +61,16 @@ export function resolveSalonDateTime(date: string | Date, time: string): SalonDa
   return { utc, dateStr, timeMinutes: hours * 60 + minutes, dayOfWeek };
 }
 
+/** The salon-local calendar date (YYYY-MM-DD, Europe/London) of an absolute instant. */
+export function salonDateKey(instant: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: SALON_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+}
+
 /**
  * The UTC instants bounding the salon-local calendar day that `instant` falls
  * on. Used to scan a day's appointments correctly regardless of the server's
@@ -78,6 +88,19 @@ export function salonDayWindow(instant: Date): { start: Date; end: Date } {
     start: fromZonedTime(`${dateStr}T00:00:00.000`, SALON_TIMEZONE),
     end: fromZonedTime(`${dateStr}T23:59:59.999`, SALON_TIMEZONE),
   };
+}
+
+/** Minutes since salon-local midnight (Europe/London) for an absolute instant. */
+export function salonMinutesOfDay(instant: Date): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALON_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+  return h * 60 + m;
 }
 
 /**

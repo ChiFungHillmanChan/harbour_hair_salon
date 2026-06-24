@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeGross, round2 } from './payroll-calc';
+import { computeGross, round2, sumCommissionable } from './payroll-calc';
 
 const base = {
   hourlyRate: null as number | null,
@@ -79,4 +79,11 @@ test('adjustments add (or subtract) from gross', () => {
 test('null rates treated as zero', () => {
   const r = computeGross({ ...base, payType: 'HOURLY', regularHours: 10 });
   assert.equal(r.grossPay, 0);
+});
+
+test('sumCommissionable sums and rounds to pence', () => {
+  assert.equal(sumCommissionable([10, 20.5, 4.001]), 34.5);
+});
+test('sumCommissionable of empty list is 0', () => {
+  assert.equal(sumCommissionable([]), 0);
 });

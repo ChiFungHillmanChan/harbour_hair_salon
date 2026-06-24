@@ -2,9 +2,9 @@
 import 'server-only';
 import prisma from '@/app/lib/prisma';
 import { fromZonedTime } from 'date-fns-tz';
-import { SALON_TIMEZONE } from '@/app/services/salon-time';
-import { totalWorkedHours, splitRegularOvertime } from '@/app/services/timesheet-calc';
-import { computeGross, round2, type PayType } from '@/app/services/payroll-calc';
+import { SALON_TIMEZONE, salonDateKey } from '@/app/services/salon-time';
+import { totalWorkedMinutes, applyBreakDeduction, splitRegularOvertime } from '@/app/services/timesheet-calc';
+import { computeGross, round2, sumCommissionable, type PayType } from '@/app/services/payroll-calc';
 
 function monthBounds(year: number, month: number) {
   const start = fromZonedTime(`${year}-${String(month).padStart(2, '0')}-01T00:00:00.000`, SALON_TIMEZONE);
@@ -61,13 +61,24 @@ export async function runPayroll(year: number, month: number) {
       .filter((x): x is { clockIn: Date; clockOut: Date; breakMinutes: number } => x.clockOut != null)
       .map((x) => ({ clockIn: x.clockIn, clockOut: x.clockOut, breakMinutes: x.breakMinutes }));
 
-    const totalHours = totalWorkedHours(segments);
+    const workedMinutes = totalWorkedMinutes(segments);
+    const workedDays = new Set(segments.map((s) => salonDateKey(s.clockIn))).size;
+    const paidMinutes = applyBreakDeduction(workedMinutes, workedDays, e.unpaidBreakMinutes ?? 0);
+    const totalHours = paidMinutes / 60;
     const { regularHours, overtimeHours } = splitRegularOvertime(totalHours, {
       enabled: e.overtimeEnabled,
       thresholdHours: num(e.overtimeThresholdHours) ?? 0,
     });
 
-    // Phase 1: commission revenue is 0 (Phase 2 wires completed-booking revenue).
+    let commissionableRevenue = 0;
+    if (e.stylistId) {
+      const appts = await prisma.appointment.findMany({
+        where: { stylistId: e.stylistId, status: 'COMPLETED', date: { gte: start, lt: end } },
+        select: { service: { select: { price: true } } },
+      });
+      commissionableRevenue = sumCommissionable(appts.map((a) => Number(a.service.price.toString())));
+    }
+
     const gross = computeGross({
       payType: e.payType as PayType,
       hourlyRate: num(e.hourlyRate),
@@ -76,7 +87,7 @@ export async function runPayroll(year: number, month: number) {
       regularHours,
       overtimeHours,
       overtimeMultiplier: num(e.overtimeMultiplier),
-      commissionableRevenue: 0,
+      commissionableRevenue,
       adjustments: 0,
     });
 
@@ -92,14 +103,14 @@ export async function runPayroll(year: number, month: number) {
       update: {
         totalHours, regularHours, overtimeHours,
         basePay: gross.basePay, overtimePay: gross.overtimePay,
-        commissionableRevenue: 0, commissionPay: gross.commissionPay,
+        commissionableRevenue, commissionPay: gross.commissionPay,
         adjustments, adjustmentNote, grossPay: grossWithAdj,
       },
       create: {
         periodId: period.id, employeeId: e.id,
         totalHours, regularHours, overtimeHours,
         basePay: gross.basePay, overtimePay: gross.overtimePay,
-        commissionableRevenue: 0, commissionPay: gross.commissionPay,
+        commissionableRevenue, commissionPay: gross.commissionPay,
         adjustments: 0, grossPay: gross.grossPay,
       },
     });

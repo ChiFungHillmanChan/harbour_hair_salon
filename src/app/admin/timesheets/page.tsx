@@ -1,9 +1,12 @@
 import prisma from '@/app/lib/prisma';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { format } from 'date-fns';
-import { SALON_TIMEZONE } from '@/app/services/salon-time';
+import { SALON_TIMEZONE, salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
 import { segmentWorkedMinutes } from '@/app/services/timesheet-calc';
 import { approveTimeEntry, approveMonth } from '@/app/actions/timesheets';
+import { evaluateShift, type ShiftEvaluation } from '@/app/services/shift-flags';
+
+const GRACE_MIN = 5;
 
 function monthBounds(year: number, month: number) {
   const start = fromZonedTime(`${year}-${String(month).padStart(2, '0')}-01T00:00:00.000`, SALON_TIMEZONE);
@@ -13,6 +16,11 @@ function monthBounds(year: number, month: number) {
   return { start, end };
 }
 
+function parseShiftMin(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
 export default async function TimesheetsPage({ searchParams }: { searchParams: Promise<{ year?: string; month?: string }> }) {
   const sp = await searchParams;
   const now = toZonedTime(new Date(), SALON_TIMEZONE);
@@ -20,11 +28,42 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
   const month = Number(sp.month) || now.getMonth() + 1;
   const { start, end } = monthBounds(year, month);
 
-  const entries = await prisma.timeEntry.findMany({
-    where: { clockIn: { gte: start, lt: end } },
-    orderBy: [{ employeeId: 'asc' }, { clockIn: 'asc' }],
-    include: { employee: { select: { name: true } } },
-  });
+  const [entries, shifts] = await Promise.all([
+    prisma.timeEntry.findMany({
+      where: { clockIn: { gte: start, lt: end } },
+      orderBy: [{ employeeId: 'asc' }, { clockIn: 'asc' }],
+      include: { employee: { select: { name: true } } },
+    }),
+    prisma.shift.findMany({
+      where: { date: { gte: start, lt: end } },
+      select: { employeeId: true, date: true, startTime: true, endTime: true },
+    }),
+  ]);
+
+  // Build shift evaluation map keyed by `${employeeId}|${salonDateKey}`
+  const shiftMap = new Map<string, ShiftEvaluation>();
+  for (const shift of shifts) {
+    const dayKey = salonDateKey(shift.date);
+    const mapKey = `${shift.employeeId}|${dayKey}`;
+    const dayEntries = entries.filter(
+      (e) => e.employeeId === shift.employeeId && salonDateKey(e.clockIn) === dayKey && e.clockOut !== null,
+    );
+    if (dayEntries.length === 0) continue;
+
+    const firstInMin = Math.min(...dayEntries.map((e) => salonMinutesOfDay(e.clockIn)));
+    const lastOutMin = Math.max(...dayEntries.map((e) => salonMinutesOfDay(e.clockOut!)));
+
+    shiftMap.set(
+      mapKey,
+      evaluateShift({
+        shiftStartMin: parseShiftMin(shift.startTime),
+        shiftEndMin: parseShiftMin(shift.endTime),
+        firstInMin,
+        lastOutMin,
+        graceMin: GRACE_MIN,
+      }),
+    );
+  }
 
   const fmt = (d: Date) => format(toZonedTime(d, SALON_TIMEZONE), 'dd MMM HH:mm');
 
@@ -40,12 +79,14 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
         <thead>
           <tr className="text-left border-b">
             <th className="p-2">Employee</th><th className="p-2">Clock in</th><th className="p-2">Clock out</th>
-            <th className="p-2">Hours</th><th className="p-2">Status</th><th className="p-2"></th>
+            <th className="p-2">Hours</th><th className="p-2">Status</th><th className="p-2">Shift</th><th className="p-2"></th>
           </tr>
         </thead>
         <tbody>
           {entries.map((e) => {
             const hours = e.clockOut ? (segmentWorkedMinutes({ clockIn: e.clockIn, clockOut: e.clockOut, breakMinutes: e.breakMinutes }) / 60).toFixed(2) : '—';
+            const evalKey = `${e.employeeId}|${salonDateKey(e.clockIn)}`;
+            const ev = shiftMap.get(evalKey);
             return (
               <tr key={e.id} className="border-b">
                 <td className="p-2">{e.employee.name}</td>
@@ -53,6 +94,18 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
                 <td className="p-2">{e.clockOut ? fmt(e.clockOut) : <span className="text-amber-600">OPEN</span>}</td>
                 <td className="p-2">{hours}</td>
                 <td className="p-2">{e.status}</td>
+                <td className="p-2 space-x-1">
+                  {ev?.late && (
+                    <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                      Late {ev.lateByMin}m
+                    </span>
+                  )}
+                  {ev?.earlyLeave && (
+                    <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                      Left early {ev.earlyByMin}m
+                    </span>
+                  )}
+                </td>
                 <td className="p-2">
                   {e.clockOut && e.status !== 'APPROVED' && (
                     <form action={async () => { 'use server'; await approveTimeEntry(e.id); }}>
@@ -63,7 +116,7 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
               </tr>
             );
           })}
-          {entries.length === 0 && <tr><td className="p-2" colSpan={6}>No entries this month.</td></tr>}
+          {entries.length === 0 && <tr><td className="p-2" colSpan={7}>No entries this month.</td></tr>}
         </tbody>
       </table>
     </div>

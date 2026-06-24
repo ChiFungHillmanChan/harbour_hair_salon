@@ -62,6 +62,9 @@ export default async function AdminLayout({
           <Link href="/admin/timesheets" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
             Timesheets
           </Link>
+          <Link href="/admin/shifts" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Shifts
+          </Link>
           <Link href="/admin/payroll" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
             Payroll
           </Link>
