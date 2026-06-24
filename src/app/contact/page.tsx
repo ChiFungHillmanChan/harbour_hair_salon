@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Faq } from '@/components/seo/Faq';
+import SalonGallery from '@/components/contact/SalonGallery';
 import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL } from '@/app/lib/site-url';
 import SocialLinks from '@/components/layout/SocialLinks';
@@ -197,6 +198,9 @@ export default async function ContactPage() {
             )}
           </div>
         </section>
+
+        {/* Our Space gallery */}
+        <SalonGallery />
 
         {/* CTA Section */}
         <div className="mt-20 text-center bg-zinc-900 p-16">
