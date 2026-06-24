@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { clockToggle } from '@/app/actions/kiosk';
 
 type RosterEntry = { id: string; name: string; title: string; imageUrl: string | null; isClockedIn: boolean };
 
 export default function KioskClock({ roster }: { roster: RosterEntry[] }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<RosterEntry | null>(null);
   const [pin, setPin] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -24,6 +26,7 @@ export default function KioskClock({ roster }: { roster: RosterEntry[] }) {
     if (res.ok) {
       setMessage(`${res.name}: clocked ${res.status === 'IN' ? 'in' : 'out'} ✓`);
       reset();
+      router.refresh();
       setTimeout(() => setMessage(null), 3000);
     } else {
       setMessage(res.error ?? 'Error');
@@ -42,6 +45,7 @@ export default function KioskClock({ roster }: { roster: RosterEntry[] }) {
           inputMode="numeric"
           value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onKeyDown={(e) => { if (e.key === 'Enter' && pin.length >= 4 && !busy) submit(); }}
           placeholder="Enter PIN"
           className="w-full text-center text-2xl tracking-[0.5em] p-4 rounded text-black"
         />
