@@ -42,6 +42,36 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `booking-service.ts` — slot availability, booking creation, patch-test eligibility query
 - `email-service.ts` — Resend + React Email templates
 - `patch-test-eligibility.ts` — pure colour-gate eligibility logic
+- `timesheet-calc.ts` — pure fns: `segmentWorkedMinutes`, `totalWorkedHours`, `splitRegularOvertime`; unit-tested
+- `payroll-calc.ts` — pure fns: `computeGross` (HOURLY/SALARY/COMMISSION/HYBRID), `round2`; unit-tested
+- `kiosk-state.ts` — pure fn: `nextClockAction(openEntry)` → `CLOCK_IN` or `CLOCK_OUT`; unit-tested
+- `payroll-csv.ts` — `generatePayrollCsv(rows)` → RFC-4180 CSV string; unit-tested
+- `payroll-service.ts` — server-only: `runPayroll(year, month)`, `updateAdjustment`, `finalizePayroll`; queries Prisma and delegates to calc modules
+
+## Lib
+- `pin.ts` — `isValidPin`, `hashPin`, `verifyPin` (bcryptjs); unit-tested
+- `session.ts` — existing JWT session helpers + `createKioskSession`/`getKioskSession`/`deleteKioskSession` for PIN-authenticated kiosk sessions
+
+## Actions
+- `employees.ts` — admin CRUD for Employee records (create, update, delete); validates PIN via `pin.ts`
+- `kiosk.ts` — `clockToggle` (employee clock-in/out with PIN + rate-limit), `enableKioskMode`, `disableKioskMode`
+- `timesheets.ts` — admin timesheet management: create/edit/delete TimesheetEntry rows
+- `payroll.ts` — `runPayrollAction(year, month)`, `updateAdjustmentAction`, `finalizePayrollAction`; delegates to `payroll-service.ts`
+
+## Pages
+- `src/app/admin/employees/page.tsx` — admin employee list with create/edit/delete via `EmployeeForm`
+- `src/app/admin/timesheets/page.tsx` — admin timesheet browser and manual entry editor
+- `src/app/admin/payroll/page.tsx` — admin payroll runner: period picker, computed gross lines, CSV export, finalize
+- `src/app/kiosk/page.tsx` — PIN kiosk screen: employee roster with clock-in/out via `KioskClock`
+
+## Components (new — payroll / kiosk build)
+- `src/components/layout/SocialLinks.tsx` — renders IG/Treatwell/Google icon links from `social-links-data.ts`
+- `src/components/layout/social-links-data.ts` — `getSocialLinks(settings)` → filtered, ordered `SocialLink[]`; unit-tested
+- `src/components/home/VisitFollowBlock.tsx` — "Visit & follow us" homepage section wrapping `SocialLinks`
+- `src/components/admin/EmployeeForm.tsx` — create/edit employee form (pay type, rates, overtime toggle, PIN, stylist link)
+- `src/components/admin/KioskModeButton.tsx` — toggle button for enabling/disabling kiosk mode from admin
+- `src/components/admin/PayrollAdjustmentForm.tsx` — inline form to edit adjustment amount and note on a payroll line
+- `src/components/kiosk/KioskClock.tsx` — kiosk roster grid: shows clock-in/out status, PIN entry, triggers `clockToggle`
 
 ## Database Models
 - User
