@@ -6,6 +6,7 @@ import {
   isValidSalonTime,
   isValidSalonDate,
   salonDayWindow,
+  salonDateKey,
 } from './salon-time';
 
 // These assertions are host-timezone independent: they pin the salon wall-clock
@@ -95,4 +96,12 @@ test('salonDayWindow — UTC-midnight date input resolves to that calendar day',
   const w = salonDayWindow(new Date('2026-07-01T00:00:00.000Z'));
   assert.equal(w.start.toISOString(), '2026-06-30T23:00:00.000Z');
   assert.equal(w.end.toISOString(), '2026-07-01T22:59:59.999Z');
+});
+
+test('salonDateKey — late-evening BST instant maps to that London day', () => {
+  assert.equal(salonDateKey(new Date('2026-07-01T22:30:00Z')), '2026-07-01'); // 23:30 London
+});
+
+test('salonDateKey — GMT instant', () => {
+  assert.equal(salonDateKey(new Date('2026-01-15T09:30:00Z')), '2026-01-15');
 });

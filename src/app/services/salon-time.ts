@@ -61,6 +61,16 @@ export function resolveSalonDateTime(date: string | Date, time: string): SalonDa
   return { utc, dateStr, timeMinutes: hours * 60 + minutes, dayOfWeek };
 }
 
+/** The salon-local calendar date (YYYY-MM-DD, Europe/London) of an absolute instant. */
+export function salonDateKey(instant: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: SALON_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+}
+
 /**
  * The UTC instants bounding the salon-local calendar day that `instant` falls
  * on. Used to scan a day's appointments correctly regardless of the server's

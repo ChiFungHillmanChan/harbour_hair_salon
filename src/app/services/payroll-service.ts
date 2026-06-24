@@ -2,8 +2,8 @@
 import 'server-only';
 import prisma from '@/app/lib/prisma';
 import { fromZonedTime } from 'date-fns-tz';
-import { SALON_TIMEZONE } from '@/app/services/salon-time';
-import { totalWorkedHours, splitRegularOvertime } from '@/app/services/timesheet-calc';
+import { SALON_TIMEZONE, salonDateKey } from '@/app/services/salon-time';
+import { totalWorkedMinutes, applyBreakDeduction, splitRegularOvertime } from '@/app/services/timesheet-calc';
 import { computeGross, round2, sumCommissionable, type PayType } from '@/app/services/payroll-calc';
 
 function monthBounds(year: number, month: number) {
@@ -61,7 +61,10 @@ export async function runPayroll(year: number, month: number) {
       .filter((x): x is { clockIn: Date; clockOut: Date; breakMinutes: number } => x.clockOut != null)
       .map((x) => ({ clockIn: x.clockIn, clockOut: x.clockOut, breakMinutes: x.breakMinutes }));
 
-    const totalHours = totalWorkedHours(segments);
+    const workedMinutes = totalWorkedMinutes(segments);
+    const workedDays = new Set(segments.map((s) => salonDateKey(s.clockIn))).size;
+    const paidMinutes = applyBreakDeduction(workedMinutes, workedDays, e.unpaidBreakMinutes ?? 0);
+    const totalHours = paidMinutes / 60;
     const { regularHours, overtimeHours } = splitRegularOvertime(totalHours, {
       enabled: e.overtimeEnabled,
       thresholdHours: num(e.overtimeThresholdHours) ?? 0,

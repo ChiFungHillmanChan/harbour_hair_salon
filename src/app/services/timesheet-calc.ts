@@ -5,9 +5,16 @@ export function segmentWorkedMinutes(seg: ClosedSegment): number {
   return Math.max(0, gross - seg.breakMinutes);
 }
 
+export function totalWorkedMinutes(segs: ClosedSegment[]): number {
+  return segs.reduce((sum, s) => sum + segmentWorkedMinutes(s), 0);
+}
+
 export function totalWorkedHours(segs: ClosedSegment[]): number {
-  const minutes = segs.reduce((sum, s) => sum + segmentWorkedMinutes(s), 0);
-  return minutes / 60;
+  return totalWorkedMinutes(segs) / 60;
+}
+
+export function applyBreakDeduction(totalMinutes: number, workedDays: number, breakPerDayMinutes: number): number {
+  return Math.max(0, totalMinutes - workedDays * Math.max(0, breakPerDayMinutes));
 }
 
 export function splitRegularOvertime(
