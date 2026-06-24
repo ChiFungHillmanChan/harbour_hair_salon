@@ -169,10 +169,10 @@ model SiteSettings {
   phone               String   @default("07831 830898")
   twitterHandle       String   @default("") // e.g. @harbourhair_leeds
   gscVerification     String   @default("") // Google Search Console code
-  googleBusinessUrl   String   @default("")
+  googleBusinessUrl   String   @default("https://www.google.com/maps/place/Harbour+Hair/data=!4m2!3m1!1s0x0:0xad74be12e1f34d1a?sa=X&ved=1t:2428&ictx=111")
   facebookUrl         String   @default("")
   instagramUrl        String   @default("https://www.instagram.com/harbourhair_leeds/")
-  treatwellUrl        String   @default("")
+  treatwellUrl        String   @default("https://www.treatwell.co.uk/place/harbour-hair-hk-hair-stylist/")
   freshaUrl           String   @default("")
   booksyUrl           String   @default("")
   updatedAt           DateTime @updatedAt
