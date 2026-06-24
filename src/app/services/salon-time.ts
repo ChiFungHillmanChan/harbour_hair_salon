@@ -90,6 +90,19 @@ export function salonDayWindow(instant: Date): { start: Date; end: Date } {
   };
 }
 
+/** Minutes since salon-local midnight (Europe/London) for an absolute instant. */
+export function salonMinutesOfDay(instant: Date): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALON_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+  return h * 60 + m;
+}
+
 /**
  * True when `timeMinutes` (minutes since midnight) falls within the availability
  * window [startTime, endTime). Start is inclusive, end is exclusive — matching

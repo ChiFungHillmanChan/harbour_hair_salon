@@ -1,10 +1,6 @@
 import prisma from '@/app/lib/prisma';
-import { createShift, deleteShift } from '@/app/actions/shifts';
-
-async function handleCreateShift(formData: FormData): Promise<void> {
-  'use server';
-  await createShift(null, formData);
-}
+import { deleteShift } from '@/app/actions/shifts';
+import { ShiftForm } from '@/components/admin/ShiftForm';
 
 export default async function AdminShiftsPage() {
   const [employees, shifts] = await Promise.all([
@@ -26,58 +22,7 @@ export default async function AdminShiftsPage() {
 
       <section>
         <h2 className="text-xl mb-3">Add shift</h2>
-        <form action={handleCreateShift} className="flex flex-wrap gap-3 items-end">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium" htmlFor="employeeId">Employee</label>
-            <select
-              id="employeeId"
-              name="employeeId"
-              required
-              className="border rounded px-3 py-2 text-sm"
-            >
-              <option value="">Select employee…</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>{e.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium" htmlFor="date">Date</label>
-            <input
-              id="date"
-              type="date"
-              name="date"
-              required
-              className="border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium" htmlFor="startTime">Start</label>
-            <input
-              id="startTime"
-              type="time"
-              name="startTime"
-              required
-              className="border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium" htmlFor="endTime">End</label>
-            <input
-              id="endTime"
-              type="time"
-              name="endTime"
-              required
-              className="border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            className="bg-accent hover:bg-accent-light text-white px-4 py-2 rounded text-sm font-medium transition-colors"
-          >
-            Add shift
-          </button>
-        </form>
+        <ShiftForm employees={employees} />
       </section>
 
       <section>
