@@ -226,7 +226,7 @@ model Employee {
   overtimeEnabled        Boolean  @default(false)
   overtimeThresholdHours Decimal? // hours per pay period (one month) before overtime
   overtimeMultiplier     Decimal? // e.g. 1.5
-  unpaidBreakMinutes     Int?     // fixed auto-deduct (Phase 3); unused in Phase 1
+  unpaidBreakMinutes     Int?     // fixed unpaid break minutes, auto-deducted per worked day; use this OR per-entry break edits, not both
   isActive               Boolean  @default(true)
   hireDate               DateTime @default(now())
   createdAt              DateTime @default(now())

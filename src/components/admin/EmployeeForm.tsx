@@ -50,7 +50,7 @@ export default function EmployeeForm({
       </label>
       <input name="overtimeThresholdHours" type="number" step="0.5" defaultValue={employee?.overtimeThresholdHours ?? ''} placeholder="Overtime threshold (hours per month)" className="w-full border p-2 rounded" />
       <input name="overtimeMultiplier" type="number" step="0.1" min="1" defaultValue={employee?.overtimeMultiplier ?? ''} placeholder="Overtime multiplier (e.g. 1.5)" className="w-full border p-2 rounded" />
-      <input name="unpaidBreakMinutes" type="number" min="0" max="480" step="5" defaultValue={employee?.unpaidBreakMinutes ?? ''} placeholder="Unpaid break (minutes per day)" className="w-full border p-2 rounded" />
+      <input name="unpaidBreakMinutes" type="number" min="0" max="480" step="5" defaultValue={employee?.unpaidBreakMinutes ?? ''} placeholder="Fixed unpaid break (mins/day) — leave blank if breaks are clocked" className="w-full border p-2 rounded" />
       <select name="stylistId" defaultValue={employee?.stylistId ?? ''} className="w-full border p-2 rounded">
         <option value="">— Not a bookable stylist —</option>
         {stylists.map((s) => (
