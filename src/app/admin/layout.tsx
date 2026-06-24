@@ -56,6 +56,18 @@ export default async function AdminLayout({
           <Link href="/admin/settings" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
             Site Settings
           </Link>
+          <Link href="/admin/employees" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Employees
+          </Link>
+          <Link href="/admin/timesheets" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Timesheets
+          </Link>
+          <Link href="/admin/payroll" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Payroll
+          </Link>
+          <Link href="/kiosk" className="block px-4 py-2 rounded hover:bg-zinc-800 transition-colors">
+            Kiosk
+          </Link>
         </nav>
 
         <div className="p-4 border-t border-zinc-800">
