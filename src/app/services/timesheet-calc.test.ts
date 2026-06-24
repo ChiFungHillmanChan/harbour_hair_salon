@@ -49,4 +49,5 @@ test('applyBreakDeduction subtracts perDay break × days, floored at 0', () => {
   assert.equal(applyBreakDeduction(480, 2, 30), 420);
   assert.equal(applyBreakDeduction(20, 5, 30), 0);
   assert.equal(applyBreakDeduction(480, 3, 0), 480);
+  assert.equal(applyBreakDeduction(480, 2, -10), 480); // negative perDay treated as 0
 });
