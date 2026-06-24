@@ -19,6 +19,18 @@ async function getSessionFromRequest(request: NextRequest) {
   }
 }
 
+async function hasKioskCookie(request: NextRequest): Promise<boolean> {
+  if (!key) return false;
+  const cookie = request.cookies.get('kiosk')?.value;
+  if (!cookie) return false;
+  try {
+    const { payload } = await jwtVerify(cookie, key, { algorithms: ['HS256'] });
+    return (payload as { kiosk?: boolean }).kiosk === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const session = await getSessionFromRequest(request);
@@ -29,6 +41,14 @@ export async function middleware(request: NextRequest) {
     }
     if (session.role !== 'ADMIN') {
       return NextResponse.redirect(new URL('/', request.url));
+    }
+  }
+
+  if (path.startsWith('/kiosk')) {
+    const isAdmin = session?.userId && session.role === 'ADMIN';
+    const isKiosk = await hasKioskCookie(request);
+    if (!isAdmin && !isKiosk) {
+      return NextResponse.redirect(new URL('/auth/signin?redirect=/kiosk', request.url));
     }
   }
 
@@ -77,5 +97,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/appointments/:path*', '/book/:path*', '/reviews/new'],
+  matcher: ['/admin/:path*', '/appointments/:path*', '/book/:path*', '/reviews/new', '/kiosk/:path*'],
 };

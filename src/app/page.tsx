@@ -15,6 +15,7 @@ import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL } from '@/app/lib/site-url';
 import { getSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
+import VisitFollowBlock from '@/components/home/VisitFollowBlock';
 
 export const metadata: Metadata = {
   title: 'Expert Hair Styling in Leeds City Centre',
@@ -167,6 +168,7 @@ export default async function Home() {
           items={homeFaqs.map((f) => ({ question: f.question, answer: f.answer }))}
         />
       )}
+      <VisitFollowBlock />
     </div>
   );
 }

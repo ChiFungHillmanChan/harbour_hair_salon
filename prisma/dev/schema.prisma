@@ -40,6 +40,7 @@ model Stylist {
   updatedAt       DateTime @updatedAt
   appointments    Appointment[]
   availabilities  Availability[]
+  employee        Employee?
 }
 
 model Service {
@@ -167,10 +168,10 @@ model SiteSettings {
   phone               String   @default("07831 830898")
   twitterHandle       String   @default("")
   gscVerification     String   @default("")
-  googleBusinessUrl   String   @default("")
+  googleBusinessUrl   String   @default("https://www.google.com/maps/place/Harbour+Hair/data=!4m2!3m1!1s0x0:0xad74be12e1f34d1a?sa=X&ved=1t:2428&ictx=111")
   facebookUrl         String   @default("")
   instagramUrl        String   @default("https://www.instagram.com/harbourhair_leeds/")
-  treatwellUrl        String   @default("")
+  treatwellUrl        String   @default("https://www.treatwell.co.uk/place/harbour-hair-hk-hair-stylist/")
   freshaUrl           String   @default("")
   booksyUrl           String   @default("")
   updatedAt           DateTime @updatedAt
@@ -209,4 +210,87 @@ model BlogPost {
   updatedAt      DateTime @updatedAt
 
   @@index([status, publishedAt])
+}
+
+model Employee {
+  id                     String   @id @default(cuid())
+  name                   String
+  title                  String   // e.g. "Senior Stylist", "Receptionist"
+  pinHash                String
+  payType                String   @default("HOURLY") // HOURLY, SALARY, COMMISSION, HYBRID
+  hourlyRate             Decimal?
+  monthlySalary          Decimal?
+  commissionRate         Decimal? // fraction, e.g. 0.40 = 40%
+  overtimeEnabled        Boolean  @default(false)
+  overtimeThresholdHours Decimal? // hours per pay period (one month) before overtime
+  overtimeMultiplier     Decimal? // e.g. 1.5
+  unpaidBreakMinutes     Int?     // fixed auto-deduct (Phase 3); unused in Phase 1
+  isActive               Boolean  @default(true)
+  hireDate               DateTime @default(now())
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  stylistId String?  @unique
+  stylist   Stylist? @relation(fields: [stylistId], references: [id], onDelete: SetNull)
+
+  timeEntries  TimeEntry[]
+  payrollLines PayrollLine[]
+
+  @@index([isActive])
+}
+
+model TimeEntry {
+  id              String    @id @default(cuid())
+  employeeId      String
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  clockIn         DateTime
+  clockOut        DateTime?
+  breakMinutes    Int       @default(0)
+  source          String    @default("KIOSK") // KIOSK, ADMIN
+  status          String    @default("PENDING") // OPEN, PENDING, APPROVED, EDITED
+  note            String?
+  editedByAdminId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([employeeId, clockIn])
+  @@index([status, clockIn])
+}
+
+model PayrollPeriod {
+  id                 String   @id @default(cuid())
+  year               Int
+  month              Int      // 1-12
+  status             String   @default("DRAFT") // DRAFT, FINALIZED
+  finalizedByAdminId String?
+  finalizedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  lines PayrollLine[]
+
+  @@unique([year, month])
+}
+
+model PayrollLine {
+  id                    String        @id @default(cuid())
+  periodId              String
+  period                PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employeeId            String
+  employee              Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  totalHours            Decimal       @default(0)
+  regularHours          Decimal       @default(0)
+  overtimeHours         Decimal       @default(0)
+  basePay               Decimal       @default(0)
+  overtimePay           Decimal       @default(0)
+  commissionableRevenue Decimal       @default(0)
+  commissionPay         Decimal       @default(0)
+  adjustments           Decimal       @default(0)
+  adjustmentNote        String?
+  grossPay              Decimal       @default(0)
+  snapshotJson          String        @default("")
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@unique([periodId, employeeId])
 }

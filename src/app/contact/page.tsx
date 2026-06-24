@@ -2,8 +2,11 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Faq } from '@/components/seo/Faq';
+import SalonGallery from '@/components/contact/SalonGallery';
 import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL } from '@/app/lib/site-url';
+import SocialLinks from '@/components/layout/SocialLinks';
+import { getSiteSettings } from '@/app/services/site-settings-service';
 
 export const metadata: Metadata = {
   title: 'Contact & Find Us in Leeds City Centre',
@@ -16,7 +19,10 @@ export const metadata: Metadata = {
 };
 
 export default async function ContactPage() {
-  const contactFaqs = await getFaqsByKey('contact');
+  const [contactFaqs, settings] = await Promise.all([
+    getFaqsByKey('contact'),
+    getSiteSettings(),
+  ]);
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
@@ -110,22 +116,6 @@ export default async function ContactPage() {
                     07831 830898
                   </a>
                 </p>
-                <p>
-                  <span className="block text-sm font-bold text-zinc-900 uppercase tracking-wider mb-1">Instagram</span>
-                  <a 
-                    href="https://www.instagram.com/harbourhair_leeds/" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-zinc-600 hover:text-zinc-900 transition-colors inline-flex items-center gap-2"
-                  >
-                    Follow us on Instagram
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-                    </svg>
-                  </a>
-                </p>
               </div>
             </div>
 
@@ -180,6 +170,37 @@ export default async function ContactPage() {
             ></iframe>
           </div>
         </div>
+
+        {/* Find & follow us */}
+        <section className="mt-10">
+          <h2 className="font-serif text-2xl text-brand mb-4">Find &amp; follow us</h2>
+          <SocialLinks settings={settings} className="mb-6" />
+          <div className="flex flex-wrap gap-3">
+            {settings.treatwellUrl && (
+              <a
+                href={settings.treatwellUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="border border-accent text-brand px-6 py-3 uppercase tracking-[0.2em] text-sm font-bold hover:bg-accent hover:text-black transition-colors"
+              >
+                Book on Treatwell
+              </a>
+            )}
+            {settings.googleBusinessUrl && (
+              <a
+                href={settings.googleBusinessUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand underline hover:text-accent transition-colors self-center"
+              >
+                Get directions &amp; read our Google reviews
+              </a>
+            )}
+          </div>
+        </section>
+
+        {/* Our Space gallery */}
+        <SalonGallery />
 
         {/* CTA Section */}
         <div className="mt-20 text-center bg-zinc-900 p-16">

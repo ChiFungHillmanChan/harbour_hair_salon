@@ -19,10 +19,10 @@ const DEFAULTS: SiteSettings = {
   phone: '07831 830898',
   twitterHandle: '',
   gscVerification: '',
-  googleBusinessUrl: '',
+  googleBusinessUrl: 'https://www.google.com/maps/place/Harbour+Hair/data=!4m2!3m1!1s0x0:0xad74be12e1f34d1a?sa=X&ved=1t:2428&ictx=111',
   facebookUrl: '',
   instagramUrl: 'https://www.instagram.com/harbourhair_leeds/',
-  treatwellUrl: '',
+  treatwellUrl: 'https://www.treatwell.co.uk/place/harbour-hair-hk-hair-stylist/',
   freshaUrl: '',
   booksyUrl: '',
 };
