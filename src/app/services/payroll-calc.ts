@@ -4,6 +4,11 @@ export function round2(n: number): number {
   return (Math.sign(n) * Math.round((Math.abs(n) + Number.EPSILON) * 100)) / 100;
 }
 
+/** Sum of service prices that count toward commission, rounded to pence. */
+export function sumCommissionable(prices: number[]): number {
+  return round2(prices.reduce((total, p) => total + p, 0));
+}
+
 type GrossInput = {
   payType: PayType;
   hourlyRate: number | null;
