@@ -18,6 +18,14 @@ test('round2 rounds to pence', () => {
   assert.equal(round2(8.333333), 8.33);
 });
 
+test('round2 rounds negative half-way away from zero', () => {
+  assert.equal(round2(-10.005), -10.01);
+});
+
+test('round2 rounds down just below the half', () => {
+  assert.equal(round2(10.004), 10);
+});
+
 test('HOURLY: regular + overtime', () => {
   const r = computeGross({ ...base, payType: 'HOURLY', hourlyRate: 12, regularHours: 40, overtimeHours: 5 });
   assert.equal(r.basePay, 480); // 40*12
@@ -46,6 +54,14 @@ test('HYBRID with hourly base = hourly + commission', () => {
   assert.equal(r.basePay, 300);
   assert.equal(r.commissionPay, 120);
   assert.equal(r.grossPay, 420);
+});
+
+test('HYBRID hourly base includes overtime', () => {
+  const r = computeGross({ ...base, payType: 'HYBRID', hourlyRate: 10, regularHours: 30, overtimeHours: 4, commissionRate: 0.2, commissionableRevenue: 600 });
+  assert.equal(r.basePay, 300);
+  assert.equal(r.overtimePay, 60); // 4*10*1.5
+  assert.equal(r.commissionPay, 120);
+  assert.equal(r.grossPay, 480);
 });
 
 test('HYBRID with salary base when no hourly rate', () => {

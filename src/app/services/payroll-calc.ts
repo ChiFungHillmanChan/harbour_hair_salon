@@ -1,7 +1,7 @@
 export type PayType = 'HOURLY' | 'SALARY' | 'COMMISSION' | 'HYBRID';
 
 export function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  return (Math.sign(n) * Math.round((Math.abs(n) + Number.EPSILON) * 100)) / 100;
 }
 
 type GrossInput = {

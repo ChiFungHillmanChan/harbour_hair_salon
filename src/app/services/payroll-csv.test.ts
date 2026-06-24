@@ -35,6 +35,11 @@ test('names containing commas are quoted', () => {
   assert.ok(csv.includes('"Doe, Jane"'));
 });
 
+test('values with embedded double-quotes are escaped by doubling', () => {
+  const csv = toPayrollCsv([{ ...row, employeeName: 'She said "hi"' }]);
+  assert.ok(csv.includes('"She said ""hi"""'));
+});
+
 test('empty rows still emit the header', () => {
   assert.equal(toPayrollCsv([]).split('\n').length, 1);
 });
