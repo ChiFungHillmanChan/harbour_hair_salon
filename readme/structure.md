@@ -47,6 +47,13 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `kiosk-state.ts` — pure fn: `nextClockAction(openEntry)` → `CLOCK_IN` or `CLOCK_OUT`; unit-tested
 - `payroll-csv.ts` — `generatePayrollCsv(rows)` → RFC-4180 CSV string; unit-tested
 - `payroll-service.ts` — server-only: `runPayroll(year, month)`, `updateAdjustment`, `finalizePayroll`; queries Prisma and delegates to calc modules
+- `treatwell-ical.ts` — pure: `parseIcalBusyIntervals(icsText, opts)` → busy intervals from an iCal feed (node-ical); skips recurring/past/out-of-window; unit-tested
+- `external-busy.ts` — `loadExternalBusy(db, stylistIds, window)` + `toBookedInterval`/`toSlotAppointment` converters; merges `ExternalBusyBlock` into the booking conflict checks; unit-tested
+- `treatwell-sync-service.ts` — `syncTreatwellFeeds(deps?)`: fetch each stylist's Treatwell iCal → upsert `ExternalBusyBlock` → prune stale; fail-safe (no prune on fetch error); unit-tested
+
+## API Routes
+- `src/app/api/cron/reminders/route.ts` — daily appointment-reminder cron (Bearer `CRON_SECRET`)
+- `src/app/api/cron/treatwell-sync/route.ts` — Treatwell inbound iCal sync; called by AWS EventBridge→Lambda (see `infra/aws/treatwell-sync/`), Bearer `CRON_SECRET`
 
 ## Lib
 - `pin.ts` — `isValidPin`, `hashPin`, `verifyPin` (bcryptjs); unit-tested
@@ -79,3 +86,4 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the Consultation & Patch Test service) booleans
 - Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED)
 - Availability
+- ExternalBusyBlock — busy times imported from Treatwell (per-stylist iCal); `Stylist.treatwellIcalUrl` holds the feed URL

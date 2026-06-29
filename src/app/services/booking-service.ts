@@ -8,6 +8,7 @@ import {
 } from './patch-test-eligibility';
 import { salonDayWindow } from './salon-time';
 import { firstFreeStylist, type BookedInterval } from './scheduling';
+import { loadExternalBusy, toBookedInterval, toSlotAppointment } from './external-busy';
 import { SlotUnavailableError, DiscountUnavailableError } from './booking-errors';
 
 const SALON_TIMEZONE = 'Europe/London';
@@ -99,8 +100,11 @@ export async function getAvailableSlots(
     include: { service: { select: { duration: true } } },
   });
 
-  // 3. Generate slots
-  return buildStylistSlots(availability, existingAppointments, date, serviceDuration);
+  // 3. Merge Treatwell (external) busy blocks for this stylist/day, then build slots
+  const externalBlocks = await loadExternalBusy(prisma, [stylistId], salonDayWindow(date));
+  const busy = [...existingAppointments, ...externalBlocks.map(toSlotAppointment)];
+
+  return buildStylistSlots(availability, busy, date, serviceDuration);
 }
 
 /**
@@ -143,6 +147,14 @@ export async function getAvailableSlotsUnion(
     const list = apptsByStylist.get(appt.stylistId) ?? [];
     list.push(appt);
     apptsByStylist.set(appt.stylistId, list);
+  }
+
+  // Merge Treatwell (external) busy blocks per stylist for this day.
+  const externalBlocks = await loadExternalBusy(prisma, stylistIds, salonDayWindow(date));
+  for (const row of externalBlocks) {
+    const list = apptsByStylist.get(row.stylistId) ?? [];
+    list.push(toSlotAppointment(row));
+    apptsByStylist.set(row.stylistId, list);
   }
 
   const times = new Set<string>();
@@ -205,14 +217,19 @@ export async function createBooking(data: {
       include: { service: { select: { duration: true } } },
     });
 
-    const hasConflict = existingAppointments.some((appt) => {
-      const apptStart = new Date(appt.date);
-      const apptEnd = addMinutes(apptStart, appt.service.duration);
-      return (
-        (data.date >= apptStart && data.date < apptEnd) ||
-        (appointmentEnd > apptStart && appointmentEnd <= apptEnd) ||
-        (data.date <= apptStart && appointmentEnd >= apptEnd)
-      );
+    // Treatwell (external) busy blocks count as conflicts too — loaded in-tx.
+    const externalBlocks = await loadExternalBusy(tx, [data.stylistId], { start: dayStart, end: dayEnd });
+    const blocking: BookedInterval[] = [
+      ...existingAppointments.map((appt) => ({
+        start: new Date(appt.date),
+        durationMin: appt.service.duration,
+      })),
+      ...externalBlocks.map(toBookedInterval),
+    ];
+
+    const hasConflict = blocking.some((b) => {
+      const bEnd = addMinutes(b.start, b.durationMin);
+      return data.date < bEnd && b.start < appointmentEnd; // half-open overlap
     });
 
     if (hasConflict) {
@@ -275,6 +292,14 @@ export async function createBookingForFirstAvailable(data: {
       const list = bookedByStylist.get(appt.stylistId) ?? [];
       list.push({ start: new Date(appt.date), durationMin: appt.service.duration });
       bookedByStylist.set(appt.stylistId, list);
+    }
+
+    // Merge Treatwell (external) busy blocks per candidate stylist — loaded in-tx.
+    const externalBlocks = await loadExternalBusy(tx, data.candidateStylistIds, { start: dayStart, end: dayEnd });
+    for (const row of externalBlocks) {
+      const list = bookedByStylist.get(row.stylistId) ?? [];
+      list.push(toBookedInterval(row));
+      bookedByStylist.set(row.stylistId, list);
     }
 
     const stylistId = firstFreeStylist(

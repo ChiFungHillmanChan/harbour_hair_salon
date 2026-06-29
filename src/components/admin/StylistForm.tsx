@@ -12,6 +12,8 @@ interface StylistFormProps {
   action: FormAction;
   stylist?: StylistRuntime;
   saved?: boolean;
+  /** Passed separately from StylistRuntime — kept out of public-facing types. */
+  treatwellIcalUrl?: string | null;
 }
 
 function TextareaList({
@@ -49,7 +51,7 @@ function TextareaList({
   );
 }
 
-export function StylistForm({ mode, action, stylist, saved }: StylistFormProps) {
+export function StylistForm({ mode, action, stylist, saved, treatwellIcalUrl }: StylistFormProps) {
   const [state, formAction, pending] = useActionState<StylistActionState, FormData>(action, {
     status: 'idle',
   });
@@ -217,6 +219,27 @@ export function StylistForm({ mode, action, stylist, saved }: StylistFormProps) 
           placeholder="One paragraph per line. Leave blank to fall back to short bio."
           help="Shown on the stylist detail page. Leave blank to hide the About section."
         />
+      </section>
+
+      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+        <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Integrations</h2>
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
+            Treatwell iCal feed URL <span className="text-zinc-400 normal-case tracking-normal">(optional)</span>
+          </label>
+          <input
+            type="url"
+            name="treatwellIcalUrl"
+            maxLength={500}
+            defaultValue={treatwellIcalUrl ?? ''}
+            placeholder="https://…/staff.ics"
+            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+          />
+          <p className="text-xs text-zinc-500 mt-1">
+            Paste this stylist&apos;s Treatwell Connect calendar URL. Bookings from Treatwell then block
+            their slots here automatically (synced every few minutes). Leave blank if not on Treatwell.
+          </p>
+        </div>
       </section>
 
       <div className="flex items-center justify-between gap-4 sticky bottom-0 bg-zinc-50 py-4 border-t border-zinc-200">
