@@ -1,15 +1,21 @@
 import Image from 'next/image';
 
-type Photo = { src: string; w: number; h: number; alt: string };
+type Photo = { src: string; alt: string; caption: string };
+
+// First photo is the wide hero; the remaining six tessellate into a clean 3×2 grid.
+const HERO: Photo = {
+  src: '/images/gallery/salon-1.webp',
+  alt: 'The styling floor at Harbour Hair, with backlit round mirrors and styling chairs',
+  caption: 'The styling floor',
+};
 
 const PHOTOS: Photo[] = [
-  { src: '/images/gallery/salon-1.webp', w: 1400, h: 933, alt: 'The styling floor at Harbour Hair, with backlit round mirrors and styling chairs' },
-  { src: '/images/gallery/salon-2.webp', w: 1400, h: 933, alt: 'Reception desk featuring the Harbour Hair sign' },
-  { src: '/images/gallery/salon-3.webp', w: 1400, h: 933, alt: 'Wash and treatment area beside the hand-painted calligraphy wall' },
-  { src: '/images/gallery/salon-4.webp', w: 933, h: 1400, alt: 'Styling stations with illuminated round mirrors' },
-  { src: '/images/gallery/salon-5.webp', w: 933, h: 1400, alt: 'Styling area with natural light and professional hood dryers' },
-  { src: '/images/gallery/salon-6.webp', w: 1400, h: 933, alt: 'Reception and retail area with calligraphy wall art' },
-  { src: '/images/gallery/salon-7.webp', w: 1400, h: 933, alt: 'Professional styling scissors at a Harbour Hair station' },
+  { src: '/images/gallery/salon-2.webp', alt: 'Reception desk featuring the Harbour Hair sign', caption: 'Reception' },
+  { src: '/images/gallery/salon-3.webp', alt: 'Wash and treatment area beside the hand-painted calligraphy wall', caption: 'Wash & treatment' },
+  { src: '/images/gallery/salon-4.webp', alt: 'Styling stations with illuminated round mirrors', caption: 'Styling stations' },
+  { src: '/images/gallery/salon-5.webp', alt: 'Styling area with natural light and professional hood dryers', caption: 'Natural light & hood dryers' },
+  { src: '/images/gallery/salon-6.webp', alt: 'Reception and retail area with calligraphy wall art', caption: 'Retail & wall art' },
+  { src: '/images/gallery/salon-7.webp', alt: 'Professional styling scissors at a Harbour Hair station', caption: 'Precision tools' },
 ];
 
 export default function SalonGallery() {
@@ -22,18 +28,42 @@ export default function SalonGallery() {
           A look inside the Harbour Hair studio in central Leeds.
         </p>
       </div>
-      <div className="columns-2 md:columns-3 gap-4">
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+        {/* Wide hero */}
+        <figure className="group relative col-span-2 md:col-span-3 aspect-[16/9] md:aspect-[21/9] overflow-hidden rounded-xl shadow-sm">
+          <Image
+            src={HERO.src}
+            alt={HERO.alt}
+            fill
+            priority
+            sizes="(max-width: 768px) 100vw, 1200px"
+            className="object-cover transition-transform duration-700 ease-out group-hover:scale-105 motion-reduce:transform-none"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/0 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+          <figcaption className="absolute inset-x-0 bottom-0 p-5 text-white text-sm tracking-[0.15em] uppercase font-light translate-y-2 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100 motion-reduce:transition-none">
+            {HERO.caption}
+          </figcaption>
+        </figure>
+
+        {/* Uniform 3×2 grid */}
         {PHOTOS.map((p) => (
-          <div key={p.src} className="mb-4 break-inside-avoid overflow-hidden rounded-lg shadow-sm">
+          <figure
+            key={p.src}
+            className="group relative aspect-[4/3] overflow-hidden rounded-xl shadow-sm"
+          >
             <Image
               src={p.src}
-              width={p.w}
-              height={p.h}
               alt={p.alt}
+              fill
               sizes="(max-width: 768px) 50vw, 33vw"
-              className="w-full h-auto object-cover transition-transform duration-500 hover:scale-105"
+              className="object-cover transition-transform duration-700 ease-out group-hover:scale-105 motion-reduce:transform-none"
             />
-          </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/0 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+            <figcaption className="absolute inset-x-0 bottom-0 p-4 text-white text-xs tracking-[0.15em] uppercase font-light translate-y-2 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100 motion-reduce:transition-none">
+              {p.caption}
+            </figcaption>
+          </figure>
         ))}
       </div>
     </section>

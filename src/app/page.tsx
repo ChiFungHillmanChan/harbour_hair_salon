@@ -5,6 +5,7 @@ import { Hero } from '@/components/home/Hero';
 import { ServiceMenu } from '@/components/home/ServiceMenu';
 import { StylistShowcase } from '@/components/home/StylistShowcase';
 import { SocialProofBar } from '@/components/home/SocialProofBar';
+import { TrustBar } from '@/components/home/TrustBar';
 import { Faq } from '@/components/seo/Faq';
 import { getAggregateRating } from '@/app/services/review-service';
 import {
@@ -30,33 +31,65 @@ export const metadata: Metadata = {
 // Revalidate data every hour
 export const revalidate = 3600;
 
-const POPULAR_SERVICE_NAMES = [
-  'Short Over Ears - Wash, Haircut & Blow Dry (Student & NHS)',
-  'Short Over Ears - Wash, Haircut & Blow Dry',
-  'Children (Up to 12Yr) - Short Over Ears',
-  'Children (Up to 12Yr) - Long Hair',
-  'Heat Set Add-on',
-  'Shampoo & Blow Dry - Short Over Ears (Student & NHS)',
-  'Shampoo & Blow Dry - Short Over Ears',
-  'Shampoo & Blow Dry - Long Over Ears (Student & NHS)',
-  'Shampoo & Blow Dry - Long Over Ears',
-  'Patch Test',
+// Homepage showcase, in display order: lead with signature, high-value work
+// (balayage, premium colour, perms, treatments) and descend to everyday styling
+// — instead of opening on entry-level add-ons like patch tests and heat sets.
+//
+// Selection is adaptive: we pick the flagship (highest-priced) service per
+// category from whatever is in the catalogue, with an optional name preference.
+// This survives price/name changes and seed-vs-production drift without needing
+// a hand-maintained exact-name list.
+const FEATURED_PLAN: { category: string; prefer?: RegExp }[] = [
+  { category: 'Colouring', prefer: /balayage/i },
+  { category: 'Colouring', prefer: /full head highlights/i },
+  { category: 'Perms', prefer: /keratin|hot perm/i },
+  { category: 'Treatments' },
+  { category: 'Haircuts', prefer: /long hair - wash, ?haircut/i },
+  { category: 'Styling', prefer: /shampoo & blow dry/i },
 ];
 
+// Entry-level variants we never want to lead with on the homepage.
+const SHOWCASE_EXCLUDE = /\((nhs|student[^)]*)\)|add-?on|patch test|consultation/i;
+
 async function getPopularServices() {
-  const services = await prisma.service.findMany({
-    where: {
-      name: {
-        in: POPULAR_SERVICE_NAMES
-      }
-    },
-    orderBy: { price: 'asc' }
-  });
-  
-  // Convert Decimal to number for client components
-  return services.map(service => ({
+  const all = await prisma.service.findMany();
+
+  const showcaseable = all.filter(
+    (s) => !s.isPatchTest && !SHOWCASE_EXCLUDE.test(s.name)
+  );
+  const pool = showcaseable.length > 0 ? showcaseable : all;
+
+  const used = new Set<string>();
+  const pickFlagship = ({ category, prefer }: { category: string; prefer?: RegExp }) => {
+    const candidates = pool
+      .filter((s) => s.category === category && !used.has(String(s.id)))
+      .sort((a, b) => Number(b.price) - Number(a.price));
+    const chosen = (prefer && candidates.find((s) => prefer.test(s.name))) || candidates[0];
+    if (chosen) used.add(String(chosen.id));
+    return chosen;
+  };
+
+  const featured = FEATURED_PLAN.map(pickFlagship).filter(
+    (s): s is NonNullable<typeof s> => Boolean(s)
+  );
+
+  // Safety net: if the catalogue shape is unexpected and we matched too few,
+  // top up with the highest-priced remaining services so the section is never sparse.
+  if (featured.length < 4) {
+    const extra = pool
+      .filter((s) => !used.has(String(s.id)))
+      .sort((a, b) => Number(b.price) - Number(a.price));
+    for (const s of extra) {
+      if (featured.length >= 6) break;
+      used.add(String(s.id));
+      featured.push(s);
+    }
+  }
+
+  // Convert Decimal to number for client components.
+  return featured.map((service) => ({
     ...service,
-    price: Number(service.price)
+    price: Number(service.price),
   }));
 }
 
@@ -154,10 +187,11 @@ export default async function Home() {
       />
       <Hero />
       <SocialProofBar average={aggregateRating.average} count={aggregateRating.count} />
+      <TrustBar treatwellUrl={settings.treatwellUrl} googleBusinessUrl={settings.googleBusinessUrl} />
       <ServiceMenu
         services={services}
         activeOffer={activeOffer}
-        title="Popular Services"
+        title="Signature Services"
         flatList={true}
       />
       <StylistShowcase stylists={stylists} />
