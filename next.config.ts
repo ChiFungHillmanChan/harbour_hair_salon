@@ -19,6 +19,10 @@ const csp = [
 ].join('; ') + ';';
 
 const nextConfig: NextConfig = {
+  // node-ical is a CommonJS Node library with dynamic requires (timezone data,
+  // BigInt usage); webpack-bundling it breaks at build/runtime ("h.BigInt is not
+  // a function"). Load it as a real external module instead.
+  serverExternalPackages: ['node-ical'],
   images: {
     formats: ['image/avif', 'image/webp'],
     minimumCacheTTL: 60 * 60 * 24 * 30,
