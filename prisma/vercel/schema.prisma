@@ -38,11 +38,13 @@ model Stylist {
   yearsExperience Int?
   trainedIn       String?
   extendedBioJson String   @default("[]")
+  treatwellIcalUrl String? // Treatwell Connect per-staff iCal feed URL (Phase 1 inbound sync)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  appointments    Appointment[]
-  availabilities  Availability[]
-  employee        Employee?
+  appointments       Appointment[]
+  availabilities     Availability[]
+  employee           Employee?
+  externalBusyBlocks ExternalBusyBlock[]
 }
 
 model Service {
@@ -88,6 +90,21 @@ model Appointment {
   @@index([userId, status])
   @@index([status, reminderSent, date])
   @@index([status, reviewRequestSent, date])
+}
+
+model ExternalBusyBlock {
+  id          String   @id @default(cuid())
+  source      String   @default("TREATWELL") // TREATWELL (future: other channels)
+  externalUid String   // iCal VEVENT UID — natural key for upsert/dedup
+  stylistId   String
+  stylist     Stylist  @relation(fields: [stylistId], references: [id], onDelete: Cascade)
+  start       DateTime
+  end         DateTime
+  summary     String?  // raw event title, for debugging only
+  lastSyncAt  DateTime @default(now())
+
+  @@unique([source, externalUid])
+  @@index([stylistId, start])
 }
 
 model Review {
