@@ -8,7 +8,7 @@
     "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma db push --schema prisma/vercel/schema.prisma; else echo \"Skipping db push (VERCEL_ENV=$VERCEL_ENV) — only production may mutate the schema\"; fi && next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test": "node --import tsx --test $(find src -name '*.test.ts')",
     "db:switch:dev": "prisma generate --schema prisma/dev/schema.prisma",
     "db:switch:prod": "prisma generate --schema prisma/prod/schema.prisma",
     "db:dev:migrate": "prisma migrate dev --schema prisma/dev/schema.prisma",
