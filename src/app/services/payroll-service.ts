@@ -130,6 +130,15 @@ export async function updateAdjustment(lineId: string, amount: number, note: str
 }
 
 export async function finalizePayroll(periodId: string, adminId: string) {
+  // Atomically claim the period: only a DRAFT can be finalized, and only once.
+  // Prevents a double-click (or a re-finalize) from re-snapshotting and
+  // overwriting finalizedAt / finalizedByAdminId on an already-final period.
+  const claim = await prisma.payrollPeriod.updateMany({
+    where: { id: periodId, status: 'DRAFT' },
+    data: { status: 'FINALIZED', finalizedByAdminId: adminId, finalizedAt: new Date() },
+  });
+  if (claim.count === 0) return; // already finalized or not found — no-op
+
   const lines = await prisma.payrollLine.findMany({ where: { periodId } });
   const lineUpdates = lines.map((l) =>
     prisma.payrollLine.update({
@@ -150,11 +159,6 @@ export async function finalizePayroll(periodId: string, adminId: string) {
       },
     }),
   );
-  await prisma.$transaction([
-    ...lineUpdates,
-    prisma.payrollPeriod.update({
-      where: { id: periodId },
-      data: { status: 'FINALIZED', finalizedByAdminId: adminId, finalizedAt: new Date() },
-    }),
-  ]);
+  // Status was already flipped atomically above; here we only snapshot the lines.
+  await prisma.$transaction(lineUpdates);
 }

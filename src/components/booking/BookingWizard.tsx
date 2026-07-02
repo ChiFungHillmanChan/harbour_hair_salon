@@ -12,11 +12,15 @@ type ClientService = Omit<Service, 'price'> & { price: number };
 // A named stylist or the synthetic "Anyone / first available" option.
 type SelectedStylist = Pick<Stylist, 'id' | 'name' | 'role'>;
 
+// Only the public-safe fields the page passes down (never the full Stylist row,
+// which carries the secret treatwellIcalUrl).
+type PublicStylist = Pick<Stylist, 'id' | 'name' | 'role' | 'imageUrl'>;
+
 type Step = 'SERVICE' | 'STYLIST' | 'DATE' | 'CONFIRM';
 
 interface BookingWizardProps {
   services: ClientService[];
-  stylists: Stylist[];
+  stylists: PublicStylist[];
 }
 
 const CATEGORIES = [

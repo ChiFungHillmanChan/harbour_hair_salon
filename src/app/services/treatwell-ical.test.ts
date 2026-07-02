@@ -18,6 +18,7 @@ const EVENT = ICS(
 
 test('parses a single timed VEVENT into one interval', () => {
   const out = parseIcalBusyIntervals(EVENT, { now: new Date('2026-06-01T00:00:00Z') });
+  assert.ok(out);
   assert.equal(out.length, 1);
   assert.equal(out[0].uid, 'abc-123');
   assert.equal(out[0].start.toISOString(), '2026-07-01T09:00:00.000Z');
@@ -27,7 +28,7 @@ test('parses a single timed VEVENT into one interval', () => {
 
 test('drops events that already ended before now', () => {
   const out = parseIcalBusyIntervals(EVENT, { now: new Date('2026-08-01T00:00:00Z') });
-  assert.equal(out.length, 0);
+  assert.deepEqual(out, []);
 });
 
 test('drops events beyond the window end', () => {
@@ -35,7 +36,7 @@ test('drops events beyond the window end', () => {
     now: new Date('2026-06-01T00:00:00Z'),
     windowEnd: new Date('2026-06-15T00:00:00Z'),
   });
-  assert.equal(out.length, 0);
+  assert.deepEqual(out, []);
 });
 
 test('skips recurring (rrule) events in v1', () => {
@@ -51,10 +52,19 @@ test('skips recurring (rrule) events in v1', () => {
     ].join('\r\n'),
   );
   const out = parseIcalBusyIntervals(recurring, { now: new Date('2026-06-01T00:00:00Z') });
-  assert.equal(out.length, 0);
+  assert.deepEqual(out, []);
 });
 
-test('returns [] for empty / non-calendar text', () => {
-  assert.deepEqual(parseIcalBusyIntervals(''), []);
-  assert.deepEqual(parseIcalBusyIntervals('not a calendar'), []);
+test('returns [] for a valid but empty calendar (prune is then correct)', () => {
+  const empty = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//t//EN', 'END:VCALENDAR'].join('\r\n');
+  assert.deepEqual(parseIcalBusyIntervals(empty, { now: new Date('2026-06-01T00:00:00Z') }), []);
+});
+
+test('returns null (NOT []) for invalid input, so callers never prune on it', () => {
+  // These are the shapes a broken Treatwell endpoint returns with HTTP 200.
+  assert.equal(parseIcalBusyIntervals(''), null);
+  assert.equal(parseIcalBusyIntervals('not a calendar'), null);
+  assert.equal(parseIcalBusyIntervals('<html><body>Login</body></html>'), null);
+  // Truncated feed — envelope opened but never closed.
+  assert.equal(parseIcalBusyIntervals('BEGIN:VCALENDAR\r\nBEGIN:VEVENT'), null);
 });

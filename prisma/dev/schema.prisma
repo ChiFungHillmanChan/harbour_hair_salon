@@ -88,6 +88,7 @@ model Appointment {
   @@index([userId, status])
   @@index([status, reminderSent, date])
   @@index([status, reviewRequestSent, date])
+  @@index([date])
 }
 
 model ExternalBusyBlock {

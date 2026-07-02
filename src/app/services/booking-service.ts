@@ -7,11 +7,41 @@ import {
   type EligibilityResult,
 } from './patch-test-eligibility';
 import { salonDayWindow } from './salon-time';
-import { firstFreeStylist, type BookedInterval } from './scheduling';
+import { firstFreeStylist, hasConflict, type BookedInterval } from './scheduling';
 import { loadExternalBusy, toBookedInterval, toSlotAppointment } from './external-busy';
 import { SlotUnavailableError, DiscountUnavailableError } from './booking-errors';
 
 const SALON_TIMEZONE = 'Europe/London';
+
+/**
+ * Run a Serializable transaction, retrying a few times on Postgres serialization
+ * failures (Prisma P2034). Under Serializable isolation, two concurrent bookings
+ * that read the same day-window can trip a write-conflict even when their slots
+ * don't actually overlap — a transparent retry then succeeds instead of showing
+ * the customer a spurious "Failed to create booking".
+ */
+export async function runSerializableWithRetry<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  maxAttempts = 3,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await prisma.$transaction(fn, { isolationLevel: 'Serializable' });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2034' &&
+        attempt < maxAttempts
+      ) {
+        lastErr = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
 
 export type TimeSlot = {
   time: string;
@@ -43,25 +73,21 @@ function buildStylistSlots(
   const nowInLondon = toZonedTime(new Date(), SALON_TIMEZONE);
   const nowComparable = setMinutes(setHours(startOfDayDate, nowInLondon.getHours()), nowInLondon.getMinutes());
 
+  // Normalise existing appointments to intervals once, then reuse the shared
+  // (unit-tested) overlap logic per slot instead of a hand-rolled inline check.
+  const booked: BookedInterval[] = existingAppointments.map((appt) => ({
+    start: new Date(appt.date),
+    durationMin: appt.service.duration,
+  }));
+
   while (addMinutes(currentSlot, serviceDuration) <= endTime) {
     // Skip slots that have already passed today (same-day only)
     if (date.toDateString() === nowInLondon.toDateString() && currentSlot <= nowComparable) {
       currentSlot = addMinutes(currentSlot, 30);
       continue;
     }
-    const slotEnd = addMinutes(currentSlot, serviceDuration);
 
-    const isBusy = existingAppointments.some((appt) => {
-      const apptStart = new Date(appt.date);
-      const apptEnd = addMinutes(apptStart, appt.service.duration);
-      return (
-        (currentSlot >= apptStart && currentSlot < apptEnd) ||
-        (slotEnd > apptStart && slotEnd <= apptEnd) ||
-        (currentSlot <= apptStart && slotEnd >= apptEnd)
-      );
-    });
-
-    if (!isBusy) {
+    if (!hasConflict(currentSlot, serviceDuration, booked)) {
       slots.push({ time: format(currentSlot, 'HH:mm'), available: true });
     }
 
@@ -201,11 +227,10 @@ export async function createBooking(data: {
   discountCode?: string;
 }) {
   // Use Serializable transaction to prevent double-booking race conditions
-  const appointment = await prisma.$transaction(async (tx) => {
+  const appointment = await runSerializableWithRetry(async (tx) => {
     const service = await tx.service.findUnique({ where: { id: data.serviceId } });
     if (!service) throw new Error('Service not found');
 
-    const appointmentEnd = addMinutes(data.date, service.duration);
     const { start: dayStart, end: dayEnd } = salonDayWindow(data.date);
 
     const existingAppointments = await tx.appointment.findMany({
@@ -227,12 +252,7 @@ export async function createBooking(data: {
       ...externalBlocks.map(toBookedInterval),
     ];
 
-    const hasConflict = blocking.some((b) => {
-      const bEnd = addMinutes(b.start, b.durationMin);
-      return data.date < bEnd && b.start < appointmentEnd; // half-open overlap
-    });
-
-    if (hasConflict) {
+    if (hasConflict(data.date, service.duration, blocking)) {
       throw new SlotUnavailableError();
     }
 
@@ -254,7 +274,7 @@ export async function createBooking(data: {
         service: { select: { name: true, price: true, duration: true } },
       },
     });
-  }, { isolationLevel: 'Serializable' });
+  });
 
   return appointment;
 }
@@ -272,7 +292,7 @@ export async function createBookingForFirstAvailable(data: {
   userId: string;
   discountCode?: string;
 }) {
-  const appointment = await prisma.$transaction(async (tx) => {
+  const appointment = await runSerializableWithRetry(async (tx) => {
     const service = await tx.service.findUnique({ where: { id: data.serviceId } });
     if (!service) throw new Error('Service not found');
 
@@ -330,7 +350,7 @@ export async function createBookingForFirstAvailable(data: {
         service: { select: { name: true, price: true, duration: true } },
       },
     });
-  }, { isolationLevel: 'Serializable' });
+  });
 
   return appointment;
 }

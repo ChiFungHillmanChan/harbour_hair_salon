@@ -17,6 +17,14 @@ function toStr(value: unknown): string | undefined {
  * Parse an iCal (.ics) document into busy intervals, keeping only events that
  * overlap the forward window [now, windowEnd). Pure: no network, no DB.
  *
+ * Returns `null` when the input is NOT a structurally valid iCal document
+ * (missing the VCALENDAR envelope, or node-ical throws). Callers MUST treat
+ * `null` as "could not read the feed" and never prune on it — otherwise a
+ * Treatwell endpoint that returns an HTML login/maintenance page or an empty
+ * body (HTTP 200) would look like an empty calendar and wipe every synced busy
+ * block, re-opening slots to double-booking. A genuinely empty-but-valid
+ * calendar returns `[]` (prune is then correct).
+ *
  * Scope (v1): non-recurring timed VEVENTs only. Recurring events (rrule) are
  * skipped — Treatwell appointment feeds emit discrete events. All-day events
  * (datetype === 'date') with no DTEND block the whole day they start on.
@@ -24,8 +32,12 @@ function toStr(value: unknown): string | undefined {
 export function parseIcalBusyIntervals(
   icsText: string,
   opts: { now?: Date; windowEnd?: Date } = {},
-): BusyInterval[] {
-  if (!icsText || !icsText.includes('BEGIN:VCALENDAR')) return [];
+): BusyInterval[] | null {
+  // Require the full VCALENDAR envelope. An HTML error page, empty body, or a
+  // truncated feed fails this and is reported as invalid (null), not empty.
+  if (!icsText || !icsText.includes('BEGIN:VCALENDAR') || !icsText.includes('END:VCALENDAR')) {
+    return null;
+  }
 
   const now = opts.now ?? new Date();
   const windowEnd = opts.windowEnd ?? new Date(now.getTime() + 90 * DAY_MS);
@@ -34,7 +46,7 @@ export function parseIcalBusyIntervals(
   try {
     parsed = icalSync.parseICS(icsText);
   } catch {
-    return [];
+    return null;
   }
 
   const out: BusyInterval[] = [];
