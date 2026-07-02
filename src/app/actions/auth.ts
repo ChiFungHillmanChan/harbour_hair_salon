@@ -60,16 +60,27 @@ function checkMemoryRateLimit(map: Map<string, { count: number; firstAttempt: nu
 
 async function checkLoginRate(ip: string): Promise<boolean> {
   if (loginLimiter) {
-    const { success } = await loginLimiter.limit(ip);
-    return success;
+    try {
+      const { success } = await loginLimiter.limit(ip);
+      return success;
+    } catch (err) {
+      // Redis outage must not take down login entirely — fail open, but log it.
+      console.error('Login rate limiter unavailable, allowing request:', err);
+      return true;
+    }
   }
   return checkMemoryRateLimit(loginAttempts, ip);
 }
 
 async function checkRegisterRate(ip: string): Promise<boolean> {
   if (registerLimiter) {
-    const { success } = await registerLimiter.limit(ip);
-    return success;
+    try {
+      const { success } = await registerLimiter.limit(ip);
+      return success;
+    } catch (err) {
+      console.error('Register rate limiter unavailable, allowing request:', err);
+      return true;
+    }
   }
   return checkMemoryRateLimit(registerAttempts, ip);
 }

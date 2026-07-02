@@ -33,7 +33,15 @@ function memOk(keyId: string): boolean {
 }
 
 async function clockRateOk(keyId: string): Promise<boolean> {
-  if (clockLimiter) return (await clockLimiter.limit(keyId)).success;
+  if (clockLimiter) {
+    try {
+      return (await clockLimiter.limit(keyId)).success;
+    } catch (err) {
+      // Redis outage must not stop staff clocking in/out — fail open, but log it.
+      console.error('Clock rate limiter unavailable, allowing request:', err);
+      return true;
+    }
+  }
   return memOk(keyId);
 }
 
@@ -70,24 +78,30 @@ export async function clockToggle(employeeId: string, pin: string) {
   const valid = await verifyPin(pin, employee.pinHash);
   if (!valid) return { ok: false, error: 'Incorrect PIN' };
 
-  const open = await prisma.timeEntry.findFirst({
-    where: { employeeId, clockOut: null },
-    orderBy: { clockIn: 'desc' },
-    select: { id: true },
-  });
+  // Read the open entry and act on it inside one Serializable transaction so a
+  // double-tap can't have two concurrent calls both see "no open entry" and both
+  // create one (which would inflate the employee's hours in payroll).
+  const result = await prisma.$transaction(async (tx) => {
+    const open = await tx.timeEntry.findFirst({
+      where: { employeeId, clockOut: null },
+      orderBy: { clockIn: 'desc' },
+      select: { id: true },
+    });
 
-  const action = nextClockAction(open);
-  if (action.type === 'CLOCK_IN') {
-    await prisma.timeEntry.create({ data: { employeeId, clockIn: new Date(), source: 'KIOSK', status: 'OPEN' } });
-    revalidatePath('/kiosk');
-    return { ok: true, status: 'IN' as const, name: employee.name };
-  }
-  await prisma.timeEntry.update({
-    where: { id: action.entryId },
-    data: { clockOut: new Date(), status: 'PENDING' },
-  });
+    const action = nextClockAction(open);
+    if (action.type === 'CLOCK_IN') {
+      await tx.timeEntry.create({ data: { employeeId, clockIn: new Date(), source: 'KIOSK', status: 'OPEN' } });
+      return { status: 'IN' as const };
+    }
+    await tx.timeEntry.update({
+      where: { id: action.entryId },
+      data: { clockOut: new Date(), status: 'PENDING' },
+    });
+    return { status: 'OUT' as const };
+  }, { isolationLevel: 'Serializable' });
+
   revalidatePath('/kiosk');
-  return { ok: true, status: 'OUT' as const, name: employee.name };
+  return { ok: true, status: result.status, name: employee.name };
 }
 
 export async function enableKioskMode() {

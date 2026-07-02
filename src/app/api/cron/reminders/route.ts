@@ -3,6 +3,9 @@ import { timingSafeEqual } from 'crypto';
 import prisma from '@/app/lib/prisma';
 import { sendAppointmentReminder, sendReviewRequest } from '@/app/services/email-service';
 
+// Up to 200 sequential email sends per run — give the function room on Vercel.
+export const maxDuration = 60;
+
 function safeCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   return timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -100,18 +103,17 @@ export async function GET(request: NextRequest) {
         stylist: appointment.stylist,
         service: appointment.service,
       });
+      // Mark sent immediately (like reminders) so a mid-run timeout never
+      // re-sends an already-delivered review request on the next run.
+      await prisma.appointment.update({
+        where: { id: appointment.id },
+        data: { reviewRequestSent: true },
+      });
       reviewSentIds.push(appointment.id);
     } catch (error) {
       console.error(`Failed to send review request for appointment ${appointment.id}:`, error);
       reviewFailedIds.push(appointment.id);
     }
-  }
-
-  if (reviewSentIds.length > 0) {
-    await prisma.appointment.updateMany({
-      where: { id: { in: reviewSentIds } },
-      data: { reviewRequestSent: true },
-    });
   }
 
   return NextResponse.json({

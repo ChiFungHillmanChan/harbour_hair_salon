@@ -2,6 +2,7 @@ import 'server-only';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import prisma from '@/app/lib/prisma';
 
 function getKey() {
   const secretKey = process.env.SESSION_SECRET;
@@ -67,7 +68,21 @@ export async function verifySession() {
     redirect('/auth/signin');
   }
 
-  return { userId: session.userId, role: session.role };
+  // Re-load the CURRENT role from the database rather than trusting the role
+  // baked into the (up-to-30-day) JWT. This closes the revocation gap: a user
+  // who was demoted from ADMIN, or deleted, immediately loses access instead of
+  // keeping it until their cookie expires. One indexed primary-key lookup.
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { role: true },
+  });
+
+  if (!user) {
+    // Account no longer exists — treat the stale cookie as unauthenticated.
+    redirect('/auth/signin');
+  }
+
+  return { userId: session.userId, role: user.role };
 }
 
 export async function getSession() {

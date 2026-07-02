@@ -30,8 +30,11 @@ async function getServices() {
 }
 
 async function getStylists() {
+  // Only public-safe fields — the full row includes the secret treatwellIcalUrl,
+  // which must never reach this client component / the RSC payload.
   return prisma.stylist.findMany({
     orderBy: { name: 'asc' },
+    select: { id: true, name: true, role: true, imageUrl: true },
   });
 }
 

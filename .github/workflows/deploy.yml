@@ -39,6 +39,14 @@ jobs:
           SESSION_SECRET: ci-test-secret
         run: pnpm lint
 
+      - name: Test
+        env:
+          # Pin UTC so timezone-sensitive tests (salon-time, DST) behave like CI, not a dev laptop.
+          TZ: UTC
+          DATABASE_URL: "file:./dev.db"
+          SESSION_SECRET: ci-test-secret
+        run: pnpm test
+
   # 2. Deploy Preview (PRs)
   deploy-preview:
     name: Deploy Preview

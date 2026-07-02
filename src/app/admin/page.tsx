@@ -18,9 +18,11 @@ export default async function AdminDashboard() {
         },
       },
       include: {
+        // Only the fields the calendar renders — avoids shipping full stylist
+        // rows (incl. treatwellIcalUrl) and service descriptions to the client.
         user: { select: { id: true, name: true, email: true } },
-        stylist: true,
-        service: true,
+        stylist: { select: { name: true } },
+        service: { select: { name: true, duration: true, price: true } },
       },
       orderBy: { date: 'asc' },
     }),

@@ -22,8 +22,13 @@ function fakeDb(stylists: { id: string; treatwellIcalUrl: string | null }[]) {
   };
 }
 
-function fakeResp(ok: boolean, status: number, body: string) {
-  return { ok, status, text: async () => body } as unknown as Response;
+function fakeResp(ok: boolean, status: number, body: string, headers: Record<string, string> = {}) {
+  return {
+    ok,
+    status,
+    headers: { get: (k: string) => headers[k.toLowerCase()] ?? null },
+    text: async () => body,
+  } as unknown as Response;
 }
 
 test('upserts parsed events and prunes stale uids on success', async () => {
@@ -61,6 +66,33 @@ test('does NOT prune when fetch throws (network error)', async () => {
   });
   assert.equal(res[0].ok, false);
   assert.match(res[0].error ?? '', /ECONNRESET/);
+  assert.equal(db.prunes.length, 0);
+});
+
+test('does NOT prune when the feed returns garbage with HTTP 200 (wipe guard)', async () => {
+  const db = fakeDb([{ id: 's1', treatwellIcalUrl: 'https://tw/s1.ics' }]);
+  const res = await syncTreatwellFeeds({
+    db: db as never,
+    now: new Date('2026-06-01T00:00:00Z'),
+    // A login/maintenance HTML page served with 200 — must NOT be read as "empty".
+    fetchImpl: (async () => fakeResp(true, 200, '<html><body>Sign in</body></html>')) as never,
+  });
+  assert.equal(res[0].ok, false);
+  assert.match(res[0].error ?? '', /invalid/);
+  assert.equal(db.upserts.length, 0);
+  assert.equal(db.prunes.length, 0); // preserved last-known blocks
+});
+
+test('rejects an oversized feed (by content-length) without pruning', async () => {
+  const db = fakeDb([{ id: 's1', treatwellIcalUrl: 'https://tw/s1.ics' }]);
+  const res = await syncTreatwellFeeds({
+    db: db as never,
+    now: new Date('2026-06-01T00:00:00Z'),
+    fetchImpl: (async () =>
+      fakeResp(true, 200, ICS, { 'content-length': String(10 * 1024 * 1024) })) as never,
+  });
+  assert.equal(res[0].ok, false);
+  assert.match(res[0].error ?? '', /too large/);
   assert.equal(db.prunes.length, 0);
 });
 

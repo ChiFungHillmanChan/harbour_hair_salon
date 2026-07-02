@@ -1,4 +1,5 @@
 import 'server-only';
+import type { ReactElement } from 'react';
 import { Resend } from 'resend';
 import { BookingConfirmation } from '@/components/emails/BookingConfirmation';
 import { BookingCancellation } from '@/components/emails/BookingCancellation';
@@ -21,91 +22,76 @@ function getResendClient(): Resend {
   return new Resend(apiKey);
 }
 
-const FROM = 'Harbour Hair Salon <onboarding@resend.dev>';
+// The sender address MUST be on a domain verified in Resend, or delivery to real
+// customers is rejected. `onboarding@resend.dev` only reaches the Resend account
+// owner, so it is a dev-only fallback — set EMAIL_FROM in production.
+function getFromAddress(): string {
+  return process.env.EMAIL_FROM || 'Harbour Hair Salon <onboarding@resend.dev>';
+}
 
-export async function sendBookingConfirmation(appointment: AppointmentWithDetails): Promise<void> {
-  try {
-    const resend = getResendClient();
-    await resend.emails.send({
-      from: FROM,
-      to: appointment.user.email,
-      subject: 'Your booking is confirmed — Harbour Hair Salon',
-      react: BookingConfirmation({ appointment }),
-    });
-  } catch (error) {
-    console.error('Failed to send booking confirmation email:', error);
+type SendArgs = { to: string; subject: string; react: ReactElement };
+
+/**
+ * Low-level send. Throws on any failure — including Resend's soft `{ error }`
+ * return (the SDK does NOT throw on API errors like 4xx/429/domain issues), so
+ * the caller can decide whether to fail loudly (cron: track + retry) or swallow
+ * (booking flow: never fail a committed booking on an email hiccup).
+ */
+async function send({ to, subject, react }: SendArgs): Promise<void> {
+  const resend = getResendClient();
+  const { error } = await resend.emails.send({ from: getFromAddress(), to, subject, react });
+  if (error) {
+    throw new Error(`Resend failed for "${subject}" to ${to}: ${error.message ?? String(error)}`);
   }
 }
 
+export async function sendBookingConfirmation(appointment: AppointmentWithDetails): Promise<void> {
+  await send({
+    to: appointment.user.email,
+    subject: 'Your booking is confirmed — Harbour Hair Salon',
+    react: BookingConfirmation({ appointment }),
+  });
+}
+
 export async function sendBookingCancellation(appointment: AppointmentWithDetails): Promise<void> {
-  try {
-    const resend = getResendClient();
-    await resend.emails.send({
-      from: FROM,
-      to: appointment.user.email,
-      subject: 'Your booking has been cancelled — Harbour Hair Salon',
-      react: BookingCancellation({ appointment }),
-    });
-  } catch (error) {
-    console.error('Failed to send booking cancellation email:', error);
-  }
+  await send({
+    to: appointment.user.email,
+    subject: 'Your booking has been cancelled — Harbour Hair Salon',
+    react: BookingCancellation({ appointment }),
+  });
 }
 
 export async function sendBookingReschedule(
   appointment: AppointmentWithDetails,
   oldDate: Date
 ): Promise<void> {
-  try {
-    const resend = getResendClient();
-    await resend.emails.send({
-      from: FROM,
-      to: appointment.user.email,
-      subject: 'Your booking has been rescheduled — Harbour Hair Salon',
-      react: BookingReschedule({ appointment, oldDate }),
-    });
-  } catch (error) {
-    console.error('Failed to send booking reschedule email:', error);
-  }
+  await send({
+    to: appointment.user.email,
+    subject: 'Your booking has been rescheduled — Harbour Hair Salon',
+    react: BookingReschedule({ appointment, oldDate }),
+  });
 }
 
 export async function sendAppointmentReminder(appointment: AppointmentWithDetails): Promise<void> {
-  try {
-    const resend = getResendClient();
-    await resend.emails.send({
-      from: FROM,
-      to: appointment.user.email,
-      subject: 'Reminder: your appointment is tomorrow — Harbour Hair Salon',
-      react: AppointmentReminder({ appointment }),
-    });
-  } catch (error) {
-    console.error('Failed to send appointment reminder email:', error);
-  }
+  await send({
+    to: appointment.user.email,
+    subject: 'Reminder: your appointment is tomorrow — Harbour Hair Salon',
+    react: AppointmentReminder({ appointment }),
+  });
 }
 
 export async function sendReviewRequest(appointment: ReviewRequestAppointment): Promise<void> {
-  try {
-    const resend = getResendClient();
-    await resend.emails.send({
-      from: FROM,
-      to: appointment.user.email,
-      subject: 'How was your visit? — Harbour Hair Salon',
-      react: ReviewRequest({ appointment }),
-    });
-  } catch (error) {
-    console.error('Failed to send review request email:', error);
-  }
+  await send({
+    to: appointment.user.email,
+    subject: 'How was your visit? — Harbour Hair Salon',
+    react: ReviewRequest({ appointment }),
+  });
 }
 
 export async function sendNewsletterWelcome(email: string): Promise<void> {
-  try {
-    const resend = getResendClient();
-    await resend.emails.send({
-      from: FROM,
-      to: email,
-      subject: 'Welcome to Harbour Hair Salon',
-      react: NewsletterWelcome(),
-    });
-  } catch (error) {
-    console.error('Failed to send newsletter welcome email:', error);
-  }
+  await send({
+    to: email,
+    subject: 'Welcome to Harbour Hair Salon',
+    react: NewsletterWelcome(),
+  });
 }

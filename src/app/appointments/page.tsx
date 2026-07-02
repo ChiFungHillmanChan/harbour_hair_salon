@@ -15,8 +15,10 @@ export default async function AppointmentsPage() {
   const appointments = await prisma.appointment.findMany({
     where: { userId: session.userId },
     include: {
-      stylist: true,
-      service: true,
+      // Only the fields the card renders — never ship the full stylist row
+      // (it carries the secret treatwellIcalUrl) to the client.
+      stylist: { select: { name: true } },
+      service: { select: { name: true, price: true, duration: true } },
       review: { select: { id: true } },
     },
     orderBy: { date: 'desc' },

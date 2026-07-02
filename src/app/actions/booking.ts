@@ -1,19 +1,45 @@
 'use server';
 
-import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest } from '@/app/services/booking-service';
+import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
 import { resolveSalonDateTime, isWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, type SalonDateTime } from '@/app/services/salon-time';
 import { SlotUnavailableError, BookingError } from '@/app/services/booking-errors';
+import { hasConflict, type BookedInterval } from '@/app/services/scheduling';
+import { loadExternalBusy, toBookedInterval } from '@/app/services/external-busy';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { sendBookingConfirmation, sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
+
+// Lazy so we never touch env at module load (per project convention). Limits
+// discount-code checks per user to stop enumeration of valid codes.
+let discountLimiter: Ratelimit | null | undefined;
+function getDiscountLimiter(): Ratelimit | null {
+  if (discountLimiter !== undefined) return discountLimiter;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  discountLimiter = url && token
+    ? new Ratelimit({
+        redis: new Redis({ url, token }),
+        limiter: Ratelimit.slidingWindow(10, '15 m'),
+        prefix: 'rl:discount',
+      })
+    : null;
+  return discountLimiter;
+}
+
+// serviceDuration is client-supplied. Bound it hard: an unvalidated negative or
+// huge value drives the slot-generation loop in booking-service for millions of
+// iterations (unauthenticated CPU/memory DoS — these slot actions require no session).
+const SERVICE_DURATION = z.number().int().min(5).max(600);
 
 const getSlotsSchema = z.object({
-  stylistId: z.string(),
+  stylistId: z.string().min(1).max(64),
   date: z.coerce.date(),
-  serviceDuration: z.number(),
+  serviceDuration: SERVICE_DURATION,
 });
 
 type CreateBookingInput = {
@@ -81,11 +107,17 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
 // Helper for client-side fetching without form state. The "Anyone" option
 // returns the union of every stylist's availability.
 export async function fetchSlots(stylistId: string, date: Date, serviceDuration: number) {
+  // Guard the client-supplied duration before it reaches the slot loop (see
+  // SERVICE_DURATION note above) — this path has no Zod wrapper of its own.
+  const duration = SERVICE_DURATION.safeParse(serviceDuration);
+  if (!duration.success || !(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return [];
+  }
   try {
     if (stylistId === ANY_STYLIST_ID) {
-      return await getAvailableSlotsUnion(date, serviceDuration);
+      return await getAvailableSlotsUnion(date, duration.data);
     }
-    return await getAvailableSlots(stylistId, date, serviceDuration);
+    return await getAvailableSlots(stylistId, date, duration.data);
   } catch (error) {
     console.error(error);
     return [];
@@ -108,8 +140,18 @@ async function eligibleStylistIds(salon: SalonDateTime): Promise<string[]> {
 }
 
 export async function validateDiscountCode(code: string) {
-  await verifySession();
+  const session = await verifySession();
   if (!code) return { valid: false, error: 'Code is empty' };
+
+  const limiter = getDiscountLimiter();
+  if (limiter) {
+    try {
+      const { success } = await limiter.limit(`user:${session.userId}`);
+      if (!success) return { valid: false, error: 'Too many attempts. Please try again shortly.' };
+    } catch (err) {
+      console.error('Discount rate limiter unavailable, allowing request:', err);
+    }
+  }
 
   try {
     const discount = await prisma.discountCode.findUnique({
@@ -214,18 +256,23 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
           discountCode: validData.discountCode,
         });
 
-    // Send confirmation email (fail silently — handled in email-service)
-    await sendBookingConfirmation({
-      id: appointment.id,
-      date: appointment.date,
-      user: appointment.user,
-      stylist: appointment.stylist,
-      service: {
-        name: appointment.service.name,
-        price: Number(appointment.service.price),
-        duration: appointment.service.duration,
-      },
-    });
+    // Send confirmation email. A committed booking must never fail because an
+    // email hiccups, so swallow send errors here (they now throw from email-service).
+    try {
+      await sendBookingConfirmation({
+        id: appointment.id,
+        date: appointment.date,
+        user: appointment.user,
+        stylist: appointment.stylist,
+        service: {
+          name: appointment.service.name,
+          price: Number(appointment.service.price),
+          duration: appointment.service.duration,
+        },
+      });
+    } catch (emailError) {
+      console.error('Booking confirmation email failed (booking still created):', emailError);
+    }
 
     revalidatePath('/book');
     revalidatePath('/appointments');
@@ -270,10 +317,14 @@ export async function cancelAppointment(appointmentId: string) {
     data: { status: 'CANCELLED' },
   });
 
-  await sendBookingCancellation({
-    ...appointment,
-    service: { ...appointment.service, price: Number(appointment.service.price) },
-  });
+  try {
+    await sendBookingCancellation({
+      ...appointment,
+      service: { ...appointment.service, price: Number(appointment.service.price) },
+    });
+  } catch (emailError) {
+    console.error('Cancellation email failed (appointment still cancelled):', emailError);
+  }
 
   revalidatePath('/appointments');
   revalidatePath('/admin');
@@ -367,11 +418,8 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
   try {
     const oldDate = appointment.date;
 
-    await prisma.$transaction(async (tx) => {
-      // Check for overlapping appointments within the salon-local day window.
-      const { addMinutes } = await import('date-fns');
+    await runSerializableWithRetry(async (tx) => {
       const { start: dayStart, end: dayEnd } = salonDayWindow(newDate);
-      const newEnd = addMinutes(newDate, appointment.service.duration);
 
       const existingAppointments = await tx.appointment.findMany({
         where: {
@@ -383,17 +431,19 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
         include: { service: { select: { duration: true } } },
       });
 
-      const hasConflict = existingAppointments.some((appt) => {
-        const apptStart = new Date(appt.date);
-        const apptEnd = addMinutes(apptStart, appt.service.duration);
-        return (
-          (newDate >= apptStart && newDate < apptEnd) ||
-          (newEnd > apptStart && newEnd <= apptEnd) ||
-          (newDate <= apptStart && newEnd >= apptEnd)
-        );
-      });
+      // Treatwell (external) busy blocks count as conflicts too — the create
+      // paths already do this; reschedule previously skipped them, allowing a
+      // customer to reschedule directly onto a Treatwell-booked slot.
+      const externalBlocks = await loadExternalBusy(tx, [appointment.stylistId], { start: dayStart, end: dayEnd });
+      const blocking: BookedInterval[] = [
+        ...existingAppointments.map((appt) => ({
+          start: new Date(appt.date),
+          durationMin: appt.service.duration,
+        })),
+        ...externalBlocks.map(toBookedInterval),
+      ];
 
-      if (hasConflict) {
+      if (hasConflict(newDate, appointment.service.duration, blocking)) {
         throw new SlotUnavailableError('This time slot is no longer available.');
       }
 
@@ -401,7 +451,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
         where: { id: appointmentId },
         data: { date: newDate, reminderSent: false },
       });
-    }, { isolationLevel: 'Serializable' });
+    });
 
     const updated = await prisma.appointment.findUnique({
       where: { id: appointmentId },
@@ -413,10 +463,14 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
     });
 
     if (updated) {
-      await sendBookingReschedule(
-        { ...updated, service: { ...updated.service, price: Number(updated.service.price) } },
-        oldDate,
-      );
+      try {
+        await sendBookingReschedule(
+          { ...updated, service: { ...updated.service, price: Number(updated.service.price) } },
+          oldDate,
+        );
+      } catch (emailError) {
+        console.error('Reschedule email failed (appointment still rescheduled):', emailError);
+      }
     }
 
     revalidatePath('/appointments');

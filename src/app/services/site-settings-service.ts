@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import prisma from '@/app/lib/prisma';
 
 export type SiteSettings = {
@@ -51,7 +52,10 @@ function mapRow(row: {
   };
 }
 
-export async function getSiteSettings(): Promise<SiteSettings> {
+// Wrapped in React cache() so the several callers that fire per render (root
+// layout metadata, Header, Footer, page body) share ONE query per request
+// instead of each hitting Neon.
+export const getSiteSettings = cache(async (): Promise<SiteSettings> => {
   try {
     // Read-first, create-on-miss. Using upsert races under concurrent
     // pre-rendering because two workers can both attempt INSERT.
@@ -70,7 +74,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     console.error('Failed to load site settings:', error);
     return DEFAULTS;
   }
-}
+});
 
 export function buildSameAsArray(settings: SiteSettings): string[] {
   return [

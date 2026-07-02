@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Reveal } from './Reveal';
 
+// Only the public-safe fields the homepage passes down (never the full Stylist
+// row, which carries the secret treatwellIcalUrl).
+type PublicStylist = Pick<Stylist, 'id' | 'name' | 'role' | 'imageUrl' | 'bio'>;
+
 function slugifyName(name: string): string {
   return name
     .toLowerCase()
@@ -15,7 +19,7 @@ function slugifyName(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-function StylistPortrait({ stylist }: { stylist: Stylist }) {
+function StylistPortrait({ stylist }: { stylist: PublicStylist }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const showImage = stylist.imageUrl && !loadFailed;
 
@@ -41,7 +45,7 @@ function StylistPortrait({ stylist }: { stylist: Stylist }) {
   );
 }
 
-export function StylistShowcase({ stylists }: { stylists: Stylist[] }) {
+export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
   return (
     <section id="team" className="relative py-28 bg-zinc-900 text-white overflow-hidden">
       {/* Ambient glow */}

@@ -7,8 +7,8 @@ import { Appointment, Service, Stylist } from '@prisma/client';
 
 type AppointmentWithDetails = Appointment & {
   user: { id: string; name: string | null; email: string };
-  service: Service;
-  stylist: Stylist;
+  service: Pick<Service, 'name' | 'duration' | 'price'>;
+  stylist: Pick<Stylist, 'name'>;
 };
 
 type ViewMode = 'day' | 'month' | 'year';
