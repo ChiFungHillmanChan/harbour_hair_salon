@@ -87,10 +87,13 @@ async function getPopularServices() {
   }
 
   // Convert Decimal to number for client components.
-  return featured.map((service) => ({
-    ...service,
-    price: Number(service.price),
-  }));
+  // Display cheapest first so visitors see an approachable entry point.
+  return featured
+    .map((service) => ({
+      ...service,
+      price: Number(service.price),
+    }))
+    .sort((a, b) => a.price - b.price);
 }
 
 async function getGlobalOffer() {
