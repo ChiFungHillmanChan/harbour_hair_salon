@@ -55,6 +55,8 @@ model Service {
   category           String   // e.g., Cut, Color, Treatment
   requiresPatchTest  Boolean  @default(false)
   isPatchTest        Boolean  @default(false)
+  requiresConsultation Boolean @default(false)
+  isConsultation     Boolean  @default(false)
   imageUrl           String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
