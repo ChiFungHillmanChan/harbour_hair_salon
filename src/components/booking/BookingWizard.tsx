@@ -173,6 +173,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
       setPendingGate({ service, fee: routed?.fee ?? 0, hasTarget: routed !== null });
       return;
     }
+    setPendingGate(null);
     setConsultationOrigin(null);
     setSelectedService(service);
     setStep('STYLIST');
@@ -437,7 +438,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
               </div>
             ))}
           </div>
-          <button onClick={() => { setConsultationOrigin(null); setStep('SERVICE'); }} className="text-sm font-medium text-zinc-600 hover:text-accent flex items-center gap-1">
+          <button onClick={() => { setPendingGate(null); setConsultationOrigin(null); setStep('SERVICE'); }} className="text-sm font-medium text-zinc-600 hover:text-accent flex items-center gap-1">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
