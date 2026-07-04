@@ -48,6 +48,7 @@ type CreateBookingInput = {
   date: Date | string;
   time: string;
   discountCode?: string;
+  consultationForServiceId?: string;
 };
 
 const createBookingSchema = z.object({
@@ -56,6 +57,7 @@ const createBookingSchema = z.object({
   date: z.coerce.date(),
   time: z.string().regex(SALON_TIME_RE, 'Invalid time'), // strict HH:mm
   discountCode: z.string().optional(),
+  consultationForServiceId: z.string().optional(),
 }) satisfies z.ZodType<CreateBookingInput>;
 
 // Shared business-hours guard for a resolved salon date/time against a stylist's
@@ -219,11 +221,26 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     }
   }
 
-  // Colour services require a completed Consultation & Patch Test first.
+  // Load the flags we gate on. A gated service must never be booked directly —
+  // the client routes to a consultation, but a crafted request must be rejected.
   const service = await prisma.service.findUnique({
     where: { id: validData.serviceId },
-    select: { requiresPatchTest: true },
+    select: { requiresPatchTest: true, requiresConsultation: true, isConsultation: true, isPatchTest: true },
   });
+  if (service?.requiresConsultation) {
+    return { success: false, error: 'This service is by consultation only. Please book a consultation to discuss it.' };
+  }
+
+  // If this booking IS a consultation target, record which service it's for.
+  let notes: string | undefined;
+  if ((service?.isConsultation || service?.isPatchTest) && validData.consultationForServiceId) {
+    const origin = await prisma.service.findUnique({
+      where: { id: validData.consultationForServiceId },
+      select: { name: true },
+    });
+    if (origin) notes = `Consultation requested for: ${origin.name}`;
+  }
+
   if (service?.requiresPatchTest) {
     const eligibility = await getValidPatchTest(session.userId, fullDate);
     if (!eligibility.ok) {
@@ -247,6 +264,7 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
           date: fullDate,
           userId: session.userId,
           discountCode: validData.discountCode,
+          notes,
         })
       : await createBooking({
           stylistId: validData.stylistId,
@@ -254,6 +272,7 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
           date: fullDate,
           userId: session.userId,
           discountCode: validData.discountCode,
+          notes,
         });
 
     // Send confirmation email. A committed booking must never fail because an

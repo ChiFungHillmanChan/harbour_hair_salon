@@ -225,6 +225,7 @@ export async function createBooking(data: {
   date: Date;
   userId: string;
   discountCode?: string;
+  notes?: string;
 }) {
   // Use Serializable transaction to prevent double-booking race conditions
   const appointment = await runSerializableWithRetry(async (tx) => {
@@ -267,6 +268,7 @@ export async function createBooking(data: {
         userId: data.userId,
         status: 'CONFIRMED',
         discountCodeId,
+        notes: data.notes ?? null,
       },
       include: {
         user: { select: { email: true, name: true } },
@@ -291,6 +293,7 @@ export async function createBookingForFirstAvailable(data: {
   date: Date;
   userId: string;
   discountCode?: string;
+  notes?: string;
 }) {
   const appointment = await runSerializableWithRetry(async (tx) => {
     const service = await tx.service.findUnique({ where: { id: data.serviceId } });
@@ -343,6 +346,7 @@ export async function createBookingForFirstAvailable(data: {
         userId: data.userId,
         status: 'CONFIRMED',
         discountCodeId,
+        notes: data.notes ?? null,
       },
       include: {
         user: { select: { email: true, name: true } },
