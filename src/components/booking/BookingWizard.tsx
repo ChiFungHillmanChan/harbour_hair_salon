@@ -5,6 +5,7 @@ import { format, addDays, startOfToday, isSameDay } from 'date-fns';
 import { useState, useEffect } from 'react';
 import { fetchSlots, submitBooking, validateDiscountCode } from '@/app/actions/booking';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
+import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 
 // Define a ClientService type where price is number instead of Decimal
 type ClientService = Omit<Service, 'price'> & { price: number };
@@ -41,6 +42,12 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+
+  // Set when the customer picked a consultation-gated service. Holds the ORIGINAL
+  // service so we can label the consultation and record intent on submit.
+  const [consultationOrigin, setConsultationOrigin] = useState<ClientService | null>(null);
+  // The gate panel for the service the customer just clicked (before they confirm).
+  const [pendingGate, setPendingGate] = useState<{ service: ClientService; fee: number; hasTarget: boolean } | null>(null);
 
   // Colour patch-test gate: populated when a colour service + date are selected
   const [colourGate, setColourGate] = useState<{ eligible: boolean; reason: string; testDate: string | null } | null>(null);
@@ -140,6 +147,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
       date: selectedDate,
       time: selectedTime,
       discountCode: appliedDiscount?.code,
+      consultationForServiceId: consultationOrigin?.id,
     });
 
     setIsLoading(false);
@@ -151,10 +159,35 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   };
 
   const filteredServices = services.filter(service => {
+    if (service.isConsultation || service.isPatchTest) return false; // reached via routing, not browsed
     const matchesSearch = service.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = service.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  // Called when a service card is clicked. Gated services open the consultation
+  // gate instead of proceeding straight to stylist selection.
+  const handleSelectService = (service: ClientService) => {
+    if (service.requiresConsultation) {
+      const routed = resolveConsultationTarget(service, services);
+      setPendingGate({ service, fee: routed?.fee ?? 0, hasTarget: routed !== null });
+      return;
+    }
+    setConsultationOrigin(null);
+    setSelectedService(service);
+    setStep('STYLIST');
+  };
+
+  // Confirm the gate: swap to the consultation target and continue the flow.
+  const confirmConsultation = () => {
+    if (!pendingGate) return;
+    const routed = resolveConsultationTarget(pendingGate.service, services);
+    if (!routed) return;
+    setConsultationOrigin(pendingGate.service);
+    setSelectedService(routed.target);
+    setPendingGate(null);
+    setStep('STYLIST');
+  };
 
   // Helper to group slots by time of day
   const getGroupedSlots = () => {
@@ -232,6 +265,49 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
 
       {step === 'SERVICE' && (
         <div className="space-y-6">
+          {pendingGate && (
+            <div className="rounded-lg border border-accent/40 bg-accent/5 p-6">
+              <h3 className="font-serif text-lg text-zinc-900 mb-2">{pendingGate.service.name}</h3>
+              {pendingGate.hasTarget ? (
+                <>
+                  <p className="text-sm text-zinc-700">
+                    This service is by consultation. We&apos;ll book you a{' '}
+                    {pendingGate.fee > 0 ? `£${pendingGate.fee.toFixed(2)}` : 'free'} consultation to discuss it,
+                    then arrange the service with you.
+                  </p>
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={confirmConsultation}
+                      className="bg-accent text-black px-6 py-2.5 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-accent-light transition-colors"
+                    >
+                      Book a Consultation
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingGate(null)}
+                      className="text-sm font-medium text-zinc-600 hover:text-accent px-3"
+                    >
+                      Back
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-zinc-700">
+                    This service is by consultation only. Please contact the salon to arrange it.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPendingGate(null)}
+                    className="mt-4 text-sm font-medium text-zinc-600 hover:text-accent"
+                  >
+                    Back to services
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div className="flex flex-col md:flex-row gap-4">
              {/* Category Dropdown */}
              <div className="md:w-1/3">
@@ -281,11 +357,16 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                 {filteredServices.map(service => (
                   <div
                     key={service.id}
-                    onClick={() => { setSelectedService(service); setStep('STYLIST'); }}
+                    onClick={() => handleSelectService(service)}
                     className="border border-zinc-200 p-6 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center hover:border-accent hover:bg-accent/5 cursor-pointer transition-all group shadow-sm hover:shadow-md"
                   >
                     <div className="mb-2 sm:mb-0">
                       <h3 className="font-medium text-zinc-900 group-hover:text-accent transition-colors text-lg">{service.name}</h3>
+                      {service.requiresConsultation && (
+                        <span className="inline-block mt-1 text-[11px] uppercase tracking-wider font-semibold text-accent bg-accent/10 border border-accent/30 rounded px-2 py-0.5">
+                          Consultation required
+                        </span>
+                      )}
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-sm text-zinc-600 flex items-center gap-1">
                            <svg className="w-4 h-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -356,7 +437,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
               </div>
             ))}
           </div>
-          <button onClick={() => setStep('SERVICE')} className="text-sm font-medium text-zinc-600 hover:text-accent flex items-center gap-1">
+          <button onClick={() => { setConsultationOrigin(null); setStep('SERVICE'); }} className="text-sm font-medium text-zinc-600 hover:text-accent flex items-center gap-1">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
@@ -522,6 +603,12 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                 <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Service</span>
                 <span className="text-zinc-900 font-medium text-base">{selectedService?.name}</span>
               </div>
+              {consultationOrigin && (
+                <div className="col-span-2">
+                  <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Consultation for</span>
+                  <span className="text-zinc-900 font-medium text-base">{consultationOrigin.name}</span>
+                </div>
+              )}
               <div>
                 <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Stylist</span>
                 <span className="text-zinc-900 font-medium text-base">{selectedStylist?.name}</span>
