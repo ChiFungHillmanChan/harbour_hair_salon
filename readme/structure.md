@@ -42,6 +42,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `booking-service.ts` — slot availability, booking creation, patch-test eligibility query
 - `email-service.ts` — Resend + React Email templates
 - `patch-test-eligibility.ts` — pure colour-gate eligibility logic
+- `consultation-routing.ts` — `resolveConsultationTarget(service, all)`: decides whether a service books directly or routes to a consultation target (colour → £10 Consultation & Patch Test, others → free Consultation, direct-bookable → null)
 - `timesheet-calc.ts` — pure fns: `segmentWorkedMinutes`, `totalWorkedHours`, `splitRegularOvertime`; unit-tested
 - `payroll-calc.ts` — pure fns: `computeGross` (HOURLY/SALARY/COMMISSION/HYBRID), `round2`; unit-tested
 - `kiosk-state.ts` — pure fn: `nextClockAction(openEntry)` → `CLOCK_IN` or `CLOCK_OUT`; unit-tested
@@ -83,7 +84,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 ## Database Models
 - User
 - Stylist
-- Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the Consultation & Patch Test service) booleans
+- Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the £10 Consultation & Patch Test service) booleans; also `requiresConsultation` (services that must route to a consultation before they can be booked directly) and `isConsultation` (the separate free £0 Consultation service). Gated colour services route to the £10 Consultation & Patch Test; other gated services route to the free Consultation
 - Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED)
 - Availability
 - ExternalBusyBlock — busy times imported from Treatwell (per-stylist iCal); `Stylist.treatwellIcalUrl` holds the feed URL
