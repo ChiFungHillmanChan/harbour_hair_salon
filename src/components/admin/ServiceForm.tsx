@@ -16,6 +16,8 @@ type ServiceLite = {
   imageUrl: string | null;
   requiresPatchTest: boolean;
   isPatchTest: boolean;
+  requiresConsultation: boolean;
+  isConsultation: boolean;
 };
 
 interface ServiceFormProps {
@@ -170,6 +172,25 @@ export function ServiceForm({ mode, action, service, saved, existingCategories }
               className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
             />
             <span className="text-sm text-zinc-700">This IS the consultation &amp; patch test service</span>
+          </label>
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-600 pt-2">Consultation gate</p>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="requiresConsultation"
+              defaultChecked={service?.requiresConsultation ?? false}
+              className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+            />
+            <span className="text-sm text-zinc-700">Requires consultation before booking <span className="text-zinc-400">(customer is routed to a consultation instead of booking this directly)</span></span>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="isConsultation"
+              defaultChecked={service?.isConsultation ?? false}
+              className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+            />
+            <span className="text-sm text-zinc-700">This IS the free general consultation service</span>
           </label>
         </div>
       </section>

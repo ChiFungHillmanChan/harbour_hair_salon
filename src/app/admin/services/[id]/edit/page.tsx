@@ -36,6 +36,8 @@ export default async function EditServicePage({
     imageUrl: service.imageUrl,
     requiresPatchTest: service.requiresPatchTest,
     isPatchTest: service.isPatchTest,
+    requiresConsultation: service.requiresConsultation,
+    isConsultation: service.isConsultation,
   };
 
   return (

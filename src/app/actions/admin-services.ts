@@ -39,8 +39,10 @@ export async function createService(
 
   const requiresPatchTest = formData.get('requiresPatchTest') === 'on';
   const isPatchTest = formData.get('isPatchTest') === 'on';
+  const requiresConsultation = formData.get('requiresConsultation') === 'on';
+  const isConsultation = formData.get('isConsultation') === 'on';
 
-  const created = await prisma.service.create({ data: { ...parsed.data, requiresPatchTest, isPatchTest } });
+  const created = await prisma.service.create({ data: { ...parsed.data, requiresPatchTest, isPatchTest, requiresConsultation, isConsultation } });
 
   revalidatePath('/services');
   revalidatePath('/admin/services');
@@ -69,8 +71,10 @@ export async function updateService(
 
   const requiresPatchTest = formData.get('requiresPatchTest') === 'on';
   const isPatchTest = formData.get('isPatchTest') === 'on';
+  const requiresConsultation = formData.get('requiresConsultation') === 'on';
+  const isConsultation = formData.get('isConsultation') === 'on';
 
-  await prisma.service.update({ where: { id }, data: { ...parsed.data, requiresPatchTest, isPatchTest } });
+  await prisma.service.update({ where: { id }, data: { ...parsed.data, requiresPatchTest, isPatchTest, requiresConsultation, isConsultation } });
 
   revalidatePath('/services');
   revalidatePath(`/services/${existing.category.toLowerCase()}`);
