@@ -136,9 +136,9 @@ export default async function ServicesPage() {
           />
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
-            Services & <span className="italic text-zinc-400">Pricing</span>
+            Services & <span className="text-zinc-400">Pricing</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
             Expertly crafted hair services in Leeds city centre, tailored to your unique style.
@@ -169,7 +169,7 @@ export default async function ServicesPage() {
         <div className="mt-20 text-center">
            <Link
              href="/book"
-             className="inline-block bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
+             className="inline-block bg-zinc-900 text-white px-10 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-black transition-all"
            >
              Book Appointment
            </Link>

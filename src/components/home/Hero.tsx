@@ -64,15 +64,15 @@ export function Hero() {
         ref={contentRef}
         className="relative z-10 text-center max-w-4xl px-4 will-change-transform"
       >
-        <div className="hero-rise hero-rise-0 w-12 md:w-16 h-[2px] bg-accent mx-auto mb-5 md:mb-8" />
+        <div className="hero-rise hero-rise-0 w-12 md:w-16 h-px bg-white/50 mx-auto mb-5 md:mb-8" />
 
-        <p className="hero-rise hero-rise-1 text-[11px] md:text-sm uppercase tracking-[0.3em] md:tracking-[0.35em] text-accent mb-4 md:mb-6 font-medium">
+        <p className="hero-rise hero-rise-1 text-[11px] md:text-sm uppercase tracking-[0.2em] md:tracking-[0.25em] text-zinc-300 mb-4 md:mb-6 font-medium">
           Leeds City Centre
         </p>
 
         <h1 className="text-[2.75rem] md:text-7xl lg:text-8xl font-serif mb-5 md:mb-6 tracking-tight leading-[0.95]">
           <span className="hero-rise hero-rise-2 block">Expert Hair</span>
-          <span className="hero-rise hero-rise-3 block italic text-zinc-300">Styling</span>
+          <span className="hero-rise hero-rise-3 block text-zinc-400 font-light">Styling</span>
         </h1>
 
         <p className="hero-rise hero-rise-4 text-base md:text-xl text-zinc-300 mb-8 md:mb-10 max-w-2xl mx-auto font-light leading-relaxed px-2">
@@ -83,7 +83,7 @@ export function Hero() {
         <div className="hero-rise hero-rise-5 flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
           <Link
             href="/book"
-            className="group inline-flex items-center justify-center gap-2 bg-accent text-black px-7 md:px-10 py-3 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.18em] md:tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-500 ease-apple hover:shadow-[0_20px_50px_-15px_rgba(201,169,110,0.6)] hover:-translate-y-0.5"
+            className="group inline-flex items-center justify-center gap-2 bg-white text-zinc-900 px-7 md:px-10 py-3 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.12em] md:tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all duration-500 ease-apple hover:shadow-[0_20px_50px_-15px_rgba(0,0,0,0.6)] hover:-translate-y-0.5"
           >
             Book Appointment
             <svg className="w-4 h-4 transition-transform duration-500 ease-apple group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -92,13 +92,13 @@ export function Hero() {
           </Link>
           <Link
             href="/services"
-            className="inline-flex items-center justify-center border border-white/40 text-white px-7 md:px-10 py-3 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.18em] md:tracking-[0.2em] font-medium hover:bg-white/10 hover:border-white/70 transition-all duration-500 ease-apple"
+            className="inline-flex items-center justify-center border border-white/40 text-white px-7 md:px-10 py-3 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.12em] md:tracking-[0.15em] font-medium hover:bg-white/10 hover:border-white/70 transition-all duration-500 ease-apple"
           >
             View Services
           </Link>
         </div>
 
-        <div className="hero-rise hero-rise-5 w-12 md:w-16 h-[2px] bg-accent mx-auto mt-8 md:mt-12" />
+        <div className="hero-rise hero-rise-5 w-12 md:w-16 h-px bg-white/50 mx-auto mt-8 md:mt-12" />
       </div>
 
       {/* Scroll indicator — pinned to viewport, parallax-independent */}

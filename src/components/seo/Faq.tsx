@@ -34,7 +34,7 @@ export function Faq({ title = 'Frequently Asked Questions', intro, items, classN
         dangerouslySetInnerHTML={{ __html: jsonLdScript(schema) }}
       />
       <div className="text-center mb-12">
-        <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+        <div className="w-12 h-px bg-zinc-300 mx-auto mb-6" />
         <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
           {title}
         </h2>

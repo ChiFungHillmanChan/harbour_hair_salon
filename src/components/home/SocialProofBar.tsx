@@ -6,7 +6,7 @@ function Stars({ value }: { value: number }) {
       {[1, 2, 3, 4, 5].map((n) => (
         <svg
           key={n}
-          className={`w-5 h-5 ${n <= value ? 'text-accent fill-accent' : 'text-zinc-300 fill-zinc-200'}`}
+          className={`w-5 h-5 ${n <= value ? 'text-zinc-900 fill-zinc-900' : 'text-zinc-300 fill-zinc-200'}`}
           viewBox="0 0 24 24"
           stroke="currentColor"
           strokeWidth={1.5}
@@ -39,7 +39,7 @@ export function SocialProofBar({ average, count }: { average: number; count: num
         <span className="hidden sm:block w-px h-5 bg-zinc-200" aria-hidden="true" />
         <Link
           href="/reviews"
-          className="text-sm text-zinc-600 hover:text-accent transition-colors"
+          className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
         >
           <span className="font-semibold text-zinc-900">{count}</span> verified client reviews
         </Link>

@@ -31,7 +31,7 @@ export function ResetPasswordButton({ userId, userName }: ResetPasswordButtonPro
   return (
     <button
       onClick={handleResetPassword}
-      className="text-blue-600 hover:text-blue-900 mr-4"
+      className="text-zinc-700 hover:text-zinc-900 mr-4"
     >
       Reset Password
     </button>

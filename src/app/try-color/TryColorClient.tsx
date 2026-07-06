@@ -543,15 +543,15 @@ export default function TryColorClient() {
 
           <div className="relative z-10 container mx-auto px-4 text-center">
             <div className="animate-fade-in">
-              <div className="w-16 h-[2px] bg-accent mx-auto mb-8" />
+              <div className="w-16 h-[2px] bg-white/50 mx-auto mb-8" />
 
-              <p className="text-accent text-sm uppercase tracking-[0.3em] font-medium mb-6">
+              <p className="text-zinc-300 text-sm uppercase tracking-[0.2em] font-medium mb-6">
                 Virtual Experience
               </p>
 
               <h1 className="text-5xl md:text-7xl font-serif mb-6 tracking-tight leading-[0.95]">
                 Hair Colour{' '}
-                <span className="italic text-zinc-400">Try-On</span>
+                <span className="text-zinc-400">Try-On</span>
               </h1>
 
               <p className="text-lg md:text-xl text-zinc-400 mb-12 max-w-lg mx-auto font-light leading-relaxed">
@@ -562,7 +562,7 @@ export default function TryColorClient() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
                 <button
                   onClick={startUpload}
-                  className="bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-300 hover:scale-[1.02]"
+                  className="bg-white text-zinc-900 px-10 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all duration-300 hover:scale-[1.02]"
                 >
                   Upload Photo
                 </button>
@@ -582,7 +582,7 @@ export default function TryColorClient() {
                 )}
               </div>
 
-              <div className="w-16 h-[2px] bg-accent mx-auto mb-6" />
+              <div className="w-16 h-[2px] bg-white/50 mx-auto mb-6" />
 
               <div className="space-y-2 text-xs text-zinc-500 max-w-md mx-auto">
                 <p>Your photos never leave your browser. All processing happens on-device.</p>
@@ -596,7 +596,7 @@ export default function TryColorClient() {
         <section className="py-16 border-t border-zinc-800">
           <div className="container mx-auto px-4 max-w-3xl">
             <h2 className="font-serif text-2xl text-center mb-12 tracking-tight">
-              How It <span className="italic text-zinc-400">Works</span>
+              How It <span className="text-zinc-400">Works</span>
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
               {[
@@ -605,7 +605,7 @@ export default function TryColorClient() {
                 { step: '03', title: 'Download', desc: 'Save your favourite look as a JPEG' },
               ].map((item) => (
                 <div key={item.step}>
-                  <p className="text-accent text-xs tracking-[0.3em] font-medium mb-3">
+                  <p className="text-zinc-300 text-xs tracking-[0.2em] font-medium mb-3">
                     {item.step}
                   </p>
                   <h3 className="font-serif text-xl mb-2">{item.title}</h3>
@@ -644,7 +644,7 @@ export default function TryColorClient() {
           </button>
 
           <h1 className="font-serif text-white text-lg tracking-tight">
-            Colour <span className="italic text-zinc-400">Try-On</span>
+            Colour <span className="text-zinc-400">Try-On</span>
           </h1>
 
           <div className="w-12" /> {/* Spacer for centering */}
@@ -662,7 +662,7 @@ export default function TryColorClient() {
         {/* Loading */}
         {loading && (
           <div className="flex items-center justify-center gap-3 py-12 text-zinc-400">
-            <div className="w-5 h-5 border-2 border-zinc-700 border-t-accent rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
             <span className="text-sm font-light">{loadingLabel}</span>
           </div>
         )}
@@ -749,14 +749,14 @@ export default function TryColorClient() {
           {mode === 'camera' ? (
             <button
               onClick={startUpload}
-              className="text-zinc-500 hover:text-accent text-sm transition-colors"
+              className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
             >
               Upload a photo instead
             </button>
           ) : mode === 'video' ? (
             <button
               onClick={startUpload}
-              className="text-zinc-500 hover:text-accent text-sm transition-colors"
+              className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
             >
               Upload a photo instead
             </button>
@@ -768,21 +768,21 @@ export default function TryColorClient() {
                     setHasUploadedImage(false);
                     uploadDataRef.current = null;
                   }}
-                  className="text-zinc-500 hover:text-accent text-sm transition-colors"
+                  className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
                 >
                   Change photo
                 </button>
               )}
               <button
                 onClick={startVideo}
-                className="text-zinc-500 hover:text-accent text-sm transition-colors"
+                className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
               >
                 Upload a video instead
               </button>
               {ENABLE_LIVE_CAMERA && (
                 <button
                   onClick={startCamera}
-                  className="text-zinc-500 hover:text-accent text-sm transition-colors"
+                  className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
                 >
                   Use camera instead
                 </button>

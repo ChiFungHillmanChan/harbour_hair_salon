@@ -59,7 +59,7 @@ export function ShiftForm({ employees }: { employees: Employee[] }) {
       </div>
       <button
         type="submit"
-        className="bg-accent hover:bg-accent-light text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+        className="bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded text-sm font-medium transition-colors"
       >
         Add shift
       </button>

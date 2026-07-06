@@ -74,7 +74,7 @@ export default async function AdminCategoriesPage() {
                         className={`inline-block px-2.5 py-1 text-xs uppercase tracking-wider font-bold rounded-full ${
                           hasMatchingServices
                             ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-amber-100 text-amber-700'
+                            : 'bg-zinc-100 text-zinc-700'
                         }`}
                       >
                         {c.category}

@@ -11,7 +11,7 @@ import {
 } from '@react-email/components';
 
 const BRAND = '#18181b';
-const ACCENT = '#c9a96e';
+const ACCENT = '#18181b';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
@@ -26,7 +26,7 @@ export function NewsletterWelcome() {
             <Text style={{ color: '#ffffff', fontSize: '22px', fontWeight: 'bold', margin: 0, letterSpacing: '0.05em' }}>
               Harbour Hair Salon
             </Text>
-            <Text style={{ color: '#D4C5A0', fontSize: '13px', margin: '4px 0 0' }}>
+            <Text style={{ color: '#a1a1aa', fontSize: '13px', margin: '4px 0 0' }}>
               {SALON_ADDRESS}
             </Text>
           </Section>
@@ -50,7 +50,7 @@ export function NewsletterWelcome() {
               style={{
                 display: 'inline-block',
                 backgroundColor: ACCENT,
-                color: '#000000',
+                color: '#ffffff',
                 padding: '14px 32px',
                 borderRadius: '6px',
                 textDecoration: 'none',

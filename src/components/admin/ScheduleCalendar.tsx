@@ -87,7 +87,7 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
               }}
               className={`min-h-[100px] p-2 border-b border-r border-zinc-100 cursor-pointer transition-colors
                 ${!isCurrentMonth ? 'bg-zinc-100 text-zinc-400' : 'bg-white text-zinc-900'}
-                ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-500' : !isCurrentMonth ? 'hover:bg-zinc-200/70' : 'hover:bg-zinc-50'}
+                ${isSelected ? 'bg-zinc-100 ring-1 ring-inset ring-zinc-900' : !isCurrentMonth ? 'hover:bg-zinc-200/70' : 'hover:bg-zinc-50'}
               `}
             >
               <div className="flex justify-between items-start mb-1">
@@ -104,7 +104,7 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
               </div>
               <div className="space-y-1">
                 {dayAppts.slice(0, 3).map(appt => (
-                  <div key={appt.id} className="text-[10px] truncate bg-blue-100 text-blue-800 rounded px-1 py-0.5">
+                  <div key={appt.id} className="text-[10px] truncate bg-zinc-800 text-white rounded px-1 py-0.5">
                     {format(new Date(appt.date), 'HH:mm')} {appt.user.name}
                   </div>
                 ))}
@@ -144,19 +144,19 @@ const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
                       <div className="w-20 flex-shrink-0 text-zinc-700 text-sm pt-1 font-medium">
                           {format(new Date(appt.date), 'HH:mm')}
                       </div>
-                      <div className="flex-1 bg-blue-50 rounded-lg p-3 border border-blue-100 group-hover:border-blue-200 transition-colors">
+                      <div className="flex-1 bg-zinc-50 rounded-lg p-3 border border-zinc-200 group-hover:border-zinc-300 transition-colors">
                           <div className="flex justify-between items-start">
                               <div>
-                                  <h4 className="font-semibold text-blue-900">{appt.user.name}</h4>
-                                  <p className="text-blue-700 text-sm">{appt.service.name} • {appt.service.duration} mins</p>
+                                  <h4 className="font-semibold text-zinc-900">{appt.user.name}</h4>
+                                  <p className="text-zinc-600 text-sm">{appt.service.name} • {appt.service.duration} mins</p>
                               </div>
                               <span className={`text-xs px-2 py-1 rounded-full font-medium
-                                  ${appt.status === 'CONFIRMED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}
+                                  ${appt.status === 'CONFIRMED' ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-600'}
                               `}>
                                   {appt.status}
                               </span>
                           </div>
-                          <div className="mt-2 flex items-center gap-4 text-xs text-blue-600">
+                          <div className="mt-2 flex items-center gap-4 text-xs text-zinc-500">
                               <span>Stylist: {appt.stylist.name}</span>
                               <span>£{Number(appt.service.price).toFixed(2)}</span>
                           </div>
@@ -242,7 +242,7 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
           </button>
         </div>
 
-        <button onClick={goToToday} className="text-sm font-medium text-blue-600 hover:underline">
+        <button onClick={goToToday} className="text-sm font-medium text-zinc-900 hover:underline">
           Today
         </button>
       </div>

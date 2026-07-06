@@ -331,7 +331,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
           <div
             className={`w-full h-full min-h-[280px] border border-dashed rounded-lg flex flex-col items-center justify-center gap-5 transition-all duration-300 cursor-pointer ${
               dragging
-                ? 'border-accent bg-accent/5'
+                ? 'border-white/30 bg-white/5'
                 : 'border-zinc-700 hover:border-zinc-500 bg-zinc-900/50'
             }`}
             onClick={() => inputRef.current?.click()}
@@ -349,7 +349,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
           >
             <div className="w-16 h-16 rounded-full border border-zinc-700 flex items-center justify-center">
               <svg
-                className="w-7 h-7 text-accent"
+                className="w-7 h-7 text-zinc-300"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -365,7 +365,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
             <div className="text-center">
               <p className="text-white font-serif text-lg mb-1">Upload Your Video</p>
               <p className="text-zinc-500 text-sm">
-                Drop here or <span className="text-accent hover:underline">browse</span>
+                Drop here or <span className="text-zinc-300 hover:underline">browse</span>
               </p>
             </div>
             <p className="text-zinc-600 text-xs tracking-wider uppercase">
@@ -387,13 +387,13 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
 
         {phase === 'extracting' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-8">
-            <div className="w-5 h-5 border-2 border-zinc-700 border-t-accent rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
             <p className="text-zinc-400 text-sm font-light">
               Processing video… {progress}%
             </p>
             <div className="w-full max-w-xs h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div
-                className="h-full bg-accent transition-all duration-200"
+                className="h-full bg-white transition-all duration-200"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -416,7 +416,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
             <button
               type="button"
               onClick={() => (playing ? stopPlayback() : setPlaying(true))}
-              className="w-11 h-11 shrink-0 rounded-full bg-accent text-black flex items-center justify-center hover:bg-accent-light transition-colors"
+              className="w-11 h-11 shrink-0 rounded-full bg-white text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition-colors"
               aria-label={playing ? 'Pause' : 'Play'}
             >
               {playing ? (
@@ -436,7 +436,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
               max={frameCount - 1}
               value={currentFrame}
               onChange={(e) => handleScrub(Number(e.target.value))}
-              className="flex-1 accent-accent"
+              className="flex-1 accent-white"
               aria-label="Scrub frames"
             />
             <span className="text-zinc-500 text-xs tabular-nums w-16 text-right">
@@ -447,7 +447,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
           <button
             type="button"
             onClick={handleDownload}
-            className="w-full bg-accent text-black py-3 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-300 hover:scale-[1.01] flex items-center justify-center gap-2 rounded-lg shadow-lg shadow-accent/10"
+            className="w-full bg-white text-zinc-900 py-3 text-sm uppercase tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all duration-300 hover:scale-[1.01] flex items-center justify-center gap-2 rounded-lg shadow-lg shadow-black/10"
           >
             <svg
               className="w-4 h-4"

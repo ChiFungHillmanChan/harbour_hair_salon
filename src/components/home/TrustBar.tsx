@@ -54,7 +54,7 @@ export function TrustBar({
         <ul className="flex flex-wrap items-center justify-center gap-x-7 md:gap-x-10 gap-y-3 text-sm text-zinc-600">
           {PILLARS.map((p) => (
             <li key={p.label} className="inline-flex items-center gap-2">
-              <span className="text-accent">{p.icon}</span>
+              <span className="text-zinc-900">{p.icon}</span>
               <span className="tracking-wide">{p.label}</span>
             </li>
           ))}
@@ -67,7 +67,7 @@ export function TrustBar({
                 href={treatwellUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-semibold text-brand hover:text-accent transition-colors"
+                className="font-semibold text-zinc-900 hover:text-zinc-600 transition-colors"
               >
                 Book on Treatwell
               </a>
@@ -77,7 +77,7 @@ export function TrustBar({
                 href={googleBusinessUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-zinc-500 hover:text-accent transition-colors"
+                className="text-zinc-500 hover:text-zinc-900 transition-colors"
               >
                 Find us on Google
               </a>

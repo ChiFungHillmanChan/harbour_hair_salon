@@ -50,7 +50,7 @@ export default async function AdminBlogListPage() {
         </div>
         <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
           <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Drafts</p>
-          <p className="text-3xl font-bold text-amber-600 mt-1">{draftCount}</p>
+          <p className="text-3xl font-bold text-zinc-900 mt-1">{draftCount}</p>
         </div>
       </div>
 
@@ -97,7 +97,7 @@ export default async function AdminBlogListPage() {
                       className={`inline-block px-2.5 py-1 text-xs uppercase tracking-wider font-bold rounded-full ${
                         post.status === 'PUBLISHED'
                           ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-amber-100 text-amber-700'
+                          : 'bg-zinc-100 text-zinc-700'
                       }`}
                     >
                       {post.status}

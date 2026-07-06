@@ -128,9 +128,9 @@ export default async function StylistDetailPage({
         <div className="container mx-auto px-4 py-20 md:py-28">
           <nav aria-label="Breadcrumb" className="mb-8 text-xs text-zinc-400 uppercase tracking-[0.2em]">
             <ol className="flex items-center gap-2">
-              <li><Link href="/" className="hover:text-accent">Home</Link></li>
+              <li><Link href="/" className="hover:text-zinc-300">Home</Link></li>
               <li aria-hidden="true">·</li>
-              <li><Link href="/stylists" className="hover:text-accent">Stylists</Link></li>
+              <li><Link href="/stylists" className="hover:text-zinc-300">Stylists</Link></li>
               <li aria-hidden="true">·</li>
               <li className="text-zinc-200">{stylist.name}</li>
             </ol>
@@ -158,8 +158,8 @@ export default async function StylistDetailPage({
             </div>
 
             <div className="md:col-span-3">
-              <div className="w-12 h-[2px] bg-accent mb-6" />
-              <p className="text-xs uppercase tracking-[0.2em] text-accent mb-3">{stylist.role}</p>
+              <div className="w-12 h-[2px] bg-white/50 mb-6" />
+              <p className="text-xs uppercase tracking-[0.2em] text-zinc-300 mb-3">{stylist.role}</p>
               <h1 className="text-5xl md:text-6xl font-serif tracking-tight mb-6">{stylist.name}</h1>
               {profile.tagline && (
                 <p className="text-xl md:text-2xl font-serif italic text-zinc-300 leading-relaxed mb-8">
@@ -188,7 +188,7 @@ export default async function StylistDetailPage({
 
               <Link
                 href="/book"
-                className="inline-block bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
+                className="inline-block bg-white text-zinc-900 px-10 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all"
               >
                 Book with {stylist.name}
               </Link>
@@ -200,7 +200,7 @@ export default async function StylistDetailPage({
       {/* About */}
       {bioParagraphs.length > 0 && (
         <section className="container mx-auto px-4 py-20 max-w-3xl">
-          <div className="w-12 h-[2px] bg-accent mb-6" />
+          <div className="w-12 h-[2px] bg-zinc-300 mb-6" />
           <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight mb-8">
             About {stylist.name}
           </h2>
@@ -216,7 +216,7 @@ export default async function StylistDetailPage({
       <section className="bg-zinc-50 border-y border-zinc-100 py-20">
         <div className="container mx-auto px-4 max-w-3xl">
           <div className="text-center mb-12">
-            <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+            <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
             <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
               Specialties
             </h2>
@@ -227,8 +227,8 @@ export default async function StylistDetailPage({
                 key={i}
                 className="flex items-start gap-3 bg-white p-5 rounded-lg border border-zinc-100"
               >
-                <span className="mt-0.5 w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center shrink-0">
-                  <svg className="w-3 h-3 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                <span className="mt-0.5 w-5 h-5 rounded-full bg-zinc-900/10 flex items-center justify-center shrink-0">
+                  <svg className="w-3 h-3 text-zinc-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </span>
@@ -243,7 +243,7 @@ export default async function StylistDetailPage({
       {related.length > 0 && (
         <section className="container mx-auto px-4 py-20 max-w-5xl">
           <div className="text-center mb-12">
-            <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+            <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
             <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
               Meet the rest of the team
             </h2>
@@ -255,11 +255,11 @@ export default async function StylistDetailPage({
                 href={`/stylists/${s.slug}`}
                 className="group block bg-white border border-zinc-200 rounded-2xl p-8 hover:border-zinc-900 hover:shadow-lg transition-all"
               >
-                <p className="text-xs uppercase tracking-[0.2em] text-accent mb-2">{s.role}</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 mb-2">{s.role}</p>
                 <h3 className="text-2xl font-serif text-zinc-900 group-hover:text-zinc-700 transition-colors">
                   {s.name}
                 </h3>
-                <span className="inline-flex items-center gap-2 mt-4 text-sm font-bold uppercase tracking-[0.15em] text-zinc-900 group-hover:text-accent transition-colors">
+                <span className="inline-flex items-center gap-2 mt-4 text-sm font-bold uppercase tracking-[0.15em] text-zinc-900 group-hover:text-zinc-600 transition-colors">
                   View profile
                   <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />

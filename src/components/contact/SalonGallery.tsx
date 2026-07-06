@@ -22,7 +22,7 @@ export default function SalonGallery() {
   return (
     <section className="mt-20" aria-labelledby="our-space-heading">
       <div className="text-center mb-10">
-        <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+        <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
         <h2 id="our-space-heading" className="text-3xl font-serif text-black mb-3">Our Space</h2>
         <p className="text-zinc-500 max-w-xl mx-auto font-light">
           A look inside the Harbour Hair studio in central Leeds.

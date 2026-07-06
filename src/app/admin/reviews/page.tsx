@@ -10,7 +10,7 @@ function Stars({ value }: { value: number }) {
       {[1, 2, 3, 4, 5].map((n) => (
         <svg
           key={n}
-          className={`w-4 h-4 ${n <= value ? 'text-accent fill-accent' : 'text-zinc-300 fill-zinc-200'}`}
+          className={`w-4 h-4 ${n <= value ? 'text-zinc-900 fill-zinc-900' : 'text-zinc-300 fill-zinc-200'}`}
           viewBox="0 0 24 24"
           stroke="currentColor"
           strokeWidth={1.5}
@@ -52,7 +52,7 @@ export default async function AdminReviewsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
           <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Pending</p>
-          <p className="text-3xl font-bold text-amber-600 mt-1">{statusCount('PENDING')}</p>
+          <p className="text-3xl font-bold text-zinc-900 mt-1">{statusCount('PENDING')}</p>
         </div>
         <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
           <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Approved</p>

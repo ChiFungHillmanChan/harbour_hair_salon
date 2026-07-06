@@ -34,12 +34,12 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="font-serif text-3xl text-brand">Payroll — {year}-{String(month).padStart(2, '0')}</h1>
+      <h1 className="font-serif text-3xl text-zinc-900">Payroll — {year}-{String(month).padStart(2, '0')}</h1>
       <p className="text-sm text-zinc-500">Gross pay only. Phase 1: commission excluded (added in Phase 2).</p>
 
       {period?.status !== 'FINALIZED' && (
         <form action={async () => { 'use server'; await runPayrollAction(year, month); }}>
-          <button className="bg-brand text-white px-4 py-2 rounded">Run / recompute from approved timesheets</button>
+          <button className="bg-zinc-900 text-white px-4 py-2 rounded">Run / recompute from approved timesheets</button>
         </form>
       )}
 
@@ -74,12 +74,12 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
           </table>
 
           <div className="flex gap-4 items-center">
-            <a href={csvHref} download={`payroll-${year}-${String(month).padStart(2, '0')}.csv`} className="border border-accent text-brand px-4 py-2 rounded">
+            <a href={csvHref} download={`payroll-${year}-${String(month).padStart(2, '0')}.csv`} className="border border-zinc-300 text-zinc-900 px-4 py-2 rounded">
               Download CSV
             </a>
             {period.status === 'DRAFT' ? (
               <form action={async () => { 'use server'; await finalizePayrollAction(period.id); }}>
-                <button className="bg-accent text-black px-4 py-2 rounded font-bold">Finalize</button>
+                <button className="bg-zinc-900 text-white px-4 py-2 rounded font-bold">Finalize</button>
               </form>
             ) : (
               <span className="text-green-700 font-bold">Finalized</span>

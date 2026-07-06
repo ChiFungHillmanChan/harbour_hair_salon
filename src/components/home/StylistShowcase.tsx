@@ -37,7 +37,7 @@ function StylistPortrait({ stylist }: { stylist: PublicStylist }) {
         />
       ) : (
         <div className="absolute inset-0 bg-zinc-800 flex items-center justify-center">
-          <span className="text-6xl font-serif text-accent">{stylist.name.charAt(0)}</span>
+          <span className="text-6xl font-serif text-zinc-500">{stylist.name.charAt(0)}</span>
         </div>
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-zinc-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-apple" />
@@ -49,16 +49,16 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
   return (
     <section id="team" className="relative py-28 bg-zinc-900 text-white overflow-hidden">
       {/* Ambient glow */}
-      <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-accent/5 blur-3xl" />
+      <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-white/5 blur-3xl" />
       <div className="relative container mx-auto px-4">
         <Reveal className="text-center mb-16">
-          <p className="text-sm uppercase tracking-[0.35em] text-accent mb-4 font-medium">
+          <p className="text-sm uppercase tracking-[0.2em] text-zinc-300 mb-4 font-medium">
             Our Team
           </p>
           <h2 className="text-4xl md:text-6xl font-serif mb-6 tracking-tight">
-            Meet The <span className="italic text-zinc-400">Stylists</span>
+            Meet The <span className="text-zinc-400 font-light">Stylists</span>
           </h2>
-          <div className="w-16 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-16 h-px bg-white/50 mx-auto mb-6" />
           <p className="text-zinc-400 max-w-2xl mx-auto font-light leading-relaxed">
             Our Hong Kong trained stylists deliver tailored haircuts and grooming services with meticulous attention to detail.
           </p>
@@ -70,18 +70,18 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
               key={stylist.id}
               variant="scale"
               delay={index * 120}
-              className="group bg-zinc-800/50 overflow-hidden border border-zinc-700/50 hover:border-accent/40 transition-all duration-700 ease-apple hover:shadow-[0_30px_80px_-20px_rgba(201,169,110,0.25)] hover:-translate-y-1"
+              className="group bg-zinc-800/50 overflow-hidden border border-zinc-700/50 hover:border-white/40 transition-all duration-700 ease-apple hover:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.5)] hover:-translate-y-1"
             >
               <Link href={`/stylists/${slugifyName(stylist.name)}`} className="block">
                 <StylistPortrait stylist={stylist} />
                 <div className="p-8 text-center">
-                  <h3 className="text-xl font-serif font-medium mb-1 text-white group-hover:text-accent transition-colors">{stylist.name}</h3>
-                  <p className="text-accent text-sm uppercase tracking-wider mb-4">{stylist.role}</p>
+                  <h3 className="text-xl font-serif font-medium mb-1 text-white group-hover:text-zinc-300 transition-colors">{stylist.name}</h3>
+                  <p className="text-zinc-400 text-sm uppercase tracking-wider mb-4">{stylist.role}</p>
                   <div className="w-8 h-[1px] bg-zinc-700 mx-auto mb-4" />
                   <p className="text-zinc-400 text-sm italic font-light leading-relaxed mb-6">
                     &ldquo;{stylist.bio}&rdquo;
                   </p>
-                  <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-bold text-accent">
+                  <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-bold text-zinc-300">
                     View profile
                     <svg className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />

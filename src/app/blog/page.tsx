@@ -83,9 +83,9 @@ export default async function BlogIndexPage() {
           />
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
-            The Harbour <span className="italic text-zinc-400">Journal</span>
+            The Harbour <span className="text-zinc-400">Journal</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
             Hair care guides, styling tips and honest advice from our Hong Kong trained stylists in Leeds.
@@ -122,7 +122,7 @@ export default async function BlogIndexPage() {
                       {post.title}
                     </h2>
                     <p className="text-zinc-600 font-light leading-relaxed">{post.excerpt}</p>
-                    <span className="inline-flex items-center gap-2 mt-5 text-sm font-bold uppercase tracking-[0.15em] text-zinc-900 group-hover:text-accent transition-colors">
+                    <span className="inline-flex items-center gap-2 mt-5 text-sm font-bold uppercase tracking-[0.15em] text-zinc-900 group-hover:text-zinc-600 transition-colors">
                       Read article
                       <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />

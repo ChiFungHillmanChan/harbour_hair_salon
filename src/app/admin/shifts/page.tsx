@@ -18,7 +18,7 @@ export default async function AdminShiftsPage() {
 
   return (
     <div className="p-6 space-y-8">
-      <h1 className="font-serif text-3xl text-brand">Shifts</h1>
+      <h1 className="font-serif text-3xl text-zinc-900">Shifts</h1>
 
       <section>
         <h2 className="text-xl mb-3">Add shift</h2>

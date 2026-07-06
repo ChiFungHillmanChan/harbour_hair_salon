@@ -61,9 +61,9 @@ export default async function OffersPage() {
           />
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
-            Special <span className="italic text-zinc-400">Offers</span>
+            Special <span className="text-zinc-400">Offers</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
             Exclusive seasonal promotions at our Leeds city centre salon, designed to elevate your personal style.

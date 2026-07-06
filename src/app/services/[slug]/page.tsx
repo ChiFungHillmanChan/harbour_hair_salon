@@ -143,16 +143,16 @@ export default async function ServiceCategoryPage({
         <div className="relative z-10 container mx-auto px-4 text-center">
           <nav aria-label="Breadcrumb" className="mb-4 text-xs text-zinc-400 uppercase tracking-[0.2em]">
             <ol className="flex items-center justify-center gap-2">
-              <li><Link href="/" className="hover:text-accent">Home</Link></li>
+              <li><Link href="/" className="hover:text-zinc-300">Home</Link></li>
               <li aria-hidden="true">·</li>
-              <li><Link href="/services" className="hover:text-accent">Services</Link></li>
+              <li><Link href="/services" className="hover:text-zinc-300">Services</Link></li>
               <li aria-hidden="true">·</li>
               <li className="text-zinc-200">{cat.category}</li>
             </ol>
           </nav>
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
-            {cat.hero} <span className="italic text-zinc-400">in Leeds</span>
+            {cat.hero} <span className="text-zinc-400">in Leeds</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
             {cat.intro}
@@ -174,7 +174,7 @@ export default async function ServiceCategoryPage({
       {/* Pricing table */}
       <section className="container mx-auto px-4 py-12 max-w-4xl">
         <div className="text-center mb-12">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
           <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
             {cat.category} Pricing
           </h2>
@@ -233,7 +233,7 @@ export default async function ServiceCategoryPage({
       <section className="bg-zinc-50 border-y border-zinc-100 py-20">
         <div className="container mx-auto px-4 max-w-3xl">
           <div className="text-center mb-12">
-            <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+            <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
             <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
               What&apos;s included
             </h2>
@@ -241,8 +241,8 @@ export default async function ServiceCategoryPage({
           <ul className="grid md:grid-cols-2 gap-4">
             {cat.includes.map((item, i) => (
               <li key={i} className="flex items-start gap-3 bg-white p-5 rounded-lg border border-zinc-100">
-                <span className="mt-0.5 w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center shrink-0">
-                  <svg className="w-3 h-3 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                <span className="mt-0.5 w-5 h-5 rounded-full bg-zinc-900/10 flex items-center justify-center shrink-0">
+                  <svg className="w-3 h-3 text-zinc-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </span>
@@ -256,7 +256,7 @@ export default async function ServiceCategoryPage({
       {/* Process */}
       <section className="container mx-auto px-4 py-20 max-w-3xl">
         <div className="text-center mb-12">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
           <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
             What to expect
           </h2>
@@ -264,7 +264,7 @@ export default async function ServiceCategoryPage({
         <ol className="space-y-8">
           {cat.process.map((p, i) => (
             <li key={i} className="flex gap-6">
-              <span className="shrink-0 w-12 h-12 rounded-full border-2 border-accent flex items-center justify-center text-accent font-serif text-xl">
+              <span className="shrink-0 w-12 h-12 rounded-full border-2 border-zinc-300 flex items-center justify-center text-zinc-900 font-serif text-xl">
                 {i + 1}
               </span>
               <div>
@@ -280,7 +280,7 @@ export default async function ServiceCategoryPage({
       <section className="bg-zinc-900 text-white py-20">
         <div className="container mx-auto px-4 max-w-3xl">
           <div className="text-center mb-12">
-            <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+            <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
             <h2 className="text-3xl md:text-4xl font-serif tracking-tight">
               How to look after it
             </h2>
@@ -288,7 +288,7 @@ export default async function ServiceCategoryPage({
           <ul className="space-y-4">
             {cat.aftercare.map((tip, i) => (
               <li key={i} className="flex gap-4 items-start text-zinc-300 font-light leading-relaxed">
-                <span className="shrink-0 mt-2 w-1.5 h-1.5 rounded-full bg-accent" />
+                <span className="shrink-0 mt-2 w-1.5 h-1.5 rounded-full bg-white/50" />
                 <span>{tip}</span>
               </li>
             ))}
@@ -296,7 +296,7 @@ export default async function ServiceCategoryPage({
           <div className="mt-12 text-center">
             <Link
               href="/book"
-              className="inline-block bg-accent text-black px-12 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
+              className="inline-block bg-white text-zinc-900 px-12 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all"
             >
               Book {cat.category}
             </Link>
@@ -315,7 +315,7 @@ export default async function ServiceCategoryPage({
       {related.length > 0 && (
         <section className="container mx-auto px-4 py-20 max-w-5xl border-t border-zinc-100">
           <div className="text-center mb-12">
-            <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+            <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
             <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
               You might also like
             </h2>
@@ -327,12 +327,12 @@ export default async function ServiceCategoryPage({
                 href={`/services/${r.slug}`}
                 className="group block bg-white border border-zinc-200 rounded-2xl p-8 hover:border-zinc-900 hover:shadow-lg transition-all"
               >
-                <p className="text-xs uppercase tracking-[0.2em] text-accent mb-2">Explore</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 mb-2">Explore</p>
                 <h3 className="text-2xl font-serif text-zinc-900 mb-3 group-hover:text-zinc-700 transition-colors">
                   {r.hero} in Leeds
                 </h3>
                 <p className="text-zinc-600 font-light leading-relaxed">{r.intro}</p>
-                <span className="inline-flex items-center gap-2 mt-4 text-sm font-bold uppercase tracking-[0.15em] text-zinc-900 group-hover:text-accent transition-colors">
+                <span className="inline-flex items-center gap-2 mt-4 text-sm font-bold uppercase tracking-[0.15em] text-zinc-900 group-hover:text-zinc-600 transition-colors">
                   Learn more
                   <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />

@@ -38,8 +38,8 @@ export default async function ContactPage() {
           />
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
-          <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">Contact <span className="italic text-zinc-400">Us</span></h1>
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
+          <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">Contact <span className="text-zinc-400">Us</span></h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">Find us in the heart of Leeds city centre</p>
         </div>
       </section>
@@ -173,7 +173,7 @@ export default async function ContactPage() {
 
         {/* Find & follow us */}
         <section className="mt-10">
-          <h2 className="font-serif text-2xl text-brand mb-4">Find &amp; follow us</h2>
+          <h2 className="font-serif text-2xl text-zinc-900 mb-4">Find &amp; follow us</h2>
           <SocialLinks settings={settings} className="mb-6" />
           <div className="flex flex-wrap gap-3">
             {settings.treatwellUrl && (
@@ -181,7 +181,7 @@ export default async function ContactPage() {
                 href={settings.treatwellUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="border border-accent text-brand px-6 py-3 uppercase tracking-[0.2em] text-sm font-bold hover:bg-accent hover:text-black transition-colors"
+                className="border border-zinc-300 text-zinc-900 px-6 py-3 uppercase tracking-[0.15em] text-sm font-bold hover:bg-zinc-900 hover:text-white transition-colors"
               >
                 Book on Treatwell
               </a>
@@ -191,7 +191,7 @@ export default async function ContactPage() {
                 href={settings.googleBusinessUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-brand underline hover:text-accent transition-colors self-center"
+                className="text-zinc-900 underline hover:text-zinc-600 transition-colors self-center"
               >
                 Get directions &amp; read our Google reviews
               </a>
@@ -204,14 +204,14 @@ export default async function ContactPage() {
 
         {/* CTA Section */}
         <div className="mt-20 text-center bg-zinc-900 p-16">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-8" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-8" />
           <h2 className="text-3xl font-serif text-white mb-6">Ready for a fresh look?</h2>
           <p className="text-zinc-400 mb-10 max-w-xl mx-auto font-light">
             Book your appointment online today and let our expert stylists take care of you.
           </p>
           <Link
             href="/book"
-            className="inline-block bg-accent text-black px-12 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
+            className="inline-block bg-white text-zinc-900 px-12 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all"
           >
             Book Appointment
           </Link>

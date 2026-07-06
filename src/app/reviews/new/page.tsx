@@ -49,7 +49,7 @@ export default async function NewReviewPage({
           </p>
           <Link
             href="/appointments"
-            className="inline-block bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
+            className="inline-block bg-zinc-900 text-white px-10 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-black transition-all"
           >
             Back to My Bookings
           </Link>
@@ -72,7 +72,7 @@ export default async function NewReviewPage({
           </p>
           <Link
             href="/appointments"
-            className="inline-block bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
+            className="inline-block bg-zinc-900 text-white px-10 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-black transition-all"
           >
             Back to My Bookings
           </Link>
@@ -92,9 +92,9 @@ export default async function NewReviewPage({
     <div className="min-h-screen bg-white">
       <section className="relative py-20 bg-zinc-900 text-white">
         <div className="container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
           <h1 className="text-4xl md:text-5xl font-serif mb-4 tracking-tight">
-            How was your <span className="italic text-zinc-300">visit?</span>
+            How was your <span className="text-zinc-300">visit?</span>
           </h1>
           <p className="text-zinc-400 max-w-xl mx-auto font-light leading-relaxed">
             Your feedback helps us improve and helps other clients find the right stylist.

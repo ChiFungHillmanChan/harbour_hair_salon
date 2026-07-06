@@ -26,7 +26,7 @@ export function NewsletterForm({
     return (
       <section className="relative bg-zinc-900 text-white rounded-2xl overflow-hidden">
         <div className="relative z-10 px-8 py-16 md:px-16 md:py-20 text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white mx-auto mb-6" />
           <h2 className="text-3xl md:text-4xl font-serif tracking-tight mb-4">
             {title}
           </h2>
@@ -35,7 +35,7 @@ export function NewsletterForm({
           </p>
 
           {state.status === 'success' ? (
-            <p className="text-accent text-sm uppercase tracking-[0.2em] font-bold">
+            <p className="text-white text-sm uppercase tracking-[0.2em] font-bold">
               You&apos;re on the list. Check your inbox.
             </p>
           ) : (
@@ -52,12 +52,12 @@ export function NewsletterForm({
                   required
                   autoComplete="email"
                   placeholder="you@example.com"
-                  className="flex-1 bg-white/5 border border-white/20 rounded-md px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                  className="flex-1 bg-white/5 border border-white/20 rounded-md px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent"
                 />
                 <button
                   type="submit"
                   disabled={pending}
-                  className="bg-accent text-black px-8 py-3 text-xs uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all disabled:opacity-50 disabled:cursor-not-allowed rounded-md"
+                  className="bg-white text-black px-8 py-3 text-xs uppercase tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed rounded-md"
                 >
                   {pending ? 'Sending…' : 'Subscribe'}
                 </button>
@@ -81,7 +81,7 @@ export function NewsletterForm({
   // Inline variant — form only, caller provides heading/copy
   if (state.status === 'success') {
     return (
-      <p className="text-accent text-xs uppercase tracking-[0.15em] font-bold">
+      <p className="text-white text-xs uppercase tracking-[0.15em] font-bold">
         Thanks — check your inbox.
       </p>
     );
@@ -100,12 +100,12 @@ export function NewsletterForm({
         required
         autoComplete="email"
         placeholder="you@example.com"
-        className="flex-1 bg-white/5 border border-white/20 rounded px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-accent focus:border-transparent"
+        className="flex-1 bg-white/5 border border-white/20 rounded px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-white focus:border-transparent"
       />
       <button
         type="submit"
         disabled={pending}
-        className="bg-accent text-black px-6 py-2.5 text-xs uppercase tracking-[0.15em] font-bold hover:bg-accent-light transition-all disabled:opacity-50 disabled:cursor-not-allowed rounded whitespace-nowrap"
+        className="bg-white text-black px-6 py-2.5 text-xs uppercase tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed rounded whitespace-nowrap"
       >
         {pending ? 'Sending…' : 'Subscribe'}
       </button>
