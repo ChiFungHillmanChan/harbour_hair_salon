@@ -158,6 +158,7 @@ export default function TryColorClient() {
   }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel, bleachState]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial sync with window size; new rule from eslint-config-next 16.2.10, pre-existing pattern
     setLiveProfile(detectLivePreviewProfile());
     const onResize = () => setLiveProfile(detectLivePreviewProfile());
     window.addEventListener('resize', onResize);
@@ -740,6 +741,7 @@ export default function TryColorClient() {
         {mode !== 'video' && (
           <ResultActions
             onDownload={handleDownload}
+            // eslint-disable-next-line react-hooks/refs -- pre-existing: frame count gates the download button; new rule from eslint-config-next 16.2.10
             disabled={loading || (mode === 'upload' && !hasUploadedImage) || (mode === 'camera' && frameCountRef.current === 0)}
           />
         )}

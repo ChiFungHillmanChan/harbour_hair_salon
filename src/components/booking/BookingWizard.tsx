@@ -84,6 +84,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   // Check colour patch-test eligibility whenever a colour service + date is selected
   useEffect(() => {
     if (!selectedService || !selectedService.requiresPatchTest) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets gate when service changes; new rule from eslint-config-next 16.2.10, pre-existing pattern
       setColourGate(null);
       return;
     }
