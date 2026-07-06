@@ -8,12 +8,7 @@ import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
-
-function sanitizeRedirect(url: string | null): string {
-  if (!url) return '/';
-  if (url.startsWith('/') && !url.startsWith('//')) return url;
-  return '/';
-}
+import { sanitizeRedirect } from '@/app/lib/redirect';
 
 function getClientIp(headersList: Headers): string {
   const forwarded = headersList.get('x-forwarded-for');
