@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date();
-  const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  // 36h (not 24h) so a send that fails today is retried on tomorrow's run while
+  // still within the window (the cron only runs once per day).
+  const thirtySixHoursFromNow = new Date(now.getTime() + 36 * 60 * 60 * 1000);
 
   const appointments = await prisma.appointment.findMany({
     where: {
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
       reminderSent: false,
       date: {
         gt: now,
-        lte: twentyFourHoursFromNow,
+        lte: thirtySixHoursFromNow,
       },
     },
     include: {
@@ -49,13 +51,24 @@ export async function GET(request: NextRequest) {
 
   for (const appointment of appointments) {
     try {
-      await sendAppointmentReminder({
-        id: appointment.id,
-        date: appointment.date,
-        user: appointment.user,
-        stylist: appointment.stylist,
-        service: { ...appointment.service, price: Number(appointment.service.price) },
-      });
+      try {
+        await sendAppointmentReminder({
+          id: appointment.id,
+          date: appointment.date,
+          user: appointment.user,
+          stylist: appointment.stylist,
+          service: { ...appointment.service, price: Number(appointment.service.price) },
+        });
+      } catch (firstErr) {
+        console.error(`Reminder send failed once for ${appointment.id}, retrying:`, firstErr);
+        await sendAppointmentReminder({
+          id: appointment.id,
+          date: appointment.date,
+          user: appointment.user,
+          stylist: appointment.stylist,
+          service: { ...appointment.service, price: Number(appointment.service.price) },
+        });
+      }
       // Mark sent immediately so a mid-run timeout never re-sends this reminder.
       await prisma.appointment.update({
         where: { id: appointment.id },
