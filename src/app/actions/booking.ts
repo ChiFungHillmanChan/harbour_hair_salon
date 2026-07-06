@@ -31,6 +31,24 @@ function getDiscountLimiter(): Ratelimit | null {
   return discountLimiter;
 }
 
+// Limits booking creation per authenticated user to curb calendar-blockade abuse.
+let bookingLimiter: Ratelimit | null | undefined;
+function getBookingLimiter(): Ratelimit | null {
+  if (bookingLimiter !== undefined) return bookingLimiter;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  bookingLimiter = url && token
+    ? new Ratelimit({
+        redis: new Redis({ url, token }),
+        limiter: Ratelimit.slidingWindow(6, '1 h'),
+        prefix: 'rl:booking',
+      })
+    : null;
+  return bookingLimiter;
+}
+
+const MAX_ACTIVE_BOOKINGS = 6;
+
 // serviceDuration is client-supplied. Bound it hard: an unvalidated negative or
 // huge value drives the slot-generation loop in booking-service for millions of
 // iterations (unauthenticated CPU/memory DoS — these slot actions require no session).
@@ -190,6 +208,27 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   }
 
   const validData = result.data;
+
+  // Per-user rate limit (fail open on Redis outage, matching the rest of the app).
+  const limiter = getBookingLimiter();
+  if (limiter) {
+    try {
+      const { success } = await limiter.limit(`user:${session.userId}`);
+      if (!success) {
+        return { success: false, error: 'Too many booking attempts. Please try again shortly.' };
+      }
+    } catch (err) {
+      console.error('Booking rate limiter unavailable, allowing request:', err);
+    }
+  }
+
+  // Hard cap on outstanding future bookings per user.
+  const activeCount = await prisma.appointment.count({
+    where: { userId: session.userId, status: 'CONFIRMED', date: { gt: new Date() } },
+  });
+  if (activeCount >= MAX_ACTIVE_BOOKINGS) {
+    return { success: false, error: 'You already have the maximum number of upcoming bookings. Please manage your existing appointments first.' };
+  }
 
   // Resolve the salon wall-clock time to the correct absolute UTC instant
   // (handles BST/GMT). Host-timezone independent — see salon-time.ts.
