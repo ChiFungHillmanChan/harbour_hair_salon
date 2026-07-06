@@ -37,12 +37,17 @@ function Icon({ k }: { k: SocialLink['key'] }) {
 export default function SocialLinks({
   settings,
   className = '',
+  tone = 'light',
 }: {
   settings: { instagramUrl: string; treatwellUrl: string; googleBusinessUrl: string };
   className?: string;
+  // 'light' = on a light background (hover darkens to ink);
+  // 'dark' = on a dark background like the footer (hover brightens to white).
+  tone?: 'light' | 'dark';
 }) {
   const links = getSocialLinks(settings);
   if (links.length === 0) return null;
+  const hover = tone === 'dark' ? 'hover:text-white' : 'hover:text-zinc-900';
   return (
     <div className={`flex items-center gap-4 ${className}`}>
       {links.map((l) => (
@@ -52,7 +57,7 @@ export default function SocialLinks({
           target="_blank"
           rel="noopener noreferrer"
           aria-label={l.label}
-          className="text-zinc-500 hover:text-accent transition-colors"
+          className={`text-zinc-500 ${hover} transition-colors`}
         >
           <Icon k={l.key} />
         </a>

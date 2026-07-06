@@ -23,7 +23,7 @@ export default async function AdminOffersPage() {
               <div>
                 <h3 className="text-xl font-bold text-zinc-900">{offer.title}</h3>
                 {offer.isGlobal && (
-                  <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 rounded-full">
+                  <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-zinc-900 text-white rounded-full">
                     Global Discount
                   </span>
                 )}
@@ -33,13 +33,13 @@ export default async function AdminOffersPage() {
               </span>
             </div>
             <p className="text-zinc-600 mb-4 min-h-[48px]">{offer.description}</p>
-            <div className="flex items-center gap-2 mb-6 text-sm font-medium text-blue-600">
+            <div className="flex items-center gap-2 mb-6 text-sm font-medium text-zinc-900">
                {offer.discountType === 'PERCENTAGE' ? `${offer.discountValue}% OFF` : `£${offer.discountValue} OFF`}
             </div>
             
             <div className="flex justify-between items-center pt-4 border-t border-zinc-100">
                 <form action={toggleOfferStatus.bind(null, offer.id, !offer.isActive)}>
-                    <button className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    <button className="text-sm text-zinc-700 hover:text-zinc-900 font-medium">
                         {offer.isActive ? 'Deactivate' : 'Activate'}
                     </button>
                 </form>

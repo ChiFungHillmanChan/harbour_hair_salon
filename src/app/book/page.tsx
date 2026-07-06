@@ -60,16 +60,16 @@ export default async function BookPage() {
           />
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
-            Book Your <span className="italic text-zinc-400">Appointment</span>
+            Book Your <span className="text-zinc-400">Appointment</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
             Select your service, stylist, and preferred time.
           </p>
           {aggregateRating.count > 0 && (
             <p className="mt-6 inline-flex items-center gap-2 text-sm text-zinc-300">
-              <span className="text-accent" aria-hidden="true">★</span>
+              <span className="text-zinc-300" aria-hidden="true">★</span>
               <span className="font-semibold text-white">{aggregateRating.average.toFixed(1)}</span>
               <span aria-hidden="true">·</span>
               <span>{aggregateRating.count} verified reviews</span>

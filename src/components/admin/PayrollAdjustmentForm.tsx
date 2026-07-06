@@ -14,7 +14,7 @@ export default function PayrollAdjustmentForm({ lineId, amount, note }: { lineId
       <button
         disabled={saving}
         onClick={async () => { setSaving(true); await updateAdjustmentAction(lineId, Number(a) || 0, n); setSaving(false); }}
-        className="text-brand underline disabled:opacity-50"
+        className="text-zinc-900 underline disabled:opacity-50"
       >
         {saving ? 'Saving…' : 'Save'}
       </button>

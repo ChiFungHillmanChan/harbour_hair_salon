@@ -60,7 +60,7 @@ export function BookingReschedule({ appointment, oldDate }: BookingReschedulePro
             <Text style={{ color: '#ffffff', fontSize: '22px', fontWeight: 'bold', margin: 0, letterSpacing: '0.05em' }}>
               Harbour Hair Salon
             </Text>
-            <Text style={{ color: '#D4C5A0', fontSize: '13px', margin: '4px 0 0' }}>
+            <Text style={{ color: '#a1a1aa', fontSize: '13px', margin: '4px 0 0' }}>
               {SALON_ADDRESS}
             </Text>
           </Section>

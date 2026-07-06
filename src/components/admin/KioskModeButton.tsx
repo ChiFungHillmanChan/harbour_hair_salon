@@ -9,7 +9,7 @@ export default function KioskModeButton() {
     <div className="flex items-center gap-3">
       <button
         onClick={async () => { const r = await enableKioskMode(); setMsg(r?.error ?? 'Kiosk enabled on this device — open /kiosk'); }}
-        className="bg-brand text-white px-4 py-2 rounded"
+        className="bg-zinc-900 text-white px-4 py-2 rounded"
       >
         Enable kiosk on this device
       </button>

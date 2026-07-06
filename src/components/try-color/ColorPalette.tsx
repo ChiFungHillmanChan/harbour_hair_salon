@@ -51,7 +51,7 @@ export function ColorPalette({
     <div className="space-y-5">
       <div className="flex items-center gap-3">
         <div
-          className="w-8 h-8 rounded-full border-2 border-accent/40 shadow-lg shadow-black/20"
+          className="w-8 h-8 rounded-full border-2 border-white/30 shadow-lg shadow-black/20"
           style={{ backgroundColor: selectedHex }}
         />
         <div>
@@ -65,7 +65,7 @@ export function ColorPalette({
       </div>
 
       <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
-        <p className="text-accent text-xs uppercase tracking-[0.2em] font-medium">Colour Method</p>
+        <p className="text-zinc-300 text-xs uppercase tracking-[0.2em] font-medium">Colour Method</p>
         <div className="grid grid-cols-2 gap-2">
           {([
             ['pre', '漂前 · No Bleach', 'Colour over your natural hair'],
@@ -77,7 +77,7 @@ export function ColorPalette({
               onClick={() => onBleachStateChange(value)}
               className={`rounded-lg border px-3 py-2 text-left transition-colors ${
                 bleachState === value
-                  ? 'border-accent bg-accent/10 text-white'
+                  ? 'border-white/30 bg-white/10 text-white'
                   : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500'
               }`}
             >
@@ -96,7 +96,7 @@ export function ColorPalette({
       <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-accent text-xs uppercase tracking-[0.2em] font-medium">
+            <p className="text-zinc-300 text-xs uppercase tracking-[0.2em] font-medium">
               Current Hair Level
             </p>
             <p className="text-zinc-500 text-xs mt-1">
@@ -108,7 +108,7 @@ export function ColorPalette({
               type="checkbox"
               checked={baseLevelMode === 'auto'}
               onChange={(e) => onBaseLevelModeChange(e.target.checked ? 'auto' : 'manual')}
-              className="h-4 w-4 accent-accent"
+              className="h-4 w-4 accent-white"
             />
             Use Auto Detection
           </label>
@@ -149,7 +149,7 @@ export function ColorPalette({
       </div>
 
       <div>
-        <p className="text-accent text-xs uppercase tracking-[0.2em] font-medium mb-3">
+        <p className="text-zinc-300 text-xs uppercase tracking-[0.2em] font-medium mb-3">
           Select Colour
         </p>
         <div className="flex flex-wrap gap-2.5 pb-1">
@@ -163,7 +163,7 @@ export function ColorPalette({
               <div
                 className={`w-9 h-9 rounded-full transition-all duration-300 ${
                   selectedHex.toLowerCase() === color.swatchHex.toLowerCase()
-                    ? 'ring-2 ring-accent ring-offset-2 ring-offset-zinc-900 scale-110'
+                    ? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-900 scale-110'
                     : 'hover:scale-105 border border-zinc-700 group-hover:border-zinc-500'
                 }`}
                 style={{ backgroundColor: color.swatchHex }}
@@ -171,7 +171,7 @@ export function ColorPalette({
               <span
                 className={`text-[9px] leading-tight text-center max-w-[2.5rem] transition-colors truncate ${
                   selectedHex.toLowerCase() === color.swatchHex.toLowerCase()
-                    ? 'text-accent'
+                    ? 'text-zinc-300'
                     : 'text-zinc-600 group-hover:text-zinc-400'
                 }`}
               >
@@ -183,7 +183,7 @@ export function ColorPalette({
             <div
               className={`w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center transition-all duration-300 ${
                 !isPreset
-                  ? 'ring-2 ring-accent ring-offset-2 ring-offset-zinc-900 scale-110 border-accent'
+                  ? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-900 scale-110 border-white/30'
                   : 'border-zinc-700 group-hover:border-zinc-500 hover:scale-105'
               }`}
             >
@@ -209,7 +209,7 @@ export function ColorPalette({
       </div>
 
       <div>
-        <p className="text-accent text-xs uppercase tracking-[0.2em] font-medium mb-2">
+        <p className="text-zinc-300 text-xs uppercase tracking-[0.2em] font-medium mb-2">
           Preview Strength
         </p>
         <div className="flex items-center gap-4">
@@ -220,15 +220,15 @@ export function ColorPalette({
             max={100}
             value={previewStrength}
             onChange={(e) => onPreviewStrengthChange(Number(e.target.value))}
-            className="flex-1 h-1.5 accent-accent cursor-pointer"
+            className="flex-1 h-1.5 accent-white cursor-pointer"
           />
           <span className="text-zinc-600 text-xs">Bold</span>
         </div>
       </div>
 
       {expectedResultNotice && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-amber-300 mb-1">
+        <div className="rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-sm text-zinc-200">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400 mb-1">
             Expected Result
           </p>
           <p>{expectedResultNotice}</p>

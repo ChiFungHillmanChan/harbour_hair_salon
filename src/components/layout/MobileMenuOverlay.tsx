@@ -133,7 +133,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, session, hasOffers 
         <div className="mt-auto pb-8">
           <Link
             href="/book"
-            className="block w-full bg-accent text-black py-4 text-center text-lg uppercase tracking-widest font-bold hover:bg-accent-light transition-colors rounded-sm"
+            className="block w-full bg-white text-zinc-900 py-4 text-center text-lg uppercase tracking-widest font-bold hover:bg-zinc-200 transition-colors rounded-sm"
             onClick={onClose}
           >
             Book Now

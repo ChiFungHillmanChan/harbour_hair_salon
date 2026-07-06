@@ -43,8 +43,8 @@ export function ServiceMenu({ services, activeOffer, title = 'Our Services', fla
       >
         {/* Accent corner */}
         <div className="absolute top-0 right-0 w-12 h-12 overflow-hidden rounded-tr-2xl pointer-events-none">
-          <div className="absolute top-0 right-0 w-px h-12 bg-gradient-to-b from-accent/60 to-transparent" />
-          <div className="absolute top-0 right-0 h-px w-12 bg-gradient-to-l from-accent/60 to-transparent" />
+          <div className="absolute top-0 right-0 w-px h-12 bg-gradient-to-b from-zinc-300 to-transparent" />
+          <div className="absolute top-0 right-0 h-px w-12 bg-gradient-to-l from-zinc-300 to-transparent" />
         </div>
 
         {/* Title + price. min-h-[3lh] reserves 3 lines for the title so all cards
@@ -102,9 +102,9 @@ export function ServiceMenu({ services, activeOffer, title = 'Our Services', fla
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#00000008_1px,transparent_1px)] [background-size:24px_24px]" />
       <div className="relative container mx-auto px-4">
         <Reveal className="text-center mb-16">
-          <p className="text-sm uppercase tracking-[0.35em] text-accent mb-4 font-medium">What We Offer</p>
+          <p className="text-sm uppercase tracking-[0.2em] text-zinc-500 mb-4 font-medium">What We Offer</p>
           <h2 className="text-4xl md:text-6xl font-serif mb-4 tracking-tight">{title}</h2>
-          <div className="w-16 h-[2px] bg-accent mx-auto" />
+          <div className="w-16 h-px bg-zinc-300 mx-auto" />
         </Reveal>
 
         {flatList ? (
@@ -132,13 +132,13 @@ export function ServiceMenu({ services, activeOffer, title = 'Our Services', fla
         <Reveal className="flex flex-col sm:flex-row items-center justify-center gap-6 mt-16" delay={120}>
           <Link
             href="/services"
-            className="text-sm uppercase tracking-[0.2em] font-medium text-zinc-600 hover:text-accent transition-colors border-b border-zinc-300 hover:border-accent pb-1"
+            className="text-sm uppercase tracking-[0.15em] font-medium text-zinc-600 hover:text-zinc-900 transition-colors border-b border-zinc-300 hover:border-zinc-900 pb-1"
           >
             View Full Menu
           </Link>
           <Link
             href="/book"
-            className="group inline-flex items-center gap-2 bg-accent text-black px-8 md:px-10 py-3.5 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.18em] md:tracking-[0.2em] font-bold hover:bg-accent-light transition-all duration-500 ease-apple hover:shadow-[0_20px_50px_-15px_rgba(201,169,110,0.55)] hover:-translate-y-0.5"
+            className="group inline-flex items-center gap-2 bg-zinc-900 text-white px-8 md:px-10 py-3.5 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.12em] md:tracking-[0.15em] font-bold hover:bg-black transition-all duration-500 ease-apple hover:shadow-[0_20px_50px_-15px_rgba(0,0,0,0.35)] hover:-translate-y-0.5"
           >
             Book Appointment
             <svg className="w-4 h-4 transition-transform duration-500 ease-apple group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

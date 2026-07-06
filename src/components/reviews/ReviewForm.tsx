@@ -18,9 +18,9 @@ export function ReviewForm({ appointmentId }: ReviewFormProps) {
     setTimeout(() => router.push('/appointments'), 1500);
     return (
       <div className="text-center py-16">
-        <div className="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center mx-auto mb-6">
+        <div className="w-16 h-16 rounded-full bg-zinc-900/20 flex items-center justify-center mx-auto mb-6">
           <svg
-            className="w-8 h-8 text-accent"
+            className="w-8 h-8 text-zinc-900"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -63,7 +63,7 @@ export function ReviewForm({ appointmentId }: ReviewFormProps) {
               >
                 <svg
                   className={`w-10 h-10 transition-colors ${
-                    active ? 'text-accent fill-accent' : 'text-zinc-300 fill-zinc-200'
+                    active ? 'text-zinc-900 fill-zinc-900' : 'text-zinc-300 fill-zinc-200'
                   }`}
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -94,7 +94,7 @@ export function ReviewForm({ appointmentId }: ReviewFormProps) {
           rows={5}
           maxLength={1000}
           placeholder="What did you love? Anything we could do better?"
-          className="w-full border border-zinc-300 rounded-lg px-4 py-3 text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent font-light"
+          className="w-full border border-zinc-300 rounded-lg px-4 py-3 text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent font-light"
         />
       </div>
 
@@ -107,7 +107,7 @@ export function ReviewForm({ appointmentId }: ReviewFormProps) {
       <button
         type="submit"
         disabled={pending || rating === 0}
-        className="w-full bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full bg-zinc-900 text-white px-10 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {pending ? 'Submitting…' : 'Submit Review'}
       </button>

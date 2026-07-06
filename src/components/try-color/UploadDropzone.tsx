@@ -73,7 +73,7 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
     <div
       className={`w-full h-full min-h-[280px] border border-dashed rounded-lg flex flex-col items-center justify-center gap-5 transition-all duration-300 cursor-pointer ${
         dragging
-          ? 'border-accent bg-accent/5'
+          ? 'border-white/30 bg-white/5'
           : 'border-zinc-700 hover:border-zinc-500 bg-zinc-900/50'
       }`}
       onClick={() => inputRef.current?.click()}
@@ -86,7 +86,7 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
     >
       <div className="w-16 h-16 rounded-full border border-zinc-700 flex items-center justify-center">
         <svg
-          className="w-7 h-7 text-accent"
+          className="w-7 h-7 text-zinc-300"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -102,7 +102,7 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
       <div className="text-center">
         <p className="text-white font-serif text-lg mb-1">Upload Your Photo</p>
         <p className="text-zinc-500 text-sm">
-          Drop here or <span className="text-accent hover:underline">browse</span>
+          Drop here or <span className="text-zinc-300 hover:underline">browse</span>
         </p>
       </div>
       <p className="text-zinc-600 text-xs tracking-wider uppercase">

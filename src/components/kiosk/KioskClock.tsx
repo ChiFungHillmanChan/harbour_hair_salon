@@ -51,7 +51,7 @@ export default function KioskClock({ roster }: { roster: RosterEntry[] }) {
         />
         <div className="flex gap-3 mt-4">
           <button onClick={reset} className="flex-1 border border-white/40 py-3 rounded">Back</button>
-          <button onClick={submit} disabled={busy || pin.length < 4} className="flex-1 bg-accent text-black py-3 rounded font-bold disabled:opacity-50">
+          <button onClick={submit} disabled={busy || pin.length < 4} className="flex-1 bg-white text-zinc-900 py-3 rounded font-bold disabled:opacity-50">
             Confirm
           </button>
         </div>
@@ -62,7 +62,7 @@ export default function KioskClock({ roster }: { roster: RosterEntry[] }) {
 
   return (
     <div>
-      {message && <p className="text-center text-accent text-xl mb-6">{message}</p>}
+      {message && <p className="text-center text-zinc-300 text-xl mb-6">{message}</p>}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
         {roster.map((r) => (
           <button

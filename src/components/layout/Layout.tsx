@@ -14,7 +14,7 @@ export async function Footer() {
   return (
     <footer className="bg-zinc-900 text-white" id="contact">
       {/* Booking CTA strip */}
-      <div className="bg-accent text-black py-6">
+      <div className="bg-zinc-100 text-zinc-900 py-6">
         <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="font-serif text-xl md:text-2xl font-medium text-center sm:text-left">
             Ready for a fresh look?
@@ -31,7 +31,7 @@ export async function Footer() {
       {/* Newsletter strip */}
       <div className="border-b border-zinc-800 bg-zinc-950">
         <div className="container mx-auto px-4 py-14 max-w-xl text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-5" />
+          <div className="w-12 h-px bg-white/50 mx-auto mb-5" />
           <h3 className="text-2xl md:text-3xl font-serif text-white tracking-tight mb-3">
             Stay in the loop
           </h3>
@@ -50,7 +50,7 @@ export async function Footer() {
           {/* Brand */}
           <div className="md:col-span-1">
             <h3 className="text-2xl font-serif mb-4">
-              Harbour <span className="text-accent">Hair</span>
+              Harbour <span className="text-zinc-400">Hair</span>
             </h3>
             <p className="text-zinc-400 text-sm leading-relaxed">
               Expert hair styling in the heart of Leeds. Specialising in precision cuts, colours, perms and grooming with Hong Kong trained expertise.
@@ -59,7 +59,7 @@ export async function Footer() {
 
           {/* Quick links */}
           <div>
-            <h4 className="text-sm uppercase tracking-widest font-bold mb-6 text-accent">Quick Links</h4>
+            <h4 className="text-sm uppercase tracking-widest font-bold mb-6 text-zinc-300">Quick Links</h4>
             <ul className="space-y-3 text-sm text-zinc-400">
               <li><Link href="/services" className="hover:text-white transition-colors">Services & Pricing</Link></li>
               {hasOffers && (
@@ -75,7 +75,7 @@ export async function Footer() {
 
           {/* Visit Us */}
           <div>
-            <h4 className="text-sm uppercase tracking-widest font-bold mb-6 text-accent">Visit Us</h4>
+            <h4 className="text-sm uppercase tracking-widest font-bold mb-6 text-zinc-300">Visit Us</h4>
             <address className="text-zinc-400 text-sm not-italic space-y-1">
               <p>Upper Floor, Unit 15</p>
               <p>Central Arcade, Central Rd</p>
@@ -83,7 +83,7 @@ export async function Footer() {
               <p className="text-xs text-zinc-500 mt-3">Located inside Central Arcade</p>
             </address>
             <div className="mt-4">
-              <a href="tel:+447831830898" className="text-sm text-zinc-300 hover:text-accent transition-colors">
+              <a href="tel:+447831830898" className="text-sm text-zinc-300 hover:text-white transition-colors">
                 07831 830898
               </a>
             </div>
@@ -91,7 +91,7 @@ export async function Footer() {
 
           {/* Hours */}
           <div>
-            <h4 className="text-sm uppercase tracking-widest font-bold mb-6 text-accent">Hours</h4>
+            <h4 className="text-sm uppercase tracking-widest font-bold mb-6 text-zinc-300">Hours</h4>
             <ul className="text-zinc-400 text-sm space-y-2">
               <li className="flex justify-between">
                 <span>Mon – Fri</span>
@@ -105,7 +105,7 @@ export async function Footer() {
 
             {/* Social */}
             <div className="mt-6">
-              <SocialLinks settings={settings} />
+              <SocialLinks settings={settings} tone="dark" />
             </div>
           </div>
         </div>

@@ -70,7 +70,7 @@ function Section({ section }: { section: BlogSection }) {
       <ul className="space-y-3 mb-8 pl-1">
         {section.items.map((item, i) => (
           <li key={i} className="flex gap-4 items-start text-zinc-700 font-light leading-relaxed">
-            <span className="shrink-0 mt-2.5 w-1.5 h-1.5 rounded-full bg-accent" />
+            <span className="shrink-0 mt-2.5 w-1.5 h-1.5 rounded-full bg-zinc-900" />
             <span>{item}</span>
           </li>
         ))}
@@ -79,7 +79,7 @@ function Section({ section }: { section: BlogSection }) {
   }
   if (section.type === 'quote') {
     return (
-      <blockquote className="border-l-2 border-accent pl-6 my-8 italic text-zinc-800 text-xl font-serif">
+      <blockquote className="border-l-2 border-zinc-900 pl-6 my-8 italic text-zinc-800 text-xl font-serif">
         <p>&ldquo;{section.text}&rdquo;</p>
         {section.attribution && (
           <footer className="mt-3 text-sm text-zinc-500 not-italic font-sans">
@@ -179,12 +179,12 @@ export default async function BlogPostPage({
         <div className="relative z-10 container mx-auto px-4 max-w-3xl text-center">
           <nav aria-label="Breadcrumb" className="mb-6 text-xs text-zinc-400 uppercase tracking-[0.2em]">
             <ol className="flex items-center justify-center gap-2">
-              <li><Link href="/" className="hover:text-accent">Home</Link></li>
+              <li><Link href="/" className="hover:text-zinc-300">Home</Link></li>
               <li aria-hidden="true">·</li>
-              <li><Link href="/blog" className="hover:text-accent">Journal</Link></li>
+              <li><Link href="/blog" className="hover:text-zinc-300">Journal</Link></li>
             </ol>
           </nav>
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-serif mb-6 tracking-tight leading-[1.1]">
             {post.title}
           </h1>
@@ -200,7 +200,7 @@ export default async function BlogPostPage({
 
       {/* Lede */}
       <section className="container mx-auto px-4 py-16 max-w-3xl">
-        <p className="text-xl md:text-2xl font-serif text-zinc-800 italic leading-relaxed mb-12 border-l-2 border-accent pl-6">
+        <p className="text-xl md:text-2xl font-serif text-zinc-800 italic leading-relaxed mb-12 border-l-2 border-zinc-900 pl-6">
           {post.lede}
         </p>
 
@@ -239,7 +239,7 @@ export default async function BlogPostPage({
       {/* CTA */}
       <section className="bg-zinc-900 text-white py-20">
         <div className="container mx-auto px-4 max-w-3xl text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
           <h2 className="text-3xl md:text-4xl font-serif mb-4 tracking-tight">
             Ready for your appointment?
           </h2>
@@ -248,7 +248,7 @@ export default async function BlogPostPage({
           </p>
           <Link
             href="/book"
-            className="inline-block bg-accent text-black px-12 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
+            className="inline-block bg-white text-zinc-900 px-12 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all"
           >
             Book Appointment
           </Link>
@@ -259,7 +259,7 @@ export default async function BlogPostPage({
       {related.length > 0 && (
         <section className="container mx-auto px-4 py-20 max-w-5xl">
           <div className="text-center mb-12">
-            <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+            <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
             <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
               Keep reading
             </h2>
@@ -271,12 +271,12 @@ export default async function BlogPostPage({
                 href={`/blog/${p.slug}`}
                 className="group block bg-white border border-zinc-200 rounded-2xl p-8 hover:border-zinc-900 hover:shadow-lg transition-all"
               >
-                <p className="text-xs uppercase tracking-[0.2em] text-accent mb-2">Journal</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 mb-2">Journal</p>
                 <h3 className="text-2xl font-serif text-zinc-900 mb-3 group-hover:text-zinc-700 transition-colors">
                   {p.title}
                 </h3>
                 <p className="text-zinc-600 font-light leading-relaxed">{p.excerpt}</p>
-                <span className="inline-flex items-center gap-2 mt-4 text-sm font-bold uppercase tracking-[0.15em] text-zinc-900 group-hover:text-accent transition-colors">
+                <span className="inline-flex items-center gap-2 mt-4 text-sm font-bold uppercase tracking-[0.15em] text-zinc-900 group-hover:text-zinc-600 transition-colors">
                   Read article
                   <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />

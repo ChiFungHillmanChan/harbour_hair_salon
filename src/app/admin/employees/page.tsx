@@ -11,7 +11,7 @@ export default async function AdminEmployeesPage() {
 
   return (
     <div className="p-6 space-y-8">
-      <h1 className="font-serif text-3xl text-brand">Employees</h1>
+      <h1 className="font-serif text-3xl text-zinc-900">Employees</h1>
       <KioskModeButton />
 
       <section>

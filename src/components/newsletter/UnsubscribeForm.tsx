@@ -23,7 +23,7 @@ export function UnsubscribeForm() {
           type="email"
           required
           autoComplete="email"
-          className="w-full rounded-md border border-zinc-300 px-4 py-3 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full rounded-md border border-zinc-300 px-4 py-3 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900"
           placeholder="you@example.com"
         />
       </div>

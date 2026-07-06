@@ -60,7 +60,7 @@ export default function EmployeeForm({
       {!employee && (
         <input name="pin" inputMode="numeric" pattern="\d{4,6}" placeholder="Clock-in PIN (4–6 digits)" required className="w-full border p-2 rounded" />
       )}
-      <button type="submit" disabled={pending} className="bg-accent text-black px-6 py-3 uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-colors disabled:opacity-50">
+      <button type="submit" disabled={pending} className="bg-zinc-900 text-white px-6 py-3 uppercase tracking-[0.15em] font-bold hover:bg-black transition-colors disabled:opacity-50">
         {employee ? 'Save changes' : 'Add employee'}
       </button>
     </form>

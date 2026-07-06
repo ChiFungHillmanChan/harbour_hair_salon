@@ -2,11 +2,22 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
-  --brand: #174F7F;
-  --brand-dark: #123c61;
-  --accent: #C9A96E;
-  --accent-light: #D4C5A0;
+  --foreground: #18181b;
+
+  /* Monochrome Salon palette — ink, gray, white. No hue, no gold.
+     The old --brand (blue) and --accent (gold) tokens are kept as aliases
+     that now resolve to ink / light-gray, so any usage not swept to an
+     explicit zinc-* class still renders monochrome rather than breaking. */
+  --ink: #18181b;          /* primary text, primary buttons, active state */
+  --ink-hover: #000000;    /* hover shifts darker, never to a hue */
+  --line: #e4e4e7;         /* hairlines, card borders, dividers */
+  --surface-gray: #f4f4f5; /* alternating sections, light-gray blocks */
+
+  --brand: #18181b;        /* legacy alias → ink */
+  --brand-dark: #000000;   /* legacy alias → near-black */
+  --accent: #18181b;       /* legacy alias → ink */
+  --accent-light: #f4f4f5; /* legacy alias → light gray */
+
   --font-sans-stack: "Avenir Next", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-serif-stack: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
 }
@@ -14,6 +25,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-ink: var(--ink);
+  --color-ink-hover: var(--ink-hover);
+  --color-line: var(--line);
+  --color-surface-gray: var(--surface-gray);
   --color-brand: var(--brand);
   --color-brand-dark: var(--brand-dark);
   --color-accent: var(--accent);
@@ -172,7 +187,7 @@ body {
   }
 }
 
-/* Gold accent underline */
+/* Ink accent underline */
 .accent-underline {
   position: relative;
   display: inline-block;
@@ -184,7 +199,7 @@ body {
   left: 0;
   width: 100%;
   height: 2px;
-  background: var(--accent);
+  background: var(--ink);
 }
 
 /* Smooth scrollbar */

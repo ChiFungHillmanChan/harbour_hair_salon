@@ -25,13 +25,17 @@ function formatDate(date: Date) {
   });
 }
 
-function Stars({ value }: { value: number }) {
+function Stars({ value, tone = 'light' }: { value: number; tone?: 'light' | 'dark' }) {
+  // On a dark surface (the hero rating pill) filled stars need to be light;
+  // on light review cards they're ink.
+  const filled = tone === 'dark' ? 'text-white fill-white' : 'text-zinc-900 fill-zinc-900';
+  const empty = tone === 'dark' ? 'text-white/30 fill-white/10' : 'text-zinc-300 fill-zinc-200';
   return (
     <div className="flex items-center gap-0.5" aria-label={`Rated ${value} out of 5`}>
       {[1, 2, 3, 4, 5].map((n) => (
         <svg
           key={n}
-          className={`w-4 h-4 ${n <= value ? 'text-accent fill-accent' : 'text-zinc-300 fill-zinc-200'}`}
+          className={`w-4 h-4 ${n <= value ? filled : empty}`}
           viewBox="0 0 24 24"
           stroke="currentColor"
           strokeWidth={1.5}
@@ -109,16 +113,16 @@ export default async function ReviewsPage() {
 
       <section className="relative py-24 bg-zinc-900 text-white">
         <div className="container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-accent mx-auto mb-6" />
+          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
-            Client <span className="italic text-zinc-400">Reviews</span>
+            Client <span className="text-zinc-400">Reviews</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
             Honest feedback from the people who sit in our chairs.
           </p>
           {agg.count > 0 && (
             <div className="mt-10 inline-flex items-center gap-4 bg-white/5 border border-white/10 rounded-full px-6 py-3">
-              <Stars value={Math.round(agg.average)} />
+              <Stars value={Math.round(agg.average)} tone="dark" />
               <span className="text-white font-medium">
                 {agg.average.toFixed(1)} / 5
               </span>
@@ -142,7 +146,7 @@ export default async function ReviewsPage() {
             </p>
             <Link
               href="/appointments"
-              className="inline-block bg-accent text-black px-10 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
+              className="inline-block bg-zinc-900 text-white px-10 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-black transition-all"
             >
               Review a past appointment
             </Link>
@@ -181,7 +185,7 @@ export default async function ReviewsPage() {
         <div className="mt-20 text-center">
           <Link
             href="/book"
-            className="inline-block bg-accent text-black px-12 py-4 text-sm uppercase tracking-[0.2em] font-bold hover:bg-accent-light transition-all"
+            className="inline-block bg-zinc-900 text-white px-12 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-black transition-all"
           >
             Book Your Visit
           </Link>

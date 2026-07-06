@@ -69,10 +69,10 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="font-serif text-3xl text-brand">Timesheets — {year}-{String(month).padStart(2, '0')}</h1>
+      <h1 className="font-serif text-3xl text-zinc-900">Timesheets — {year}-{String(month).padStart(2, '0')}</h1>
 
       <form action={async () => { 'use server'; await approveMonth(year, month); }}>
-        <button className="bg-brand text-white px-4 py-2 rounded">Approve all (closed) for this month</button>
+        <button className="bg-zinc-900 text-white px-4 py-2 rounded">Approve all (closed) for this month</button>
       </form>
 
       <table className="w-full text-sm border-collapse">
@@ -91,17 +91,17 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
               <tr key={e.id} className="border-b">
                 <td className="p-2">{e.employee.name}</td>
                 <td className="p-2">{fmt(e.clockIn)}</td>
-                <td className="p-2">{e.clockOut ? fmt(e.clockOut) : <span className="text-amber-600">OPEN</span>}</td>
+                <td className="p-2">{e.clockOut ? fmt(e.clockOut) : <span className="text-zinc-900">OPEN</span>}</td>
                 <td className="p-2">{hours}</td>
                 <td className="p-2">{e.status}</td>
                 <td className="p-2 space-x-1">
                   {ev?.late && (
-                    <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                    <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
                       Late {ev.lateByMin}m
                     </span>
                   )}
                   {ev?.earlyLeave && (
-                    <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                    <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
                       Left early {ev.earlyByMin}m
                     </span>
                   )}
@@ -109,7 +109,7 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
                 <td className="p-2">
                   {e.clockOut && e.status !== 'APPROVED' && (
                     <form action={async () => { 'use server'; await approveTimeEntry(e.id); }}>
-                      <button className="text-brand underline">Approve</button>
+                      <button className="text-zinc-900 underline">Approve</button>
                     </form>
                   )}
                 </td>
