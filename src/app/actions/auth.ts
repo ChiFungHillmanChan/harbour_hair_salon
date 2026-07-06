@@ -126,7 +126,7 @@ export async function login(prevState: unknown, formData: FormData) {
     return { error: 'Incorrect email or password. Please try again.' };
   }
 
-  await createSession(user.id, user.role);
+  await createSession(user.id, user.role, user.sessionVersion);
 
   const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
   if (user.role === 'ADMIN') {
@@ -171,7 +171,7 @@ export async function register(prevState: unknown, formData: FormData) {
           phone,
         },
       });
-      await createSession(existingUser.id, existingUser.role);
+      await createSession(existingUser.id, existingUser.role, existingUser.sessionVersion);
       redirect(redirectTo);
     }
   }
@@ -188,7 +188,7 @@ export async function register(prevState: unknown, formData: FormData) {
     },
   });
 
-  await createSession(user.id, user.role);
+  await createSession(user.id, user.role, user.sessionVersion);
   redirect(redirectTo);
 }
 

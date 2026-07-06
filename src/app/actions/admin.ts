@@ -267,7 +267,7 @@ export async function resetUserPassword(userId: string, newPassword: string) {
   const hashedPassword = await hashPassword(newPassword);
   await prisma.user.update({
     where: { id: userId },
-    data: { password: hashedPassword },
+    data: { password: hashedPassword, sessionVersion: { increment: 1 } },
   });
 
   revalidatePath('/admin/users');
