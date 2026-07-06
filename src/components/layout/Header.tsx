@@ -2,14 +2,13 @@ import Link from 'next/link';
 import { getSession } from '@/app/lib/session';
 import { logout } from '@/app/actions/auth';
 import { MobileNav } from './MobileNav';
-import prisma from '@/app/lib/prisma';
+import { hasActiveOffers } from '@/app/services/offers-service';
 
 export async function Header() {
-  const [session, activeOffersCount] = await Promise.all([
+  const [session, hasOffers] = await Promise.all([
     getSession(),
-    prisma.offer.count({ where: { isActive: true } }),
+    hasActiveOffers(),
   ]);
-  const hasOffers = activeOffersCount > 0;
 
   return (
     <header className="bg-black text-white sticky top-0 z-50">

@@ -71,8 +71,13 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Expose the current pathname to server components (root layout reads this
+  // via headers() to decide whether to render the marketing chrome).
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-pathname', path);
+
   // Sliding session: refresh token if less than 7 days remaining
-  const response = NextResponse.next();
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
   if (session?.userId && key) {
     const timeLeft = new Date(session.expiresAt).getTime() - Date.now();
     if (timeLeft < 7 * 24 * 60 * 60 * 1000 && timeLeft > 0) {

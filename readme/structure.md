@@ -40,6 +40,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ## Services
 - `booking-service.ts` — slot availability, booking creation, patch-test eligibility query
+- `offers-service.ts` — `hasActiveOffers()`: React-`cache()`d active-offer flag shared by Header + Footer (one count query per request)
 - `email-service.ts` — Resend + React Email templates
 - `patch-test-eligibility.ts` — pure colour-gate eligibility logic
 - `consultation-routing.ts` — `resolveConsultationTarget(service, all)`: decides whether a service books directly or routes to a consultation target (colour → £10 Consultation & Patch Test, others → free Consultation, direct-bookable → null)
