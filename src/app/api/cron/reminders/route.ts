@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
 
   const pastAppointments = await prisma.appointment.findMany({
     where: {
-      status: 'CONFIRMED',
+      status: { in: ['CONFIRMED', 'COMPLETED'] },
       reviewRequestSent: false,
       date: {
         gte: fourteenDaysAgo,
