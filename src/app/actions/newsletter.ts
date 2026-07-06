@@ -17,18 +17,24 @@ function getClientIp(headersList: Headers): string {
   return forwarded?.split(',')[0]?.trim() || 'unknown';
 }
 
-const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
-const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+let newsletterLimiter: Ratelimit | null | undefined;
 
-const newsletterLimiter = upstashUrl && upstashToken
-  ? new Ratelimit({
-      redis: new Redis({ url: upstashUrl, token: upstashToken }),
-      limiter: Ratelimit.slidingWindow(3, '1 h'),
-      prefix: 'rl:newsletter',
-    })
-  : null;
+function getNewsletterLimiter(): Ratelimit | null {
+  if (newsletterLimiter !== undefined) return newsletterLimiter;
+  const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  newsletterLimiter = upstashUrl && upstashToken
+    ? new Ratelimit({
+        redis: new Redis({ url: upstashUrl, token: upstashToken }),
+        limiter: Ratelimit.slidingWindow(3, '1 h'),
+        prefix: 'rl:newsletter',
+      })
+    : null;
+  return newsletterLimiter;
+}
 
 async function checkRate(ip: string): Promise<boolean> {
+  const newsletterLimiter = getNewsletterLimiter();
   if (!newsletterLimiter) return true;
   const { success } = await newsletterLimiter.limit(ip);
   return success;
@@ -75,11 +81,12 @@ export async function subscribeToNewsletter(
   if (audienceId) {
     try {
       const resend = new Resend(apiKey);
-      await resend.contacts.create({
+      const { error } = await resend.contacts.create({
         email,
         audienceId,
         unsubscribed: false,
       });
+      if (error) throw new Error(error.message ?? String(error));
     } catch (error) {
       // Resend returns an error for duplicates. Treat as idempotent success.
       const message = error instanceof Error ? error.message : String(error);
@@ -94,7 +101,12 @@ export async function subscribeToNewsletter(
     );
   }
 
-  await sendNewsletterWelcome(email);
+  try {
+    await sendNewsletterWelcome(email);
+  } catch (error) {
+    console.error('Newsletter welcome email failed:', error);
+    return { status: 'error', message: 'Something went wrong. Please try again later.' };
+  }
 
   return { status: 'success' };
 }

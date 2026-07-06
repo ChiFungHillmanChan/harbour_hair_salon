@@ -20,26 +20,29 @@ function getClientIp(headersList: Headers): string {
   return forwarded?.split(',')[0]?.trim() || 'unknown';
 }
 
-// Persistent rate limiter — survives serverless cold starts
-// Falls back to in-memory if Upstash is not configured
-const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
-const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+// Persistent rate limiter — survives serverless cold starts.
+// Lazily initialized so env vars are read at request time, per project convention.
+let loginLimiter: Ratelimit | null | undefined;
+let registerLimiter: Ratelimit | null | undefined;
 
-const loginLimiter = upstashUrl && upstashToken
-  ? new Ratelimit({
-      redis: new Redis({ url: upstashUrl, token: upstashToken }),
-      limiter: Ratelimit.slidingWindow(5, '15 m'),
-      prefix: 'rl:login',
-    })
-  : null;
+function getLimiter(kind: 'login' | 'register'): Ratelimit | null {
+  const cached = kind === 'login' ? loginLimiter : registerLimiter;
+  if (cached !== undefined) return cached;
 
-const registerLimiter = upstashUrl && upstashToken
-  ? new Ratelimit({
-      redis: new Redis({ url: upstashUrl, token: upstashToken }),
-      limiter: Ratelimit.slidingWindow(5, '15 m'),
-      prefix: 'rl:register',
-    })
-  : null;
+  const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const limiter = upstashUrl && upstashToken
+    ? new Ratelimit({
+        redis: new Redis({ url: upstashUrl, token: upstashToken }),
+        limiter: Ratelimit.slidingWindow(5, '15 m'),
+        prefix: `rl:${kind}`,
+      })
+    : null;
+
+  if (kind === 'login') loginLimiter = limiter;
+  else registerLimiter = limiter;
+  return limiter;
+}
 
 // In-memory fallback (separate maps for login vs register)
 const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
@@ -59,6 +62,7 @@ function checkMemoryRateLimit(map: Map<string, { count: number; firstAttempt: nu
 }
 
 async function checkLoginRate(ip: string): Promise<boolean> {
+  const loginLimiter = getLimiter('login');
   if (loginLimiter) {
     try {
       const { success } = await loginLimiter.limit(ip);
@@ -73,6 +77,7 @@ async function checkLoginRate(ip: string): Promise<boolean> {
 }
 
 async function checkRegisterRate(ip: string): Promise<boolean> {
+  const registerLimiter = getLimiter('register');
   if (registerLimiter) {
     try {
       const { success } = await registerLimiter.limit(ip);

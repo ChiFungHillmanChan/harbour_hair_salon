@@ -9,16 +9,21 @@ import { revalidatePath } from 'next/cache';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
-const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
-const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+let clockLimiter: Ratelimit | null | undefined;
 
-const clockLimiter = upstashUrl && upstashToken
-  ? new Ratelimit({
-      redis: new Redis({ url: upstashUrl, token: upstashToken }),
-      limiter: Ratelimit.slidingWindow(8, '5 m'),
-      prefix: 'rl:clock',
-    })
-  : null;
+function getClockLimiter(): Ratelimit | null {
+  if (clockLimiter !== undefined) return clockLimiter;
+  const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  clockLimiter = upstashUrl && upstashToken
+    ? new Ratelimit({
+        redis: new Redis({ url: upstashUrl, token: upstashToken }),
+        limiter: Ratelimit.slidingWindow(8, '5 m'),
+        prefix: 'rl:clock',
+      })
+    : null;
+  return clockLimiter;
+}
 
 const memAttempts = new Map<string, { count: number; firstAttempt: number }>();
 function memOk(keyId: string): boolean {
@@ -33,6 +38,7 @@ function memOk(keyId: string): boolean {
 }
 
 async function clockRateOk(keyId: string): Promise<boolean> {
+  const clockLimiter = getClockLimiter();
   if (clockLimiter) {
     try {
       return (await clockLimiter.limit(keyId)).success;

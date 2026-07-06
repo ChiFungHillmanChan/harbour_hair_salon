@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
-    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma db push --schema prisma/vercel/schema.prisma; else echo \"Skipping db push (VERCEL_ENV=$VERCEL_ENV) — only production may mutate the schema\"; fi && next build --webpack",
+    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma migrate deploy --schema prisma/vercel/schema.prisma; else echo \"Skipping migrations (VERCEL_ENV=$VERCEL_ENV) — only production may mutate the schema\"; fi && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "node --import tsx --test $(find src -name '*.test.ts')",
@@ -23,6 +23,7 @@
     "db:vercel:generate": "prisma generate --schema prisma/vercel/schema.prisma",
     "db:vercel:migrate": "prisma migrate dev --schema prisma/vercel/schema.prisma",
     "db:vercel:deploy": "prisma migrate deploy --schema prisma/vercel/schema.prisma",
+    "db:vercel:baseline": "prisma migrate resolve --applied 20260703173000_init --schema prisma/vercel/schema.prisma",
     "db:vercel:push": "prisma db push --schema prisma/vercel/schema.prisma",
     "db:vercel:studio": "prisma studio --schema prisma/vercel/schema.prisma",
     "db:backfill:patch-test": "tsx prisma/backfill-patch-test-flags.ts",

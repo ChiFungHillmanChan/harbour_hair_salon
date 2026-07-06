@@ -69,7 +69,7 @@ export function NewsletterForm({
               )}
               <p className="mt-3 text-[11px] text-zinc-500">
                 By subscribing you agree to receive occasional marketing emails from Harbour Hair Salon.
-                Unsubscribe any time.
+                Unsubscribe any time. See our <a href="/privacy" className="underline hover:text-zinc-300">privacy policy</a>.
               </p>
             </form>
           )}
@@ -114,6 +114,9 @@ export function NewsletterForm({
           {state.message}
         </p>
       )}
+      <p className="text-[11px] text-zinc-500 sm:basis-full">
+        Marketing emails only. <a href="/privacy" className="underline hover:text-zinc-300">Privacy policy</a>.
+      </p>
     </form>
   );
 }
