@@ -86,13 +86,13 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
                 setSelectedDate(day);
               }}
               className={`min-h-[100px] p-2 border-b border-r border-zinc-100 cursor-pointer transition-colors
-                ${!isCurrentMonth ? 'bg-zinc-50/50 text-zinc-500' : 'bg-white text-zinc-900'}
-                ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-500' : 'hover:bg-zinc-50'}
+                ${!isCurrentMonth ? 'bg-zinc-100 text-zinc-400' : 'bg-white text-zinc-900'}
+                ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-500' : !isCurrentMonth ? 'hover:bg-zinc-200/70' : 'hover:bg-zinc-50'}
               `}
             >
               <div className="flex justify-between items-start mb-1">
                 <span className={`text-sm font-medium w-6 h-6 flex items-center justify-center rounded-full
-                  ${isTodayDate ? 'bg-red-500 text-white' : 'text-zinc-900'}
+                  ${isTodayDate ? 'bg-red-500 text-white' : isCurrentMonth ? 'text-zinc-900' : 'text-zinc-400'}
                 `}>
                   {format(day, 'd')}
                 </span>

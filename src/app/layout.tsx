@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -62,20 +63,28 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Admin and kiosk render their own full-screen shells, so they don't need the
+  // marketing header/footer/book bar — or the extra DB queries those fire.
+  // middleware.ts sets x-pathname; it's only present on matched routes, so an
+  // absent header safely falls through to rendering the full marketing chrome.
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const bareShell =
+    pathname.startsWith("/admin") || pathname.startsWith("/kiosk");
+
   return (
     <html lang="en-GB" className="scroll-smooth">
       <body className="antialiased bg-zinc-50 text-zinc-900 font-sans">
-        <Header />
+        {!bareShell && <Header />}
         <main className="min-h-screen">
           {children}
         </main>
-        <Footer />
-        <MobileBookBar />
+        {!bareShell && <Footer />}
+        {!bareShell && <MobileBookBar />}
         <Analytics />
         <SpeedInsights />
       </body>

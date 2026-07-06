@@ -70,6 +70,13 @@ export function NewsletterWelcome() {
               </Link>
               .
             </Text>
+            <Text style={{ fontSize: '12px', color: '#71717a', margin: '16px 0 0', lineHeight: '1.5' }}>
+              You can unsubscribe from marketing emails at any time:{' '}
+              <Link href={`${BASE_URL}/unsubscribe`} style={{ color: BRAND }}>
+                unsubscribe
+              </Link>
+              .
+            </Text>
           </Section>
 
           <Section style={{ backgroundColor: '#f4f4f5', padding: '20px 40px', borderTop: '1px solid #e4e4e7' }}>

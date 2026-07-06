@@ -1,8 +1,26 @@
 import prisma from '@/app/lib/prisma';
 import { ScheduleCalendar } from '@/components/admin/ScheduleCalendar';
 import { startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
+import { Suspense } from 'react';
 
-export default async function AdminDashboard() {
+export default function AdminDashboard() {
+  // The static header renders (and paints) immediately; the appointment data
+  // and calendar stream in behind Suspense, so LCP no longer waits on Neon.
+  return (
+    <div className="p-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-serif font-bold text-zinc-900">Schedule</h1>
+        <p className="text-zinc-700 mt-2">Manage appointments and availability.</p>
+      </div>
+
+      <Suspense fallback={<ScheduleSkeleton />}>
+        <ScheduleContent />
+      </Suspense>
+    </div>
+  );
+}
+
+async function ScheduleContent() {
   const now = new Date();
 
   // Only fetch 3 months of data (previous month, current, next)
@@ -43,12 +61,7 @@ export default async function AdminDashboard() {
   const todayCancelled = todayStats.find(s => s.status === 'CANCELLED')?._count ?? 0;
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">Schedule</h1>
-        <p className="text-zinc-700 mt-2">Manage appointments and availability.</p>
-      </div>
-
+    <>
       {/* Quick stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
@@ -66,6 +79,22 @@ export default async function AdminDashboard() {
       </div>
 
       <ScheduleCalendar appointments={appointments} />
+    </>
+  );
+}
+
+function ScheduleSkeleton() {
+  return (
+    <div className="animate-pulse" aria-busy="true" aria-label="Loading schedule">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="bg-white p-5 rounded-lg shadow border border-zinc-200">
+            <div className="h-4 w-24 rounded bg-zinc-200" />
+            <div className="mt-3 h-8 w-12 rounded bg-zinc-200" />
+          </div>
+        ))}
+      </div>
+      <div className="h-96 rounded-lg border border-zinc-200 bg-white shadow" />
     </div>
   );
 }

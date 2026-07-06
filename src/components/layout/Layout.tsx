@@ -1,14 +1,15 @@
 import React from 'react';
 import Link from 'next/link';
-import prisma from '@/app/lib/prisma';
 import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
 import SocialLinks from '@/components/layout/SocialLinks';
 import { getSiteSettings } from '@/app/services/site-settings-service';
+import { hasActiveOffers } from '@/app/services/offers-service';
 
 export async function Footer() {
-  const activeOffersCount = await prisma.offer.count({ where: { isActive: true } });
-  const hasOffers = activeOffersCount > 0;
-  const settings = await getSiteSettings();
+  const [hasOffers, settings] = await Promise.all([
+    hasActiveOffers(),
+    getSiteSettings(),
+  ]);
 
   return (
     <footer className="bg-zinc-900 text-white" id="contact">
@@ -114,7 +115,11 @@ export async function Footer() {
       <div className="border-t border-zinc-800 py-6 text-center text-zinc-500 text-xs">
         <div className="container mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
           <p>&copy; {new Date().getFullYear()} Harbour Hair Salon. All rights reserved.</p>
-          <p>Payment: Cash & Card &middot; Languages: English, Chinese (Cantonese)</p>
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+            <span>Payment: Cash & Card &middot; Languages: English, Chinese (Cantonese)</span>
+            <Link href="/privacy" className="hover:text-zinc-300 transition-colors">Privacy</Link>
+            <Link href="/unsubscribe" className="hover:text-zinc-300 transition-colors">Unsubscribe</Link>
+          </div>
         </div>
       </div>
     </footer>
