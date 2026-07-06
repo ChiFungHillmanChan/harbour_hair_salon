@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify, SignJWT } from 'jose';
+import type { SessionPayload as FullSessionPayload } from '@/app/lib/jwt';
 
 const secretKey = process.env.SESSION_SECRET;
 const key = secretKey ? new TextEncoder().encode(secretKey) : null;
 
-type SessionPayload = { userId: string; role: string; expiresAt: string };
+// Mirrors src/app/lib/jwt.ts SessionPayload, but with expiresAt as the string
+// it actually is once round-tripped through JSON in the JWT payload.
+type SessionPayload = Omit<FullSessionPayload, 'expiresAt'> & { expiresAt: string };
 
 async function getSessionFromRequest(request: NextRequest) {
   if (!key) return null;
@@ -82,7 +85,12 @@ export async function middleware(request: NextRequest) {
     const timeLeft = new Date(session.expiresAt).getTime() - Date.now();
     if (timeLeft < 7 * 24 * 60 * 60 * 1000 && timeLeft > 0) {
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      const newToken = await new SignJWT({ userId: session.userId, role: session.role, expiresAt })
+      const newToken = await new SignJWT({
+        userId: session.userId,
+        role: session.role,
+        sessionVersion: session.sessionVersion ?? 0,
+        expiresAt,
+      })
         .setProtectedHeader({ alg: 'HS256' })
         .setIssuedAt()
         .setExpirationTime('30d')
