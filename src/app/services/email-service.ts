@@ -31,6 +31,8 @@ function getFromAddress(): string {
 
 type SendArgs = { to: string; subject: string; react: ReactElement };
 
+const SEND_TIMEOUT_MS = 10_000;
+
 /**
  * Low-level send. Throws on any failure — including Resend's soft `{ error }`
  * return (the SDK does NOT throw on API errors like 4xx/429/domain issues), so
@@ -39,7 +41,13 @@ type SendArgs = { to: string; subject: string; react: ReactElement };
  */
 async function send({ to, subject, react }: SendArgs): Promise<void> {
   const resend = getResendClient();
-  const { error } = await resend.emails.send({ from: getFromAddress(), to, subject, react });
+  const result = await Promise.race([
+    resend.emails.send({ from: getFromAddress(), to, subject, react }),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Resend timed out after ${SEND_TIMEOUT_MS}ms for "${subject}" to ${to}`)), SEND_TIMEOUT_MS),
+    ),
+  ]);
+  const { error } = result;
   if (error) {
     throw new Error(`Resend failed for "${subject}" to ${to}: ${error.message ?? String(error)}`);
   }
