@@ -119,3 +119,22 @@ export function isWithinAvailability(
   const end = eh * 60 + em;
   return timeMinutes >= start && timeMinutes < end;
 }
+
+/**
+ * True when a service of `durationMinutes` starting at `timeMinutes` (minutes
+ * since midnight) both starts within and FINISHES within [startTime, endTime].
+ * Start inclusive, finish must be <= endTime. Use for the booking business-hours
+ * guard so a long service cannot run past closing.
+ */
+export function fitsWithinAvailability(
+  timeMinutes: number,
+  durationMinutes: number,
+  startTime: string,
+  endTime: string,
+): boolean {
+  const [sh, sm] = startTime.split(':').map(Number);
+  const [eh, em] = endTime.split(':').map(Number);
+  const start = sh * 60 + sm;
+  const end = eh * 60 + em;
+  return timeMinutes >= start && timeMinutes + durationMinutes <= end;
+}

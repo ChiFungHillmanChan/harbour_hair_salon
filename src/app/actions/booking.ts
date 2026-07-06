@@ -1,7 +1,7 @@
 'use server';
 
 import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
-import { resolveSalonDateTime, isWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, type SalonDateTime } from '@/app/services/salon-time';
+import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, type SalonDateTime } from '@/app/services/salon-time';
 import { SlotUnavailableError, BookingError } from '@/app/services/booking-errors';
 import { hasConflict, type BookedInterval } from '@/app/services/scheduling';
 import { loadExternalBusy, toBookedInterval } from '@/app/services/external-busy';
@@ -65,6 +65,7 @@ const createBookingSchema = z.object({
 async function checkStylistHours(
   stylistId: string,
   salon: SalonDateTime,
+  durationMinutes: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const availability = await prisma.availability.findFirst({
     where: { stylistId, dayOfWeek: salon.dayOfWeek, isOff: false },
@@ -72,7 +73,7 @@ async function checkStylistHours(
   if (!availability) {
     return { ok: false, error: 'Stylist is not available on this day' };
   }
-  if (!isWithinAvailability(salon.timeMinutes, availability.startTime, availability.endTime)) {
+  if (!fitsWithinAvailability(salon.timeMinutes, durationMinutes, availability.startTime, availability.endTime)) {
     return { ok: false, error: 'Selected time is outside business hours' };
   }
   return { ok: true };
@@ -128,7 +129,7 @@ export async function fetchSlots(stylistId: string, date: Date, serviceDuration:
 
 // Stylists available on a given weekday/time, in display (name) order — the
 // candidate pool for resolving an "Anyone / first available" booking.
-async function eligibleStylistIds(salon: SalonDateTime): Promise<string[]> {
+async function eligibleStylistIds(salon: SalonDateTime, durationMinutes: number): Promise<string[]> {
   const stylists = await prisma.stylist.findMany({
     where: { availabilities: { some: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
     orderBy: { name: 'asc' },
@@ -136,7 +137,7 @@ async function eligibleStylistIds(salon: SalonDateTime): Promise<string[]> {
   });
   return stylists
     .filter((s) =>
-      s.availabilities.some((a) => isWithinAvailability(salon.timeMinutes, a.startTime, a.endTime)),
+      s.availabilities.some((a) => fitsWithinAvailability(salon.timeMinutes, durationMinutes, a.startTime, a.endTime)),
     )
     .map((s) => s.id);
 }
@@ -205,30 +206,35 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     return { success: false, error: 'Cannot book a time in the past' };
   }
 
+  // Load the flags we gate on. A gated service must never be booked directly —
+  // the client routes to a consultation, but a crafted request must be rejected.
+  // Fetched here (before the stylist-hours resolution below) so `duration` is
+  // available for the business-hours "must finish before closing" check.
+  const service = await prisma.service.findUnique({
+    where: { id: validData.serviceId },
+    select: { duration: true, requiresPatchTest: true, requiresConsultation: true, isConsultation: true, isPatchTest: true },
+  });
+  if (!service) {
+    return { success: false, error: 'Service not found' };
+  }
+  if (service?.requiresConsultation) {
+    return { success: false, error: 'This service is by consultation only. Please book a consultation to discuss it.' };
+  }
+
   // Resolve which stylist(s) can take this slot. For a named stylist we validate
   // their hours; for "Anyone" we gather every stylist available at this time.
   const isAnyStylist = validData.stylistId === ANY_STYLIST_ID;
   let candidateStylistIds: string[] = [];
   if (isAnyStylist) {
-    candidateStylistIds = await eligibleStylistIds(salon);
+    candidateStylistIds = await eligibleStylistIds(salon, service.duration);
     if (candidateStylistIds.length === 0) {
       return { success: false, error: 'No stylist is available at this time' };
     }
   } else {
-    const hoursCheck = await checkStylistHours(validData.stylistId, salon);
+    const hoursCheck = await checkStylistHours(validData.stylistId, salon, service.duration);
     if (!hoursCheck.ok) {
       return { success: false, error: hoursCheck.error };
     }
-  }
-
-  // Load the flags we gate on. A gated service must never be booked directly —
-  // the client routes to a consultation, but a crafted request must be rejected.
-  const service = await prisma.service.findUnique({
-    where: { id: validData.serviceId },
-    select: { requiresPatchTest: true, requiresConsultation: true, isConsultation: true, isPatchTest: true },
-  });
-  if (service?.requiresConsultation) {
-    return { success: false, error: 'This service is by consultation only. Please book a consultation to discuss it.' };
   }
 
   // If this booking IS a consultation target, record which service it's for.
@@ -415,7 +421,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
   }
 
   // Validate the new time falls within stylist availability for this day
-  const hoursCheck = await checkStylistHours(appointment.stylistId, salon);
+  const hoursCheck = await checkStylistHours(appointment.stylistId, salon, appointment.service.duration);
   if (!hoursCheck.ok) {
     return { success: false, error: hoursCheck.error };
   }

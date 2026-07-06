@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   resolveSalonDateTime,
   isWithinAvailability,
+  fitsWithinAvailability,
   isValidSalonTime,
   isValidSalonDate,
   salonDayWindow,
@@ -115,4 +116,17 @@ test('salonMinutesOfDay — BST instant 09:00 UTC is 10:00 salon (600 min)', () 
 test('salonMinutesOfDay — GMT instant 09:30 UTC is 09:30 salon (570 min)', () => {
   // 2026-01-15 09:30 UTC = 09:30 GMT (UTC+0)
   assert.equal(salonMinutesOfDay(new Date('2026-01-15T09:30:00Z')), 570);
+});
+
+test('fitsWithinAvailability — start in-hours but service overruns closing is rejected', () => {
+  // 09:00-18:00 window. 17:30 start + 240min = 21:30 → past close.
+  assert.equal(fitsWithinAvailability(17 * 60 + 30, 240, '09:00', '18:00'), false);
+});
+
+test('fitsWithinAvailability — service finishing exactly at close is allowed', () => {
+  assert.equal(fitsWithinAvailability(17 * 60, 60, '09:00', '18:00'), true); // 17:00 + 60 = 18:00
+});
+
+test('fitsWithinAvailability — start before opening is rejected', () => {
+  assert.equal(fitsWithinAvailability(8 * 60, 30, '09:00', '18:00'), false);
 });
