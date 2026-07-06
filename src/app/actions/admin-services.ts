@@ -5,12 +5,21 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
+import { getAllCategoryContent } from '@/app/services/category-content-service';
 
 async function requireAdmin() {
   const session = await verifySession();
   if (session.role !== 'ADMIN') {
     throw new Error('Unauthorized');
   }
+}
+
+// Category detail pages live at /services/[slug] where slug is the (admin-set)
+// ServiceCategoryContent.slug — NOT category.toLowerCase(). Revalidate every real
+// slug so create/update/delete/category-move all propagate immediately.
+async function revalidateCategoryPages() {
+  const cats = await getAllCategoryContent();
+  for (const c of cats) revalidatePath(`/services/${c.slug}`);
 }
 
 const serviceSchema = z.object({
@@ -48,6 +57,7 @@ export async function createService(
   revalidatePath('/admin/services');
   revalidatePath('/');
   revalidatePath('/sitemap.xml');
+  await revalidateCategoryPages();
 
   redirect(`/admin/services/${created.id}/edit?saved=1`);
 }
@@ -77,7 +87,7 @@ export async function updateService(
   await prisma.service.update({ where: { id }, data: { ...parsed.data, requiresPatchTest, isPatchTest, requiresConsultation, isConsultation } });
 
   revalidatePath('/services');
-  revalidatePath(`/services/${existing.category.toLowerCase()}`);
+  await revalidateCategoryPages();
   revalidatePath('/admin/services');
   revalidatePath('/');
   revalidatePath('/sitemap.xml');
@@ -105,4 +115,5 @@ export async function deleteService(formData: FormData): Promise<void> {
   revalidatePath('/admin/services');
   revalidatePath('/');
   revalidatePath('/sitemap.xml');
+  await revalidateCategoryPages();
 }
