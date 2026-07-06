@@ -21,16 +21,22 @@ export default function KioskClock({ roster }: { roster: RosterEntry[] }) {
   async function submit() {
     if (!selected) return;
     setBusy(true);
-    const res = await clockToggle(selected.id, pin);
-    setBusy(false);
-    if (res.ok) {
-      setMessage(`${res.name}: clocked ${res.status === 'IN' ? 'in' : 'out'} ✓`);
-      reset();
-      router.refresh();
-      setTimeout(() => setMessage(null), 3000);
-    } else {
-      setMessage(res.error ?? 'Error');
+    try {
+      const res = await clockToggle(selected.id, pin);
+      if (res.ok) {
+        setMessage(`${res.name}: clocked ${res.status === 'IN' ? 'in' : 'out'} ✓`);
+        reset();
+        router.refresh();
+        setTimeout(() => setMessage(null), 3000);
+      } else {
+        setMessage(res.error ?? 'Error');
+        setPin('');
+      }
+    } catch {
+      setMessage('Connection problem — please try again.');
       setPin('');
+    } finally {
+      setBusy(false);
     }
   }
 
