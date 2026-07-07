@@ -6,8 +6,14 @@ import { syncTreatwellFeeds } from '@/app/services/treatwell-sync-service';
 export const maxDuration = 60;
 
 function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  // Compare BYTE lengths, not `String.length` (UTF-16 code units): a multibyte
+  // char (e.g. a raw 0xE9 latin-1 header byte) can share code-unit length while
+  // differing in UTF-8 byte length, which makes timingSafeEqual throw (→ a 500
+  // instead of a clean 401). Compute the buffers once and length-check them.
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
 
 export async function GET(request: NextRequest) {

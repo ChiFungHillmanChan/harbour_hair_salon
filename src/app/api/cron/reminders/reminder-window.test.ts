@@ -18,6 +18,15 @@ test('safeCompare — empty strings match each other', () => {
   assert.equal(safeCompare('', ''), true);
 });
 
+test('safeCompare — equal code-unit length but different byte length returns false (no throw)', () => {
+  // 'é' (U+00E9) is one UTF-16 code unit but two UTF-8 bytes, so 'é' and 'e'
+  // have equal String.length yet different Buffer byte lengths. The byte-length
+  // guard must return false here; without it timingSafeEqual throws (→ HTTP 500
+  // instead of a clean 401 when a caller sends a multibyte/latin-1 header).
+  assert.equal(safeCompare('é', 'e'), false);
+  assert.equal(safeCompare('Bearer sécret', 'Bearer secret'), false);
+});
+
 test('reminderWindowEnd — exactly 36 hours after `now`', () => {
   const now = new Date('2026-07-01T12:00:00.000Z');
   const end = reminderWindowEnd(now);
