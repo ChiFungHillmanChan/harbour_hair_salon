@@ -48,7 +48,7 @@ export default async function BookPage() {
   return (
     <div className="min-h-screen bg-zinc-50">
       {/* Hero Section */}
-      <section className="relative py-24 bg-zinc-900 text-white overflow-hidden">
+      <section className="relative py-14 md:py-24 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
           <Image
             src="/images/hero-salon.webp"
@@ -61,10 +61,10 @@ export default async function BookPage() {
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
           <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
-          <h1 className="text-5xl md:text-6xl font-serif mb-6 tracking-tight">
+          <h1 className="text-4xl md:text-6xl font-serif mb-6 tracking-tight">
             Book Your <span className="text-zinc-400">Appointment</span>
           </h1>
-          <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
+          <p className="text-base md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
             Select your service, stylist, and preferred time.
           </p>
           {aggregateRating.count > 0 && (
@@ -78,7 +78,7 @@ export default async function BookPage() {
         </div>
       </section>
 
-      <div className="container mx-auto px-4 py-12">
+      <div className="container mx-auto px-4 py-8 md:py-12">
         
         <BookingWizard services={services} stylists={stylists} />
       </div>
