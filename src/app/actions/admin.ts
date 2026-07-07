@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/app/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { hashPassword } from '@/app/lib/password';
@@ -72,8 +73,11 @@ export async function createDiscountCode(formData: FormData) {
         expiresAt: parsed.data.expiresAt ?? null,
       },
     });
-  } catch {
-    return { error: 'Discount code already exists' };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { error: 'Discount code already exists' };
+    }
+    return { error: 'Failed to create discount code. Please try again.' };
   }
 
   revalidatePath('/admin/discounts');
@@ -194,8 +198,11 @@ export async function createAdminUser(formData: FormData) {
         role: 'ADMIN',
       },
     });
-  } catch {
-    return { error: 'Email already exists' };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { error: 'Email already exists' };
+    }
+    return { error: 'Failed to create admin user. Please try again.' };
   }
 
   revalidatePath('/admin/users');
