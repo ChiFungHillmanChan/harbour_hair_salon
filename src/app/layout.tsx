@@ -6,7 +6,6 @@ import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Layout";
 import { MobileBookBar } from "@/components/layout/MobileBookBar";
-import { SlimFooter } from "@/components/layout/SlimFooter";
 import { FooterSwitcher } from "@/components/layout/FooterSwitcher";
 import {
   getSiteSettings,
@@ -80,7 +79,10 @@ export default async function RootLayout({
     pathname.startsWith("/admin") || pathname.startsWith("/kiosk");
 
   return (
-    <html lang="en-GB" className="scroll-smooth">
+    // data-scroll-behavior lets the Next router suspend smooth scrolling while
+    // it resets scroll position on navigation — without it, route changes
+    // animate from the old scroll offset instead of landing at the top.
+    <html lang="en-GB" className="scroll-smooth" data-scroll-behavior="smooth">
       <body className="antialiased bg-zinc-50 text-zinc-900 font-sans">
         {!bareShell && <Header />}
         <main className="min-h-screen">
@@ -94,7 +96,6 @@ export default async function RootLayout({
                 <MobileBookBar />
               </>
             }
-            slim={<SlimFooter />}
           />
         )}
         <Analytics />

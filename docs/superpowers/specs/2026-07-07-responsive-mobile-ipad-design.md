@@ -174,3 +174,9 @@ behaviour: `/auth` paths hit no protection branch.
   ring-2 wording.
 - **Closed drawer is `invisible` below lg** so its controls are unreachable by
   keyboard while off-canvas.
+- **Auth pages have NO footer at all** (owner request, 2026-07-07 follow-up):
+  the interim SlimFooter was removed; `FooterSwitcher` simply hides the
+  marketing chrome on `/auth/*`. `<html>` also gained
+  `data-scroll-behavior="smooth"` so the Next router can suspend the site's
+  CSS smooth scrolling while resetting scroll position on navigation
+  (fixes "page doesn't scroll to top when opening the login page").

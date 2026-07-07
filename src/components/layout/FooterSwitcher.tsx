@@ -3,19 +3,14 @@
 import { usePathname } from 'next/navigation';
 
 /**
- * Chooses the footer per route on the client so soft navigation swaps the
- * chrome correctly. The server root layout renders both variants once and
- * passes them down — App Router layouts don't re-render on soft navigation,
- * so a server-side x-pathname check goes stale the moment the visitor
- * client-navigates away from an auth page.
+ * Hides the marketing footer + book bar on auth pages, per route, on the
+ * client — so soft navigation swaps the chrome correctly. The server root
+ * layout renders the marketing chrome once and passes it down; App Router
+ * layouts don't re-render on soft navigation, so a server-side x-pathname
+ * check would go stale the moment the visitor client-navigates away from an
+ * auth page. Auth pages get no footer at all (owner request 2026-07-07).
  */
-export function FooterSwitcher({
-  marketing,
-  slim,
-}: {
-  marketing: React.ReactNode;
-  slim: React.ReactNode;
-}) {
+export function FooterSwitcher({ marketing }: { marketing: React.ReactNode }) {
   const pathname = usePathname();
-  return pathname?.startsWith('/auth') ? slim : marketing;
+  return pathname?.startsWith('/auth') ? null : marketing;
 }
