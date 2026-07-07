@@ -68,14 +68,15 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
   const fmt = (d: Date) => format(toZonedTime(d, SALON_TIMEZONE), 'dd MMM HH:mm');
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="font-serif text-3xl text-zinc-900">Timesheets — {year}-{String(month).padStart(2, '0')}</h1>
+    <div className="p-4 sm:p-6 space-y-6">
+      <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">Timesheets — {year}-{String(month).padStart(2, '0')}</h1>
 
       <form action={async () => { 'use server'; await approveMonth(year, month); }}>
         <button className="bg-zinc-900 text-white px-4 py-2 rounded">Approve all (closed) for this month</button>
       </form>
 
-      <table className="w-full text-sm border-collapse">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="text-left border-b">
             <th className="p-2">Employee</th><th className="p-2">Clock in</th><th className="p-2">Clock out</th>
@@ -118,7 +119,8 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
           })}
           {entries.length === 0 && <tr><td className="p-2" colSpan={7}>No entries this month.</td></tr>}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

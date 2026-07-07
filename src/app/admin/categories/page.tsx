@@ -17,10 +17,10 @@ export default async function AdminCategoriesPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-start justify-between mb-8 gap-6">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-zinc-900">Category pages</h1>
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Category pages</h1>
           <p className="text-zinc-700 mt-2">
             Long-form SEO content for each service category page at{' '}
             <code className="bg-zinc-100 px-1.5 py-0.5 rounded text-xs">/services/[slug]</code>.
@@ -39,7 +39,7 @@ export default async function AdminCategoriesPage() {
           <p className="text-zinc-500">No category pages yet.</p>
         </div>
       ) : (
-        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+        <div className="bg-white border border-zinc-200 rounded-lg overflow-x-auto">
           <table className="w-full">
             <thead className="border-b border-zinc-200 bg-zinc-50">
               <tr>

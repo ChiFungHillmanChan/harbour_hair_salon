@@ -38,10 +38,10 @@ export default async function AdminFaqsPage({
   ) => Promise<FaqActionState> = updateFaq;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-start justify-between mb-8 gap-6">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-zinc-900">FAQs</h1>
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">FAQs</h1>
           <p className="text-zinc-700 mt-2">
             Manage the FAQ blocks shown on the home, services, contact and category pages. Each
             page reads FAQs by a key (e.g. <code className="bg-zinc-100 px-1 rounded">home</code>).

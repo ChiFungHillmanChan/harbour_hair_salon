@@ -7,9 +7,9 @@ export default function AdminDashboard() {
   // The static header renders (and paints) immediately; the appointment data
   // and calendar stream in behind Suspense, so LCP no longer waits on Neon.
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">Schedule</h1>
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Schedule</h1>
         <p className="text-zinc-700 mt-2">Manage appointments and availability.</p>
       </div>
 

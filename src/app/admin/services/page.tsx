@@ -24,10 +24,10 @@ export default async function AdminServicesPage() {
   const { services, grouped } = await getServicesGrouped();
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-start justify-between mb-8 gap-6">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-zinc-900">Services & Pricing</h1>
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Services & Pricing</h1>
           <p className="text-zinc-700 mt-2">
             Add, edit and remove services. Changes appear on{' '}
             <Link href="/services" className="underline hover:text-zinc-900">
@@ -79,7 +79,7 @@ export default async function AdminServicesPage() {
       ) : (
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([category, items]) => (
-            <div key={category} className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+            <div key={category} className="bg-white border border-zinc-200 rounded-lg overflow-x-auto">
               <div className="bg-zinc-50 border-b border-zinc-200 px-6 py-3 flex items-center justify-between">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-700">
                   {category}

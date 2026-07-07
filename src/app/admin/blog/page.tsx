@@ -19,10 +19,10 @@ export default async function AdminBlogListPage() {
   const draftCount = posts.length - publishedCount;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-start justify-between mb-8 gap-6">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-zinc-900">Journal</h1>
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Journal</h1>
           <p className="text-zinc-700 mt-2">
             Write, edit and publish blog posts. Published posts appear on the public{' '}
             <Link href="/blog" className="underline hover:text-zinc-900">
@@ -65,7 +65,7 @@ export default async function AdminBlogListPage() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+        <div className="bg-white border border-zinc-200 rounded-lg overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-50">

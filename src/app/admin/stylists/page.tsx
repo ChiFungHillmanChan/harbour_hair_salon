@@ -18,10 +18,10 @@ export default async function AdminStylistsPage() {
   for (const row of counts) appointmentCount.set(row.stylistId, row._count._all);
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-start justify-between mb-8 gap-6">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-zinc-900">Stylists</h1>
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Stylists</h1>
           <p className="text-zinc-700 mt-2">
             Manage stylist bios, specialties, languages and experience shown on{' '}
             <Link href="/stylists" className="underline hover:text-zinc-900">
@@ -49,7 +49,7 @@ export default async function AdminStylistsPage() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+        <div className="bg-white border border-zinc-200 rounded-lg overflow-x-auto">
           <table className="w-full">
             <thead className="border-b border-zinc-200 bg-zinc-50">
               <tr>

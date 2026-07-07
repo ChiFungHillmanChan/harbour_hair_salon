@@ -17,8 +17,8 @@ export default async function AdminShiftsPage() {
   ]);
 
   return (
-    <div className="p-6 space-y-8">
-      <h1 className="font-serif text-3xl text-zinc-900">Shifts</h1>
+    <div className="p-4 sm:p-6 space-y-8">
+      <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">Shifts</h1>
 
       <section>
         <h2 className="text-xl mb-3">Add shift</h2>
@@ -27,49 +27,51 @@ export default async function AdminShiftsPage() {
 
       <section>
         <h2 className="text-xl mb-3">Upcoming shifts</h2>
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="text-left border-b">
-              <th className="p-2">Employee</th>
-              <th className="p-2">Date</th>
-              <th className="p-2">Start</th>
-              <th className="p-2">End</th>
-              <th className="p-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {shifts.map((s) => (
-              <tr key={s.id} className="border-b">
-                <td className="p-2">{s.employee.name}</td>
-                <td className="p-2">{s.date.toISOString().slice(0, 10)}</td>
-                <td className="p-2">{s.startTime}</td>
-                <td className="p-2">{s.endTime}</td>
-                <td className="p-2">
-                  <form
-                    action={async () => {
-                      'use server';
-                      await deleteShift(s.id);
-                    }}
-                  >
-                    <button
-                      type="submit"
-                      className="text-red-600 hover:text-red-800 text-xs"
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="text-left border-b">
+                <th className="p-2">Employee</th>
+                <th className="p-2">Date</th>
+                <th className="p-2">Start</th>
+                <th className="p-2">End</th>
+                <th className="p-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {shifts.map((s) => (
+                <tr key={s.id} className="border-b">
+                  <td className="p-2">{s.employee.name}</td>
+                  <td className="p-2">{s.date.toISOString().slice(0, 10)}</td>
+                  <td className="p-2">{s.startTime}</td>
+                  <td className="p-2">{s.endTime}</td>
+                  <td className="p-2">
+                    <form
+                      action={async () => {
+                        'use server';
+                        await deleteShift(s.id);
+                      }}
                     >
-                      Delete
-                    </button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-            {shifts.length === 0 && (
-              <tr>
-                <td colSpan={5} className="p-2 text-center text-zinc-500">
-                  No shifts found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                      <button
+                        type="submit"
+                        className="text-red-600 hover:text-red-800 text-xs"
+                      >
+                        Delete
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+              {shifts.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-2 text-center text-zinc-500">
+                    No shifts found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );

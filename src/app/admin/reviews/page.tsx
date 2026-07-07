@@ -40,9 +40,9 @@ export default async function AdminReviewsPage() {
     counts.find((c) => c.status === status)?._count._all ?? 0;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">Reviews</h1>
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Reviews</h1>
         <p className="text-zinc-700 mt-2">
           Moderate client reviews. Approved reviews appear on the public reviews page and feed the
           aggregate rating in structured data.
