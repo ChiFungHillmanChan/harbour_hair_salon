@@ -57,6 +57,7 @@ export default async function DiscountsPage() {
                     label="Delete"
                     pendingLabel="Deleting…"
                     buttonClassName="text-red-600 hover:text-red-900"
+                    confirmMessage="Delete this discount code? Used codes will be deactivated instead."
                   />
                 </td>
               </tr>

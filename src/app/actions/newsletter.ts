@@ -6,6 +6,7 @@ import { Resend } from 'resend';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { sendNewsletterWelcome } from '@/app/services/email-service';
+import { getSiteSettings } from '@/app/services/site-settings-service';
 
 const subscribeSchema = z.object({
   email: z.string().trim().toLowerCase().email('Please enter a valid email address.'),
@@ -107,7 +108,8 @@ export async function subscribeToNewsletter(
   }
 
   try {
-    await sendNewsletterWelcome(email);
+    const settings = await getSiteSettings();
+    await sendNewsletterWelcome(email, settings.phone);
   } catch (error) {
     console.error('Newsletter welcome email failed:', error);
     return { status: 'error', message: 'Something went wrong. Please try again later.' };

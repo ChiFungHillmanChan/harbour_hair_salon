@@ -28,6 +28,16 @@ const settingsSchema = z.object({
   treatwellUrl: urlOrEmpty.default(''),
   freshaUrl: urlOrEmpty.default(''),
   booksyUrl: urlOrEmpty.default(''),
+  heroEyebrow: z.string().trim().max(80).default('Leeds City Centre'),
+  heroTitleLine1: z.string().trim().max(60).default('Expert Hair'),
+  heroTitleLine2: z.string().trim().max(60).default('Styling'),
+  heroSubtitle: z
+    .string()
+    .trim()
+    .max(400)
+    .default(
+      'Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.'
+    ),
 });
 
 export type SettingsActionState =

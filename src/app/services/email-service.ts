@@ -96,10 +96,10 @@ export async function sendReviewRequest(appointment: ReviewRequestAppointment): 
   });
 }
 
-export async function sendNewsletterWelcome(email: string): Promise<void> {
+export async function sendNewsletterWelcome(email: string, phone: string): Promise<void> {
   await send({
     to: email,
     subject: 'Welcome to Harbour Hair Salon',
-    react: NewsletterWelcome(),
+    react: NewsletterWelcome({ phone }),
   });
 }
