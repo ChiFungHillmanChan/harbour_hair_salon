@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { jsonLdScript } from '@/app/lib/json-ld';
 import Image from 'next/image';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
@@ -102,7 +103,7 @@ export default async function ServicesPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLdScript({
             '@context': 'https://schema.org',
             '@type': 'OfferCatalog',
             name: 'Harbour Hair Salon Services',
@@ -113,7 +114,7 @@ export default async function ServicesPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLdScript({
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
