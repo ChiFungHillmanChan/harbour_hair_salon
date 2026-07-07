@@ -1,12 +1,14 @@
 'use client';
 
-import { Suspense, useActionState } from 'react';
+import { Suspense, useActionState, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { register } from '@/app/actions/auth';
 import Link from 'next/link';
+import PasswordVisibilityToggle from '@/components/auth/PasswordVisibilityToggle';
 
 function RegisterForm() {
   const [state, action, isPending] = useActionState(register, undefined);
+  const [showPassword, setShowPassword] = useState(false);
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get('redirect');
 
@@ -24,7 +26,7 @@ function RegisterForm() {
 
         <form action={action} className="mt-8 space-y-8">
           <input type="hidden" name="redirect" value={redirectParam || ''} />
-          <div className="space-y-6 rounded-md shadow-sm">
+          <div className="space-y-6 rounded-md">
             <div className="relative">
               <label htmlFor="name" className="block text-sm font-medium leading-6 text-zinc-900 mb-2">
                 Full Name
@@ -70,15 +72,21 @@ function RegisterForm() {
               <label htmlFor="password" className="block text-sm font-medium leading-6 text-zinc-900 mb-2">
                 Password
               </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  required
+                  className="block w-full rounded-md border-0 py-3 pl-4 pr-12 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm sm:leading-6 transition-all"
+                  placeholder="••••••••"
+                />
+                <PasswordVisibilityToggle
+                  visible={showPassword}
+                  onToggle={() => setShowPassword((v) => !v)}
+                />
+              </div>
             </div>
           </div>
 
