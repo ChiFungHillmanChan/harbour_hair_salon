@@ -1,6 +1,7 @@
 'use server';
 
 import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
+import { evaluateBookingGates, type PatchTestGateReason } from '@/app/services/booking-gates';
 import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, type SalonDateTime } from '@/app/services/salon-time';
 import { SlotUnavailableError, BookingError } from '@/app/services/booking-errors';
 import { hasConflict, type BookedInterval } from '@/app/services/scheduling';
@@ -240,15 +241,10 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     return { success: false, error: 'Invalid date or time' };
   }
 
-  // Prevent booking in the past
-  if (fullDate <= new Date()) {
-    return { success: false, error: 'Cannot book a time in the past' };
-  }
-
-  // Load the flags we gate on. A gated service must never be booked directly —
-  // the client routes to a consultation, but a crafted request must be rejected.
-  // Fetched here (before the stylist-hours resolution below) so `duration` is
-  // available for the business-hours "must finish before closing" check.
+  // Load the flags we gate on. Fetched here (before the stylist-hours resolution
+  // below) so `duration` is available for the business-hours "must finish before
+  // closing" check, and so requiresPatchTest is known before deciding whether to
+  // fetch patch-test eligibility below.
   const service = await prisma.service.findUnique({
     where: { id: validData.serviceId },
     select: { duration: true, requiresPatchTest: true, requiresConsultation: true, isConsultation: true, isPatchTest: true },
@@ -256,8 +252,33 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   if (!service) {
     return { success: false, error: 'Service not found' };
   }
-  if (service?.requiresConsultation) {
-    return { success: false, error: 'This service is by consultation only. Please book a consultation to discuss it.' };
+
+  // Patch-test eligibility is only relevant — and only fetched — for services
+  // that require it. Non-gated services pass an "eligible" placeholder through;
+  // evaluateBookingGates ignores patchTestEligible/patchTestReason entirely when
+  // requiresPatchTest is false.
+  let patchTestEligible = true;
+  let patchTestReason: PatchTestGateReason = 'eligible';
+  if (service.requiresPatchTest) {
+    const eligibility = await getValidPatchTest(session.userId, fullDate);
+    patchTestEligible = eligibility.ok;
+    patchTestReason = eligibility.reason;
+  }
+
+  // Consultation-only rejection, past-date rejection, and the colour patch-test
+  // gate are decided together by the pure evaluateBookingGates — see
+  // booking-gates.ts for the exact ordering this preserves (past-date, then
+  // consultation-only, then patch-test — matching this file's historical order).
+  const gate = evaluateBookingGates({
+    requiresConsultation: service.requiresConsultation,
+    requiresPatchTest: service.requiresPatchTest,
+    patchTestEligible,
+    patchTestReason,
+    bookingInstant: fullDate,
+    now: new Date(),
+  });
+  if (!gate.ok) {
+    return { success: false, error: gate.error };
   }
 
   // Resolve which stylist(s) can take this slot. For a named stylist we validate
@@ -278,25 +299,12 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
   // If this booking IS a consultation target, record which service it's for.
   let notes: string | undefined;
-  if ((service?.isConsultation || service?.isPatchTest) && validData.consultationForServiceId) {
+  if ((service.isConsultation || service.isPatchTest) && validData.consultationForServiceId) {
     const origin = await prisma.service.findUnique({
       where: { id: validData.consultationForServiceId },
       select: { name: true },
     });
     if (origin) notes = `Consultation requested for: ${origin.name}`;
-  }
-
-  if (service?.requiresPatchTest) {
-    const eligibility = await getValidPatchTest(session.userId, fullDate);
-    if (!eligibility.ok) {
-      const message =
-        eligibility.reason === 'too_soon'
-          ? 'Your patch test must be at least 48 hours before a colour appointment.'
-          : eligibility.reason === 'expired'
-            ? 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.'
-            : 'Colour services require a completed Consultation & Patch Test first. Please book that appointment.';
-      return { success: false, error: message };
-    }
   }
 
   try {
