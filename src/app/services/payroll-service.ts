@@ -65,9 +65,12 @@ export async function runPayroll(year: number, month: number) {
     const workedDays = new Set(segments.map((s) => salonDateKey(s.clockIn))).size;
     const paidMinutes = applyBreakDeduction(workedMinutes, workedDays, e.unpaidBreakMinutes ?? 0);
     const totalHours = paidMinutes / 60;
+    const otThreshold = num(e.overtimeThresholdHours);
     const { regularHours, overtimeHours } = splitRegularOvertime(totalHours, {
-      enabled: e.overtimeEnabled,
-      thresholdHours: num(e.overtimeThresholdHours) ?? 0,
+      // Overtime only applies when a positive threshold is configured; a null/0
+      // threshold must NOT reclassify every hour as overtime.
+      enabled: e.overtimeEnabled && otThreshold != null && otThreshold > 0,
+      thresholdHours: otThreshold ?? 0,
     });
 
     let commissionableRevenue = 0;

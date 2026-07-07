@@ -47,11 +47,14 @@ export function computeGross(input: GrossInput): GrossResult {
     case 'COMMISSION':
       basePay = 0;
       break;
-    case 'HYBRID':
-      // Hourly base if an hourly rate is set, otherwise salary base.
-      basePay = input.hourlyRate != null ? hourlyBase : salary;
-      overtimePay = input.hourlyRate != null ? overtimePayHourly : 0;
+    case 'HYBRID': {
+      // Hourly base only if a POSITIVE hourly rate is set; otherwise salary base.
+      // (A stored 0 means "no hourly component" and must not zero out the salary.)
+      const hasHourly = input.hourlyRate != null && input.hourlyRate > 0;
+      basePay = hasHourly ? hourlyBase : salary;
+      overtimePay = hasHourly ? overtimePayHourly : 0;
       break;
+    }
   }
 
   const grossPay = basePay + overtimePay + commissionPay + input.adjustments;
