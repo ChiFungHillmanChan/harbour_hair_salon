@@ -90,3 +90,6 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED)
 - Availability
 - ExternalBusyBlock — busy times imported from Treatwell (per-stylist iCal); `Stylist.treatwellIcalUrl` holds the feed URL
+
+## Components (auth)
+- `src/components/auth/PasswordVisibilityToggle.tsx` — eye / eye-off button overlaid on password inputs (used by signin + register pages)
