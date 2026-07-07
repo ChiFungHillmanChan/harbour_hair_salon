@@ -1,17 +1,13 @@
 import prisma from '@/app/lib/prisma';
 import { Prisma } from '@prisma/client';
-import { addMinutes, format, setHours, setMinutes, startOfDay } from 'date-fns';
-import { toZonedTime } from 'date-fns-tz';
 import {
   evaluatePatchTestEligibility,
   type EligibilityResult,
 } from './patch-test-eligibility';
-import { salonDayWindow } from './salon-time';
-import { firstFreeStylist, hasConflict, type BookedInterval } from './scheduling';
+import { salonDayWindow, toSalonDateStr, resolveSalonDateTime } from './salon-time';
+import { firstFreeStylist, hasConflict, buildSlotsForWindow, type BookedInterval, type TimeSlot } from './scheduling';
 import { loadExternalBusy, toBookedInterval, toSlotAppointment } from './external-busy';
 import { SlotUnavailableError, DiscountUnavailableError } from './booking-errors';
-
-const SALON_TIMEZONE = 'Europe/London';
 
 /**
  * Run a Serializable transaction, retrying a few times on Postgres serialization
@@ -43,66 +39,52 @@ export async function runSerializableWithRetry<T>(
   throw lastErr;
 }
 
-export type TimeSlot = {
-  time: string;
-  available: boolean;
-};
+export type { TimeSlot } from './scheduling';
 
 type SlotAppointment = { date: Date; service: { duration: number } };
 
 /**
  * Build the bookable slot start-times for one stylist from already-fetched
- * availability + appointments. Pure aside from "now" (used to hide past slots on
- * the current day). Shared by the single-stylist and "Anyone" union paths so
- * both compute slots identically.
+ * availability + appointments. Thin adapter over the pure, prisma-free
+ * `buildSlotsForWindow` (unit-tested in scheduling.test.ts). Shared by the
+ * single-stylist and "Anyone" union paths so both compute slots identically.
  */
 function buildStylistSlots(
   availability: { startTime: string; endTime: string },
   existingAppointments: SlotAppointment[],
-  date: Date,
+  dateStr: string,
   serviceDuration: number,
+  now: Date = new Date(),
 ): TimeSlot[] {
-  const slots: TimeSlot[] = [];
-  const startOfDayDate = startOfDay(date);
-
-  const [startHour, startMinute] = availability.startTime.split(':').map(Number);
-  const [endHour, endMinute] = availability.endTime.split(':').map(Number);
-
-  let currentSlot = setMinutes(setHours(startOfDayDate, startHour), startMinute);
-  const endTime = setMinutes(setHours(startOfDayDate, endHour), endMinute);
-  const nowInLondon = toZonedTime(new Date(), SALON_TIMEZONE);
-  const nowComparable = setMinutes(setHours(startOfDayDate, nowInLondon.getHours()), nowInLondon.getMinutes());
-
-  // Normalise existing appointments to intervals once, then reuse the shared
-  // (unit-tested) overlap logic per slot instead of a hand-rolled inline check.
   const booked: BookedInterval[] = existingAppointments.map((appt) => ({
     start: new Date(appt.date),
     durationMin: appt.service.duration,
   }));
+  return buildSlotsForWindow(dateStr, availability, booked, serviceDuration, now);
+}
 
-  while (addMinutes(currentSlot, serviceDuration) <= endTime) {
-    // Skip slots that have already passed today (same-day only)
-    if (date.toDateString() === nowInLondon.toDateString() && currentSlot <= nowComparable) {
-      currentSlot = addMinutes(currentSlot, 30);
-      continue;
-    }
-
-    if (!hasConflict(currentSlot, serviceDuration, booked)) {
-      slots.push({ time: format(currentSlot, 'HH:mm'), available: true });
-    }
-
-    currentSlot = addMinutes(currentSlot, 30);
-  }
-
-  return slots;
+/**
+ * Reduce a callers' date input to the single salon-local frame everything below
+ * must share: the calendar date string (grid), the day window (conflict scan)
+ * and the weekday (availability). Callers now pass a `YYYY-MM-DD` string (the
+ * day the customer SAW); a legacy `Date` is still accepted for safety. Deriving
+ * these three from a browser-local `Date` split them across three frames (UTC
+ * date vs London window vs host weekday) — the wrong-day booking bug.
+ */
+function salonDayFrame(date: string | Date): { dateStr: string; dayOfWeek: number; window: { start: Date; end: Date } } {
+  const dateStr = toSalonDateStr(date);
+  // Noon is safely inside the salon calendar day (never near a DST/midnight edge),
+  // so its window and weekday describe exactly `dateStr`.
+  const salonNoon = resolveSalonDateTime(dateStr, '12:00');
+  return { dateStr, dayOfWeek: salonNoon.dayOfWeek, window: salonDayWindow(salonNoon.utc) };
 }
 
 export async function getAvailableSlots(
   stylistId: string,
-  date: Date,
+  date: string | Date,
   serviceDuration: number
 ): Promise<TimeSlot[]> {
-  const dayOfWeek = date.getDay(); // 0-6
+  const { dateStr, dayOfWeek, window } = salonDayFrame(date);
 
   // 1. Get stylist availability for this day
   const availability = await prisma.availability.findFirst({
@@ -112,25 +94,24 @@ export async function getAvailableSlots(
     return [];
   }
 
-  // 2. Get existing appointments for this stylist on this date
-  const startOfDayDate = startOfDay(date);
-  const endOfDayDate = new Date(startOfDayDate);
-  endOfDayDate.setHours(23, 59, 59, 999);
-
-  const existingAppointments = await prisma.appointment.findMany({
-    where: {
-      stylistId,
-      date: { gte: startOfDayDate, lte: endOfDayDate },
-      status: { not: 'CANCELLED' },
-    },
-    include: { service: { select: { duration: true } } },
-  });
+  // 2. Get existing appointments for this stylist on this date. The appointment
+  // query and the external-busy query are independent, so run them concurrently.
+  const [existingAppointments, externalBlocks] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        stylistId,
+        date: { gte: window.start, lte: window.end },
+        status: { not: 'CANCELLED' },
+      },
+      include: { service: { select: { duration: true } } },
+    }),
+    loadExternalBusy(prisma, [stylistId], window),
+  ]);
 
   // 3. Merge Treatwell (external) busy blocks for this stylist/day, then build slots
-  const externalBlocks = await loadExternalBusy(prisma, [stylistId], salonDayWindow(date));
   const busy = [...existingAppointments, ...externalBlocks.map(toSlotAppointment)];
 
-  return buildStylistSlots(availability, busy, date, serviceDuration);
+  return buildStylistSlots(availability, busy, dateStr, serviceDuration);
 }
 
 /**
@@ -142,10 +123,10 @@ export async function getAvailableSlots(
  * stylists in the day window), independent of stylist count — no per-stylist fan-out.
  */
 export async function getAvailableSlotsUnion(
-  date: Date,
+  date: string | Date,
   serviceDuration: number,
 ): Promise<TimeSlot[]> {
-  const dayOfWeek = date.getDay();
+  const { dateStr, dayOfWeek, window } = salonDayFrame(date);
 
   const availabilities = await prisma.availability.findMany({
     where: { dayOfWeek, isOff: false },
@@ -155,18 +136,19 @@ export async function getAvailableSlotsUnion(
 
   const stylistIds = availabilities.map((a) => a.stylistId);
 
-  const startOfDayDate = startOfDay(date);
-  const endOfDayDate = new Date(startOfDayDate);
-  endOfDayDate.setHours(23, 59, 59, 999);
-
-  const appointments = await prisma.appointment.findMany({
-    where: {
-      stylistId: { in: stylistIds },
-      date: { gte: startOfDayDate, lte: endOfDayDate },
-      status: { not: 'CANCELLED' },
-    },
-    include: { service: { select: { duration: true } } },
-  });
+  // The appointment query and the external-busy load are independent (both keyed
+  // by stylistIds + the same day window), so run them concurrently.
+  const [appointments, externalBlocks] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        stylistId: { in: stylistIds },
+        date: { gte: window.start, lte: window.end },
+        status: { not: 'CANCELLED' },
+      },
+      include: { service: { select: { duration: true } } },
+    }),
+    loadExternalBusy(prisma, stylistIds, window),
+  ]);
 
   const apptsByStylist = new Map<string, SlotAppointment[]>();
   for (const appt of appointments) {
@@ -176,7 +158,6 @@ export async function getAvailableSlotsUnion(
   }
 
   // Merge Treatwell (external) busy blocks per stylist for this day.
-  const externalBlocks = await loadExternalBusy(prisma, stylistIds, salonDayWindow(date));
   for (const row of externalBlocks) {
     const list = apptsByStylist.get(row.stylistId) ?? [];
     list.push(toSlotAppointment(row));
@@ -188,7 +169,7 @@ export async function getAvailableSlotsUnion(
     const slots = buildStylistSlots(
       availability,
       apptsByStylist.get(availability.stylistId) ?? [],
-      date,
+      dateStr,
       serviceDuration,
     );
     for (const slot of slots) {
@@ -268,6 +249,7 @@ export async function createBooking(data: {
         userId: data.userId,
         status: 'CONFIRMED',
         discountCodeId,
+        priceAtBooking: service.price,
         notes: data.notes ?? null,
       },
       include: {
@@ -346,6 +328,7 @@ export async function createBookingForFirstAvailable(data: {
         userId: data.userId,
         status: 'CONFIRMED',
         discountCodeId,
+        priceAtBooking: service.price,
         notes: data.notes ?? null,
       },
       include: {

@@ -32,13 +32,18 @@ test('loadExternalBusy queries the overlap window and passes rows through', asyn
       },
     },
   };
-  const out = await loadExternalBusy(fakeDb as never, ['s1'], {
+  const window = {
     start: new Date('2026-07-01T00:00:00Z'),
     end: new Date('2026-07-01T23:59:59Z'),
-  });
+  };
+  const out = await loadExternalBusy(fakeDb as never, ['s1'], window);
   assert.equal(out.length, 1);
   assert.equal(out[0].stylistId, 's1');
-  assert.ok(JSON.stringify(calls[0].where).includes('stylistId'));
+  assert.deepEqual(calls[0].where, {
+    stylistId: { in: ['s1'] },
+    start: { lte: window.end },
+    end: { gte: window.start },
+  });
 });
 
 test('loadExternalBusy short-circuits on empty stylist list (no query)', async () => {

@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/app/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { hashPassword } from '@/app/lib/password';
@@ -72,8 +73,12 @@ export async function createDiscountCode(formData: FormData) {
         expiresAt: parsed.data.expiresAt ?? null,
       },
     });
-  } catch {
-    return { error: 'Discount code already exists' };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { error: 'Discount code already exists' };
+    }
+    console.error('createDiscountCode failed:', error);
+    return { error: 'Failed to create discount code. Please try again.' };
   }
 
   revalidatePath('/admin/discounts');
@@ -194,8 +199,12 @@ export async function createAdminUser(formData: FormData) {
         role: 'ADMIN',
       },
     });
-  } catch {
-    return { error: 'Email already exists' };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { error: 'Email already exists' };
+    }
+    console.error('createAdminUser failed:', error);
+    return { error: 'Failed to create admin user. Please try again.' };
   }
 
   revalidatePath('/admin/users');
@@ -221,7 +230,11 @@ export async function deleteAdminUser(id: string) {
   revalidatePath('/admin/users');
 }
 
-const ALLOWED_APPOINTMENT_STATUSES = ['CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
+// CONFIRMED intentionally excluded: no UI path re-confirms an appointment,
+// and doing so here would bypass the in-transaction double-booking conflict
+// check that rescheduleAppointment uses. If un-confirm is ever needed, add
+// it back together with that same conflict check.
+const ALLOWED_APPOINTMENT_STATUSES = ['COMPLETED', 'CANCELLED'] as const;
 type AppointmentStatus = (typeof ALLOWED_APPOINTMENT_STATUSES)[number];
 
 export async function updateAppointmentStatus(appointmentId: string, status: string) {
@@ -267,7 +280,7 @@ export async function resetUserPassword(userId: string, newPassword: string) {
   const hashedPassword = await hashPassword(newPassword);
   await prisma.user.update({
     where: { id: userId },
-    data: { password: hashedPassword },
+    data: { password: hashedPassword, sessionVersion: { increment: 1 } },
   });
 
   revalidatePath('/admin/users');

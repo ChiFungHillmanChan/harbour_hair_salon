@@ -54,6 +54,7 @@ export function parseIcalBusyIntervals(
     const ev = parsed[key];
     if (!ev || ev.type !== 'VEVENT') continue;
     if ((ev as { rrule?: unknown }).rrule) continue; // skip recurring (v1)
+    if (String((ev as { status?: unknown }).status ?? '').toUpperCase() === 'CANCELLED') continue;
     if (!ev.start) continue;
 
     const start = new Date(ev.start);

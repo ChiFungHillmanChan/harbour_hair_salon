@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { timingSafeEqual } from 'crypto';
 import prisma from '@/app/lib/prisma';
 import { sendAppointmentReminder, sendReviewRequest } from '@/app/services/email-service';
+import { safeCompare, reminderWindowEnd, reviewWindow } from './reminder-window';
 
 // Up to 200 sequential email sends per run — give the function room on Vercel.
 export const maxDuration = 60;
-
-function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
-}
 
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -24,7 +19,9 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date();
-  const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  // 36h (not 24h) so a send that fails today is retried on tomorrow's run while
+  // still within the window (the cron only runs once per day).
+  const thirtySixHoursFromNow = reminderWindowEnd(now);
 
   const appointments = await prisma.appointment.findMany({
     where: {
@@ -32,7 +29,7 @@ export async function GET(request: NextRequest) {
       reminderSent: false,
       date: {
         gt: now,
-        lte: twentyFourHoursFromNow,
+        lte: thirtySixHoursFromNow,
       },
     },
     include: {
@@ -49,13 +46,24 @@ export async function GET(request: NextRequest) {
 
   for (const appointment of appointments) {
     try {
-      await sendAppointmentReminder({
-        id: appointment.id,
-        date: appointment.date,
-        user: appointment.user,
-        stylist: appointment.stylist,
-        service: { ...appointment.service, price: Number(appointment.service.price) },
-      });
+      try {
+        await sendAppointmentReminder({
+          id: appointment.id,
+          date: appointment.date,
+          user: appointment.user,
+          stylist: appointment.stylist,
+          service: { ...appointment.service, price: Number(appointment.service.price) },
+        });
+      } catch (firstErr) {
+        console.error(`Reminder send failed once for ${appointment.id}, retrying:`, firstErr);
+        await sendAppointmentReminder({
+          id: appointment.id,
+          date: appointment.date,
+          user: appointment.user,
+          stylist: appointment.stylist,
+          service: { ...appointment.service, price: Number(appointment.service.price) },
+        });
+      }
       // Mark sent immediately so a mid-run timeout never re-sends this reminder.
       await prisma.appointment.update({
         where: { id: appointment.id },
@@ -70,12 +78,11 @@ export async function GET(request: NextRequest) {
 
   // Review request emails: past appointments from 1-14 days ago without a review
   // or an already-sent request. Two-week cutoff keeps the flywheel fresh, not spammy.
-  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const { start: fourteenDaysAgo, end: oneDayAgo } = reviewWindow(now);
 
   const pastAppointments = await prisma.appointment.findMany({
     where: {
-      status: 'CONFIRMED',
+      status: { in: ['CONFIRMED', 'COMPLETED'] },
       reviewRequestSent: false,
       date: {
         gte: fourteenDaysAgo,

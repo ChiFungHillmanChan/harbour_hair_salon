@@ -87,3 +87,23 @@ test('sumCommissionable sums and rounds to pence', () => {
 test('sumCommissionable of empty list is 0', () => {
   assert.equal(sumCommissionable([]), 0);
 });
+
+test('computeGross — HYBRID with hourlyRate 0 pays salary, not zero', () => {
+  const r = computeGross({
+    payType: 'HYBRID', hourlyRate: 0, monthlySalary: 1500, commissionRate: 0,
+    regularHours: 100, overtimeHours: 0, overtimeMultiplier: 1.5, commissionableRevenue: 0, adjustments: 0,
+  });
+  assert.equal(r.basePay, 1500); // 0 hourly rate means "no hourly component" → salary base
+});
+
+test('computeGross — HYBRID with hourlyRate 0 and nonzero overtimeHours still gates overtimePay to 0', () => {
+  // The rate-0 test above uses overtimeHours: 0, which can't detect an ungated
+  // overtimePay (0 * anything is 0 either way). Use overtimeHours: 10 so a
+  // missing `hasHourly` gate on overtimePay would show up as a nonzero value.
+  const r = computeGross({
+    payType: 'HYBRID', hourlyRate: 0, monthlySalary: 1500, commissionRate: 0,
+    regularHours: 100, overtimeHours: 10, overtimeMultiplier: 1.5, commissionableRevenue: 0, adjustments: 0,
+  });
+  assert.equal(r.basePay, 1500);
+  assert.equal(r.overtimePay, 0);
+});

@@ -27,7 +27,7 @@ export type SalonDateTime = {
 };
 
 /** Reduce a date input to its salon-local calendar date (YYYY-MM-DD). */
-function toDateStr(date: string | Date): string {
+export function toSalonDateStr(date: string | Date): string {
   if (typeof date === 'string') {
     // Accept "YYYY-MM-DD" or a full ISO string — keep the date portion.
     return date.slice(0, 10);
@@ -46,7 +46,7 @@ function toDateStr(date: string | Date): string {
  * (Europe/London) so DST is handled correctly. Host-timezone independent.
  */
 export function resolveSalonDateTime(date: string | Date, time: string): SalonDateTime {
-  const dateStr = toDateStr(date);
+  const dateStr = toSalonDateStr(date);
   const [rawH, rawM] = time.split(':');
   const hours = Number(rawH);
   const minutes = Number(rawM ?? 0);
@@ -118,4 +118,23 @@ export function isWithinAvailability(
   const start = sh * 60 + sm;
   const end = eh * 60 + em;
   return timeMinutes >= start && timeMinutes < end;
+}
+
+/**
+ * True when a service of `durationMinutes` starting at `timeMinutes` (minutes
+ * since midnight) both starts within and FINISHES within [startTime, endTime].
+ * Start inclusive, finish must be <= endTime. Use for the booking business-hours
+ * guard so a long service cannot run past closing.
+ */
+export function fitsWithinAvailability(
+  timeMinutes: number,
+  durationMinutes: number,
+  startTime: string,
+  endTime: string,
+): boolean {
+  const [sh, sm] = startTime.split(':').map(Number);
+  const [eh, em] = endTime.split(':').map(Number);
+  const start = sh * 60 + sm;
+  const end = eh * 60 + em;
+  return timeMinutes >= start && timeMinutes + durationMinutes <= end;
 }

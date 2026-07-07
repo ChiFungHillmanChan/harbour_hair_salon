@@ -42,7 +42,9 @@ export function RescheduleModal({
 
     setLoadingSlots(true);
     try {
-      const available = await fetchSlots(stylistId, new Date(dateStr), serviceDuration);
+      // dateStr is the salon-local calendar day (YYYY-MM-DD) from the date input;
+      // pass it straight through so slots share the server's salon day frame.
+      const available = await fetchSlots(stylistId, dateStr, serviceDuration);
       setSlots(available);
     } catch {
       setError('Failed to load available slots');

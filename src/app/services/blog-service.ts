@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import prisma from '@/app/lib/prisma';
 
 export type BlogSection =
@@ -104,12 +105,15 @@ export async function getPublishedPosts(): Promise<BlogPostRuntime[]> {
   return rows.map(mapToRuntime);
 }
 
-export async function getPublishedPostBySlug(slug: string): Promise<BlogPostRuntime | null> {
+// Wrapped in React cache() so generateMetadata + the page body (and the
+// related-posts lookups) share one query per slug per request instead of
+// each hitting the DB separately.
+export const getPublishedPostBySlug = cache(async (slug: string): Promise<BlogPostRuntime | null> => {
   const row = await prisma.blogPost.findUnique({ where: { slug } });
   if (!row) return null;
   if (row.status !== 'PUBLISHED') return null;
   return mapToRuntime(row);
-}
+});
 
 export async function getAllPostsForAdmin(): Promise<BlogPostRuntime[]> {
   const rows = await prisma.blogPost.findMany({

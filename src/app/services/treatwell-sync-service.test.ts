@@ -11,10 +11,23 @@ const ICS = [
 function fakeDb(stylists: { id: string; treatwellIcalUrl: string | null }[]) {
   const upserts: unknown[] = [];
   const prunes: unknown[] = [];
+  const findManyCalls: { where: unknown; select: unknown }[] = [];
   return {
     upserts,
     prunes,
-    stylist: { findMany: async () => stylists.filter((s) => s.treatwellIcalUrl) },
+    findManyCalls,
+    stylist: {
+      // NOTE: this fake still filters in-memory by `treatwellIcalUrl` truthiness
+      // (so the other tests' fixtures behave as expected) rather than by
+      // interpreting the captured `where` — capturing it separately is what
+      // makes the filter assertion below mutation-proof: it fails if the
+      // production `where` clause is dropped or changed, independent of the
+      // fake's own filtering behaviour.
+      findMany: async (args: { where: unknown; select: unknown }) => {
+        findManyCalls.push(args);
+        return stylists.filter((s) => s.treatwellIcalUrl);
+      },
+    },
     externalBusyBlock: {
       upsert: async (a: unknown) => { upserts.push(a); },
       deleteMany: async (a: unknown) => { prunes.push(a); return { count: 0 }; },
@@ -94,6 +107,23 @@ test('rejects an oversized feed (by content-length) without pruning', async () =
   assert.equal(res[0].ok, false);
   assert.match(res[0].error ?? '', /too large/);
   assert.equal(db.prunes.length, 0);
+});
+
+test('queries stylists with the treatwellIcalUrl: { not: null } filter', async () => {
+  const db = fakeDb([{ id: 's1', treatwellIcalUrl: 'https://tw/s1.ics' }]);
+  await syncTreatwellFeeds({
+    db: db as never,
+    now: new Date('2026-06-01T00:00:00Z'),
+    fetchImpl: (async () => fakeResp(true, 200, ICS)) as never,
+  });
+  assert.equal(db.findManyCalls.length, 1);
+  // Mutation-proof: if the production `where` filter is dropped or weakened
+  // (e.g. changed to `{}` or the `not: null` removed), this deepEqual fails —
+  // regardless of how the fake happens to filter its own fixture data.
+  assert.deepEqual(db.findManyCalls[0], {
+    where: { treatwellIcalUrl: { not: null } },
+    select: { id: true, treatwellIcalUrl: true },
+  });
 });
 
 test('no stylists with a feed URL → empty result, no fetch', async () => {

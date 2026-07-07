@@ -68,3 +68,43 @@ test('returns null (NOT []) for invalid input, so callers never prune on it', ()
   // Truncated feed — envelope opened but never closed.
   assert.equal(parseIcalBusyIntervals('BEGIN:VCALENDAR\r\nBEGIN:VEVENT'), null);
 });
+
+test('parses a TZID-localized (non-Z) VEVENT into the correct UTC instant', () => {
+  // Some calendar providers emit local wall-clock times qualified by a TZID
+  // parameter instead of a trailing "Z" UTC designator. 2026-07-02 is in BST
+  // (UTC+1), so 10:00 Europe/London must resolve to 09:00Z.
+  const tzidEvent = ICS(
+    [
+      'BEGIN:VEVENT',
+      'UID:tzid-1',
+      'SUMMARY:Treatwell booking (localized)',
+      'DTSTART;TZID=Europe/London:20260702T100000',
+      'DTEND;TZID=Europe/London:20260702T110000',
+      'END:VEVENT',
+    ].join('\r\n'),
+  );
+  const out = parseIcalBusyIntervals(tzidEvent, { now: new Date('2026-06-01T00:00:00Z') });
+  assert.ok(out);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].uid, 'tzid-1');
+  assert.equal(out[0].start.toISOString(), '2026-07-02T09:00:00.000Z'); // 10:00 BST = 09:00Z
+  assert.equal(out[0].end.toISOString(), '2026-07-02T10:00:00.000Z'); // 11:00 BST = 10:00Z
+});
+
+test('parseIcalBusyIntervals — a STATUS:CANCELLED event is excluded', () => {
+  const now = new Date('2026-07-01T00:00:00Z');
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:cancelled-1',
+    'DTSTART:20260702T100000Z',
+    'DTEND:20260702T110000Z',
+    'STATUS:CANCELLED',
+    'SUMMARY:Cancelled booking',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+  const result = parseIcalBusyIntervals(ics, { now });
+  assert.deepEqual(result, []);
+});

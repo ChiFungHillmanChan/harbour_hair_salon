@@ -36,8 +36,13 @@ function getNewsletterLimiter(): Ratelimit | null {
 async function checkRate(ip: string): Promise<boolean> {
   const newsletterLimiter = getNewsletterLimiter();
   if (!newsletterLimiter) return true;
-  const { success } = await newsletterLimiter.limit(ip);
-  return success;
+  try {
+    const { success } = await newsletterLimiter.limit(ip);
+    return success;
+  } catch (err) {
+    console.error('Newsletter rate limiter unavailable, allowing request:', err);
+    return true;
+  }
 }
 
 type SubscribeState =

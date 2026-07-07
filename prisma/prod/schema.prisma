@@ -18,6 +18,7 @@ model User {
   name      String?
   phone     String?
   role      String   @default("USER") // USER, ADMIN
+  sessionVersion Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   appointments Appointment[]
@@ -68,6 +69,7 @@ model Appointment {
   date              DateTime
   status            String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
   notes             String?
+  priceAtBooking    Decimal?
   reminderSent      Boolean  @default(false)
   reviewRequestSent Boolean  @default(false)
   createdAt         DateTime @default(now())

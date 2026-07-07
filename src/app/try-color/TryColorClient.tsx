@@ -1,19 +1,16 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { CameraView } from '@/components/try-color/CameraView';
 import { UploadDropzone } from '@/components/try-color/UploadDropzone';
-import { VideoTryOn } from '@/components/try-color/VideoTryOn';
 import {
   PreviewCanvas,
   type PreviewCanvasHandle,
 } from '@/components/try-color/PreviewCanvas';
 import { ColorPalette } from '@/components/try-color/ColorPalette';
 import { ResultActions } from '@/components/try-color/ResultActions';
-import {
-  segmentStill,
-  type HairMaskData,
-} from '@/components/try-color/HairSegmentation';
+import type { HairMaskData } from '@/components/try-color/HairSegmentation';
 import {
   applyRecolorToImageDataWithAlpha,
   type ResolvedRecolorContext,
@@ -35,6 +32,33 @@ import {
 } from '@/components/try-color/constants';
 
 const ENABLE_LIVE_CAMERA = false; // disabled per client request; code retained for re-enable
+
+// VideoTryOn pulls in HairSegmentation (and therefore @mediapipe/tasks-vision)
+// via a static import of its own, so loading it through next/dynamic keeps
+// that whole chain out of the eager /try-color route chunk until the user
+// actually switches into video mode.
+const VideoTryOn = dynamic(
+  () => import('@/components/try-color/VideoTryOn').then((mod) => mod.VideoTryOn),
+  { ssr: false },
+);
+
+// @mediapipe/tasks-vision is a heavy dependency statically imported by
+// HairSegmentation.ts. Load that wrapper module on demand — only once
+// segmentation actually starts (first photo processed) — instead of
+// shipping it in the landing-mode bundle. The promise is memoized at module
+// scope so repeated uploads/starts reuse the same in-flight/resolved import.
+type HairSegmentationModule = typeof import('@/components/try-color/HairSegmentation');
+let hairSegmentationModulePromise: Promise<HairSegmentationModule> | null = null;
+
+function loadHairSegmentation(): Promise<HairSegmentationModule> {
+  if (!hairSegmentationModulePromise) {
+    hairSegmentationModulePromise = import('@/components/try-color/HairSegmentation').catch((err) => {
+      hairSegmentationModulePromise = null; // allow retry after a transient chunk-load failure
+      throw err;
+    });
+  }
+  return hairSegmentationModulePromise;
+}
 
 type Mode = 'landing' | 'camera' | 'upload' | 'video';
 const DEFAULT_SHADE = PRESET_COLORS[3];
@@ -158,6 +182,7 @@ export default function TryColorClient() {
   }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel, bleachState]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial sync with window size; new rule from eslint-config-next 16.2.10, pre-existing pattern
     setLiveProfile(detectLivePreviewProfile());
     const onResize = () => setLiveProfile(detectLivePreviewProfile());
     window.addEventListener('resize', onResize);
@@ -392,6 +417,7 @@ export default function TryColorClient() {
       setLoading(true);
       setError(null);
       try {
+        const { segmentStill } = await loadHairSegmentation();
         const hairMask = await segmentStill(source);
         if (gen !== uploadGenRef.current) return;
 
@@ -740,6 +766,7 @@ export default function TryColorClient() {
         {mode !== 'video' && (
           <ResultActions
             onDownload={handleDownload}
+            // eslint-disable-next-line react-hooks/refs -- pre-existing: frame count gates the download button; new rule from eslint-config-next 16.2.10
             disabled={loading || (mode === 'upload' && !hasUploadedImage) || (mode === 'camera' && frameCountRef.current === 0)}
           />
         )}

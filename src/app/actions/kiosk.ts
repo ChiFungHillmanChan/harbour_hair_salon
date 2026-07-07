@@ -4,6 +4,7 @@ import prisma from '@/app/lib/prisma';
 import { verifySession, createKioskSession, deleteKioskSession, getKioskSession } from '@/app/lib/session';
 import { verifyPin } from '@/app/lib/pin';
 import { nextClockAction } from '@/app/services/kiosk-state';
+import { runSerializableWithRetry } from '@/app/services/booking-service';
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { Ratelimit } from '@upstash/ratelimit';
@@ -87,24 +88,33 @@ export async function clockToggle(employeeId: string, pin: string) {
   // Read the open entry and act on it inside one Serializable transaction so a
   // double-tap can't have two concurrent calls both see "no open entry" and both
   // create one (which would inflate the employee's hours in payroll).
-  const result = await prisma.$transaction(async (tx) => {
-    const open = await tx.timeEntry.findFirst({
-      where: { employeeId, clockOut: null },
-      orderBy: { clockIn: 'desc' },
-      select: { id: true },
-    });
+  // runSerializableWithRetry (shared with booking-service) transparently retries
+  // on P2034 serialization conflicts; if all retries are exhausted (or any other
+  // error occurs), fall back to a friendly message instead of throwing to the client.
+  let result;
+  try {
+    result = await runSerializableWithRetry(async (tx) => {
+      const open = await tx.timeEntry.findFirst({
+        where: { employeeId, clockOut: null },
+        orderBy: { clockIn: 'desc' },
+        select: { id: true },
+      });
 
-    const action = nextClockAction(open);
-    if (action.type === 'CLOCK_IN') {
-      await tx.timeEntry.create({ data: { employeeId, clockIn: new Date(), source: 'KIOSK', status: 'OPEN' } });
-      return { status: 'IN' as const };
-    }
-    await tx.timeEntry.update({
-      where: { id: action.entryId },
-      data: { clockOut: new Date(), status: 'PENDING' },
+      const action = nextClockAction(open);
+      if (action.type === 'CLOCK_IN') {
+        await tx.timeEntry.create({ data: { employeeId, clockIn: new Date(), source: 'KIOSK', status: 'OPEN' } });
+        return { status: 'IN' as const };
+      }
+      await tx.timeEntry.update({
+        where: { id: action.entryId },
+        data: { clockOut: new Date(), status: 'PENDING' },
+      });
+      return { status: 'OUT' as const };
     });
-    return { status: 'OUT' as const };
-  }, { isolationLevel: 'Serializable' });
+  } catch (error) {
+    console.error('clockToggle transaction failed:', error);
+    return { ok: false, error: 'Please try again' };
+  }
 
   revalidatePath('/kiosk');
   return { ok: true, status: result.status, name: employee.name };

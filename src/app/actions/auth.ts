@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { hashPassword, verifyPassword } from '@/app/lib/password';
 import { createSession, deleteSession } from '@/app/lib/session';
@@ -8,12 +9,7 @@ import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
-
-function sanitizeRedirect(url: string | null): string {
-  if (!url) return '/';
-  if (url.startsWith('/') && !url.startsWith('//')) return url;
-  return '/';
-}
+import { sanitizeRedirect } from '@/app/lib/redirect';
 
 function getClientIp(headersList: Headers): string {
   const forwarded = headersList.get('x-forwarded-for');
@@ -131,7 +127,7 @@ export async function login(prevState: unknown, formData: FormData) {
     return { error: 'Incorrect email or password. Please try again.' };
   }
 
-  await createSession(user.id, user.role);
+  await createSession(user.id, user.role, user.sessionVersion);
 
   const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
   if (user.role === 'ADMIN') {
@@ -168,32 +164,47 @@ export async function register(prevState: unknown, formData: FormData) {
     } else {
       // Guest user registering
       const hashedPassword = await hashPassword(password);
-      await prisma.user.update({
-        where: { id: existingUser.id },
-        data: {
-          password: hashedPassword,
-          name,
-          phone,
-        },
-      });
-      await createSession(existingUser.id, existingUser.role);
+      try {
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            password: hashedPassword,
+            name,
+            phone,
+          },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          return { error: 'This email is already registered. Please sign in instead.' };
+        }
+        throw error;
+      }
+      await createSession(existingUser.id, existingUser.role, existingUser.sessionVersion);
       redirect(redirectTo);
     }
   }
 
   const hashedPassword = await hashPassword(password);
 
-  const user = await prisma.user.create({
-    data: {
-      email,
-      password: hashedPassword,
-      name,
-      phone,
-      role: 'USER',
-    },
-  });
+  let user;
+  try {
+    user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name,
+        phone,
+        role: 'USER',
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { error: 'This email is already registered. Please sign in instead.' };
+    }
+    throw error;
+  }
 
-  await createSession(user.id, user.role);
+  await createSession(user.id, user.role, user.sessionVersion);
   redirect(redirectTo);
 }
 

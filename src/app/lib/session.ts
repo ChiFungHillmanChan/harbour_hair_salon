@@ -3,6 +3,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
+import { encrypt, decrypt, type SessionPayload } from '@/app/lib/jwt';
 
 function getKey() {
   const secretKey = process.env.SESSION_SECRET;
@@ -10,34 +11,9 @@ function getKey() {
   return new TextEncoder().encode(secretKey);
 }
 
-type SessionPayload = {
-  userId: string;
-  role: string;
-  expiresAt: Date;
-};
-
-export async function encrypt(payload: SessionPayload) {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('30d')
-    .sign(getKey());
-}
-
-export async function decrypt(session: string | undefined = '') {
-  try {
-    const { payload } = await jwtVerify(session, getKey(), {
-      algorithms: ['HS256'],
-    });
-    return payload as unknown as SessionPayload;
-  } catch {
-    return null;
-  }
-}
-
-export async function createSession(userId: string, role: string) {
+export async function createSession(userId: string, role: string, sessionVersion: number) {
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-  const session = await encrypt({ userId, role, expiresAt });
+  const session = await encrypt({ userId, role, sessionVersion, expiresAt });
 
   (await cookies()).set('session', session, {
     httpOnly: true,
@@ -56,7 +32,7 @@ export async function refreshSession() {
   // Refresh if less than 7 days remaining
   const timeLeft = new Date(session.expiresAt).getTime() - Date.now();
   if (timeLeft < 7 * 24 * 60 * 60 * 1000) {
-    await createSession(session.userId, session.role);
+    await createSession(session.userId, session.role, session.sessionVersion ?? 0);
   }
 }
 
@@ -74,7 +50,7 @@ export async function verifySession() {
   // keeping it until their cookie expires. One indexed primary-key lookup.
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { role: true },
+    select: { role: true, sessionVersion: true },
   });
 
   if (!user) {
@@ -82,10 +58,18 @@ export async function verifySession() {
     redirect('/auth/signin');
   }
 
+  // Tokens issued before this field existed have no claim → treat as 0, which
+  // matches a freshly-migrated user (default 0). A password reset bumps the
+  // stored version, invalidating every previously-issued token.
+  const tokenVersion = session.sessionVersion ?? 0;
+  if (user.sessionVersion !== tokenVersion) {
+    redirect('/auth/signin');
+  }
+
   return { userId: session.userId, role: user.role };
 }
 
-export async function getSession() {
+export async function getSession(): Promise<SessionPayload | null> {
   const cookie = (await cookies()).get('session')?.value;
   const session = await decrypt(cookie);
   return session;

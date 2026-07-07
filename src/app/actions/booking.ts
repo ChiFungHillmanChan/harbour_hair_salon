@@ -1,7 +1,8 @@
 'use server';
 
 import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
-import { resolveSalonDateTime, isWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, type SalonDateTime } from '@/app/services/salon-time';
+import { evaluateBookingGates, type PatchTestGateReason } from '@/app/services/booking-gates';
+import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, SALON_DATE_RE, type SalonDateTime } from '@/app/services/salon-time';
 import { SlotUnavailableError, BookingError } from '@/app/services/booking-errors';
 import { hasConflict, type BookedInterval } from '@/app/services/scheduling';
 import { loadExternalBusy, toBookedInterval } from '@/app/services/external-busy';
@@ -31,6 +32,24 @@ function getDiscountLimiter(): Ratelimit | null {
   return discountLimiter;
 }
 
+// Limits booking creation per authenticated user to curb calendar-blockade abuse.
+let bookingLimiter: Ratelimit | null | undefined;
+function getBookingLimiter(): Ratelimit | null {
+  if (bookingLimiter !== undefined) return bookingLimiter;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  bookingLimiter = url && token
+    ? new Ratelimit({
+        redis: new Redis({ url, token }),
+        limiter: Ratelimit.slidingWindow(6, '1 h'),
+        prefix: 'rl:booking',
+      })
+    : null;
+  return bookingLimiter;
+}
+
+const MAX_ACTIVE_BOOKINGS = 6;
+
 // serviceDuration is client-supplied. Bound it hard: an unvalidated negative or
 // huge value drives the slot-generation loop in booking-service for millions of
 // iterations (unauthenticated CPU/memory DoS — these slot actions require no session).
@@ -38,14 +57,17 @@ const SERVICE_DURATION = z.number().int().min(5).max(600);
 
 const getSlotsSchema = z.object({
   stylistId: z.string().min(1).max(64),
-  date: z.coerce.date(),
+  // Salon-local calendar day (YYYY-MM-DD) — the day the customer SAW. A coerced
+  // Date would carry the browser's local-midnight instant and split the grid,
+  // conflict window and weekday across three timezone frames downstream.
+  date: z.string().regex(SALON_DATE_RE, 'Invalid date'),
   serviceDuration: SERVICE_DURATION,
 });
 
 type CreateBookingInput = {
   stylistId: string;
   serviceId: string;
-  date: Date | string;
+  date: string;
   time: string;
   discountCode?: string;
   consultationForServiceId?: string;
@@ -54,7 +76,9 @@ type CreateBookingInput = {
 const createBookingSchema = z.object({
   stylistId: z.string(),
   serviceId: z.string(),
-  date: z.coerce.date(),
+  // Salon-local calendar day (YYYY-MM-DD); resolveSalonDateTime turns it +
+  // `time` into the correct absolute instant (see getSlotsSchema note).
+  date: z.string().regex(SALON_DATE_RE, 'Invalid date'),
   time: z.string().regex(SALON_TIME_RE, 'Invalid time'), // strict HH:mm
   discountCode: z.string().optional(),
   consultationForServiceId: z.string().optional(),
@@ -65,6 +89,7 @@ const createBookingSchema = z.object({
 async function checkStylistHours(
   stylistId: string,
   salon: SalonDateTime,
+  durationMinutes: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const availability = await prisma.availability.findFirst({
     where: { stylistId, dayOfWeek: salon.dayOfWeek, isOff: false },
@@ -72,7 +97,7 @@ async function checkStylistHours(
   if (!availability) {
     return { ok: false, error: 'Stylist is not available on this day' };
   }
-  if (!isWithinAvailability(salon.timeMinutes, availability.startTime, availability.endTime)) {
+  if (!fitsWithinAvailability(salon.timeMinutes, durationMinutes, availability.startTime, availability.endTime)) {
     return { ok: false, error: 'Selected time is outside business hours' };
   }
   return { ok: true };
@@ -108,11 +133,12 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
 
 // Helper for client-side fetching without form state. The "Anyone" option
 // returns the union of every stylist's availability.
-export async function fetchSlots(stylistId: string, date: Date, serviceDuration: number) {
+export async function fetchSlots(stylistId: string, date: string, serviceDuration: number) {
   // Guard the client-supplied duration before it reaches the slot loop (see
   // SERVICE_DURATION note above) — this path has no Zod wrapper of its own.
+  // `date` is the salon-local calendar day (YYYY-MM-DD) the customer saw.
   const duration = SERVICE_DURATION.safeParse(serviceDuration);
-  if (!duration.success || !(date instanceof Date) || Number.isNaN(date.getTime())) {
+  if (!duration.success || !isValidSalonDate(date)) {
     return [];
   }
   try {
@@ -128,7 +154,7 @@ export async function fetchSlots(stylistId: string, date: Date, serviceDuration:
 
 // Stylists available on a given weekday/time, in display (name) order — the
 // candidate pool for resolving an "Anyone / first available" booking.
-async function eligibleStylistIds(salon: SalonDateTime): Promise<string[]> {
+async function eligibleStylistIds(salon: SalonDateTime, durationMinutes: number): Promise<string[]> {
   const stylists = await prisma.stylist.findMany({
     where: { availabilities: { some: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
     orderBy: { name: 'asc' },
@@ -136,7 +162,7 @@ async function eligibleStylistIds(salon: SalonDateTime): Promise<string[]> {
   });
   return stylists
     .filter((s) =>
-      s.availabilities.some((a) => isWithinAvailability(salon.timeMinutes, a.startTime, a.endTime)),
+      s.availabilities.some((a) => fitsWithinAvailability(salon.timeMinutes, durationMinutes, a.startTime, a.endTime)),
     )
     .map((s) => s.id);
 }
@@ -190,6 +216,27 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
   const validData = result.data;
 
+  // Per-user rate limit (fail open on Redis outage, matching the rest of the app).
+  const limiter = getBookingLimiter();
+  if (limiter) {
+    try {
+      const { success } = await limiter.limit(`user:${session.userId}`);
+      if (!success) {
+        return { success: false, error: 'Too many booking attempts. Please try again shortly.' };
+      }
+    } catch (err) {
+      console.error('Booking rate limiter unavailable, allowing request:', err);
+    }
+  }
+
+  // Hard cap on outstanding future bookings per user.
+  const activeCount = await prisma.appointment.count({
+    where: { userId: session.userId, status: 'CONFIRMED', date: { gt: new Date() } },
+  });
+  if (activeCount >= MAX_ACTIVE_BOOKINGS) {
+    return { success: false, error: 'You already have the maximum number of upcoming bookings. Please manage your existing appointments first.' };
+  }
+
   // Resolve the salon wall-clock time to the correct absolute UTC instant
   // (handles BST/GMT). Host-timezone independent — see salon-time.ts.
   const salon = resolveSalonDateTime(validData.date, validData.time);
@@ -200,9 +247,44 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     return { success: false, error: 'Invalid date or time' };
   }
 
-  // Prevent booking in the past
-  if (fullDate <= new Date()) {
-    return { success: false, error: 'Cannot book a time in the past' };
+  // Load the flags we gate on. Fetched here (before the stylist-hours resolution
+  // below) so `duration` is available for the business-hours "must finish before
+  // closing" check, and so requiresPatchTest is known before deciding whether to
+  // fetch patch-test eligibility below.
+  const service = await prisma.service.findUnique({
+    where: { id: validData.serviceId },
+    select: { duration: true, requiresPatchTest: true, requiresConsultation: true, isConsultation: true, isPatchTest: true },
+  });
+  if (!service) {
+    return { success: false, error: 'Service not found' };
+  }
+
+  // Patch-test eligibility is only relevant — and only fetched — for services
+  // that require it. Non-gated services pass an "eligible" placeholder through;
+  // evaluateBookingGates ignores patchTestEligible/patchTestReason entirely when
+  // requiresPatchTest is false.
+  let patchTestEligible = true;
+  let patchTestReason: PatchTestGateReason = 'eligible';
+  if (service.requiresPatchTest) {
+    const eligibility = await getValidPatchTest(session.userId, fullDate);
+    patchTestEligible = eligibility.ok;
+    patchTestReason = eligibility.reason;
+  }
+
+  // Consultation-only rejection, past-date rejection, and the colour patch-test
+  // gate are decided together by the pure evaluateBookingGates — see
+  // booking-gates.ts for the exact ordering this preserves (past-date, then
+  // consultation-only, then patch-test — matching this file's historical order).
+  const gate = evaluateBookingGates({
+    requiresConsultation: service.requiresConsultation,
+    requiresPatchTest: service.requiresPatchTest,
+    patchTestEligible,
+    patchTestReason,
+    bookingInstant: fullDate,
+    now: new Date(),
+  });
+  if (!gate.ok) {
+    return { success: false, error: gate.error };
   }
 
   // Resolve which stylist(s) can take this slot. For a named stylist we validate
@@ -210,48 +292,25 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   const isAnyStylist = validData.stylistId === ANY_STYLIST_ID;
   let candidateStylistIds: string[] = [];
   if (isAnyStylist) {
-    candidateStylistIds = await eligibleStylistIds(salon);
+    candidateStylistIds = await eligibleStylistIds(salon, service.duration);
     if (candidateStylistIds.length === 0) {
       return { success: false, error: 'No stylist is available at this time' };
     }
   } else {
-    const hoursCheck = await checkStylistHours(validData.stylistId, salon);
+    const hoursCheck = await checkStylistHours(validData.stylistId, salon, service.duration);
     if (!hoursCheck.ok) {
       return { success: false, error: hoursCheck.error };
     }
   }
 
-  // Load the flags we gate on. A gated service must never be booked directly —
-  // the client routes to a consultation, but a crafted request must be rejected.
-  const service = await prisma.service.findUnique({
-    where: { id: validData.serviceId },
-    select: { requiresPatchTest: true, requiresConsultation: true, isConsultation: true, isPatchTest: true },
-  });
-  if (service?.requiresConsultation) {
-    return { success: false, error: 'This service is by consultation only. Please book a consultation to discuss it.' };
-  }
-
   // If this booking IS a consultation target, record which service it's for.
   let notes: string | undefined;
-  if ((service?.isConsultation || service?.isPatchTest) && validData.consultationForServiceId) {
+  if ((service.isConsultation || service.isPatchTest) && validData.consultationForServiceId) {
     const origin = await prisma.service.findUnique({
       where: { id: validData.consultationForServiceId },
       select: { name: true },
     });
     if (origin) notes = `Consultation requested for: ${origin.name}`;
-  }
-
-  if (service?.requiresPatchTest) {
-    const eligibility = await getValidPatchTest(session.userId, fullDate);
-    if (!eligibility.ok) {
-      const message =
-        eligibility.reason === 'too_soon'
-          ? 'Your patch test must be at least 48 hours before a colour appointment.'
-          : eligibility.reason === 'expired'
-            ? 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.'
-            : 'Colour services require a completed Consultation & Patch Test first. Please book that appointment.';
-      return { success: false, error: message };
-    }
   }
 
   try {
@@ -351,8 +410,14 @@ export async function cancelAppointment(appointmentId: string) {
   return { success: true };
 }
 
-export async function checkColourEligibility(serviceId: string, dateIso: string) {
+export async function checkColourEligibility(serviceId: string, dateStr: string) {
   const session = await verifySession();
+  // Salon-local calendar day (YYYY-MM-DD), matching the wizard grid. Resolve it
+  // to a stable in-day instant (salon noon) rather than trusting a browser-local
+  // Date, so the patch-test window is evaluated against the day the customer saw.
+  if (!isValidSalonDate(dateStr)) {
+    return { requiresTest: false, eligible: true, reason: 'eligible' as const, testDate: null };
+  }
   const service = await prisma.service.findUnique({
     where: { id: serviceId },
     select: { requiresPatchTest: true },
@@ -360,7 +425,7 @@ export async function checkColourEligibility(serviceId: string, dateIso: string)
   if (!service?.requiresPatchTest) {
     return { requiresTest: false, eligible: true, reason: 'eligible' as const, testDate: null };
   }
-  const eligibility = await getValidPatchTest(session.userId, new Date(dateIso));
+  const eligibility = await getValidPatchTest(session.userId, resolveSalonDateTime(dateStr, '12:00').utc);
   return {
     requiresTest: true,
     eligible: eligibility.ok,
@@ -415,7 +480,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
   }
 
   // Validate the new time falls within stylist availability for this day
-  const hoursCheck = await checkStylistHours(appointment.stylistId, salon);
+  const hoursCheck = await checkStylistHours(appointment.stylistId, salon, appointment.service.duration);
   if (!hoursCheck.ok) {
     return { success: false, error: hoursCheck.error };
   }

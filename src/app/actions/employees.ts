@@ -33,7 +33,7 @@ function parseEmployeeForm(formData: FormData) {
     name: formData.get('name'),
     title: formData.get('title'),
     payType: formData.get('payType'),
-    hourlyRate: formData.get('hourlyRate') || null,
+    hourlyRate: (formData.get('hourlyRate') && Number(formData.get('hourlyRate')) > 0) ? formData.get('hourlyRate') : null,
     monthlySalary: formData.get('monthlySalary') || null,
     commissionRate: formData.get('commissionRate') || null,
     overtimeEnabled: formData.get('overtimeEnabled') === 'on',
