@@ -59,6 +59,19 @@ export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
     };
   }, [open]);
 
+  // If the viewport grows past lg while the drawer is open (e.g. iPad
+  // rotation), the drawer becomes the static sidebar — reset state so the
+  // scroll lock lifts and the backdrop doesn't reappear on the next shrink.
+  useEffect(() => {
+    if (!open) return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setOpen(false);
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [open]);
+
   return (
     <>
       {/* Mobile top bar */}
