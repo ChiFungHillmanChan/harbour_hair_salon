@@ -68,6 +68,7 @@ model Appointment {
   date              DateTime
   status            String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
   notes             String?
+  priceAtBooking    Decimal?
   reminderSent      Boolean  @default(false)
   reviewRequestSent Boolean  @default(false)
   createdAt         DateTime @default(now())

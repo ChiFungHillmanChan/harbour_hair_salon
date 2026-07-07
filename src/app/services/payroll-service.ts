@@ -77,9 +77,11 @@ export async function runPayroll(year: number, month: number) {
     if (e.stylistId) {
       const appts = await prisma.appointment.findMany({
         where: { stylistId: e.stylistId, status: 'COMPLETED', date: { gte: start, lt: end } },
-        select: { service: { select: { price: true } } },
+        select: { priceAtBooking: true, service: { select: { price: true } } },
       });
-      commissionableRevenue = sumCommissionable(appts.map((a) => Number(a.service.price.toString())));
+      commissionableRevenue = sumCommissionable(
+        appts.map((a) => Number((a.priceAtBooking ?? a.service.price).toString())),
+      );
     }
 
     const gross = computeGross({

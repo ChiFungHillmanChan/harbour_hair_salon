@@ -230,6 +230,7 @@ export async function createBooking(data: {
         userId: data.userId,
         status: 'CONFIRMED',
         discountCodeId,
+        priceAtBooking: service.price,
         notes: data.notes ?? null,
       },
       include: {
@@ -308,6 +309,7 @@ export async function createBookingForFirstAvailable(data: {
         userId: data.userId,
         status: 'CONFIRMED',
         discountCodeId,
+        priceAtBooking: service.price,
         notes: data.notes ?? null,
       },
       include: {
