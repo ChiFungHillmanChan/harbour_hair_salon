@@ -6,11 +6,17 @@ import { usePathname } from 'next/navigation';
 /**
  * Persistent mobile "Book" call-to-action. Salon traffic is mostly mobile, where
  * "Book" otherwise hides behind the hamburger after the hero scrolls away.
- * Hidden on the booking flow and admin, and on desktop (md+).
+ * Hidden on the booking flow, auth pages, and admin, and on desktop (md+).
  */
 export function MobileBookBar() {
   const pathname = usePathname();
-  if (pathname?.startsWith('/book') || pathname?.startsWith('/admin')) return null;
+  if (
+    pathname?.startsWith('/book') ||
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/auth')
+  ) {
+    return null;
+  }
 
   return (
     <>

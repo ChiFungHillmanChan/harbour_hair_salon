@@ -6,6 +6,7 @@ import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Layout";
 import { MobileBookBar } from "@/components/layout/MobileBookBar";
+import { SlimFooter } from "@/components/layout/SlimFooter";
 import {
   getSiteSettings,
   normalizeTwitterHandle,
@@ -75,6 +76,9 @@ export default async function RootLayout({
   const pathname = (await headers()).get("x-pathname") ?? "";
   const bareShell =
     pathname.startsWith("/admin") || pathname.startsWith("/kiosk");
+  // Auth pages keep the header but swap the marketing footer + floating Book
+  // bar for a one-line footer, so nothing competes with signing in.
+  const authShell = pathname.startsWith("/auth");
 
   return (
     <html lang="en-GB" className="scroll-smooth">
@@ -83,8 +87,14 @@ export default async function RootLayout({
         <main className="min-h-screen">
           {children}
         </main>
-        {!bareShell && <Footer />}
-        {!bareShell && <MobileBookBar />}
+        {!bareShell && (authShell ? (
+          <SlimFooter />
+        ) : (
+          <>
+            <Footer />
+            <MobileBookBar />
+          </>
+        ))}
         <Analytics />
         <SpeedInsights />
       </body>
