@@ -10,15 +10,15 @@ export default async function DiscountsPage() {
   });
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">Discount Codes</h1>
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Discount Codes</h1>
         <p className="text-zinc-600 mt-2">Manage promotional codes and discounts.</p>
       </div>
 
       <DiscountForm />
 
-      <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden">
+      <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-x-auto">
         <table className="min-w-full divide-y divide-zinc-200">
           <thead className="bg-zinc-50">
             <tr>

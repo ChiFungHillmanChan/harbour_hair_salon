@@ -13,10 +13,10 @@ function RegisterForm() {
   const redirectParam = searchParams.get('redirect');
 
   return (
-    <div className="flex min-h-[80vh] items-center justify-center bg-zinc-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8 bg-white p-10 shadow-xl rounded-xl">
+    <div className="flex min-h-[80vh] items-center justify-center bg-zinc-50 py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-8 bg-white p-6 sm:p-10 shadow-xl rounded-xl">
         <div className="text-center">
-          <h2 className="mt-6 text-3xl font-serif font-bold tracking-tight text-zinc-900">
+          <h2 className="mt-2 sm:mt-6 text-2xl sm:text-3xl font-serif font-bold tracking-tight text-zinc-900">
             Create Account
           </h2>
           <p className="mt-2 text-sm text-zinc-600">

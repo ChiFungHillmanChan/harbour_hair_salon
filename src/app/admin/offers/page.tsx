@@ -17,9 +17,9 @@ export default async function AdminOffersPage() {
   ) => Promise<OfferActionState> = updateOffer;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">Special Offers</h1>
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Special Offers</h1>
         <p className="text-zinc-600 mt-2">Manage global offers visible on the Offers page.</p>
       </div>
 

@@ -33,8 +33,8 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   const csvHref = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="font-serif text-3xl text-zinc-900">Payroll — {year}-{String(month).padStart(2, '0')}</h1>
+    <div className="p-4 sm:p-6 space-y-6">
+      <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">Payroll — {year}-{String(month).padStart(2, '0')}</h1>
       <p className="text-sm text-zinc-500">Gross pay only. Phase 1: commission excluded (added in Phase 2).</p>
 
       {period?.status !== 'FINALIZED' && (
@@ -45,33 +45,35 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
 
       {period && (
         <>
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="text-left border-b">
-                <th className="p-2">Employee</th><th className="p-2">Hours</th><th className="p-2">Base</th>
-                <th className="p-2">Overtime</th><th className="p-2">Commission</th><th className="p-2">Adjustments</th><th className="p-2">Gross</th>
-              </tr>
-            </thead>
-            <tbody>
-              {period.lines.map((l) => (
-                <tr key={l.id} className="border-b">
-                  <td className="p-2">{l.employee.name}</td>
-                  <td className="p-2">{Number(l.totalHours.toString()).toFixed(2)}</td>
-                  <td className="p-2">£{Number(l.basePay.toString()).toFixed(2)}</td>
-                  <td className="p-2">£{Number(l.overtimePay.toString()).toFixed(2)}</td>
-                  <td className="p-2">£{Number(l.commissionPay.toString()).toFixed(2)}</td>
-                  <td className="p-2">
-                    {period.status === 'DRAFT' ? (
-                      <PayrollAdjustmentForm lineId={l.id} amount={Number(l.adjustments.toString())} note={l.adjustmentNote ?? ''} />
-                    ) : (
-                      <span>£{Number(l.adjustments.toString()).toFixed(2)}</span>
-                    )}
-                  </td>
-                  <td className="p-2 font-bold">£{Number(l.grossPay.toString()).toFixed(2)}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="text-left border-b">
+                  <th className="p-2">Employee</th><th className="p-2">Hours</th><th className="p-2">Base</th>
+                  <th className="p-2">Overtime</th><th className="p-2">Commission</th><th className="p-2">Adjustments</th><th className="p-2">Gross</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {period.lines.map((l) => (
+                  <tr key={l.id} className="border-b">
+                    <td className="p-2">{l.employee.name}</td>
+                    <td className="p-2">{Number(l.totalHours.toString()).toFixed(2)}</td>
+                    <td className="p-2">£{Number(l.basePay.toString()).toFixed(2)}</td>
+                    <td className="p-2">£{Number(l.overtimePay.toString()).toFixed(2)}</td>
+                    <td className="p-2">£{Number(l.commissionPay.toString()).toFixed(2)}</td>
+                    <td className="p-2">
+                      {period.status === 'DRAFT' ? (
+                        <PayrollAdjustmentForm lineId={l.id} amount={Number(l.adjustments.toString())} note={l.adjustmentNote ?? ''} />
+                      ) : (
+                        <span>£{Number(l.adjustments.toString()).toFixed(2)}</span>
+                      )}
+                    </td>
+                    <td className="p-2 font-bold">£{Number(l.grossPay.toString()).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div className="flex gap-4 items-center">
             <a href={csvHref} download={`payroll-${year}-${String(month).padStart(2, '0')}.csv`} className="border border-zinc-300 text-zinc-900 px-4 py-2 rounded">

@@ -68,57 +68,59 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
   const fmt = (d: Date) => format(toZonedTime(d, SALON_TIMEZONE), 'dd MMM HH:mm');
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="font-serif text-3xl text-zinc-900">Timesheets — {year}-{String(month).padStart(2, '0')}</h1>
+    <div className="p-4 sm:p-6 space-y-6">
+      <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">Timesheets — {year}-{String(month).padStart(2, '0')}</h1>
 
       <form action={async () => { 'use server'; await approveMonth(year, month); }}>
         <button className="bg-zinc-900 text-white px-4 py-2 rounded">Approve all (closed) for this month</button>
       </form>
 
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="text-left border-b">
-            <th className="p-2">Employee</th><th className="p-2">Clock in</th><th className="p-2">Clock out</th>
-            <th className="p-2">Hours</th><th className="p-2">Status</th><th className="p-2">Shift</th><th className="p-2"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((e) => {
-            const hours = e.clockOut ? (segmentWorkedMinutes({ clockIn: e.clockIn, clockOut: e.clockOut, breakMinutes: e.breakMinutes }) / 60).toFixed(2) : '—';
-            const evalKey = `${e.employeeId}|${salonDateKey(e.clockIn)}`;
-            const ev = shiftMap.get(evalKey);
-            return (
-              <tr key={e.id} className="border-b">
-                <td className="p-2">{e.employee.name}</td>
-                <td className="p-2">{fmt(e.clockIn)}</td>
-                <td className="p-2">{e.clockOut ? fmt(e.clockOut) : <span className="text-zinc-900">OPEN</span>}</td>
-                <td className="p-2">{hours}</td>
-                <td className="p-2">{e.status}</td>
-                <td className="p-2 space-x-1">
-                  {ev?.late && (
-                    <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
-                      Late {ev.lateByMin}m
-                    </span>
-                  )}
-                  {ev?.earlyLeave && (
-                    <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
-                      Left early {ev.earlyByMin}m
-                    </span>
-                  )}
-                </td>
-                <td className="p-2">
-                  {e.clockOut && e.status !== 'APPROVED' && (
-                    <form action={async () => { 'use server'; await approveTimeEntry(e.id); }}>
-                      <button className="text-zinc-900 underline">Approve</button>
-                    </form>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-          {entries.length === 0 && <tr><td className="p-2" colSpan={7}>No entries this month.</td></tr>}
-        </tbody>
-      </table>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="text-left border-b">
+              <th className="p-2 whitespace-nowrap">Employee</th><th className="p-2 whitespace-nowrap">Clock in</th><th className="p-2 whitespace-nowrap">Clock out</th>
+              <th className="p-2 whitespace-nowrap">Hours</th><th className="p-2 whitespace-nowrap">Status</th><th className="p-2 whitespace-nowrap">Shift</th><th className="p-2 whitespace-nowrap"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => {
+              const hours = e.clockOut ? (segmentWorkedMinutes({ clockIn: e.clockIn, clockOut: e.clockOut, breakMinutes: e.breakMinutes }) / 60).toFixed(2) : '—';
+              const evalKey = `${e.employeeId}|${salonDateKey(e.clockIn)}`;
+              const ev = shiftMap.get(evalKey);
+              return (
+                <tr key={e.id} className="border-b">
+                  <td className="p-2">{e.employee.name}</td>
+                  <td className="p-2 whitespace-nowrap">{fmt(e.clockIn)}</td>
+                  <td className="p-2 whitespace-nowrap">{e.clockOut ? fmt(e.clockOut) : <span className="text-zinc-900">OPEN</span>}</td>
+                  <td className="p-2 whitespace-nowrap">{hours}</td>
+                  <td className="p-2 whitespace-nowrap">{e.status}</td>
+                  <td className="p-2 space-x-1 whitespace-nowrap">
+                    {ev?.late && (
+                      <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
+                        Late {ev.lateByMin}m
+                      </span>
+                    )}
+                    {ev?.earlyLeave && (
+                      <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
+                        Left early {ev.earlyByMin}m
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-2 whitespace-nowrap">
+                    {e.clockOut && e.status !== 'APPROVED' && (
+                      <form action={async () => { 'use server'; await approveTimeEntry(e.id); }}>
+                        <button className="text-zinc-900 underline">Approve</button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {entries.length === 0 && <tr><td className="p-2" colSpan={7}>No entries this month.</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

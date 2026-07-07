@@ -217,7 +217,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
       {STEPS.map((s, idx) => (
         <div
           key={s}
-          className={`h-2 w-12 rounded-full ${
+          className={`h-2 w-8 sm:w-12 rounded-full ${
             STEPS.indexOf(step as Step) >= idx || isSubmitted
               ? 'bg-zinc-900'
               : 'bg-gray-200'
@@ -253,7 +253,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto bg-white shadow-xl p-8 min-h-[600px] rounded-xl border border-zinc-100">
+    <div className="max-w-4xl mx-auto bg-white shadow-xl p-4 sm:p-6 md:p-8 md:min-h-[600px] rounded-xl border border-zinc-100">
       {renderStepIndicator()}
 
       <div className="mb-8">
@@ -363,7 +363,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                   <div
                     key={service.id}
                     onClick={() => handleSelectService(service)}
-                    className="border border-zinc-200 p-6 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all group shadow-sm hover:shadow-md"
+                    className="border border-zinc-200 p-4 sm:p-6 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all group shadow-sm hover:shadow-md"
                   >
                     <div className="mb-2 sm:mb-0">
                       <h3 className="font-medium text-zinc-900 group-hover:text-zinc-900 transition-colors text-lg">{service.name}</h3>
@@ -407,13 +407,13 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
 
       {step === 'STYLIST' && (
         <div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-6 mb-8">
             <button
               type="button"
               onClick={() => { setSelectedStylist({ id: ANY_STYLIST_ID, name: 'Anyone', role: 'First available' }); setStep('DATE'); }}
-              className="border border-dashed border-zinc-300 p-6 rounded-lg text-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all shadow-sm group"
+              className="border border-dashed border-zinc-300 p-4 sm:p-6 rounded-lg text-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all shadow-sm group"
             >
-              <div className="w-24 h-24 bg-zinc-100 rounded-full mx-auto mb-4 flex items-center justify-center ring-2 ring-offset-2 ring-transparent group-hover:ring-zinc-900 transition-all">
+              <div className="w-16 h-16 sm:w-24 sm:h-24 bg-zinc-100 rounded-full mx-auto mb-4 flex items-center justify-center ring-2 ring-offset-2 ring-transparent group-hover:ring-zinc-900 transition-all">
                 <svg className="w-10 h-10 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a3 3 0 10-3-3" />
                 </svg>
@@ -425,9 +425,9 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
               <div
                 key={stylist.id}
                 onClick={() => { setSelectedStylist(stylist); setStep('DATE'); }}
-                className="border border-zinc-200 p-6 rounded-lg text-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all shadow-sm group"
+                className="border border-zinc-200 p-4 sm:p-6 rounded-lg text-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all shadow-sm group"
               >
-                 <div className="w-24 h-24 bg-zinc-200 rounded-full mx-auto mb-4 overflow-hidden ring-2 ring-offset-2 ring-transparent group-hover:ring-zinc-900 transition-all">
+                 <div className="w-16 h-16 sm:w-24 sm:h-24 bg-zinc-200 rounded-full mx-auto mb-4 overflow-hidden ring-2 ring-offset-2 ring-transparent group-hover:ring-zinc-900 transition-all">
                    {stylist.imageUrl ? (
                      // eslint-disable-next-line @next/next/no-img-element
                      <img src={stylist.imageUrl} alt={stylist.name} className="w-full h-full object-cover" />
@@ -463,7 +463,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                 Select Date
               </h3>
               <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200">
-                <div className="flex lg:flex-col space-x-3 lg:space-x-0 lg:space-y-3 overflow-x-auto lg:overflow-visible pb-4 lg:pb-0 scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent">
+                <div className="flex lg:flex-col space-x-3 lg:space-x-0 lg:space-y-3 overflow-x-auto lg:overflow-visible snap-x snap-mandatory lg:snap-none pb-4 lg:pb-0 scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent">
                   {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(offset => {
                     const date = addDays(startOfToday(), offset);
                     const isSelected = isSameDay(date, selectedDate);
@@ -471,9 +471,9 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                       <button
                         key={offset}
                         onClick={() => setSelectedDate(date)}
-                        className={`flex-shrink-0 w-20 lg:w-full p-3 rounded-lg border flex lg:flex-row flex-col items-center lg:justify-between justify-center transition-all ${
+                        className={`flex-shrink-0 snap-start w-20 lg:w-full p-3 rounded-lg border flex lg:flex-row flex-col items-center lg:justify-between justify-center transition-all ${
                           isSelected
-                            ? 'border-zinc-900 bg-zinc-900 text-white shadow-md transform scale-105'
+                            ? 'border-zinc-900 bg-zinc-900 text-white shadow-md'
                             : 'border-zinc-200 hover:border-zinc-400 hover:bg-white bg-white text-zinc-700'
                         }`}
                       >
@@ -574,7 +574,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
             </div>
           </div>
 
-          <div className="flex justify-between items-center pt-6 border-t border-zinc-100 sticky bottom-0 bg-white pb-2 z-10">
+          <div className="flex justify-between items-center pt-6 border-t border-zinc-100 sticky bottom-0 bg-white pb-[max(0.5rem,env(safe-area-inset-bottom))] z-10">
              <button onClick={() => setStep('STYLIST')} className="text-sm font-medium text-zinc-600 hover:text-zinc-900 flex items-center gap-1 px-3 py-2 rounded-md hover:bg-zinc-50 transition-colors">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -603,13 +603,13 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
         <form onSubmit={handleSubmit} className="space-y-8">
           <div className="bg-zinc-50/50 p-6 rounded-xl border border-zinc-200 shadow-sm">
             <h3 className="font-serif text-lg mb-4 pb-2 border-b border-zinc-200 text-zinc-900">Booking Summary</h3>
-            <div className="grid grid-cols-2 gap-6 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 text-sm">
               <div>
                 <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Service</span>
                 <span className="text-zinc-900 font-medium text-base">{selectedService?.name}</span>
               </div>
               {consultationOrigin && (
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Consultation for</span>
                   <span className="text-zinc-900 font-medium text-base">{consultationOrigin.name}</span>
                 </div>
@@ -626,7 +626,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                 <span className="text-zinc-500 uppercase text-xs tracking-wider font-semibold block mb-1">Time</span>
                 <span className="text-zinc-900 font-medium text-base">{selectedTime}</span>
               </div>
-              <div className="col-span-2 border-t border-zinc-200 pt-4 mt-2">
+              <div className="sm:col-span-2 border-t border-zinc-200 pt-4 mt-2">
                 <div className="flex justify-between items-center">
                   <span className="text-zinc-600 font-medium">Total Price</span>
                   <div className="flex items-center gap-3">
@@ -650,7 +650,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
           {/* Discount Code */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-zinc-700">Discount Code (Optional)</label>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 className="flex-1 border border-zinc-300 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900/30 focus:border-zinc-900 transition-all uppercase bg-white text-zinc-900"
@@ -744,9 +744,9 @@ function TimeSlotButton({ time, isSelected, onClick }: { time: string; isSelecte
   return (
     <button
       onClick={onClick}
-      className={`py-3 px-2 text-sm font-medium border rounded-lg transition-all relative overflow-hidden ${
+      className={`min-h-[44px] py-3 px-2 text-sm font-medium border rounded-lg transition-all relative overflow-hidden ${
         isSelected
-          ? 'bg-zinc-900 text-white border-zinc-900 shadow-md scale-105 z-10'
+          ? 'bg-zinc-900 text-white border-zinc-900 shadow-md z-10'
           : 'border-zinc-200 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 bg-white hover:bg-zinc-50'
       }`}
     >

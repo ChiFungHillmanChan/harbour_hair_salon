@@ -19,10 +19,10 @@ export default async function AdminBlogListPage() {
   const draftCount = posts.length - publishedCount;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-start justify-between mb-8 gap-6">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-zinc-900">Journal</h1>
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Journal</h1>
           <p className="text-zinc-700 mt-2">
             Write, edit and publish blog posts. Published posts appear on the public{' '}
             <Link href="/blog" className="underline hover:text-zinc-900">
@@ -65,20 +65,20 @@ export default async function AdminBlogListPage() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+        <div className="bg-white border border-zinc-200 rounded-lg overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-50">
-                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-6 py-3">
+                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-6 py-3 whitespace-nowrap">
                   Title
                 </th>
-                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3">
+                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3 whitespace-nowrap">
                   Status
                 </th>
-                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3">
+                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3 whitespace-nowrap">
                   Published
                 </th>
-                <th className="text-right text-xs uppercase tracking-wider text-zinc-500 font-medium px-6 py-3">
+                <th className="text-right text-xs uppercase tracking-wider text-zinc-500 font-medium px-6 py-3 whitespace-nowrap">
                   Actions
                 </th>
               </tr>
@@ -92,7 +92,7 @@ export default async function AdminBlogListPage() {
                       <p className="text-xs text-zinc-500 mt-0.5 font-mono">/{post.slug}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-4 whitespace-nowrap">
                     <span
                       className={`inline-block px-2.5 py-1 text-xs uppercase tracking-wider font-bold rounded-full ${
                         post.status === 'PUBLISHED'
@@ -103,10 +103,10 @@ export default async function AdminBlogListPage() {
                       {post.status}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-sm text-zinc-600">
+                  <td className="px-4 py-4 text-sm text-zinc-600 whitespace-nowrap">
                     {formatDate(post.publishedAt)}
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-6 py-4 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-2">
                       {post.status === 'PUBLISHED' && (
                         <Link
