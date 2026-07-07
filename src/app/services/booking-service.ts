@@ -81,17 +81,21 @@ export async function getAvailableSlots(
   // 2. Get existing appointments for this stylist on this date
   const { start: dayStart, end: dayEnd } = salonDayWindow(date);
 
-  const existingAppointments = await prisma.appointment.findMany({
-    where: {
-      stylistId,
-      date: { gte: dayStart, lte: dayEnd },
-      status: { not: 'CANCELLED' },
-    },
-    include: { service: { select: { duration: true } } },
-  });
+  // The appointment query and the external-busy query are independent of
+  // each other's results, so run them concurrently.
+  const [existingAppointments, externalBlocks] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        stylistId,
+        date: { gte: dayStart, lte: dayEnd },
+        status: { not: 'CANCELLED' },
+      },
+      include: { service: { select: { duration: true } } },
+    }),
+    loadExternalBusy(prisma, [stylistId], salonDayWindow(date)),
+  ]);
 
   // 3. Merge Treatwell (external) busy blocks for this stylist/day, then build slots
-  const externalBlocks = await loadExternalBusy(prisma, [stylistId], salonDayWindow(date));
   const busy = [...existingAppointments, ...externalBlocks.map(toSlotAppointment)];
 
   return buildStylistSlots(availability, busy, date, serviceDuration);
