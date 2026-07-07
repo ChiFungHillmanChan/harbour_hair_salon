@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { hashPassword, verifyPassword } from '@/app/lib/password';
 import { createSession, deleteSession } from '@/app/lib/session';
@@ -163,14 +164,21 @@ export async function register(prevState: unknown, formData: FormData) {
     } else {
       // Guest user registering
       const hashedPassword = await hashPassword(password);
-      await prisma.user.update({
-        where: { id: existingUser.id },
-        data: {
-          password: hashedPassword,
-          name,
-          phone,
-        },
-      });
+      try {
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            password: hashedPassword,
+            name,
+            phone,
+          },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          return { error: 'This email is already registered. Please sign in instead.' };
+        }
+        throw error;
+      }
       await createSession(existingUser.id, existingUser.role, existingUser.sessionVersion);
       redirect(redirectTo);
     }
@@ -178,15 +186,23 @@ export async function register(prevState: unknown, formData: FormData) {
 
   const hashedPassword = await hashPassword(password);
 
-  const user = await prisma.user.create({
-    data: {
-      email,
-      password: hashedPassword,
-      name,
-      phone,
-      role: 'USER',
-    },
-  });
+  let user;
+  try {
+    user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name,
+        phone,
+        role: 'USER',
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { error: 'This email is already registered. Please sign in instead.' };
+    }
+    throw error;
+  }
 
   await createSession(user.id, user.role, user.sessionVersion);
   redirect(redirectTo);

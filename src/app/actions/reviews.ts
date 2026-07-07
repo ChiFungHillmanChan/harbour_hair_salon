@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
@@ -60,15 +61,22 @@ export async function createReview(
     return { error: 'You can only review appointments after they have taken place.' };
   }
 
-  await prisma.review.create({
-    data: {
-      rating,
-      comment,
-      status: 'PENDING',
-      userId: session.userId,
-      appointmentId,
-    },
-  });
+  try {
+    await prisma.review.create({
+      data: {
+        rating,
+        comment,
+        status: 'PENDING',
+        userId: session.userId,
+        appointmentId,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { error: 'You have already left a review for this appointment.' };
+    }
+    throw error;
+  }
 
   revalidatePath('/appointments');
   revalidatePath('/reviews');
