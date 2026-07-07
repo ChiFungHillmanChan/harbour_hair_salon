@@ -97,3 +97,4 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 ## Components (responsive shell)
 - `src/components/admin/AdminSidebar.tsx` — admin nav shell: hamburger top bar + slide-in drawer < lg, sticky sidebar ≥ lg; closes on backdrop/✕/Escape/route change
 - `src/components/layout/SlimFooter.tsx` — one-line footer (© + Privacy) used on /auth pages instead of the marketing footer
+- `src/components/layout/FooterSwitcher.tsx` — client-side chooser (usePathname) between the marketing footer+book bar and SlimFooter, so soft navigation swaps chrome correctly
