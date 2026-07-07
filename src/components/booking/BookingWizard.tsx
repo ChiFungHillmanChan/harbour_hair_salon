@@ -473,7 +473,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                         onClick={() => setSelectedDate(date)}
                         className={`flex-shrink-0 snap-start w-20 lg:w-full p-3 rounded-lg border flex lg:flex-row flex-col items-center lg:justify-between justify-center transition-all ${
                           isSelected
-                            ? 'border-zinc-900 bg-zinc-900 text-white shadow-md ring-2 ring-zinc-900 ring-offset-2'
+                            ? 'border-zinc-900 bg-zinc-900 text-white shadow-md'
                             : 'border-zinc-200 hover:border-zinc-400 hover:bg-white bg-white text-zinc-700'
                         }`}
                       >
@@ -746,7 +746,7 @@ function TimeSlotButton({ time, isSelected, onClick }: { time: string; isSelecte
       onClick={onClick}
       className={`min-h-[44px] py-3 px-2 text-sm font-medium border rounded-lg transition-all relative overflow-hidden ${
         isSelected
-          ? 'bg-zinc-900 text-white border-zinc-900 shadow-md ring-2 ring-zinc-900 ring-offset-2 z-10'
+          ? 'bg-zinc-900 text-white border-zinc-900 shadow-md z-10'
           : 'border-zinc-200 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 bg-white hover:bg-zinc-50'
       }`}
     >

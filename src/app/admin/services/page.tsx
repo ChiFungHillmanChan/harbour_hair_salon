@@ -79,88 +79,90 @@ export default async function AdminServicesPage() {
       ) : (
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([category, items]) => (
-            <div key={category} className="bg-white border border-zinc-200 rounded-lg overflow-x-auto">
+            <div key={category} className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
               <div className="bg-zinc-50 border-b border-zinc-200 px-6 py-3 flex items-center justify-between">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-700">
                   {category}
                 </h2>
                 <span className="text-xs text-zinc-500">{items.length} services</span>
               </div>
-              <table className="w-full">
-                <thead className="border-b border-zinc-100">
-                  <tr>
-                    <th className="text-left text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-6 py-2">
-                      Name
-                    </th>
-                    <th className="text-right text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-4 py-2 w-24">
-                      Price
-                    </th>
-                    <th className="text-right text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-4 py-2 w-24">
-                      Duration
-                    </th>
-                    <th className="text-right text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-4 py-2 w-28">
-                      Bookings
-                    </th>
-                    <th className="text-right text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-6 py-2 w-40">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {items.map((service) => {
-                    const bookings = service._count.appointments;
-                    return (
-                      <tr key={service.id} className="hover:bg-zinc-50">
-                        <td className="px-6 py-3">
-                          <div>
-                            <p className="font-medium text-zinc-900 text-sm">{service.name}</p>
-                            {service.description && (
-                              <p className="text-xs text-zinc-500 mt-0.5">{service.description}</p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-zinc-900">
-                          £{Number(service.price).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm text-zinc-600">
-                          {service.duration} min
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm text-zinc-600">
-                          {bookings}
-                        </td>
-                        <td className="px-6 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Link
-                              href={`/admin/services/${service.id}/edit`}
-                              className="text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
-                            >
-                              Edit
-                            </Link>
-                            {bookings === 0 ? (
-                              <form action={deleteService}>
-                                <input type="hidden" name="id" value={service.id} />
-                                <button
-                                  type="submit"
-                                  className="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
-                                >
-                                  Delete
-                                </button>
-                              </form>
-                            ) : (
-                              <span
-                                className="text-xs text-zinc-400 px-3 py-1.5"
-                                title="Cannot delete — service has appointments"
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="border-b border-zinc-100">
+                    <tr>
+                      <th className="text-left text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-6 py-2">
+                        Name
+                      </th>
+                      <th className="text-right text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-4 py-2 w-24">
+                        Price
+                      </th>
+                      <th className="text-right text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-4 py-2 w-24">
+                        Duration
+                      </th>
+                      <th className="text-right text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-4 py-2 w-28">
+                        Bookings
+                      </th>
+                      <th className="text-right text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-6 py-2 w-40">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {items.map((service) => {
+                      const bookings = service._count.appointments;
+                      return (
+                        <tr key={service.id} className="hover:bg-zinc-50">
+                          <td className="px-6 py-3">
+                            <div>
+                              <p className="font-medium text-zinc-900 text-sm">{service.name}</p>
+                              {service.description && (
+                                <p className="text-xs text-zinc-500 mt-0.5">{service.description}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-zinc-900">
+                            £{Number(service.price).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm text-zinc-600">
+                            {service.duration} min
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm text-zinc-600">
+                            {bookings}
+                          </td>
+                          <td className="px-6 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Link
+                                href={`/admin/services/${service.id}/edit`}
+                                className="text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
                               >
-                                Locked
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                                Edit
+                              </Link>
+                              {bookings === 0 ? (
+                                <form action={deleteService}>
+                                  <input type="hidden" name="id" value={service.id} />
+                                  <button
+                                    type="submit"
+                                    className="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                                  >
+                                    Delete
+                                  </button>
+                                </form>
+                              ) : (
+                                <span
+                                  className="text-xs text-zinc-400 px-3 py-1.5"
+                                  title="Cannot delete — service has appointments"
+                                >
+                                  Locked
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ))}
         </div>

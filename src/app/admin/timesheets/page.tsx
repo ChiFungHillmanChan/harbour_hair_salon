@@ -79,8 +79,8 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="text-left border-b">
-              <th className="p-2">Employee</th><th className="p-2">Clock in</th><th className="p-2">Clock out</th>
-              <th className="p-2">Hours</th><th className="p-2">Status</th><th className="p-2">Shift</th><th className="p-2"></th>
+              <th className="p-2 whitespace-nowrap">Employee</th><th className="p-2 whitespace-nowrap">Clock in</th><th className="p-2 whitespace-nowrap">Clock out</th>
+              <th className="p-2 whitespace-nowrap">Hours</th><th className="p-2 whitespace-nowrap">Status</th><th className="p-2 whitespace-nowrap">Shift</th><th className="p-2 whitespace-nowrap"></th>
             </tr>
           </thead>
           <tbody>
@@ -91,11 +91,11 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
               return (
                 <tr key={e.id} className="border-b">
                   <td className="p-2">{e.employee.name}</td>
-                  <td className="p-2">{fmt(e.clockIn)}</td>
-                  <td className="p-2">{e.clockOut ? fmt(e.clockOut) : <span className="text-zinc-900">OPEN</span>}</td>
-                  <td className="p-2">{hours}</td>
-                  <td className="p-2">{e.status}</td>
-                  <td className="p-2 space-x-1">
+                  <td className="p-2 whitespace-nowrap">{fmt(e.clockIn)}</td>
+                  <td className="p-2 whitespace-nowrap">{e.clockOut ? fmt(e.clockOut) : <span className="text-zinc-900">OPEN</span>}</td>
+                  <td className="p-2 whitespace-nowrap">{hours}</td>
+                  <td className="p-2 whitespace-nowrap">{e.status}</td>
+                  <td className="p-2 space-x-1 whitespace-nowrap">
                     {ev?.late && (
                       <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
                         Late {ev.lateByMin}m
@@ -107,7 +107,7 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
                       </span>
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="p-2 whitespace-nowrap">
                     {e.clockOut && e.status !== 'APPROVED' && (
                       <form action={async () => { 'use server'; await approveTimeEntry(e.id); }}>
                         <button className="text-zinc-900 underline">Approve</button>

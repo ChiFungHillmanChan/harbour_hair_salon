@@ -101,8 +101,8 @@ export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
 
       {/* Sidebar: off-canvas drawer < lg, sticky viewport-height column ≥ lg */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-zinc-900 text-white transition-transform duration-200 ease-in-out lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-64 lg:translate-x-0 ${
-          open ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-zinc-900 text-white transition-[transform,visibility] duration-200 ease-in-out lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-64 lg:translate-x-0 ${
+          open ? 'translate-x-0' : '-translate-x-full invisible lg:visible'
         }`}
       >
         <div className="flex items-center justify-between border-b border-zinc-800 p-6">
@@ -124,6 +124,7 @@ export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
             <Link
               key={href}
               href={href}
+              onClick={() => setOpen(false)}
               className="block rounded px-4 py-2.5 hover:bg-zinc-800 transition-colors"
             >
               {label}
@@ -137,7 +138,7 @@ export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
             <p className="truncate text-sm font-medium">{userId}</p>
           </div>
           <form action={logoutAction}>
-            <button className="w-full rounded bg-zinc-800 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700">
+            <button className="w-full rounded bg-zinc-800 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700">
               Sign Out
             </button>
           </form>
