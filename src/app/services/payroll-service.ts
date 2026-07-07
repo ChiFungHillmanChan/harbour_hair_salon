@@ -1,12 +1,11 @@
 // src/app/services/payroll-service.ts
 import 'server-only';
-import prisma from '@/app/lib/prisma';
 import { fromZonedTime } from 'date-fns-tz';
 import { SALON_TIMEZONE, salonDateKey } from '@/app/services/salon-time';
 import { totalWorkedMinutes, applyBreakDeduction, splitRegularOvertime } from '@/app/services/timesheet-calc';
 import { computeGross, round2, sumCommissionable, type PayType } from '@/app/services/payroll-calc';
 
-function monthBounds(year: number, month: number) {
+export function monthBounds(year: number, month: number) {
   const start = fromZonedTime(`${year}-${String(month).padStart(2, '0')}-01T00:00:00.000`, SALON_TIMEZONE);
   const ny = month === 12 ? year + 1 : year;
   const nm = month === 12 ? 1 : month + 1;
@@ -17,10 +16,88 @@ function monthBounds(year: number, month: number) {
 const num = (d: { toString(): string } | null | undefined): number | null =>
   d == null ? null : Number(d.toString());
 
-export async function runPayroll(year: number, month: number) {
+/** A value shaped like a Prisma `Decimal` (or a plain number, which also has `toString`). */
+type DecimalLike = { toString(): string };
+
+type EmployeeRow = {
+  id: string;
+  payType: string;
+  hourlyRate: DecimalLike | null;
+  monthlySalary: DecimalLike | null;
+  commissionRate: DecimalLike | null;
+  overtimeEnabled: boolean;
+  overtimeThresholdHours: DecimalLike | null;
+  overtimeMultiplier: DecimalLike | null;
+  unpaidBreakMinutes: number | null;
+  stylistId: string | null;
+};
+
+type PayrollLineWriteFields = {
+  totalHours: number;
+  regularHours: number;
+  overtimeHours: number;
+  basePay: number;
+  overtimePay: number;
+  commissionableRevenue: number;
+  commissionPay: number;
+  adjustments: number;
+  adjustmentNote?: string | null;
+  grossPay: number;
+};
+
+/**
+ * The exact subset of the Prisma client `runPayrollWith` calls. Narrower than
+ * `PrismaClient` so a test fake only needs to implement the calls actually
+ * made — no full-client mock required — while still letting a fake assert the
+ * where-clauses each call is made with.
+ */
+export type PayrollDb = {
+  payrollPeriod: {
+    upsert(args: {
+      where: { year_month: { year: number; month: number } };
+      update: Record<string, never>;
+      create: { year: number; month: number; status: string };
+    }): Promise<{ id: string; status: string }>;
+  };
+  timeEntry: {
+    findMany(args: {
+      where: { status: string; clockOut: { not: null }; clockIn: { gte: Date; lt: Date } };
+      select: { employeeId: true };
+      distinct: ['employeeId'];
+    }): Promise<{ employeeId: string }[]>;
+    findMany(args: {
+      where: { employeeId: string; status: string; clockIn: { gte: Date; lt: Date }; clockOut: { not: null } };
+      select: { clockIn: true; clockOut: true; breakMinutes: true };
+    }): Promise<{ clockIn: Date; clockOut: Date | null; breakMinutes: number }[]>;
+  };
+  payrollLine: {
+    findMany(args: { where: { periodId: string }; select: { employeeId: true } }): Promise<{ employeeId: string }[]>;
+    findUnique(args: {
+      where: { periodId_employeeId: { periodId: string; employeeId: string } };
+    }): Promise<{ adjustments: DecimalLike; adjustmentNote: string | null } | null>;
+    upsert(args: {
+      where: { periodId_employeeId: { periodId: string; employeeId: string } };
+      update: PayrollLineWriteFields;
+      create: PayrollLineWriteFields & { periodId: string; employeeId: string };
+    }): Promise<unknown>;
+  };
+  appointment: {
+    findMany(args: {
+      where: { stylistId: string; status: string; date: { gte: Date; lt: Date } };
+      select: { priceAtBooking: true; service: { select: { price: true } } };
+    }): Promise<{ priceAtBooking: DecimalLike | null; service: { price: DecimalLike } }[]>;
+  };
+  employee: {
+    findMany(args: {
+      where: { OR: [{ isActive: boolean }, { id: { in: string[] } }] };
+    }): Promise<EmployeeRow[]>;
+  };
+};
+
+export async function runPayrollWith(db: PayrollDb, year: number, month: number) {
   const { start, end } = monthBounds(year, month);
 
-  const period = await prisma.payrollPeriod.upsert({
+  const period = await db.payrollPeriod.upsert({
     where: { year_month: { year, month } },
     update: {},
     create: { year, month, status: 'DRAFT' },
@@ -33,12 +110,12 @@ export async function runPayroll(year: number, month: number) {
   // Include active employees AND anyone with approved in-month hours or an existing
   // line for this period, so leavers (deactivated mid-month) are still paid and their
   // lines are refreshed rather than left stale.
-  const approvedEntryEmployees = await prisma.timeEntry.findMany({
+  const approvedEntryEmployees = await db.timeEntry.findMany({
     where: { status: 'APPROVED', clockOut: { not: null }, clockIn: { gte: start, lt: end } },
     select: { employeeId: true },
     distinct: ['employeeId'],
   });
-  const existingLineEmployees = await prisma.payrollLine.findMany({
+  const existingLineEmployees = await db.payrollLine.findMany({
     where: { periodId: period.id },
     select: { employeeId: true },
   });
@@ -48,12 +125,12 @@ export async function runPayroll(year: number, month: number) {
       ...existingLineEmployees.map((l) => l.employeeId),
     ]),
   );
-  const employees = await prisma.employee.findMany({
+  const employees = await db.employee.findMany({
     where: { OR: [{ isActive: true }, { id: { in: includeIds } }] },
   });
 
   for (const e of employees) {
-    const entries = await prisma.timeEntry.findMany({
+    const entries = await db.timeEntry.findMany({
       where: { employeeId: e.id, status: 'APPROVED', clockIn: { gte: start, lt: end }, clockOut: { not: null } },
       select: { clockIn: true, clockOut: true, breakMinutes: true },
     });
@@ -75,7 +152,7 @@ export async function runPayroll(year: number, month: number) {
 
     let commissionableRevenue = 0;
     if (e.stylistId) {
-      const appts = await prisma.appointment.findMany({
+      const appts = await db.appointment.findMany({
         where: { stylistId: e.stylistId, status: 'COMPLETED', date: { gte: start, lt: end } },
         select: { priceAtBooking: true, service: { select: { price: true } } },
       });
@@ -96,14 +173,14 @@ export async function runPayroll(year: number, month: number) {
       adjustments: 0,
     });
 
-    const existing = await prisma.payrollLine.findUnique({
+    const existing = await db.payrollLine.findUnique({
       where: { periodId_employeeId: { periodId: period.id, employeeId: e.id } },
     });
     const adjustments = existing ? Number(existing.adjustments.toString()) : 0;
     const adjustmentNote = existing?.adjustmentNote ?? null;
     const grossWithAdj = round2(gross.grossPay + adjustments);
 
-    await prisma.payrollLine.upsert({
+    await db.payrollLine.upsert({
       where: { periodId_employeeId: { periodId: period.id, employeeId: e.id } },
       update: {
         totalHours, regularHours, overtimeHours,
@@ -124,7 +201,19 @@ export async function runPayroll(year: number, month: number) {
   return { periodId: period.id };
 }
 
+export async function runPayroll(year: number, month: number) {
+  // Lazy-load the real Prisma client only when no db is injected, so unit tests
+  // (which pass a fake db) never trigger prisma.ts's eager DB-URL resolution.
+  const { default: prisma } = await import('@/app/lib/prisma');
+  // PrismaClient's generated method signatures are structurally incompatible
+  // with the narrow, hand-written PayrollDb (Prisma's `select`/`omit` exclusivity
+  // typing rejects a plain object literal type). PayrollDb is a true subset of
+  // what PrismaClient exposes at runtime, so this cast is safe.
+  return runPayrollWith(prisma as unknown as PayrollDb, year, month);
+}
+
 export async function updateAdjustment(lineId: string, amount: number, note: string) {
+  const { default: prisma } = await import('@/app/lib/prisma');
   const line = await prisma.payrollLine.findUnique({ where: { id: lineId }, include: { period: true } });
   if (!line || line.period.status !== 'DRAFT') return;
   const baseGross = Number(line.basePay.toString()) + Number(line.overtimePay.toString()) + Number(line.commissionPay.toString());
@@ -135,6 +224,7 @@ export async function updateAdjustment(lineId: string, amount: number, note: str
 }
 
 export async function finalizePayroll(periodId: string, adminId: string) {
+  const { default: prisma } = await import('@/app/lib/prisma');
   // Atomically claim the period: only a DRAFT can be finalized, and only once.
   // Prevents a double-click (or a re-finalize) from re-snapshotting and
   // overwriting finalizedAt / finalizedByAdminId on an already-final period.
