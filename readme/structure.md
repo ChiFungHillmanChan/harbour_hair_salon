@@ -93,3 +93,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ## Components (auth)
 - `src/components/auth/PasswordVisibilityToggle.tsx` — eye / eye-off button overlaid on password inputs (used by signin + register pages)
+
+## Components (responsive shell)
+- `src/components/admin/AdminSidebar.tsx` — admin nav shell: hamburger top bar + slide-in drawer < lg, sticky sidebar ≥ lg; closes on backdrop/✕/Escape/route change
+- `src/components/layout/SlimFooter.tsx` — one-line footer (© + Privacy) used on /auth pages instead of the marketing footer
