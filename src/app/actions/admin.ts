@@ -6,6 +6,7 @@ import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { hashPassword } from '@/app/lib/password';
 import { z } from 'zod';
+import { revalidateCategoryPages } from '@/app/actions/admin-services';
 
 // --- Validation Schemas ---
 
@@ -31,6 +32,12 @@ const offerSchema = z.object({
   { message: 'Percentage discount cannot exceed 100%', path: ['discountValue'] }
 );
 
+// Same `{ error?, success? }` shape resetUserPassword below already returns —
+// used here so OfferForm/OfferInlineEditor/DiscountForm can surface errors via
+// useActionState instead of silently discarding them.
+export type OfferActionState = { error?: string; success?: boolean };
+export type DiscountActionState = { error?: string; success?: boolean };
+
 const adminUserSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
   email: z.string().email('Please enter a valid email').max(254),
@@ -47,7 +54,10 @@ async function requireAdmin() {
 
 // --- Discount Codes ---
 
-export async function createDiscountCode(formData: FormData) {
+export async function createDiscountCode(
+  _prevState: DiscountActionState,
+  formData: FormData
+): Promise<DiscountActionState> {
   const { error, session } = await requireAdmin();
   if (error || !session) return { error };
 
@@ -82,35 +92,45 @@ export async function createDiscountCode(formData: FormData) {
   }
 
   revalidatePath('/admin/discounts');
+  return { success: true };
 }
 
-export async function deleteDiscountCode(id: string) {
+export async function deleteDiscountCode(id: string): Promise<DiscountActionState> {
   const { error } = await requireAdmin();
-  if (error) return;
+  if (error) return { error };
 
-  // Check if any appointments use this code
-  const usageCount = await prisma.appointment.count({
-    where: { discountCodeId: id },
-  });
+  try {
+    // Check if any appointments use this code
+    const usageCount = await prisma.appointment.count({
+      where: { discountCodeId: id },
+    });
 
-  if (usageCount > 0) {
-    // Deactivate instead of deleting
-    await prisma.discountCode.update({
-      where: { id },
-      data: { isActive: false },
-    });
-  } else {
-    await prisma.discountCode.delete({
-      where: { id },
-    });
+    if (usageCount > 0) {
+      // Deactivate instead of deleting
+      await prisma.discountCode.update({
+        where: { id },
+        data: { isActive: false },
+      });
+    } else {
+      await prisma.discountCode.delete({
+        where: { id },
+      });
+    }
+  } catch (error) {
+    console.error('deleteDiscountCode failed:', error);
+    return { error: 'Failed to delete discount code. Please try again.' };
   }
 
   revalidatePath('/admin/discounts');
+  return { success: true };
 }
 
 // --- Offers ---
 
-export async function createOffer(formData: FormData) {
+export async function createOffer(
+  _prevState: OfferActionState,
+  formData: FormData
+): Promise<OfferActionState> {
   const { error } = await requireAdmin();
   if (error) return { error };
 
@@ -126,50 +146,124 @@ export async function createOffer(formData: FormData) {
     return { error: parsed.error.issues[0].message };
   }
 
-  await prisma.offer.create({
-    data: {
-      title: parsed.data.title,
-      description: parsed.data.description || null,
-      discountType: parsed.data.discountType,
-      discountValue: parsed.data.discountValue,
-      isActive: true,
-      isGlobal: parsed.data.isGlobal ?? false,
-    },
-  });
+  try {
+    await prisma.offer.create({
+      data: {
+        title: parsed.data.title,
+        description: parsed.data.description || null,
+        discountType: parsed.data.discountType,
+        discountValue: parsed.data.discountValue,
+        isActive: true,
+        isGlobal: parsed.data.isGlobal ?? false,
+      },
+    });
+  } catch (error) {
+    console.error('createOffer failed:', error);
+    return { error: 'Failed to create offer. Please try again.' };
+  }
 
   revalidatePath('/admin/offers');
   revalidatePath('/offers');
   revalidatePath('/');
   revalidatePath('/services');
+  await revalidateCategoryPages();
+
+  return { success: true };
 }
 
-export async function toggleOfferStatus(id: string, isActive: boolean) {
+export async function updateOffer(
+  _prevState: OfferActionState,
+  formData: FormData
+): Promise<OfferActionState> {
   const { error } = await requireAdmin();
-  if (error) return;
+  if (error) return { error };
 
-  await prisma.offer.update({
-    where: { id },
-    data: { isActive },
+  const id = formData.get('id');
+  if (typeof id !== 'string' || !id) {
+    return { error: 'Missing offer id.' };
+  }
+
+  const existing = await prisma.offer.findUnique({ where: { id } });
+  if (!existing) return { error: 'Offer not found.' };
+
+  const parsed = offerSchema.safeParse({
+    title: formData.get('title'),
+    description: formData.get('description'),
+    discountType: formData.get('discountType'),
+    discountValue: formData.get('discountValue'),
+    isGlobal: formData.get('isGlobal') === 'on',
   });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  try {
+    await prisma.offer.update({
+      where: { id },
+      data: {
+        title: parsed.data.title,
+        description: parsed.data.description || null,
+        discountType: parsed.data.discountType,
+        discountValue: parsed.data.discountValue,
+        isGlobal: parsed.data.isGlobal ?? false,
+      },
+    });
+  } catch (error) {
+    console.error('updateOffer failed:', error);
+    return { error: 'Failed to update offer. Please try again.' };
+  }
 
   revalidatePath('/admin/offers');
   revalidatePath('/offers');
   revalidatePath('/');
   revalidatePath('/services');
+  await revalidateCategoryPages();
+
+  return { success: true };
 }
 
-export async function deleteOffer(id: string) {
+export async function toggleOfferStatus(id: string, isActive: boolean): Promise<OfferActionState> {
   const { error } = await requireAdmin();
-  if (error) return;
+  if (error) return { error };
 
-  await prisma.offer.delete({
-    where: { id },
-  });
+  try {
+    await prisma.offer.update({
+      where: { id },
+      data: { isActive },
+    });
+  } catch (error) {
+    console.error('toggleOfferStatus failed:', error);
+    return { error: 'Failed to update offer status. Please try again.' };
+  }
 
   revalidatePath('/admin/offers');
   revalidatePath('/offers');
   revalidatePath('/');
   revalidatePath('/services');
+  await revalidateCategoryPages();
+  return { success: true };
+}
+
+export async function deleteOffer(id: string): Promise<OfferActionState> {
+  const { error } = await requireAdmin();
+  if (error) return { error };
+
+  try {
+    await prisma.offer.delete({
+      where: { id },
+    });
+  } catch (error) {
+    console.error('deleteOffer failed:', error);
+    return { error: 'Failed to delete offer. Please try again.' };
+  }
+
+  revalidatePath('/admin/offers');
+  revalidatePath('/offers');
+  revalidatePath('/');
+  revalidatePath('/services');
+  await revalidateCategoryPages();
+  return { success: true };
 }
 
 // --- Admin Users ---

@@ -7,6 +7,7 @@ import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL } from '@/app/lib/site-url';
 import SocialLinks from '@/components/layout/SocialLinks';
 import { getSiteSettings } from '@/app/services/site-settings-service';
+import { toTelHref } from '@/app/lib/phone';
 
 export const metadata: Metadata = {
   title: 'Contact & Find Us in Leeds City Centre',
@@ -23,6 +24,9 @@ export default async function ContactPage() {
     getFaqsByKey('contact'),
     getSiteSettings(),
   ]);
+  const phoneDisplay = settings.phone.trim() || '07831 830898';
+  const phoneHref = toTelHref(phoneDisplay);
+  const phoneE164 = phoneHref.replace(/^tel:/, '');
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
@@ -65,7 +69,7 @@ export default async function ContactPage() {
             '@type': 'HairSalon',
             name: 'Harbour Hair Salon',
             url: SITE_URL,
-            telephone: '+447831830898',
+            telephone: phoneE164,
             address: {
               '@type': 'PostalAddress',
               streetAddress: 'Upper Floor, Unit 15 Central Arcade, Central Rd',
@@ -112,8 +116,8 @@ export default async function ContactPage() {
               <div className="space-y-4 text-lg">
                 <p>
                   <span className="block text-sm font-bold text-zinc-900 uppercase tracking-wider mb-1">Phone</span>
-                  <a href="tel:+447831830898" className="text-zinc-600 hover:text-zinc-900 transition-colors">
-                    07831 830898
+                  <a href={phoneHref} className="text-zinc-600 hover:text-zinc-900 transition-colors">
+                    {phoneDisplay}
                   </a>
                 </p>
               </div>

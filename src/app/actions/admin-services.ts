@@ -17,7 +17,14 @@ async function requireAdmin() {
 // Category detail pages live at /services/[slug] where slug is the (admin-set)
 // ServiceCategoryContent.slug — NOT category.toLowerCase(). Revalidate every real
 // slug so create/update/delete/category-move all propagate immediately.
-async function revalidateCategoryPages() {
+//
+// Exported (rather than kept private) so admin.ts's offer actions can share it:
+// those category pages also render the global-offer banner, so an offer
+// create/update/toggle/delete needs the same revalidation coverage. This is
+// legal from a 'use server' file because the Next.js "server files may only
+// export async functions" rule applies to exported *values*, and this helper
+// already is an async function — no new shared module needed for one helper.
+export async function revalidateCategoryPages() {
   const cats = await getAllCategoryContent();
   for (const c of cats) revalidatePath(`/services/${c.slug}`);
 }
