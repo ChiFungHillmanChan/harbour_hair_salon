@@ -1,4 +1,5 @@
 'use client';
+import './globals.css';
 
 export default function GlobalError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
