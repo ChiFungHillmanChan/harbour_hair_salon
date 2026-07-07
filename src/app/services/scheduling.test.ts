@@ -89,3 +89,12 @@ test('buildSlotsForWindow — does not offer a slot whose service runs past clos
   assert.ok(times.includes('09:00'), '09:00 + 45min = 09:45 <= 10:00, offered');
   assert.ok(!times.includes('09:30'), '09:30 + 45min = 10:15 > 10:00, not offered');
 });
+
+test('buildSlotsForWindow — a service that finishes exactly at closing is still offered (loop bound is <=)', () => {
+  // 09:00 + 60min = 10:00 == endMins. The slot-loop guard is
+  // `mins + serviceDuration <= endMins`; a `<`-mutant would drop this only slot
+  // and leave the grid empty, so this pins the closing-boundary equality.
+  const now = new Date('2026-06-01T00:00:00Z');
+  const times = buildSlotsForWindow('2026-07-10', { startTime: '09:00', endTime: '10:00' }, [], 60, now).map((s) => s.time);
+  assert.deepEqual(times, ['09:00'], '09:00 + 60min = 10:00 exactly fills the window and must be the sole offered slot');
+});

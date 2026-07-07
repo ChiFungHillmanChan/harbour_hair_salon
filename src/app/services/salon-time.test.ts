@@ -9,6 +9,7 @@ import {
   salonDayWindow,
   salonDateKey,
   salonMinutesOfDay,
+  toSalonDateStr,
 } from './salon-time';
 
 // These assertions are host-timezone independent: they pin the salon wall-clock
@@ -169,6 +170,42 @@ test('resolveSalonDateTime — fall-back ambiguity (2026-10-25 01:30 occurs twic
   assert.equal(r.dateStr, '2026-10-25');
   assert.equal(r.timeMinutes, 90);
   assert.equal(r.dayOfWeek, 0); // Sunday
+});
+
+// --- Single day-frame seam (regression: wrong-day booking under BST) ---------
+// getAvailableSlots must derive the grid date, the conflict-scan window and the
+// availability weekday from ONE salon-local calendar day (the day the customer
+// saw). Feeding a browser-local-midnight Date split them across three frames.
+
+test('booking day frame — one YYYY-MM-DD string yields aligned window + London weekday', () => {
+  // 2026-07-10 is a Friday during BST (London = UTC+1).
+  const dateStr = '2026-07-10';
+  const noon = resolveSalonDateTime(dateStr, '12:00');
+  // Weekday comes from the salon frame, never Date.getDay().
+  assert.equal(noon.dayOfWeek, 5); // Friday
+
+  const window = salonDayWindow(noon.utc);
+  // The window is exactly the London calendar day for dateStr (host-independent)…
+  assert.equal(window.start.toISOString(), '2026-07-09T23:00:00.000Z'); // 00:00 BST
+  assert.equal(window.end.toISOString(), '2026-07-10T22:59:59.999Z'); // 23:59:59.999 BST
+  // …and every bookable wall-clock instant of that day falls inside it, so the
+  // grid and the conflict scan can never describe different days.
+  for (const time of ['09:00', '10:00', '18:00', '19:30']) {
+    const slot = resolveSalonDateTime(dateStr, time).utc;
+    assert.ok(slot >= window.start && slot <= window.end, `${time} must sit inside the ${dateStr} window`);
+  }
+});
+
+test('booking day frame — a browser-local-midnight Date is what splits the frames', () => {
+  // A UK browser in BST picking "10 July" builds local midnight = 2026-07-09T23:00Z.
+  // Reading its UTC fields (toSalonDateStr) gives the WRONG day while salonDayWindow
+  // resolves the RIGHT London day — the exact divergence the string input removes.
+  const browserLocalMidnight = new Date('2026-07-09T23:00:00.000Z'); // 2026-07-10 00:00 BST
+  assert.equal(toSalonDateStr(browserLocalMidnight), '2026-07-09'); // grid would land a day early
+  const w = salonDayWindow(browserLocalMidnight);
+  assert.equal(w.end.toISOString(), '2026-07-10T22:59:59.999Z'); // window covers 2026-07-10
+  // Deriving both from the salon date string instead keeps a single frame:
+  assert.equal(toSalonDateStr('2026-07-10'), '2026-07-10');
 });
 
 test('salonDayWindow — fall-back day (2026-10-25) is ~25h long, not 24h', () => {

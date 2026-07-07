@@ -2,7 +2,7 @@
 
 import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
 import { evaluateBookingGates, type PatchTestGateReason } from '@/app/services/booking-gates';
-import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, type SalonDateTime } from '@/app/services/salon-time';
+import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, SALON_DATE_RE, type SalonDateTime } from '@/app/services/salon-time';
 import { SlotUnavailableError, BookingError } from '@/app/services/booking-errors';
 import { hasConflict, type BookedInterval } from '@/app/services/scheduling';
 import { loadExternalBusy, toBookedInterval } from '@/app/services/external-busy';
@@ -57,14 +57,17 @@ const SERVICE_DURATION = z.number().int().min(5).max(600);
 
 const getSlotsSchema = z.object({
   stylistId: z.string().min(1).max(64),
-  date: z.coerce.date(),
+  // Salon-local calendar day (YYYY-MM-DD) — the day the customer SAW. A coerced
+  // Date would carry the browser's local-midnight instant and split the grid,
+  // conflict window and weekday across three timezone frames downstream.
+  date: z.string().regex(SALON_DATE_RE, 'Invalid date'),
   serviceDuration: SERVICE_DURATION,
 });
 
 type CreateBookingInput = {
   stylistId: string;
   serviceId: string;
-  date: Date | string;
+  date: string;
   time: string;
   discountCode?: string;
   consultationForServiceId?: string;
@@ -73,7 +76,9 @@ type CreateBookingInput = {
 const createBookingSchema = z.object({
   stylistId: z.string(),
   serviceId: z.string(),
-  date: z.coerce.date(),
+  // Salon-local calendar day (YYYY-MM-DD); resolveSalonDateTime turns it +
+  // `time` into the correct absolute instant (see getSlotsSchema note).
+  date: z.string().regex(SALON_DATE_RE, 'Invalid date'),
   time: z.string().regex(SALON_TIME_RE, 'Invalid time'), // strict HH:mm
   discountCode: z.string().optional(),
   consultationForServiceId: z.string().optional(),
@@ -128,11 +133,12 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
 
 // Helper for client-side fetching without form state. The "Anyone" option
 // returns the union of every stylist's availability.
-export async function fetchSlots(stylistId: string, date: Date, serviceDuration: number) {
+export async function fetchSlots(stylistId: string, date: string, serviceDuration: number) {
   // Guard the client-supplied duration before it reaches the slot loop (see
   // SERVICE_DURATION note above) — this path has no Zod wrapper of its own.
+  // `date` is the salon-local calendar day (YYYY-MM-DD) the customer saw.
   const duration = SERVICE_DURATION.safeParse(serviceDuration);
-  if (!duration.success || !(date instanceof Date) || Number.isNaN(date.getTime())) {
+  if (!duration.success || !isValidSalonDate(date)) {
     return [];
   }
   try {
@@ -404,8 +410,14 @@ export async function cancelAppointment(appointmentId: string) {
   return { success: true };
 }
 
-export async function checkColourEligibility(serviceId: string, dateIso: string) {
+export async function checkColourEligibility(serviceId: string, dateStr: string) {
   const session = await verifySession();
+  // Salon-local calendar day (YYYY-MM-DD), matching the wizard grid. Resolve it
+  // to a stable in-day instant (salon noon) rather than trusting a browser-local
+  // Date, so the patch-test window is evaluated against the day the customer saw.
+  if (!isValidSalonDate(dateStr)) {
+    return { requiresTest: false, eligible: true, reason: 'eligible' as const, testDate: null };
+  }
   const service = await prisma.service.findUnique({
     where: { id: serviceId },
     select: { requiresPatchTest: true },
@@ -413,7 +425,7 @@ export async function checkColourEligibility(serviceId: string, dateIso: string)
   if (!service?.requiresPatchTest) {
     return { requiresTest: false, eligible: true, reason: 'eligible' as const, testDate: null };
   }
-  const eligibility = await getValidPatchTest(session.userId, new Date(dateIso));
+  const eligibility = await getValidPatchTest(session.userId, resolveSalonDateTime(dateStr, '12:00').utc);
   return {
     requiresTest: true,
     eligible: eligibility.ok,

@@ -70,7 +70,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
         setIsLoading(true);
         // Reset selected time when date/stylist changes
         setSelectedTime(null);
-        const slots = await fetchSlots(selectedStylist.id, selectedDate, selectedService.duration);
+        const slots = await fetchSlots(selectedStylist.id, format(selectedDate, 'yyyy-MM-dd'), selectedService.duration);
         // Ignore a response that arrived after the inputs changed (out-of-order guard)
         if (cancelled) return;
         setAvailableSlots(slots.filter(s => s.available).map(s => s.time));
@@ -91,7 +91,7 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
     let cancelled = false;
     (async () => {
       const { checkColourEligibility } = await import('@/app/actions/booking');
-      const res = await checkColourEligibility(selectedService.id, selectedDate.toISOString());
+      const res = await checkColourEligibility(selectedService.id, format(selectedDate, 'yyyy-MM-dd'));
       if (!cancelled) {
         setColourGate({ eligible: res.eligible, reason: res.reason, testDate: res.testDate });
       }
@@ -145,7 +145,10 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
     const result = await submitBooking({
       stylistId: selectedStylist.id,
       serviceId: selectedService.id,
-      date: selectedDate,
+      // Send the salon-local calendar day the customer saw as a plain string so
+      // the server (slot grid, conflict window and weekday) all share one day
+      // frame — a browser-local Date would drift a day under BST.
+      date: format(selectedDate, 'yyyy-MM-dd'),
       time: selectedTime,
       discountCode: appliedDiscount?.code,
       consultationForServiceId: consultationOrigin?.id,
