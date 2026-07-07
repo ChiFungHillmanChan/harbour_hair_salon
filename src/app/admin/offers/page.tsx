@@ -1,6 +1,7 @@
 import prisma from '@/app/lib/prisma';
 import { OfferForm } from '@/components/admin/OfferForm';
 import { OfferInlineEditor } from '@/components/admin/OfferInlineEditor';
+import { RowActionButton } from '@/components/admin/RowActionButton';
 import { deleteOffer, toggleOfferStatus, updateOffer, type OfferActionState } from '@/app/actions/admin';
 
 export const dynamic = 'force-dynamic';
@@ -50,15 +51,19 @@ export default async function AdminOffersPage() {
 
               <OfferInlineEditor offer={offerLite} action={updateOfferAction} />
 
-              <div className="flex justify-between items-center pt-4 mt-4 border-t border-zinc-100">
-                  <form action={toggleOfferStatus.bind(null, offer.id, !offer.isActive)}>
-                      <button className="text-sm text-zinc-700 hover:text-zinc-900 font-medium">
-                          {offer.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                  </form>
-                  <form action={deleteOffer.bind(null, offer.id)}>
-                      <button className="text-sm text-red-600 hover:text-red-800 font-medium">Delete</button>
-                  </form>
+              <div className="flex justify-between items-start pt-4 mt-4 border-t border-zinc-100">
+                  <RowActionButton
+                    action={toggleOfferStatus.bind(null, offer.id, !offer.isActive)}
+                    label={offer.isActive ? 'Deactivate' : 'Activate'}
+                    pendingLabel={offer.isActive ? 'Deactivating…' : 'Activating…'}
+                    buttonClassName="text-sm text-zinc-700 hover:text-zinc-900 font-medium"
+                  />
+                  <RowActionButton
+                    action={deleteOffer.bind(null, offer.id)}
+                    label="Delete"
+                    pendingLabel="Deleting…"
+                    buttonClassName="text-sm text-red-600 hover:text-red-800 font-medium"
+                  />
               </div>
             </div>
           );

@@ -1,5 +1,6 @@
 import prisma from '@/app/lib/prisma';
 import { DiscountForm } from '@/components/admin/DiscountForm';
+import { RowActionButton } from '@/components/admin/RowActionButton';
 import { deleteDiscountCode } from '@/app/actions/admin';
 import { format } from 'date-fns';
 
@@ -32,7 +33,14 @@ export default async function DiscountsPage() {
           <tbody className="bg-white divide-y divide-zinc-200">
             {discounts.map((discount) => (
               <tr key={discount.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-zinc-900">{discount.code}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-zinc-900">
+                  {discount.code}
+                  {!discount.isActive && (
+                    <span className="ml-2 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider bg-zinc-100 text-zinc-500 rounded-full">
+                      Inactive
+                    </span>
+                  )}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-zinc-500">{discount.type}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-zinc-500">
                   {discount.type === 'PERCENTAGE' ? `${discount.value}%` : `£${discount.value}`}
@@ -44,9 +52,12 @@ export default async function DiscountsPage() {
                   {discount.expiresAt ? format(new Date(discount.expiresAt), 'MMM d, yyyy') : 'Never'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <form action={deleteDiscountCode.bind(null, discount.id)}>
-                    <button className="text-red-600 hover:text-red-900">Delete</button>
-                  </form>
+                  <RowActionButton
+                    action={deleteDiscountCode.bind(null, discount.id)}
+                    label="Delete"
+                    pendingLabel="Deleting…"
+                    buttonClassName="text-red-600 hover:text-red-900"
+                  />
                 </td>
               </tr>
             ))}
