@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { getSiteSettings } from '@/app/services/site-settings-service';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -7,7 +8,9 @@ export const metadata: Metadata = {
   alternates: { canonical: '/privacy' },
 };
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const settings = await getSiteSettings();
+
   return (
     <div className="min-h-screen bg-white">
       <section className="bg-zinc-900 text-white py-20">
@@ -23,7 +26,7 @@ export default function PrivacyPage() {
           <h2 className="font-serif text-2xl text-zinc-900 mb-3">Who We Are</h2>
           <p>
             Harbour Hair Salon operates from Upper Floor, Unit 15 Central Arcade, Central Rd,
-            Leeds LS1 6DX. You can contact us by phone on 07831 830898 or through the details on
+            Leeds LS1 6DX. You can contact us by phone on {settings.phone} or through the details on
             our <Link href="/contact" className="text-zinc-900 underline">contact page</Link>.
           </p>
         </section>

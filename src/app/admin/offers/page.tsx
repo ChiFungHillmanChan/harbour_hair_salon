@@ -63,6 +63,7 @@ export default async function AdminOffersPage() {
                     label="Delete"
                     pendingLabel="Deleting…"
                     buttonClassName="text-sm text-red-600 hover:text-red-800 font-medium"
+                    confirmMessage="Delete this offer?"
                   />
               </div>
             </div>

@@ -14,8 +14,18 @@ const BRAND = '#18181b';
 const ACCENT = '#18181b';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
+import { toTelHref } from '@/app/lib/phone';
 
-export function NewsletterWelcome() {
+// Fallback keeps the template safe to render standalone (e.g. in preview
+// tooling) without a phone prop — matches the current live number.
+const DEFAULT_PHONE = '07831 830898';
+
+interface NewsletterWelcomeProps {
+  /** Admin-editable display phone number, e.g. "07831 830898". */
+  phone?: string;
+}
+
+export function NewsletterWelcome({ phone = DEFAULT_PHONE }: NewsletterWelcomeProps) {
   return (
     <Html>
       <Head />
@@ -65,8 +75,8 @@ export function NewsletterWelcome() {
 
             <Text style={{ fontSize: '13px', color: '#a1a1aa', margin: '28px 0 0', lineHeight: '1.5' }}>
               Visit us at {SALON_ADDRESS}, or call{' '}
-              <Link href="tel:+447831830898" style={{ color: BRAND }}>
-                07831 830898
+              <Link href={toTelHref(phone)} style={{ color: BRAND }}>
+                {phone}
               </Link>
               .
             </Text>

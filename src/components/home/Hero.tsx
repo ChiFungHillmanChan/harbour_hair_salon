@@ -4,9 +4,35 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 
-export function Hero() {
+// Current copy, kept as the fallback so the hero renders sensibly even if a
+// prop is omitted or (defensively) stored as an empty string in SiteSettings.
+const DEFAULT_EYEBROW = 'Leeds City Centre';
+const DEFAULT_TITLE_LINE1 = 'Expert Hair';
+const DEFAULT_TITLE_LINE2 = 'Styling';
+const DEFAULT_SUBTITLE =
+  'Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.';
+
+interface HeroProps {
+  eyebrow?: string;
+  titleLine1?: string;
+  titleLine2?: string;
+  subtitle?: string;
+}
+
+export function Hero({
+  eyebrow = DEFAULT_EYEBROW,
+  titleLine1 = DEFAULT_TITLE_LINE1,
+  titleLine2 = DEFAULT_TITLE_LINE2,
+  subtitle = DEFAULT_SUBTITLE,
+}: HeroProps) {
   const bgRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+
+  // Belt and braces: fall back on empty strings too, not just undefined props.
+  const safeEyebrow = eyebrow.trim() || DEFAULT_EYEBROW;
+  const safeTitleLine1 = titleLine1.trim() || DEFAULT_TITLE_LINE1;
+  const safeTitleLine2 = titleLine2.trim() || DEFAULT_TITLE_LINE2;
+  const safeSubtitle = subtitle.trim() || DEFAULT_SUBTITLE;
 
   useEffect(() => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -67,17 +93,16 @@ export function Hero() {
         <div className="hero-rise hero-rise-0 w-12 md:w-16 h-px bg-white/50 mx-auto mb-5 md:mb-8" />
 
         <p className="hero-rise hero-rise-1 text-[11px] md:text-sm uppercase tracking-[0.2em] md:tracking-[0.25em] text-zinc-300 mb-4 md:mb-6 font-medium">
-          Leeds City Centre
+          {safeEyebrow}
         </p>
 
         <h1 className="text-[2.75rem] md:text-7xl lg:text-8xl font-serif mb-5 md:mb-6 tracking-tight leading-[0.95]">
-          <span className="hero-rise hero-rise-2 block">Expert Hair</span>
-          <span className="hero-rise hero-rise-3 block text-zinc-400 font-light">Styling</span>
+          <span className="hero-rise hero-rise-2 block">{safeTitleLine1}</span>
+          <span className="hero-rise hero-rise-3 block text-zinc-400 font-light">{safeTitleLine2}</span>
         </h1>
 
         <p className="hero-rise hero-rise-4 text-base md:text-xl text-zinc-300 mb-8 md:mb-10 max-w-2xl mx-auto font-light leading-relaxed px-2">
-          Tailored cuts, colours and grooming by Hong Kong trained stylists.
-          Precision and artistry in every appointment.
+          {safeSubtitle}
         </p>
 
         <div className="hero-rise hero-rise-5 flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">

@@ -12,6 +12,12 @@ interface RowActionButtonProps {
   label: string;
   pendingLabel: string;
   buttonClassName: string;
+  /**
+   * When set, shows a `window.confirm` prompt before the action runs;
+   * cancelling aborts the submission. Intended for destructive actions
+   * (delete) — not for reversible toggles like activate/deactivate.
+   */
+  confirmMessage?: string;
 }
 
 /**
@@ -21,14 +27,21 @@ interface RowActionButtonProps {
  * silently no-opping. Success needs no message: revalidation visibly
  * updates the row (label flips / row disappears).
  */
-export function RowActionButton({ action, label, pendingLabel, buttonClassName }: RowActionButtonProps) {
+export function RowActionButton({ action, label, pendingLabel, buttonClassName, confirmMessage }: RowActionButtonProps) {
   const [state, formAction, pending] = useActionState<RowActionResult, FormData>(
     async () => action(),
     {}
   );
 
   return (
-    <form action={formAction}>
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (confirmMessage && !window.confirm(confirmMessage)) {
+          e.preventDefault();
+        }
+      }}
+    >
       <button type="submit" disabled={pending} className={`${buttonClassName} disabled:opacity-50`}>
         {pending ? pendingLabel : label}
       </button>

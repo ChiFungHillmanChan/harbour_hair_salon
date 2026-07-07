@@ -12,6 +12,10 @@ export type SiteSettings = {
   treatwellUrl: string;
   freshaUrl: string;
   booksyUrl: string;
+  heroEyebrow: string;
+  heroTitleLine1: string;
+  heroTitleLine2: string;
+  heroSubtitle: string;
 };
 
 const SINGLETON_ID = 'singleton';
@@ -26,6 +30,10 @@ const DEFAULTS: SiteSettings = {
   treatwellUrl: 'https://www.treatwell.co.uk/place/harbour-hair-hk-hair-stylist/',
   freshaUrl: '',
   booksyUrl: '',
+  heroEyebrow: 'Leeds City Centre',
+  heroTitleLine1: 'Expert Hair',
+  heroTitleLine2: 'Styling',
+  heroSubtitle: 'Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.',
 };
 
 function mapRow(row: {
@@ -38,6 +46,10 @@ function mapRow(row: {
   treatwellUrl: string;
   freshaUrl: string;
   booksyUrl: string;
+  heroEyebrow: string;
+  heroTitleLine1: string;
+  heroTitleLine2: string;
+  heroSubtitle: string;
 }): SiteSettings {
   return {
     phone: row.phone,
@@ -49,6 +61,10 @@ function mapRow(row: {
     treatwellUrl: row.treatwellUrl,
     freshaUrl: row.freshaUrl,
     booksyUrl: row.booksyUrl,
+    heroEyebrow: row.heroEyebrow,
+    heroTitleLine1: row.heroTitleLine1,
+    heroTitleLine2: row.heroTitleLine2,
+    heroSubtitle: row.heroSubtitle,
   };
 }
 

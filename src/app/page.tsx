@@ -191,7 +191,12 @@ export default async function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: jsonLdScript(hairSalonSchema) }}
       />
-      <Hero />
+      <Hero
+        eyebrow={settings.heroEyebrow}
+        titleLine1={settings.heroTitleLine1}
+        titleLine2={settings.heroTitleLine2}
+        subtitle={settings.heroSubtitle}
+      />
       <SocialProofBar average={aggregateRating.average} count={aggregateRating.count} />
       <TrustBar treatwellUrl={settings.treatwellUrl} googleBusinessUrl={settings.googleBusinessUrl} />
       <ServiceMenu

@@ -49,6 +49,71 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
         <div>
+          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Home hero</h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            The copy shown over the homepage hero image.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
+            Eyebrow text *
+          </label>
+          <input
+            type="text"
+            name="heroEyebrow"
+            required
+            defaultValue={settings.heroEyebrow}
+            placeholder="Leeds City Centre"
+            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
+            Title line 1 *
+          </label>
+          <input
+            type="text"
+            name="heroTitleLine1"
+            required
+            defaultValue={settings.heroTitleLine1}
+            placeholder="Expert Hair"
+            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
+            Title line 2 *
+          </label>
+          <input
+            type="text"
+            name="heroTitleLine2"
+            required
+            defaultValue={settings.heroTitleLine2}
+            placeholder="Styling"
+            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
+            Subtitle *
+          </label>
+          <textarea
+            name="heroSubtitle"
+            required
+            rows={3}
+            defaultValue={settings.heroSubtitle}
+            placeholder="Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment."
+            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+          />
+        </div>
+      </section>
+
+      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+        <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Social links</h2>
           <p className="text-xs text-zinc-500 mt-1">
             These feed into the HairSalon schema sameAs array. Add the ones you have; leave the rest blank.

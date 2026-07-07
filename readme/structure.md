@@ -60,7 +60,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 ## Lib
 - `pin.ts` — `isValidPin`, `hashPin`, `verifyPin` (bcryptjs); unit-tested
 - `session.ts` — existing JWT session helpers + `createKioskSession`/`getKioskSession`/`deleteKioskSession` for PIN-authenticated kiosk sessions
-- `phone.ts` — `toTelHref(phone)`: pure, prisma-free — normalizes an admin-editable `SiteSettings.phone` value (strips spaces, leading `0` → `+44`) into a `tel:` URI; used by the Footer and contact page so the displayed/dialable number follows Settings instead of being hardcoded; unit-tested
+- `phone.ts` — `toTelHref(phone)`: pure, prisma-free — normalizes an admin-editable `SiteSettings.phone` value (strips spaces, leading `0` → `+44`) into a `tel:` URI; used by the Footer, contact page and `NewsletterWelcome` email so the displayed/dialable number follows Settings instead of being hardcoded; unit-tested
 
 ## Actions
 - `employees.ts` — admin CRUD for Employee records (create, update, delete); validates PIN via `pin.ts`
