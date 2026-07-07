@@ -4,12 +4,14 @@ import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
 import SocialLinks from '@/components/layout/SocialLinks';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { hasActiveOffers } from '@/app/services/offers-service';
+import { toTelHref } from '@/app/lib/phone';
 
 export async function Footer() {
   const [hasOffers, settings] = await Promise.all([
     hasActiveOffers(),
     getSiteSettings(),
   ]);
+  const phoneDisplay = settings.phone.trim() || '07831 830898';
 
   return (
     <footer className="bg-zinc-900 text-white" id="contact">
@@ -83,8 +85,8 @@ export async function Footer() {
               <p className="text-xs text-zinc-500 mt-3">Located inside Central Arcade</p>
             </address>
             <div className="mt-4">
-              <a href="tel:+447831830898" className="text-sm text-zinc-300 hover:text-white transition-colors">
-                07831 830898
+              <a href={toTelHref(phoneDisplay)} className="text-sm text-zinc-300 hover:text-white transition-colors">
+                {phoneDisplay}
               </a>
             </div>
           </div>
