@@ -230,7 +230,11 @@ export async function deleteAdminUser(id: string) {
   revalidatePath('/admin/users');
 }
 
-const ALLOWED_APPOINTMENT_STATUSES = ['CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
+// CONFIRMED intentionally excluded: no UI path re-confirms an appointment,
+// and doing so here would bypass the in-transaction double-booking conflict
+// check that rescheduleAppointment uses. If un-confirm is ever needed, add
+// it back together with that same conflict check.
+const ALLOWED_APPOINTMENT_STATUSES = ['COMPLETED', 'CANCELLED'] as const;
 type AppointmentStatus = (typeof ALLOWED_APPOINTMENT_STATUSES)[number];
 
 export async function updateAppointmentStatus(appointmentId: string, status: string) {
