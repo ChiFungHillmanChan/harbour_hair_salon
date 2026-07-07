@@ -68,3 +68,21 @@ test('returns null (NOT []) for invalid input, so callers never prune on it', ()
   // Truncated feed — envelope opened but never closed.
   assert.equal(parseIcalBusyIntervals('BEGIN:VCALENDAR\r\nBEGIN:VEVENT'), null);
 });
+
+test('parseIcalBusyIntervals — a STATUS:CANCELLED event is excluded', () => {
+  const now = new Date('2026-07-01T00:00:00Z');
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:cancelled-1',
+    'DTSTART:20260702T100000Z',
+    'DTEND:20260702T110000Z',
+    'STATUS:CANCELLED',
+    'SUMMARY:Cancelled booking',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+  const result = parseIcalBusyIntervals(ics, { now });
+  assert.deepEqual(result, []);
+});
