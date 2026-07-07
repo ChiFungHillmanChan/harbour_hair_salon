@@ -77,6 +77,7 @@ export async function createDiscountCode(formData: FormData) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return { error: 'Discount code already exists' };
     }
+    console.error('createDiscountCode failed:', error);
     return { error: 'Failed to create discount code. Please try again.' };
   }
 
@@ -202,6 +203,7 @@ export async function createAdminUser(formData: FormData) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return { error: 'Email already exists' };
     }
+    console.error('createAdminUser failed:', error);
     return { error: 'Failed to create admin user. Please try again.' };
   }
 
