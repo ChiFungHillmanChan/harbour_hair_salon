@@ -52,7 +52,10 @@ let hairSegmentationModulePromise: Promise<HairSegmentationModule> | null = null
 
 function loadHairSegmentation(): Promise<HairSegmentationModule> {
   if (!hairSegmentationModulePromise) {
-    hairSegmentationModulePromise = import('@/components/try-color/HairSegmentation');
+    hairSegmentationModulePromise = import('@/components/try-color/HairSegmentation').catch((err) => {
+      hairSegmentationModulePromise = null; // allow retry after a transient chunk-load failure
+      throw err;
+    });
   }
   return hairSegmentationModulePromise;
 }
