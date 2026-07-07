@@ -110,7 +110,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // /auth is matched only so x-pathname gets set (root layout renders a slim
-  // footer there); auth paths hit none of the protection branches above.
-  matcher: ['/admin/:path*', '/appointments/:path*', '/book/:path*', '/reviews/new', '/kiosk/:path*', '/auth/:path*'],
+  matcher: ['/admin/:path*', '/appointments/:path*', '/book/:path*', '/reviews/new', '/kiosk/:path*'],
 };

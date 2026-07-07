@@ -7,6 +7,7 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Layout";
 import { MobileBookBar } from "@/components/layout/MobileBookBar";
 import { SlimFooter } from "@/components/layout/SlimFooter";
+import { FooterSwitcher } from "@/components/layout/FooterSwitcher";
 import {
   getSiteSettings,
   normalizeTwitterHandle,
@@ -71,14 +72,12 @@ export default async function RootLayout({
 }>) {
   // Admin and kiosk render their own full-screen shells, so they don't need the
   // marketing header/footer/book bar — or the extra DB queries those fire.
-  // middleware.ts sets x-pathname; it's only present on matched routes, so an
-  // absent header safely falls through to rendering the full marketing chrome.
+  // src/middleware.ts sets x-pathname on matched routes; on unmatched routes the
+  // header is whatever the client sent (i.e. spoofable), so it must only ever
+  // gate cosmetic chrome like this, never security decisions.
   const pathname = (await headers()).get("x-pathname") ?? "";
   const bareShell =
     pathname.startsWith("/admin") || pathname.startsWith("/kiosk");
-  // Auth pages keep the header but swap the marketing footer + floating Book
-  // bar for a one-line footer, so nothing competes with signing in.
-  const authShell = pathname.startsWith("/auth");
 
   return (
     <html lang="en-GB" className="scroll-smooth">
@@ -87,14 +86,17 @@ export default async function RootLayout({
         <main className="min-h-screen">
           {children}
         </main>
-        {!bareShell && (authShell ? (
-          <SlimFooter />
-        ) : (
-          <>
-            <Footer />
-            <MobileBookBar />
-          </>
-        ))}
+        {!bareShell && (
+          <FooterSwitcher
+            marketing={
+              <>
+                <Footer />
+                <MobileBookBar />
+              </>
+            }
+            slim={<SlimFooter />}
+          />
+        )}
         <Analytics />
         <SpeedInsights />
       </body>

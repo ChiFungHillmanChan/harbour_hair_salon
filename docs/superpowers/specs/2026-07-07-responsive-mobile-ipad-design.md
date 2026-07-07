@@ -156,3 +156,21 @@ behaviour: `/auth` paths hit no protection branch.
    - 1280×800 (desktop / iPad landscape): sidebar static, no regressions.
 3. `readme/structure.md` updated with `AdminSidebar` (and `SlimFooter` if a
    separate file).
+
+## Amendments (post final review, 2026-07-07)
+
+- **Auth footer swap is client-side.** The x-pathname/server-layout approach went
+  stale across soft navigation (App Router layouts don't re-render client-side),
+  leaking the slim footer onto marketing pages. `FooterSwitcher` (client,
+  usePathname) now picks between the server-rendered `Footer`+`MobileBookBar`
+  and `SlimFooter`. The `/auth/:path*` middleware matcher entry was reverted.
+- **Desktop sidebar is intentionally sticky + viewport-height** with an
+  internally scrolling nav (uses `h-dvh`). Earlier "desktop unchanged" wording
+  was imprecise: keeping Sign Out reachable on short viewports was an explicit
+  goal of this design.
+- **Selected date/time states use the filled style only** (no outer
+  `ring-offset` ring): outer rings are clipped by the date strip's scroll
+  container and halo against the zinc-50 panel. This supersedes the earlier
+  ring-2 wording.
+- **Closed drawer is `invisible` below lg** so its controls are unreachable by
+  keyboard while off-canvas.
