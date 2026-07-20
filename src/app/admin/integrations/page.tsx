@@ -92,6 +92,12 @@ export default async function IntegrationsPage({
             waits for Treatwell&apos;s official endpoint, auth and webhook documentation.
           </p>
 
+          <p className="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+            Hobby schedule: automatic iCal sync once daily at 06:00 UTC. Use the button below for
+            additional test runs. After upgrading to Pro, change the Vercel cron expression to every
+            five minutes and redeploy.
+          </p>
+
           <div className="mt-5 flex flex-wrap gap-3">
             <form action={runTreatwellIcalSyncAction}>
               <button className="rounded bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700">

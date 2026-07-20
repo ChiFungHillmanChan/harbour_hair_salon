@@ -16,7 +16,7 @@
 | Email | Resend + React Email | 確認、取消、改期、提醒、review request | 初期 Free，流量高先 Pro |
 | Rate limit | Upstash Redis | 登入、booking、newsletter 防濫用 | 初期 Free |
 | Calendar | Treatwell iCal + future official API adapter | inbound busy block、將來 outbound booking sync | API 費用待 Treatwell 確認 |
-| Scheduler | Vercel Cron | 每日提醒、每五分鐘 iCal sync | Pro 內置；毋須另開 AWS scheduler |
+| Scheduler | Vercel Cron | 每日提醒；Hobby每日iCal sync／Pro每五分鐘 | 測試可Hobby；正式即時同步用Pro |
 
 呢個組合對單店 salon 係合適嘅 monolith，暫時毋須 microservices、Kubernetes 或獨立 message broker。
 
@@ -31,7 +31,8 @@
 - 建立 durable worker：負責 upsert、cancel、成功／失敗狀態、provider booking id 及重試。
 - 新增 `/admin/integrations`：顯示 iCal／API mapping、queue、Resend、CDN readiness；唔會顯示 secret value。
 - Admin 可手動執行 iCal sync及重新排隊失敗嘅 API booking。
-- `vercel.json` 已加入每五分鐘 iCal cron。**必須先升 Vercel Pro，否則 Hobby 會拒絕呢個 deployment。**
+- `vercel.json` 現時使用 Hobby 可接受嘅每日 `06:00 UTC` iCal cron；Admin 可隨時手動 sync 作測試。
+- Vercel cron schedule 係靜態 deployment 設定，唔可以用 app env 改頻率。升 Pro 後將 schedule 改為 `*/5 * * * *` 再 deploy，即可恢復每五分鐘同步。
 - 保留現有 fail-safe iCal：fetch／parse 失敗唔會刪除舊 busy blocks。
 
 ### Resend 品牌確認電郵
@@ -140,7 +141,7 @@ Vercel Pro 官方目前包含 1TB Fast Data Transfer，因此上述 HTML 遠低�
 720 ÷ 1,000 × $0.004 ISR write ≈ $0.0029／月
 ```
 
-實際上只有到期後再有人訪問先重建，所以通常更少。CDN 唔係主要成本；**database 持續被五分鐘 cron 喚醒先係主要變動成本。**
+實際上只有到期後再有人訪問先重建，所以通常更少。CDN 唔係主要成本；升 Pro 並開啟五分鐘 cron 後，**database 被頻密喚醒先係主要變動成本。** Hobby 每日同步模式一般可以維持 scale-to-zero。
 
 ## 6. 每月營運成本估算
 
@@ -162,7 +163,7 @@ Vercel Pro 官方目前包含 1TB Fast Data Transfer，因此上述 HTML 遠低�
 
 ### 點解 database 建議預 $15–25
 
-五分鐘 sync 次數：
+現時 Hobby 每日一次只係約 30 次／月；升 Pro 並改為五分鐘 sync 後，次數會變成：
 
 ```text
 12 次／小時 × 24 小時 × 30 日 = 8,640 cron invocations／月
@@ -174,7 +175,7 @@ Neon Free 係 100 CU-hours／project。假設五分鐘 cron 令最低 0.25 CU co
 0.25 CU × 730 小時／月 = 182.5 CU-hours／月
 ```
 
-會超出 100 Free CU-hours。Neon Launch 現價 $0.106/CU-hour：
+如果頻密執行令 compute 長期保持活躍，就可能超出 100 Free CU-hours。Neon Launch 現價 $0.106/CU-hour：
 
 ```text
 182.5 × $0.106 = $19.35 compute／月
@@ -182,7 +183,7 @@ Neon Free 係 100 CU-hours／project。假設五分鐘 cron 令最低 0.25 CU co
 合計約 $19.70／月
 ```
 
-實際 compute 可能因 scale-to-zero、執行時間同流量而低啲，所以預算用 **$15–25/月**。如果一定要留 Neon Free，可將 iCal cron 改為每 10–15 分鐘，但同步延遲會增加；對 booking 系統我唔建議為慳約 $20 而犧牲可靠性。
+實際 compute 可能因 scale-to-zero、執行時間同流量而低啲，所以 Pro 五分鐘模式預算用 **$15–25/月**。Hobby 每日模式可以先用 Neon Free 測試，但 Treatwell 變更最多要等一日先自動反映；測試時可到 `/admin/integrations` 手動同步。正式接受即時網上預約前，應升 Pro 並轉回五分鐘模式。
 
 ### Resend 容量
 
@@ -202,9 +203,9 @@ Neon Free 係 100 CU-hours／project。假設五分鐘 cron 令最低 0.25 CU co
 
 ```text
 100,000 session requests
-+ 8,640 Treatwell cron
++ 30 Treatwell cron（Hobby 每日模式；Pro 五分鐘模式係 8,640）
 + 約 30 reminder cron
-= 約 108,670 function invocations／月
+= 約 100,060 function invocations／月（Hobby 每日模式）
 ```
 
 按 Vercel 公開 on-demand rate $0.60／1,000,000 invocations，單計 invocation 約 $0.065；CPU／memory／transfer 另計，但呢個規模通常遠低於 Pro 嘅 $20 usage credit。高流量時要以 Vercel dashboard 真實 metrics 為準。
@@ -235,7 +236,7 @@ Neon Free 係 100 CU-hours／project。假設五分鐘 cron 令最低 0.25 CU co
 
 ### Phase A — 基礎設施（1–2 日）
 
-1. 升 Vercel Pro；未升前唔好 deploy 五分鐘 cron。
+1. Hobby 測試期可直接 deploy 每日 cron；正式營運前升 Vercel Pro，將 Treatwell schedule 改為每五分鐘。
 2. 綁正式 domain，設定 `NEXT_PUBLIC_SITE_URL`。
 3. Neon 升 Launch 或至少設用量／備份警報。
 4. 開 Upstash，填兩個 REST env，令登入 rate limit 共享。

@@ -59,7 +59,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ## API Routes
 - `src/app/api/cron/reminders/route.ts` — daily appointment-reminder cron (Bearer `CRON_SECRET`)
-- `src/app/api/cron/treatwell-sync/route.ts` — Treatwell inbound iCal sync; scheduled every five minutes by Vercel Pro via `vercel.json`, protected by `CRON_SECRET`. The old AWS EventBridge→Lambda runbook remains under `infra/aws/treatwell-sync/` only as a legacy alternative.
+- `src/app/api/cron/treatwell-sync/route.ts` — Treatwell inbound iCal sync, protected by `CRON_SECRET`. `vercel.json` currently uses the Hobby-compatible daily `0 6 * * *` schedule; Admin can trigger extra test syncs manually. After upgrading to Pro, change the expression to `*/5 * * * *` and redeploy. The schedule is Vercel project configuration and cannot be controlled by an app environment variable.
 - `src/app/api/session/route.ts` — private/no-store cosmetic header session state, split from shared marketing HTML so public pages can use Vercel ISR. Protected pages still verify the session server-side.
 
 ## Lib
