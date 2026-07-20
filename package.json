@@ -29,6 +29,11 @@
     "db:backfill:patch-test": "tsx prisma/backfill-patch-test-flags.ts",
     "db:backfill:consultation": "tsx prisma/backfill-consultation-flags.ts"
   },
+  "pnpm": {
+    "overrides": {
+      "postcss": "8.5.20"
+    }
+  },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
@@ -48,7 +53,7 @@
     "node-ical": "^0.26.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "resend": "^6.9.4",
+    "resend": "^6.17.2",
     "server-only": "^0.0.1",
     "zod": "^4.1.12"
   },

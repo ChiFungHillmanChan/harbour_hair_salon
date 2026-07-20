@@ -14,6 +14,7 @@ import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
 
 // Lazy so we never touch env at module load (per project convention). Limits
 // discount-code checks per user to stop enumeration of valid codes.
@@ -390,9 +391,17 @@ export async function cancelAppointment(appointmentId: string) {
     return { success: false, error: 'Cannot cancel within 24 hours of appointment' };
   }
 
+  const treatwellApi = getTreatwellApiConfiguration();
+  const treatwellSyncStatus = changedTreatwellSyncStatus({
+    apiReady: treatwellApi.enabled && treatwellApi.configured,
+    treatwellBookingId: appointment.treatwellBookingId,
+    stylistExternalId: appointment.stylist.treatwellExternalId,
+    serviceExternalId: appointment.service.treatwellExternalId,
+  });
+
   await prisma.appointment.update({
     where: { id: appointmentId },
-    data: { status: 'CANCELLED' },
+    data: { status: 'CANCELLED', treatwellSyncStatus, treatwellSyncError: null },
   });
 
   try {
@@ -531,9 +540,17 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
         throw new SlotUnavailableError('This time slot is no longer available.');
       }
 
+      const treatwellApi = getTreatwellApiConfiguration();
+      const treatwellSyncStatus = changedTreatwellSyncStatus({
+        apiReady: treatwellApi.enabled && treatwellApi.configured,
+        treatwellBookingId: appointment.treatwellBookingId,
+        stylistExternalId: appointment.stylist.treatwellExternalId,
+        serviceExternalId: appointment.service.treatwellExternalId,
+      });
+
       await tx.appointment.update({
         where: { id: appointmentId },
-        data: { date: newDate, reminderSent: false },
+        data: { date: newDate, reminderSent: false, treatwellSyncStatus, treatwellSyncError: null },
       });
     });
 

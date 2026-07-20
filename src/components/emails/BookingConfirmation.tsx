@@ -8,6 +8,8 @@ import {
   Link,
   Hr,
   Preview,
+  Row,
+  Column,
 } from '@react-email/components';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
@@ -23,7 +25,11 @@ interface BookingConfirmationProps {
   appointment: AppointmentWithDetails;
 }
 
-const BRAND = '#18181b';
+const BRAND = '#174F7F';
+const BRAND_DARK = '#103653';
+const ACCENT = '#D8B36A';
+const INK = '#17202A';
+const MUTED = '#5F6B76';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 
 export function BookingConfirmation({ appointment }: BookingConfirmationProps) {
@@ -37,74 +43,80 @@ export function BookingConfirmation({ appointment }: BookingConfirmationProps) {
     hour: '2-digit',
     minute: '2-digit',
   });
+  const bookingReference = appointment.id.slice(-8).toUpperCase();
 
   return (
-    <Html>
+    <Html lang="en">
       <Head />
-      <Preview>Your booking is confirmed — {appointment.service.name} on {dateFormatted}</Preview>
-      <Body style={{ backgroundColor: '#f4f4f5', fontFamily: 'Georgia, serif', margin: 0, padding: '32px 0' }}>
-        <Container style={{ maxWidth: '560px', margin: '0 auto', backgroundColor: '#ffffff', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e4e4e7' }}>
-          {/* Header */}
-          <Section style={{ backgroundColor: BRAND, padding: '32px 40px' }}>
-            <Text style={{ color: '#ffffff', fontSize: '22px', fontWeight: 'bold', margin: 0, letterSpacing: '0.05em' }}>
-              Harbour Hair Salon
+      <Preview>Your Harbour Hair appointment is confirmed — {appointment.service.name} on {dateFormatted}</Preview>
+      <Body style={{ backgroundColor: '#EEF3F7', fontFamily: 'Arial, Helvetica, sans-serif', margin: 0, padding: '28px 12px' }}>
+        <Container style={{ maxWidth: '600px', margin: '0 auto', backgroundColor: '#ffffff', borderRadius: '14px', overflow: 'hidden', border: '1px solid #D9E3EA' }}>
+          <Section style={{ backgroundColor: BRAND, padding: '34px 36px 30px', textAlign: 'center' }}>
+            <Text style={{ color: '#ffffff', fontFamily: 'Georgia, Times, serif', fontSize: '28px', fontWeight: 'bold', margin: 0, letterSpacing: '0.08em' }}>
+              HARBOUR HAIR
             </Text>
-            <Text style={{ color: '#a1a1aa', fontSize: '13px', margin: '4px 0 0' }}>
-              {SALON_ADDRESS}
+            <Text style={{ color: '#D8E7F2', fontSize: '11px', margin: '7px 0 0', letterSpacing: '0.22em', textTransform: 'uppercase' }}>
+              Leeds City Centre
             </Text>
+            <Hr style={{ borderColor: ACCENT, borderWidth: '2px 0 0', margin: '22px auto 0', width: '52px' }} />
           </Section>
 
-          {/* Body */}
-          <Section style={{ padding: '40px 40px 24px' }}>
-            <Text style={{ fontSize: '24px', fontWeight: 'bold', color: '#18181b', margin: '0 0 8px' }}>
-              Booking Confirmed
+          <Section style={{ padding: '38px 36px 18px' }}>
+            <Text style={{ color: BRAND, fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.16em', margin: '0 0 10px', textTransform: 'uppercase' }}>
+              Booking confirmed
             </Text>
-            <Text style={{ fontSize: '15px', color: '#52525b', margin: '0 0 24px', lineHeight: '1.6' }}>
-              Hi {appointment.user.name || 'there'}, your appointment has been confirmed. We look forward to seeing you!
+            <Text style={{ color: INK, fontFamily: 'Georgia, Times, serif', fontSize: '29px', fontWeight: 'bold', lineHeight: '1.25', margin: '0 0 14px' }}>
+              We&apos;re looking forward to seeing you.
+            </Text>
+            <Text style={{ color: MUTED, fontSize: '15px', lineHeight: '1.7', margin: '0 0 26px' }}>
+              Hi {appointment.user.name || 'there'}, your appointment at Harbour Hair Salon is safely booked. Keep this email for your appointment details.
             </Text>
 
-            <Hr style={{ borderColor: '#e4e4e7', margin: '0 0 24px' }} />
-
-            {/* Appointment Details */}
-            <Section style={{ backgroundColor: '#f8fafc', borderRadius: '8px', padding: '20px 24px', marginBottom: '24px' }}>
-              <Row label="Service" value={appointment.service.name} />
-              <Row label="Stylist" value={appointment.stylist.name} />
-              <Row label="Date" value={dateFormatted} />
-              <Row label="Time" value={timeFormatted} />
-              <Row label="Duration" value={`${appointment.service.duration} minutes`} />
-              <Row label="Price" value={`£${appointment.service.price.toFixed(2)}`} last />
+            <Section style={{ backgroundColor: '#F5F9FC', border: '1px solid #D7E5EF', borderRadius: '10px', padding: '8px 22px', marginBottom: '24px' }}>
+              <DetailRow label="Service" value={appointment.service.name} />
+              <DetailRow label="Stylist" value={appointment.stylist.name} />
+              <DetailRow label="Date" value={dateFormatted} />
+              <DetailRow label="Time" value={timeFormatted} />
+              <DetailRow label="Duration" value={`${appointment.service.duration} minutes`} />
+              <DetailRow label="Price" value={`£${appointment.service.price.toFixed(2)}`} last />
             </Section>
 
-            {/* Address */}
-            <Text style={{ fontSize: '13px', color: '#71717a', margin: '0 0 24px', lineHeight: '1.5' }}>
-              <strong style={{ color: '#3f3f46' }}>Location:</strong> {SALON_ADDRESS}
+            <Section style={{ borderLeft: `4px solid ${ACCENT}`, backgroundColor: '#FFF9ED', padding: '14px 18px', marginBottom: '26px' }}>
+              <Text style={{ color: INK, fontSize: '13px', fontWeight: 'bold', margin: '0 0 4px' }}>Where to find us</Text>
+              <Text style={{ color: MUTED, fontSize: '13px', lineHeight: '1.55', margin: 0 }}>{SALON_ADDRESS}</Text>
+            </Section>
+
+            <Section style={{ textAlign: 'center', marginBottom: '28px' }}>
+              <Link
+                href={`${BASE_URL}/appointments`}
+                style={{
+                  display: 'inline-block',
+                  backgroundColor: BRAND,
+                  borderRadius: '7px',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  letterSpacing: '0.09em',
+                  padding: '14px 28px',
+                  textDecoration: 'none',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Manage my booking
+              </Link>
+            </Section>
+
+            <Hr style={{ borderColor: '#E5E7EB', margin: '0 0 20px' }} />
+            <Text style={{ color: MUTED, fontSize: '12px', lineHeight: '1.65', margin: 0 }}>
+              Need to make a change? You can cancel or reschedule from My Bookings up to 24 hours before your appointment. Payment is due at the salon; cash and card are accepted.
             </Text>
-
-            <Hr style={{ borderColor: '#e4e4e7', margin: '0 0 24px' }} />
-
-            {/* CTA */}
-            <Link
-              href={`${BASE_URL}/appointments`}
-              style={{
-                display: 'inline-block',
-                backgroundColor: BRAND,
-                color: '#ffffff',
-                padding: '12px 28px',
-                borderRadius: '6px',
-                textDecoration: 'none',
-                fontSize: '13px',
-                fontWeight: 'bold',
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-              }}
-            >
-              View My Bookings
-            </Link>
           </Section>
 
-          {/* Footer */}
-          <Section style={{ backgroundColor: '#f4f4f5', padding: '20px 40px', borderTop: '1px solid #e4e4e7' }}>
-            <Text style={{ fontSize: '12px', color: '#a1a1aa', margin: 0, lineHeight: '1.5' }}>
+          <Section style={{ backgroundColor: BRAND_DARK, padding: '22px 36px', textAlign: 'center' }}>
+            <Text style={{ color: '#D8E7F2', fontSize: '11px', lineHeight: '1.6', margin: '0 0 5px' }}>
+              Booking reference: <strong style={{ color: '#ffffff' }}>{bookingReference}</strong>
+            </Text>
+            <Text style={{ color: '#B9CAD7', fontSize: '11px', lineHeight: '1.6', margin: 0 }}>
               Harbour Hair Salon · {SALON_ADDRESS}
             </Text>
           </Section>
@@ -114,11 +126,15 @@ export function BookingConfirmation({ appointment }: BookingConfirmationProps) {
   );
 }
 
-function Row({ label, value, last }: { label: string; value: string; last?: boolean }) {
+function DetailRow({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: last ? 0 : '12px' }}>
-      <Text style={{ fontSize: '13px', color: '#71717a', margin: 0, fontFamily: 'sans-serif' }}>{label}</Text>
-      <Text style={{ fontSize: '13px', color: '#18181b', fontWeight: 'bold', margin: 0, fontFamily: 'sans-serif' }}>{value}</Text>
-    </div>
+    <Row style={{ borderBottom: last ? 'none' : '1px solid #DFE9F0' }}>
+      <Column style={{ padding: '12px 0', width: '34%' }}>
+        <Text style={{ color: MUTED, fontSize: '12px', margin: 0 }}>{label}</Text>
+      </Column>
+      <Column style={{ padding: '12px 0', textAlign: 'right' }}>
+        <Text style={{ color: INK, fontSize: '13px', fontWeight: 'bold', margin: 0 }}>{value}</Text>
+      </Column>
+    </Row>
   );
 }

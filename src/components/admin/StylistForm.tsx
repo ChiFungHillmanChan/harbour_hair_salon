@@ -14,6 +14,8 @@ interface StylistFormProps {
   saved?: boolean;
   /** Passed separately from StylistRuntime — kept out of public-facing types. */
   treatwellIcalUrl?: string | null;
+  /** Treatwell API staff/resource id; also kept out of public-facing types. */
+  treatwellExternalId?: string | null;
 }
 
 function TextareaList({
@@ -51,7 +53,7 @@ function TextareaList({
   );
 }
 
-export function StylistForm({ mode, action, stylist, saved, treatwellIcalUrl }: StylistFormProps) {
+export function StylistForm({ mode, action, stylist, saved, treatwellIcalUrl, treatwellExternalId }: StylistFormProps) {
   const [state, formAction, pending] = useActionState<StylistActionState, FormData>(action, {
     status: 'idle',
   });
@@ -238,6 +240,22 @@ export function StylistForm({ mode, action, stylist, saved, treatwellIcalUrl }: 
           <p className="text-xs text-zinc-500 mt-1">
             Paste this stylist&apos;s Treatwell Connect calendar URL. Bookings from Treatwell then block
             their slots here automatically (synced every few minutes). Leave blank if not on Treatwell.
+          </p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
+            Treatwell staff ID <span className="text-zinc-400 normal-case tracking-normal">(optional until API launch)</span>
+          </label>
+          <input
+            type="text"
+            name="treatwellExternalId"
+            maxLength={200}
+            defaultValue={treatwellExternalId ?? ''}
+            placeholder="Treatwell staff/resource identifier"
+            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+          />
+          <p className="text-xs text-zinc-500 mt-1">
+            Used by the future official API adapter to map Harbour Hair bookings to the correct Treatwell calendar.
           </p>
         </div>
       </section>

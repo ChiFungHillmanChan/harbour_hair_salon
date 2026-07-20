@@ -21,7 +21,7 @@ export default async function EditStylistPage({
   // Loaded separately so the iCal URL stays out of the public-facing StylistRuntime.
   const integration = await prisma.stylist.findUnique({
     where: { id },
-    select: { treatwellIcalUrl: true },
+    select: { treatwellIcalUrl: true, treatwellExternalId: true },
   });
 
   return (
@@ -36,6 +36,7 @@ export default async function EditStylistPage({
         stylist={stylist}
         saved={Boolean(saved)}
         treatwellIcalUrl={integration?.treatwellIcalUrl ?? null}
+        treatwellExternalId={integration?.treatwellExternalId ?? null}
       />
     </div>
   );

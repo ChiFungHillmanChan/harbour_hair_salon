@@ -12,5 +12,6 @@ import { usePathname } from 'next/navigation';
  */
 export function FooterSwitcher({ marketing }: { marketing: React.ReactNode }) {
   const pathname = usePathname();
-  return pathname?.startsWith('/auth') ? null : marketing;
+  const hidden = pathname?.startsWith('/auth') || pathname?.startsWith('/admin') || pathname?.startsWith('/kiosk');
+  return hidden ? null : marketing;
 }

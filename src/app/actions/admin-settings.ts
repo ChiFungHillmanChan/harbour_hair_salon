@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 
@@ -62,6 +62,7 @@ export async function updateSiteSettings(
     create: { id: 'singleton', ...parsed.data },
   });
 
+  updateTag('site-settings');
   revalidatePath('/', 'layout');
   revalidatePath('/sitemap.xml');
 

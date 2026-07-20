@@ -58,6 +58,12 @@ const stylistSchema = z.object({
     .refine((v) => v === null || /^https?:\/\/.+/i.test(v), {
       message: 'Treatwell iCal URL must be a valid http(s) URL.',
     }),
+  treatwellExternalId: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .transform((v) => (v ? v : null)),
 });
 
 export type StylistActionState =
@@ -111,6 +117,7 @@ export async function createStylist(
       trainedIn: parsed.data.trainedIn,
       extendedBioJson: JSON.stringify(arrays.extendedBio),
       treatwellIcalUrl: parsed.data.treatwellIcalUrl,
+      treatwellExternalId: parsed.data.treatwellExternalId,
     },
   });
 
@@ -163,6 +170,7 @@ export async function updateStylist(
       trainedIn: parsed.data.trainedIn,
       extendedBioJson: JSON.stringify(arrays.extendedBio),
       treatwellIcalUrl: parsed.data.treatwellIcalUrl,
+      treatwellExternalId: parsed.data.treatwellExternalId,
     },
   });
 

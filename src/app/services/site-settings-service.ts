@@ -1,5 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import prisma from '@/app/lib/prisma';
 
 export type SiteSettings = {
@@ -71,7 +72,7 @@ function mapRow(row: {
 // Wrapped in React cache() so the several callers that fire per render (root
 // layout metadata, Header, Footer, page body) share ONE query per request
 // instead of each hitting Neon.
-export const getSiteSettings = cache(async (): Promise<SiteSettings> => {
+const getSiteSettingsFromStore = unstable_cache(async (): Promise<SiteSettings> => {
   try {
     // Read-first, create-on-miss. Using upsert races under concurrent
     // pre-rendering because two workers can both attempt INSERT.
@@ -90,7 +91,11 @@ export const getSiteSettings = cache(async (): Promise<SiteSettings> => {
     console.error('Failed to load site settings:', error);
     return DEFAULTS;
   }
-});
+}, ['site-settings'], { revalidate: 3600, tags: ['site-settings'] });
+
+// React cache deduplicates within one render; unstable_cache shares the safe,
+// public singleton across requests and allows instant admin invalidation.
+export const getSiteSettings = cache(getSiteSettingsFromStore);
 
 export function buildSameAsArray(settings: SiteSettings): string[] {
   return [

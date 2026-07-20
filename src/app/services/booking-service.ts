@@ -8,6 +8,7 @@ import { salonDayWindow, toSalonDateStr, resolveSalonDateTime } from './salon-ti
 import { firstFreeStylist, hasConflict, buildSlotsForWindow, type BookedInterval, type TimeSlot } from './scheduling';
 import { loadExternalBusy, toBookedInterval, toSlotAppointment } from './external-busy';
 import { SlotUnavailableError, DiscountUnavailableError } from './booking-errors';
+import { getTreatwellApiConfiguration, initialTreatwellSyncStatus } from './treatwell-api';
 
 /**
  * Run a Serializable transaction, retrying a few times on Postgres serialization
@@ -210,8 +211,15 @@ export async function createBooking(data: {
 }) {
   // Use Serializable transaction to prevent double-booking race conditions
   const appointment = await runSerializableWithRetry(async (tx) => {
-    const service = await tx.service.findUnique({ where: { id: data.serviceId } });
+    const [service, stylist] = await Promise.all([
+      tx.service.findUnique({ where: { id: data.serviceId } }),
+      tx.stylist.findUnique({
+        where: { id: data.stylistId },
+        select: { treatwellExternalId: true },
+      }),
+    ]);
     if (!service) throw new Error('Service not found');
+    if (!stylist) throw new Error('Stylist not found');
 
     const { start: dayStart, end: dayEnd } = salonDayWindow(data.date);
 
@@ -241,6 +249,13 @@ export async function createBooking(data: {
     // Claim the discount in the same transaction (rolls back if the create fails).
     const discountCodeId = data.discountCode ? await claimDiscountInTx(tx, data.discountCode) : undefined;
 
+    const api = getTreatwellApiConfiguration();
+    const treatwellSyncStatus = initialTreatwellSyncStatus({
+      apiEnabled: api.enabled && api.configured,
+      stylistExternalId: stylist.treatwellExternalId,
+      serviceExternalId: service.treatwellExternalId,
+    });
+
     return tx.appointment.create({
       data: {
         date: data.date,
@@ -251,6 +266,7 @@ export async function createBooking(data: {
         discountCodeId,
         priceAtBooking: service.price,
         notes: data.notes ?? null,
+        treatwellSyncStatus,
       },
       include: {
         user: { select: { email: true, name: true } },
@@ -318,7 +334,19 @@ export async function createBookingForFirstAvailable(data: {
       throw new SlotUnavailableError('No stylist is available at this time. Please choose another time.');
     }
 
+    const stylist = await tx.stylist.findUnique({
+      where: { id: stylistId },
+      select: { treatwellExternalId: true },
+    });
+    if (!stylist) throw new Error('Stylist not found');
+
     const discountCodeId = data.discountCode ? await claimDiscountInTx(tx, data.discountCode) : undefined;
+    const api = getTreatwellApiConfiguration();
+    const treatwellSyncStatus = initialTreatwellSyncStatus({
+      apiEnabled: api.enabled && api.configured,
+      stylistExternalId: stylist.treatwellExternalId,
+      serviceExternalId: service.treatwellExternalId,
+    });
 
     return tx.appointment.create({
       data: {
@@ -330,6 +358,7 @@ export async function createBookingForFirstAvailable(data: {
         discountCodeId,
         priceAtBooking: service.price,
         notes: data.notes ?? null,
+        treatwellSyncStatus,
       },
       include: {
         user: { select: { email: true, name: true } },

@@ -36,6 +36,7 @@ const serviceSchema = z.object({
   duration: z.coerce.number().int().positive('Duration must be a positive number').max(1440),
   category: z.string().trim().min(1, 'Category is required').max(100),
   imageUrl: z.string().trim().max(500).optional().transform((v) => v || null),
+  treatwellExternalId: z.string().trim().max(200).optional().transform((v) => v || null),
 });
 
 export type ServiceActionState =

@@ -3,10 +3,11 @@
 import prisma from '@/app/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { verifySession } from '@/app/lib/session';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { hashPassword } from '@/app/lib/password';
 import { z } from 'zod';
 import { revalidateCategoryPages } from '@/app/actions/admin-services';
+import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
 
 // --- Validation Schemas ---
 
@@ -163,6 +164,7 @@ export async function createOffer(
   }
 
   revalidatePath('/admin/offers');
+  updateTag('active-offers');
   revalidatePath('/offers');
   revalidatePath('/');
   revalidatePath('/services');
@@ -215,6 +217,7 @@ export async function updateOffer(
   }
 
   revalidatePath('/admin/offers');
+  updateTag('active-offers');
   revalidatePath('/offers');
   revalidatePath('/');
   revalidatePath('/services');
@@ -238,6 +241,7 @@ export async function toggleOfferStatus(id: string, isActive: boolean): Promise<
   }
 
   revalidatePath('/admin/offers');
+  updateTag('active-offers');
   revalidatePath('/offers');
   revalidatePath('/');
   revalidatePath('/services');
@@ -259,6 +263,7 @@ export async function deleteOffer(id: string): Promise<OfferActionState> {
   }
 
   revalidatePath('/admin/offers');
+  updateTag('active-offers');
   revalidatePath('/offers');
   revalidatePath('/');
   revalidatePath('/services');
@@ -340,7 +345,32 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
     return { success: false, error: 'Invalid status' };
   }
   try {
-    await prisma.appointment.update({ where: { id: appointmentId }, data: { status } });
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: {
+        stylist: { select: { treatwellExternalId: true } },
+        service: { select: { treatwellExternalId: true } },
+      },
+    });
+    if (!appointment) return { success: false, error: 'Appointment not found' };
+
+    const data: {
+      status: string;
+      treatwellSyncStatus?: string;
+      treatwellSyncError?: null;
+    } = { status };
+    if (status === 'CANCELLED') {
+      const api = getTreatwellApiConfiguration();
+      data.treatwellSyncStatus = changedTreatwellSyncStatus({
+        apiReady: api.enabled && api.configured,
+        treatwellBookingId: appointment.treatwellBookingId,
+        stylistExternalId: appointment.stylist.treatwellExternalId,
+        serviceExternalId: appointment.service.treatwellExternalId,
+      });
+      data.treatwellSyncError = null;
+    }
+
+    await prisma.appointment.update({ where: { id: appointmentId }, data });
   } catch {
     return { success: false, error: 'Appointment not found' };
   }

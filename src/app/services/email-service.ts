@@ -7,6 +7,7 @@ import { BookingReschedule } from '@/components/emails/BookingReschedule';
 import { AppointmentReminder } from '@/components/emails/AppointmentReminder';
 import { ReviewRequest, type ReviewRequestAppointment } from '@/components/emails/ReviewRequest';
 import { NewsletterWelcome } from '@/components/emails/NewsletterWelcome';
+import { buildBookingConfirmationText } from './booking-confirmation-copy';
 
 export type AppointmentWithDetails = {
   id: string;
@@ -29,7 +30,13 @@ function getFromAddress(): string {
   return process.env.EMAIL_FROM || 'Harbour Hair Salon <onboarding@resend.dev>';
 }
 
-type SendArgs = { to: string; subject: string; react: ReactElement };
+type SendArgs = {
+  to: string;
+  subject: string;
+  react: ReactElement;
+  text?: string;
+  idempotencyKey?: string;
+};
 
 const SEND_TIMEOUT_MS = 10_000;
 
@@ -39,10 +46,21 @@ const SEND_TIMEOUT_MS = 10_000;
  * the caller can decide whether to fail loudly (cron: track + retry) or swallow
  * (booking flow: never fail a committed booking on an email hiccup).
  */
-async function send({ to, subject, react }: SendArgs): Promise<void> {
+async function send({ to, subject, react, text, idempotencyKey }: SendArgs): Promise<void> {
   const resend = getResendClient();
+  const replyTo = process.env.EMAIL_REPLY_TO?.trim();
   const result = await Promise.race([
-    resend.emails.send({ from: getFromAddress(), to, subject, react }),
+    resend.emails.send(
+      {
+        from: getFromAddress(),
+        to,
+        subject,
+        react,
+        ...(text ? { text } : {}),
+        ...(replyTo ? { replyTo } : {}),
+      },
+      idempotencyKey ? { idempotencyKey } : undefined,
+    ),
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error(`Resend timed out after ${SEND_TIMEOUT_MS}ms for "${subject}" to ${to}`)), SEND_TIMEOUT_MS),
     ),
@@ -58,6 +76,8 @@ export async function sendBookingConfirmation(appointment: AppointmentWithDetail
     to: appointment.user.email,
     subject: 'Your booking is confirmed — Harbour Hair Salon',
     react: BookingConfirmation({ appointment }),
+    text: buildBookingConfirmationText(appointment),
+    idempotencyKey: `booking-confirmation-${appointment.id}`,
   });
 }
 

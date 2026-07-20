@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -69,35 +68,24 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Admin and kiosk render their own full-screen shells, so they don't need the
-  // marketing header/footer/book bar — or the extra DB queries those fire.
-  // src/middleware.ts sets x-pathname on matched routes; on unmatched routes the
-  // header is whatever the client sent (i.e. spoofable), so it must only ever
-  // gate cosmetic chrome like this, never security decisions.
-  const pathname = (await headers()).get("x-pathname") ?? "";
-  const bareShell =
-    pathname.startsWith("/admin") || pathname.startsWith("/kiosk");
-
   return (
     // data-scroll-behavior lets the Next router suspend smooth scrolling while
     // it resets scroll position on navigation — without it, route changes
     // animate from the old scroll offset instead of landing at the top.
     <html lang="en-GB" className="scroll-smooth" data-scroll-behavior="smooth">
       <body className="antialiased bg-zinc-50 text-zinc-900 font-sans">
-        {!bareShell && <Header />}
+        <Header />
         <main className="min-h-screen">
           {children}
         </main>
-        {!bareShell && (
-          <FooterSwitcher
-            marketing={
-              <>
-                <Footer />
-                <MobileBookBar />
-              </>
-            }
-          />
-        )}
+        <FooterSwitcher
+          marketing={
+            <>
+              <Footer />
+              <MobileBookBar />
+            </>
+          }
+        />
         <Analytics />
         <SpeedInsights />
       </body>

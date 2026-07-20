@@ -1,4 +1,8 @@
-# Treatwell sync — AWS trigger (runbook)
+# Treatwell sync — legacy AWS trigger (runbook)
+
+> The primary production trigger now lives in `vercel.json` and runs on Vercel
+> Pro every five minutes. Keep this AWS setup only as a fallback if the trigger
+> is deliberately moved away from Vercel. Do not deploy both schedules together.
 
 Drives `GET /api/cron/treatwell-sync` on a schedule **without** paying for Vercel
 Pro (Hobby caps cron at once/day). EventBridge Scheduler → Lambda → Vercel route.

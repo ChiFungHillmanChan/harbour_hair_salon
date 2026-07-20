@@ -52,10 +52,15 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `treatwell-ical.ts` — pure: `parseIcalBusyIntervals(icsText, opts)` → busy intervals from an iCal feed (node-ical); skips recurring/past/out-of-window; unit-tested
 - `external-busy.ts` — `loadExternalBusy(db, stylistIds, window)` + `toBookedInterval`/`toSlotAppointment` converters; merges `ExternalBusyBlock` into the booking conflict checks; unit-tested
 - `treatwell-sync-service.ts` — `syncTreatwellFeeds(deps?)`: fetch each stylist's Treatwell iCal → upsert `ExternalBusyBlock` → prune stale; fail-safe (no prune on fetch error); unit-tested
+- `treatwell-api.ts` — provider-neutral Phase 2 contract, API environment readiness, stable booking command builder and queue-status rules; unit-tested. The official HTTP/auth adapter is intentionally deferred until Treatwell supplies its private API contract.
+- `treatwell-api-worker.ts` — durable outbound queue processor. Accepts an injected official adapter, maps `PENDING` appointments to upsert/cancel commands, and records `SYNCED`/`FAILED` state for Admin retry; unit-tested.
+- `integration-readiness.ts` — admin-only, secret-safe readiness summary for Treatwell mappings/queue, Resend environment and Vercel ISR.
+- `booking-confirmation-copy.ts` — plain-text fallback for the branded Resend confirmation email; unit-tested.
 
 ## API Routes
 - `src/app/api/cron/reminders/route.ts` — daily appointment-reminder cron (Bearer `CRON_SECRET`)
-- `src/app/api/cron/treatwell-sync/route.ts` — Treatwell inbound iCal sync; called by AWS EventBridge→Lambda (see `infra/aws/treatwell-sync/`), Bearer `CRON_SECRET`
+- `src/app/api/cron/treatwell-sync/route.ts` — Treatwell inbound iCal sync; scheduled every five minutes by Vercel Pro via `vercel.json`, protected by `CRON_SECRET`. The old AWS EventBridge→Lambda runbook remains under `infra/aws/treatwell-sync/` only as a legacy alternative.
+- `src/app/api/session/route.ts` — private/no-store cosmetic header session state, split from shared marketing HTML so public pages can use Vercel ISR. Protected pages still verify the session server-side.
 
 ## Lib
 - `pin.ts` — `isValidPin`, `hashPin`, `verifyPin` (bcryptjs); unit-tested
@@ -67,11 +72,13 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `kiosk.ts` — `clockToggle` (employee clock-in/out with PIN + rate-limit), `enableKioskMode`, `disableKioskMode`
 - `timesheets.ts` — admin timesheet management: create/edit/delete TimesheetEntry rows
 - `payroll.ts` — `runPayrollAction(year, month)`, `updateAdjustmentAction`, `finalizePayrollAction`; delegates to `payroll-service.ts`
+- `admin-integrations.ts` — admin-only manual iCal sync and failed Treatwell outbound queue retry.
 
 ## Pages
 - `src/app/admin/employees/page.tsx` — admin employee list with create/edit/delete via `EmployeeForm`
 - `src/app/admin/timesheets/page.tsx` — admin timesheet browser and manual entry editor
 - `src/app/admin/payroll/page.tsx` — admin payroll runner: period picker, computed gross lines, CSV export, finalize
+- `src/app/admin/integrations/page.tsx` — Treatwell/Resend/CDN readiness dashboard. Shows only booleans, counts and timestamps; never secret values.
 - `src/app/kiosk/page.tsx` — PIN kiosk screen: employee roster with clock-in/out via `KioskClock`
 
 ## Components (new — payroll / kiosk build)
@@ -85,14 +92,19 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ## Database Models
 - User
-- Stylist
-- Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the £10 Consultation & Patch Test service) booleans; also `requiresConsultation` (services that must route to a consultation before they can be booked directly) and `isConsultation` (the separate free £0 Consultation service). Gated colour services route to the £10 Consultation & Patch Test; other gated services route to the free Consultation
-- Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED)
+- Stylist — includes private `treatwellIcalUrl` (inbound) and `treatwellExternalId` (future API mapping)
+- Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the £10 Consultation & Patch Test service) booleans; also `requiresConsultation` (services that must route to a consultation before they can be booked directly) and `isConsultation` (the separate free £0 Consultation service). Gated colour services route to the £10 Consultation & Patch Test; other gated services route to the free Consultation. `treatwellExternalId` maps it to the future API.
+- Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED) — also stores Treatwell provider booking id, durable sync status/error and last sync timestamp.
 - Availability
 - ExternalBusyBlock — busy times imported from Treatwell (per-stylist iCal); `Stylist.treatwellIcalUrl` holds the feed URL
 
 ## Components (auth)
 - `src/components/auth/PasswordVisibilityToggle.tsx` — eye / eye-off button overlaid on password inputs (used by signin + register pages)
+
+## CDN / Public shell
+- `src/components/layout/Header.tsx` — static server wrapper for public offer state.
+- `src/components/layout/HeaderClient.tsx` — shared-cache-safe marketing header; account links hydrate from `/api/session` rather than putting cookies into the page render.
+- Public pages export route revalidation intervals and are delivered through Vercel ISR. Homepage output is static with a one-hour revalidation interval; Admin and API routes remain dynamic.
 
 ## Components (responsive shell)
 - `src/components/admin/AdminSidebar.tsx` — admin nav shell: hamburger top bar + slide-in drawer < lg, sticky sidebar ≥ lg; closes on backdrop/✕/Escape/route change

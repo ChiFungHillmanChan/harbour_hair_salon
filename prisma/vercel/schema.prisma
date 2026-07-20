@@ -13,99 +13,106 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String?  // Optional for guest users
-  name      String?
-  phone     String?
-  role      String   @default("USER") // USER, ADMIN
-  sessionVersion Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  appointments Appointment[]
-  reviews      Review[]
+  id             String        @id @default(cuid())
+  email          String        @unique
+  password       String? // Optional for guest users
+  name           String?
+  phone          String?
+  role           String        @default("USER") // USER, ADMIN
+  sessionVersion Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  appointments   Appointment[]
+  reviews        Review[]
 }
 
 model Stylist {
-  id              String   @id @default(cuid())
-  name            String
-  bio             String?
-  imageUrl        String?
-  role            String   // e.g., Senior Stylist, Director
-  slug            String?  @unique
-  tagline         String?
-  specialtiesJson String   @default("[]")
-  languagesJson   String   @default("[]")
-  yearsExperience Int?
-  trainedIn       String?
-  extendedBioJson String   @default("[]")
-  treatwellIcalUrl String? // Treatwell Connect per-staff iCal feed URL (Phase 1 inbound sync)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  appointments       Appointment[]
-  availabilities     Availability[]
-  employee           Employee?
-  externalBusyBlocks ExternalBusyBlock[]
+  id                  String              @id @default(cuid())
+  name                String
+  bio                 String?
+  imageUrl            String?
+  role                String // e.g., Senior Stylist, Director
+  slug                String?             @unique
+  tagline             String?
+  specialtiesJson     String              @default("[]")
+  languagesJson       String              @default("[]")
+  yearsExperience     Int?
+  trainedIn           String?
+  extendedBioJson     String              @default("[]")
+  treatwellIcalUrl    String? // Treatwell Connect per-staff iCal feed URL (Phase 1 inbound sync)
+  treatwellExternalId String? // Treatwell API staff/resource id (Phase 2 outbound sync)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  appointments        Appointment[]
+  availabilities      Availability[]
+  employee            Employee?
+  externalBusyBlocks  ExternalBusyBlock[]
 }
 
 model Service {
-  id                 String   @id @default(cuid())
-  name               String
-  description        String?
-  price              Decimal
-  duration           Int      // in minutes
-  category           String   // e.g., Cut, Color, Treatment
-  requiresPatchTest  Boolean  @default(false)
-  isPatchTest        Boolean  @default(false)
-  requiresConsultation Boolean @default(false)
-  isConsultation     Boolean  @default(false)
-  imageUrl           String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  appointments Appointment[]
+  id                   String        @id @default(cuid())
+  name                 String
+  description          String?
+  price                Decimal
+  duration             Int // in minutes
+  category             String // e.g., Cut, Color, Treatment
+  requiresPatchTest    Boolean       @default(false)
+  isPatchTest          Boolean       @default(false)
+  requiresConsultation Boolean       @default(false)
+  isConsultation       Boolean       @default(false)
+  imageUrl             String?
+  treatwellExternalId  String? // Treatwell API service/menu-item id
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  appointments         Appointment[]
 }
 
 model Appointment {
-  id                 String   @id @default(cuid())
-  date               DateTime
-  status             String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
-  notes              String?
-  priceAtBooking     Decimal?
-  reminderSent       Boolean  @default(false)
-  reviewRequestSent  Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  date                DateTime
+  status              String    @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
+  notes               String?
+  priceAtBooking      Decimal?
+  reminderSent        Boolean   @default(false)
+  reviewRequestSent   Boolean   @default(false)
+  treatwellBookingId  String?
+  treatwellSyncStatus String    @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING, SYNCED, FAILED
+  treatwellSyncError  String?
+  treatwellSyncedAt   DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   stylistId String
-  stylist   Stylist  @relation(fields: [stylistId], references: [id], onDelete: Restrict)
+  stylist   Stylist @relation(fields: [stylistId], references: [id], onDelete: Restrict)
 
   serviceId String
-  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
 
   discountCodeId String?
   discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
 
-  review    Review?
+  review Review?
 
   @@index([stylistId, date])
   @@index([userId, status])
   @@index([status, reminderSent, date])
   @@index([status, reviewRequestSent, date])
+  @@index([treatwellSyncStatus, updatedAt])
   @@index([date])
 }
 
 model ExternalBusyBlock {
   id          String   @id @default(cuid())
   source      String   @default("TREATWELL") // TREATWELL (future: other channels)
-  externalUid String   // iCal VEVENT UID — natural key for upsert/dedup
+  externalUid String // iCal VEVENT UID — natural key for upsert/dedup
   stylistId   String
   stylist     Stylist  @relation(fields: [stylistId], references: [id], onDelete: Cascade)
   start       DateTime
   end         DateTime
-  summary     String?  // raw event title, for debugging only
+  summary     String? // raw event title, for debugging only
   lastSyncAt  DateTime @default(now())
 
   @@unique([source, externalUid])
@@ -113,59 +120,59 @@ model ExternalBusyBlock {
 }
 
 model Review {
-  id             String   @id @default(cuid())
-  rating         Int      // 1-5
-  comment        String?
-  status         String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id        String   @id @default(cuid())
+  rating    Int // 1-5
+  comment   String?
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  appointmentId  String   @unique
-  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
 }
 
 model Availability {
-  id        String   @id @default(cuid())
-  dayOfWeek Int      // 0-6 (Sun-Sat)
-  startTime String   // HH:mm
-  endTime   String   // HH:mm
-  isOff     Boolean  @default(false)
+  id        String  @id @default(cuid())
+  dayOfWeek Int // 0-6 (Sun-Sat)
+  startTime String // HH:mm
+  endTime   String // HH:mm
+  isOff     Boolean @default(false)
 
   stylistId String
-  stylist   Stylist  @relation(fields: [stylistId], references: [id], onDelete: Cascade)
+  stylist   Stylist @relation(fields: [stylistId], references: [id], onDelete: Cascade)
 
   @@index([stylistId, dayOfWeek])
 }
 
 model DiscountCode {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  type        String   // PERCENTAGE, FIXED
-  value       Decimal
-  maxUses     Int?     // null means unlimited
-  usedCount   Int      @default(0)
-  expiresAt   DateTime?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String        @id @default(cuid())
+  code         String        @unique
+  type         String // PERCENTAGE, FIXED
+  value        Decimal
+  maxUses      Int? // null means unlimited
+  usedCount    Int           @default(0)
+  expiresAt    DateTime?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
   appointments Appointment[]
 }
 
 model Offer {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  discountType String   // PERCENTAGE, FIXED
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  discountType  String // PERCENTAGE, FIXED
   discountValue Decimal
-  isActive    Boolean  @default(true)
-  isGlobal    Boolean  @default(false) // If true, applies to all services automatically
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive      Boolean  @default(true)
+  isGlobal      Boolean  @default(false) // If true, applies to all services automatically
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model ServiceCategoryContent {
@@ -176,11 +183,11 @@ model ServiceCategoryContent {
   hero            String
   metaDescription String
   intro           String
-  overviewJson    String   // JSON array of strings (paragraphs)
-  includesJson    String   // JSON array of strings (bullets)
-  processJson     String   // JSON array of { step, detail }
-  aftercareJson   String   // JSON array of strings
-  faqsJson        String   // JSON array of { question, answer }
+  overviewJson    String // JSON array of strings (paragraphs)
+  includesJson    String // JSON array of strings (bullets)
+  processJson     String // JSON array of { step, detail }
+  aftercareJson   String // JSON array of strings
+  faqsJson        String // JSON array of { question, answer }
   relatedSlugs    String   @default("") // comma-separated slugs
   displayOrder    Int      @default(0)
   createdAt       DateTime @default(now())
@@ -188,54 +195,54 @@ model ServiceCategoryContent {
 }
 
 model SiteSettings {
-  id                  String   @id @default("singleton")
-  phone               String   @default("07831 830898")
-  twitterHandle       String   @default("") // e.g. @harbourhair_leeds
-  gscVerification     String   @default("") // Google Search Console code
-  googleBusinessUrl   String   @default("https://www.google.com/maps/place/Harbour+Hair/data=!4m2!3m1!1s0x0:0xad74be12e1f34d1a?sa=X&ved=1t:2428&ictx=111")
-  facebookUrl         String   @default("")
-  instagramUrl        String   @default("https://www.instagram.com/harbourhair_leeds/")
-  treatwellUrl        String   @default("https://www.treatwell.co.uk/place/harbour-hair-hk-hair-stylist/")
-  freshaUrl           String   @default("")
-  booksyUrl           String   @default("")
-  heroEyebrow         String   @default("Leeds City Centre")
-  heroTitleLine1      String   @default("Expert Hair")
-  heroTitleLine2      String   @default("Styling")
-  heroSubtitle        String   @default("Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.")
-  updatedAt           DateTime @updatedAt
+  id                String   @id @default("singleton")
+  phone             String   @default("07831 830898")
+  twitterHandle     String   @default("") // e.g. @harbourhair_leeds
+  gscVerification   String   @default("") // Google Search Console code
+  googleBusinessUrl String   @default("https://www.google.com/maps/place/Harbour+Hair/data=!4m2!3m1!1s0x0:0xad74be12e1f34d1a?sa=X&ved=1t:2428&ictx=111")
+  facebookUrl       String   @default("")
+  instagramUrl      String   @default("https://www.instagram.com/harbourhair_leeds/")
+  treatwellUrl      String   @default("https://www.treatwell.co.uk/place/harbour-hair-hk-hair-stylist/")
+  freshaUrl         String   @default("")
+  booksyUrl         String   @default("")
+  heroEyebrow       String   @default("Leeds City Centre")
+  heroTitleLine1    String   @default("Expert Hair")
+  heroTitleLine2    String   @default("Styling")
+  heroSubtitle      String   @default("Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.")
+  updatedAt         DateTime @updatedAt
 }
 
 model Faq {
-  id         String   @id @default(cuid())
-  key        String   // e.g. "home", "contact", "services-master", "category:haircuts"
-  question   String
-  answer     String
-  sortOrder  Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  key       String // e.g. "home", "contact", "services-master", "category:haircuts"
+  question  String
+  answer    String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([key, sortOrder])
 }
 
 model BlogPost {
-  id             String   @id @default(cuid())
-  slug           String   @unique
-  title          String
-  description    String
-  excerpt        String
-  author         String
-  authorRole     String
-  publishedAt    DateTime
-  readingTime    Int      @default(5)
-  tags           String   @default("") // comma-separated
-  coverImage     String
-  coverAlt       String
-  lede           String
-  sectionsJson   String   // JSON-encoded BlogSection[]
-  relatedSlugs   String   @default("") // comma-separated slugs
-  status         String   @default("DRAFT") // DRAFT, PUBLISHED
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  description  String
+  excerpt      String
+  author       String
+  authorRole   String
+  publishedAt  DateTime
+  readingTime  Int      @default(5)
+  tags         String   @default("") // comma-separated
+  coverImage   String
+  coverAlt     String
+  lede         String
+  sectionsJson String // JSON-encoded BlogSection[]
+  relatedSlugs String   @default("") // comma-separated slugs
+  status       String   @default("DRAFT") // DRAFT, PUBLISHED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([status, publishedAt])
 }
@@ -243,7 +250,7 @@ model BlogPost {
 model Employee {
   id                     String   @id @default(cuid())
   name                   String
-  title                  String   // e.g. "Senior Stylist", "Receptionist"
+  title                  String // e.g. "Senior Stylist", "Receptionist"
   pinHash                String
   payType                String   @default("HOURLY") // HOURLY, SALARY, COMMISSION, HYBRID
   hourlyRate             Decimal?
@@ -252,7 +259,7 @@ model Employee {
   overtimeEnabled        Boolean  @default(false)
   overtimeThresholdHours Decimal? // hours per pay period (one month) before overtime
   overtimeMultiplier     Decimal? // e.g. 1.5
-  unpaidBreakMinutes     Int?     // fixed unpaid break minutes, auto-deducted per worked day; use this OR per-entry break edits, not both
+  unpaidBreakMinutes     Int? // fixed unpaid break minutes, auto-deducted per worked day; use this OR per-entry break edits, not both
   isActive               Boolean  @default(true)
   hireDate               DateTime @default(now())
   createdAt              DateTime @default(now())
@@ -287,14 +294,14 @@ model TimeEntry {
 }
 
 model PayrollPeriod {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   year               Int
-  month              Int      // 1-12
-  status             String   @default("DRAFT") // DRAFT, FINALIZED
+  month              Int // 1-12
+  status             String    @default("DRAFT") // DRAFT, FINALIZED
   finalizedByAdminId String?
   finalizedAt        DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   lines PayrollLine[]
 
@@ -329,8 +336,8 @@ model Shift {
   employeeId String
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   date       DateTime // salon-local calendar date, stored as that day's UTC midnight
-  startTime  String   // HH:mm (salon local)
-  endTime    String   // HH:mm (salon local)
+  startTime  String // HH:mm (salon local)
+  endTime    String // HH:mm (salon local)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

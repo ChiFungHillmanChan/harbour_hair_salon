@@ -14,8 +14,6 @@ import {
 } from '@/app/services/site-settings-service';
 import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL } from '@/app/lib/site-url';
-import { getSession } from '@/app/lib/session';
-import { redirect } from 'next/navigation';
 import VisitFollowBlock from '@/components/home/VisitFollowBlock';
 
 export const metadata: Metadata = {
@@ -120,11 +118,6 @@ async function getStylists() {
 }
 
 export default async function Home() {
-  const session = await getSession();
-  if (session?.role === 'ADMIN') {
-    redirect('/admin');
-  }
-
   const [services, stylists, activeOffer, aggregateRating, settings, homeFaqs] = await Promise.all([
     getPopularServices(),
     getStylists(),
