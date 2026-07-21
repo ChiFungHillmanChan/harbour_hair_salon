@@ -5,6 +5,14 @@ import { useSearchParams } from 'next/navigation';
 import { login } from '@/app/actions/auth';
 import Link from 'next/link';
 import PasswordVisibilityToggle from '@/components/auth/PasswordVisibilityToggle';
+import GoogleAuthButton from '@/components/auth/GoogleAuthButton';
+
+const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
+  google_unavailable: 'Google sign-in is temporarily unavailable. Please use your email and password.',
+  google_cancelled: 'Google sign-in was cancelled. Please try again when you are ready.',
+  google_already_linked: 'This account is already linked to a different Google account. Please sign in another way.',
+  google_failed: 'We could not sign you in with Google. Please try again.',
+};
 
 
 function SignInForm() {
@@ -12,6 +20,7 @@ function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get('redirect');
+  const googleError = GOOGLE_ERROR_MESSAGES[searchParams.get('error') || ''];
 
   return (
     <div className="flex min-h-[100svh] items-center justify-center bg-zinc-50 py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
@@ -25,7 +34,23 @@ function SignInForm() {
           </p>
         </div>
 
-        <form action={action} className="mt-8 space-y-8">
+        <div className="mt-8">
+          <GoogleAuthButton redirect={redirectParam} />
+        </div>
+
+        <div className="flex items-center gap-4" aria-hidden="true">
+          <div className="h-px flex-1 bg-zinc-200" />
+          <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">or use email</span>
+          <div className="h-px flex-1 bg-zinc-200" />
+        </div>
+
+        {googleError && (
+          <div role="alert" className="rounded-md border border-red-100 bg-red-50 p-4 text-center text-sm text-red-600">
+            {googleError}
+          </div>
+        )}
+
+        <form action={action} className="space-y-8">
           <input type="hidden" name="redirect" value={redirectParam || ''} />
           <div className="space-y-6 rounded-md">
             <div className="relative">

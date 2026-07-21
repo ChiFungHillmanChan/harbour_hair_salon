@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { register } from '@/app/actions/auth';
 import Link from 'next/link';
 import PasswordVisibilityToggle from '@/components/auth/PasswordVisibilityToggle';
+import GoogleAuthButton from '@/components/auth/GoogleAuthButton';
 
 function RegisterForm() {
   const [state, action, isPending] = useActionState(register, undefined);
@@ -24,7 +25,20 @@ function RegisterForm() {
           </p>
         </div>
 
-        <form action={action} className="mt-8 space-y-8">
+        <div className="mt-8">
+          <GoogleAuthButton redirect={redirectParam} />
+          <p className="mt-3 text-center text-xs leading-5 text-zinc-500">
+            New here? Google creates your account automatically. Already registered? We&apos;ll link the accounts by verified email.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4" aria-hidden="true">
+          <div className="h-px flex-1 bg-zinc-200" />
+          <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">or register with email</span>
+          <div className="h-px flex-1 bg-zinc-200" />
+        </div>
+
+        <form action={action} className="space-y-8">
           <input type="hidden" name="redirect" value={redirectParam || ''} />
           <div className="space-y-6 rounded-md">
             <div className="relative">

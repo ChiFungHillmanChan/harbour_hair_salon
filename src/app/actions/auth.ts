@@ -111,7 +111,8 @@ export async function login(prevState: unknown, formData: FormData) {
     return { error: result.error.issues[0].message };
   }
 
-  const { email, password } = result.data;
+  const { password } = result.data;
+  const email = result.data.email.trim().toLowerCase();
 
   const user = await prisma.user.findUnique({
     where: { email },
@@ -150,7 +151,8 @@ export async function register(prevState: unknown, formData: FormData) {
     return { error: result.error.issues[0].message };
   }
 
-  const { email, password, name, phone } = result.data;
+  const { password, name, phone } = result.data;
+  const email = result.data.email.trim().toLowerCase();
 
   const existingUser = await prisma.user.findUnique({
     where: { email },
