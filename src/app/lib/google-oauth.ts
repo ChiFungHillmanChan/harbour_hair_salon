@@ -3,6 +3,7 @@ import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify, SignJWT } from 'jose';
 import { sanitizeRedirect } from '@/app/lib/redirect';
+import { isParseableUrl } from '@/app/lib/site-url';
 
 const GOOGLE_AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -47,9 +48,12 @@ export function resolveOAuthOrigin(requestOrigin: string, productionSiteUrl?: st
 }
 
 export function getGoogleCallbackUrl(requestOrigin: string): string {
-  const configuredSiteUrl = process.env.NODE_ENV === 'production'
-    ? process.env.NEXT_PUBLIC_SITE_URL
+  const raw = process.env.NODE_ENV === 'production'
+    ? process.env.NEXT_PUBLIC_SITE_URL?.trim()
     : undefined;
+  // GH Actions builds inline NEXT_PUBLIC_* as the literal "[SENSITIVE]"
+  // placeholder (see site-url.ts); fall back to the request origin then.
+  const configuredSiteUrl = raw && isParseableUrl(raw) ? raw : undefined;
   return `${resolveOAuthOrigin(requestOrigin, configuredSiteUrl)}/api/auth/google/callback`;
 }
 
