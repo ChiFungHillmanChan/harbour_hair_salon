@@ -1,8 +1,8 @@
 // Single source of truth for the site's canonical base URL.
 // Used in JSON-LD, sitemap, robots, OG images, email links, and canonical tags.
 //
-// Override via NEXT_PUBLIC_SITE_URL in Vercel if you ever attach a custom
-// domain — otherwise defaults to the Vercel production URL.
+// Override via NEXT_PUBLIC_SITE_URL in Vercel — otherwise defaults to the
+// canonical custom domain (www; the apex 308-redirects to it).
 const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 
 // The Vercel project enforces the sensitive env-var policy, so in external CI
@@ -18,7 +18,7 @@ function isParseableUrl(value: string): boolean {
   }
 }
 
-export const SITE_URL = (raw && isParseableUrl(raw) ? raw : 'https://harbourhairsalon.vercel.app').replace(
+export const SITE_URL = (raw && isParseableUrl(raw) ? raw : 'https://www.harbourhair.co.uk').replace(
   /\/+$/,
   ''
 );
