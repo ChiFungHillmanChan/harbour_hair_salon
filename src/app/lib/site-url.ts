@@ -5,7 +5,20 @@
 // domain — otherwise defaults to the Vercel production URL.
 const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 
-export const SITE_URL = (raw && raw.length > 0 ? raw : 'https://harbourhairsalon.vercel.app').replace(
+// The Vercel project enforces the sensitive env-var policy, so in external CI
+// builds (GitHub Actions `vercel build`) this variable materializes as the
+// literal placeholder "[SENSITIVE]" instead of a URL. Fall back unless the
+// value actually parses; at runtime on Vercel the real value is decrypted.
+function isParseableUrl(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const SITE_URL = (raw && isParseableUrl(raw) ? raw : 'https://harbourhairsalon.vercel.app').replace(
   /\/+$/,
   ''
 );
