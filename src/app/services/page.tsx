@@ -6,11 +6,11 @@ import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Hair Services & Pricing in Leeds',
-  description: 'Full menu of haircuts, colouring, perms and treatments at Harbour Hair Salon, Leeds city centre. Prices from £8. Book online.',
+  description: 'Full menu of haircuts, colouring, perms and treatments at Harbour Hair Salon, Leeds city centre. Prices from £10. Book online.',
   alternates: { canonical: '/services' },
   openGraph: {
     title: 'Hair Services & Pricing | Harbour Hair Salon Leeds',
-    description: 'Full menu of haircuts, colouring, perms and treatments. Prices from £8. Book online.',
+    description: 'Full menu of haircuts, colouring, perms and treatments. Prices from £10. Book online.',
   },
 };
 
