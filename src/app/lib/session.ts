@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { encrypt, decrypt, type SessionPayload } from '@/app/lib/jwt';
+import { SESSION_HINT_COOKIE } from '@/app/lib/session-hint';
 
 function getKey() {
   const secretKey = process.env.SESSION_SECRET;
@@ -15,8 +16,17 @@ export async function createSession(userId: string, role: string, sessionVersion
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
   const session = await encrypt({ userId, role, sessionVersion, expiresAt });
 
-  (await cookies()).set('session', session, {
+  const cookieStore = await cookies();
+  cookieStore.set('session', session, {
     httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    expires: expiresAt,
+    sameSite: 'lax',
+    path: '/',
+  });
+  // Readable by the header client for instant, network-free account links.
+  cookieStore.set(SESSION_HINT_COOKIE, role, {
+    httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
     expires: expiresAt,
     sameSite: 'lax',
@@ -76,7 +86,9 @@ export async function getSession(): Promise<SessionPayload | null> {
 }
 
 export async function deleteSession() {
-  (await cookies()).delete('session');
+  const cookieStore = await cookies();
+  cookieStore.delete('session');
+  cookieStore.delete(SESSION_HINT_COOKIE);
 }
 
 type KioskPayload = { kiosk: true; expiresAt: Date };

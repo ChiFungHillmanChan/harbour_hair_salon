@@ -2,31 +2,62 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { logout } from '@/app/actions/auth';
+import { parseSessionHint } from '@/app/lib/session-hint';
 import { MobileNav } from './MobileNav';
 
-type PublicSession = { userId: string; role: string } | null;
+/** Signed-in role, null when signed out, undefined before the first client read. */
+type HeaderRole = string | null | undefined;
 
 export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
   const pathname = usePathname();
-  const [session, setSession] = useState<PublicSession>(null);
+  const [role, setRole] = useState<HeaderRole>(undefined);
+  const [isSigningOut, startSignOut] = useTransition();
 
+  // Instant, network-free auth state from the non-httpOnly session_hint
+  // cookie. Re-read on every navigation: this component lives in the root
+  // layout and survives soft navigations, so login/logout redirects must
+  // trigger a re-read rather than relying on a remount.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs header with the cookie the server just set/cleared; same idiom as AdminSidebar
+    setRole(parseSessionHint(document.cookie));
+  }, [pathname]);
+
+  // Fallback for sessions created before the hint cookie existed: one fetch
+  // per full page load; /api/session back-fills the hint so this runs once.
+  useEffect(() => {
+    if (parseSessionHint(document.cookie) !== null) return;
     const controller = new AbortController();
     fetch('/api/session', {
       cache: 'no-store',
       credentials: 'same-origin',
       signal: controller.signal,
     })
-      .then((response) => response.ok ? response.json() as Promise<{ session: PublicSession }> : { session: null })
-      .then((body) => setSession(body.session))
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        setSession(null);
+      .then((response) => response.ok ? response.json() as Promise<{ session: { role: string } | null }> : { session: null })
+      .then((body) => {
+        if (body.session?.role) setRole(body.session.role);
+      })
+      .catch(() => {
+        // Signed-out default already rendered; nothing to roll back.
       });
     return () => controller.abort();
   }, []);
+
+  const handleSignOut = () => {
+    if (isSigningOut) return;
+    // Optimistic flip: the header switches to signed-out immediately, so the
+    // click has a visible effect and the button can't be pressed repeatedly.
+    setRole(null);
+    startSignOut(async () => {
+      try {
+        await logout();
+      } catch {
+        // Action failed before clearing the session — restore the true state.
+        setRole(parseSessionHint(document.cookie));
+      }
+    });
+  };
 
   // Admin and kiosk provide their own full-screen navigation shells.
   if (pathname?.startsWith('/admin') || pathname?.startsWith('/kiosk')) return null;
@@ -47,16 +78,24 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
           <Link href="/contact" className="hover:text-zinc-300 transition-colors duration-300">Contact</Link>
           <Link href="/try-color" className="hover:text-zinc-300 transition-colors duration-300">Try Color</Link>
 
-          {session?.userId ? (
+          {role === undefined ? (
+            // Pre-hydration placeholder: reserves the slot without flashing
+            // the wrong state before the cookie has been read.
+            <span className="opacity-0 select-none" aria-hidden="true">Sign In</span>
+          ) : role !== null ? (
             <>
-              {session.role === 'ADMIN' ? (
+              {role === 'ADMIN' ? (
                 <Link href="/admin" className="hover:text-zinc-300 transition-colors duration-300">Dashboard</Link>
               ) : (
                 <Link href="/appointments" className="hover:text-zinc-300 transition-colors duration-300">My Bookings</Link>
               )}
-              <form action={logout}>
-                <button className="hover:text-zinc-300 transition-colors duration-300 uppercase">Sign Out</button>
-              </form>
+              <button
+                onClick={handleSignOut}
+                disabled={isSigningOut}
+                className="hover:text-zinc-300 transition-colors duration-300 uppercase disabled:opacity-50"
+              >
+                Sign Out
+              </button>
             </>
           ) : (
             <Link href="/auth/signin" className="hover:text-zinc-300 transition-colors duration-300">Sign In</Link>
@@ -67,7 +106,7 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
           <Link href="/book" className="hidden md:block bg-white text-zinc-900 px-6 py-2 text-sm uppercase tracking-widest font-semibold hover:bg-zinc-200 transition-colors duration-300">
             Book Now
           </Link>
-          <MobileNav session={session} hasOffers={hasOffers} />
+          <MobileNav role={role ?? null} onSignOut={handleSignOut} hasOffers={hasOffers} />
         </div>
       </div>
     </header>

@@ -54,25 +54,28 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `treatwell-sync-service.ts` — `syncTreatwellFeeds(deps?)`: fetch each stylist's Treatwell iCal → upsert `ExternalBusyBlock` → prune stale; fail-safe (no prune on fetch error); unit-tested
 - `treatwell-api.ts` — provider-neutral Phase 2 contract, API environment readiness, stable booking command builder and queue-status rules; unit-tested. The official HTTP/auth adapter is intentionally deferred until Treatwell supplies its private API contract.
 - `treatwell-api-worker.ts` — durable outbound queue processor. Accepts an injected official adapter, maps `PENDING` appointments to upsert/cancel commands, and records `SYNCED`/`FAILED` state for Admin retry; unit-tested.
-- `integration-readiness.ts` — admin-only, secret-safe readiness summary for Treatwell mappings/queue, Resend environment and Vercel ISR.
+- `integration-readiness.ts` — admin-only, secret-safe readiness summary for Treatwell mappings/queue, Resend environment and Vercel ISR; also `listOutboundIcalFeeds(siteUrl)` → per-stylist outbound busy-feed URLs (secret — admin panel only).
+- `stylist-ical-feed.ts` — `buildStylistIcalFeed(stylistId, token, deps?)`: token-guarded (timing-safe, uniform 404) per-stylist busy iCal for Treatwell Connect's "External Calendar" import; UTC VEVENTs, fixed `Busy` summary, no customer PII; unit-tested.
 - `booking-confirmation-copy.ts` — plain-text fallback for the branded Resend confirmation email; unit-tested.
 
 ## API Routes
 - `src/app/api/cron/reminders/route.ts` — daily appointment-reminder cron (Bearer `CRON_SECRET`)
 - `src/app/api/cron/treatwell-sync/route.ts` — Treatwell inbound iCal sync, protected by `CRON_SECRET`. `vercel.json` currently uses the Hobby-compatible daily `0 6 * * *` schedule; Admin can trigger extra test syncs manually. After upgrading to Pro, change the expression to `*/5 * * * *` and redeploy. The schedule is Vercel project configuration and cannot be controlled by an app environment variable.
-- `src/app/api/session/route.ts` — private/no-store cosmetic header session state, split from shared marketing HTML so public pages can use Vercel ISR. Protected pages still verify the session server-side.
+- `src/app/api/session/route.ts` — private/no-store cosmetic header session state, split from shared marketing HTML so public pages can use Vercel ISR. Now only the fallback when the `session_hint` cookie is absent (pre-hint sessions); back-fills the hint so it runs at most once per browser. Protected pages still verify the session server-side.
+- `src/app/api/ical/[stylistId]/route.ts` — outbound busy feed (`?token=` secret) that Treatwell Connect subscribes to per employee; thin adapter over `stylist-ical-feed.ts`.
 
 ## Lib
 - `pin.ts` — `isValidPin`, `hashPin`, `verifyPin` (bcryptjs); unit-tested
 - `session.ts` — existing JWT session helpers + `createKioskSession`/`getKioskSession`/`deleteKioskSession` for PIN-authenticated kiosk sessions
 - `phone.ts` — `toTelHref(phone)`: pure, prisma-free — normalizes an admin-editable `SiteSettings.phone` value (strips spaces, leading `0` → `+44`) into a `tel:` URI; used by the Footer, contact page and `NewsletterWelcome` email so the displayed/dialable number follows Settings instead of being hardcoded; unit-tested
+- `session-hint.ts` — `SESSION_HINT_COOKIE` + `parseSessionHint(cookieString)`: pure parser for the non-httpOnly, role-only `session_hint` cookie set/cleared alongside the real session (createSession/deleteSession, middleware sliding refresh, `/api/session` back-fill) so the header shows account state instantly without a network request; cosmetic only — protected routes still verify the JWT; unit-tested
 
 ## Actions
 - `employees.ts` — admin CRUD for Employee records (create, update, delete); validates PIN via `pin.ts`
 - `kiosk.ts` — `clockToggle` (employee clock-in/out with PIN + rate-limit), `enableKioskMode`, `disableKioskMode`
 - `timesheets.ts` — admin timesheet management: create/edit/delete TimesheetEntry rows
 - `payroll.ts` — `runPayrollAction(year, month)`, `updateAdjustmentAction`, `finalizePayrollAction`; delegates to `payroll-service.ts`
-- `admin-integrations.ts` — admin-only manual iCal sync and failed Treatwell outbound queue retry.
+- `admin-integrations.ts` — admin-only manual iCal sync, failed Treatwell outbound queue retry, and per-stylist busy-feed token generate/rotate.
 
 ## Pages
 - `src/app/admin/employees/page.tsx` — admin employee list with create/edit/delete via `EmployeeForm`
@@ -107,7 +110,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ## CDN / Public shell
 - `src/components/layout/Header.tsx` — static server wrapper for public offer state.
-- `src/components/layout/HeaderClient.tsx` — shared-cache-safe marketing header; account links hydrate from `/api/session` rather than putting cookies into the page render.
+- `src/components/layout/HeaderClient.tsx` — shared-cache-safe marketing header; account links read the `session_hint` cookie on hydration and on every navigation (survives soft navs in the root layout), with `/api/session` as one-time fallback for pre-hint sessions; sign-out flips the UI optimistically via `useTransition` before the server action clears cookies and redirects.
 - Public pages export route revalidation intervals and are delivered through Vercel ISR. Homepage output is static with a one-hour revalidation interval; Admin and API routes remain dynamic.
 
 ## Components (responsive shell)

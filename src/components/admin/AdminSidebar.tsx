@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 
 const NAV_LINKS = [
   { href: '/admin', label: 'Schedule' },
@@ -27,6 +28,19 @@ const NAV_LINKS = [
 interface AdminSidebarProps {
   userId: string;
   logoutAction: () => Promise<void>;
+}
+
+/** Disables itself while the logout action runs so it can't be re-clicked. */
+function SignOutButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      disabled={pending}
+      className="w-full rounded bg-zinc-800 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50"
+    >
+      {pending ? 'Signing Out…' : 'Sign Out'}
+    </button>
+  );
 }
 
 /**
@@ -139,9 +153,7 @@ export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
             <p className="truncate text-sm font-medium">{userId}</p>
           </div>
           <form action={logoutAction}>
-            <button className="w-full rounded bg-zinc-800 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700">
-              Sign Out
-            </button>
+            <SignOutButton />
           </form>
         </div>
       </aside>

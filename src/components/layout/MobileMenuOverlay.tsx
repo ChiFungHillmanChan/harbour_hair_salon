@@ -2,19 +2,17 @@
 
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
-import { logout } from '@/app/actions/auth';
 
 interface MobileMenuOverlayProps {
   isOpen: boolean;
   onClose: () => void;
-  session: {
-    userId?: string;
-    role?: string;
-  } | null;
+  /** Signed-in role, or null when signed out. */
+  role: string | null;
+  onSignOut: () => void;
   hasOffers?: boolean;
 }
 
-export default function MobileMenuOverlay({ isOpen, onClose, session, hasOffers = false }: MobileMenuOverlayProps) {
+export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, hasOffers = false }: MobileMenuOverlayProps) {
   // No need for mounted state check since this component is dynamically imported with { ssr: false }
   // It will only ever render on the client where document.body is available
   
@@ -93,9 +91,9 @@ export default function MobileMenuOverlay({ isOpen, onClose, session, hasOffers 
 
           <div className="border-t border-zinc-800 my-4 w-full"></div>
 
-          {session?.userId ? (
+          {role !== null ? (
             <>
-              {session.role === 'ADMIN' && (
+              {role === 'ADMIN' && (
                 <Link
                   href="/admin"
                   className="text-zinc-400 hover:text-white text-xl tracking-wide transition-colors"
@@ -104,7 +102,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, session, hasOffers 
                   Dashboard
                 </Link>
               )}
-              {session.role !== 'ADMIN' && (
+              {role !== 'ADMIN' && (
                 <Link
                   href="/appointments"
                   className="text-zinc-400 hover:text-white text-xl tracking-wide transition-colors"
@@ -113,11 +111,17 @@ export default function MobileMenuOverlay({ isOpen, onClose, session, hasOffers 
                   My Bookings
                 </Link>
               )}
-              <form action={logout} className="w-full">
-                <button className="text-zinc-400 hover:text-white text-xl tracking-wide uppercase w-full text-left transition-colors">
-                  Sign Out
-                </button>
-              </form>
+              <button
+                onClick={() => {
+                  // Flips the header to signed-out immediately (optimistic);
+                  // closing the menu reveals that state as instant feedback.
+                  onSignOut();
+                  onClose();
+                }}
+                className="text-zinc-400 hover:text-white text-xl tracking-wide uppercase w-full text-left transition-colors"
+              >
+                Sign Out
+              </button>
             </>
           ) : (
             <Link

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify, SignJWT } from 'jose';
 import type { SessionPayload as FullSessionPayload } from '@/app/lib/jwt';
+import { SESSION_HINT_COOKIE } from '@/app/lib/session-hint';
 
 const secretKey = process.env.SESSION_SECRET;
 const key = secretKey ? new TextEncoder().encode(secretKey) : null;
@@ -100,6 +101,23 @@ export async function middleware(request: NextRequest) {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         expires: expiresAt,
+        sameSite: 'lax',
+        path: '/',
+      });
+      response.cookies.set(SESSION_HINT_COOKIE, session.role, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        expires: expiresAt,
+        sameSite: 'lax',
+        path: '/',
+      });
+    } else if (request.cookies.get(SESSION_HINT_COOKIE)?.value !== session.role) {
+      // Back-fill for sessions issued before the hint cookie existed (or after
+      // a role change) so the header shows account links without a fetch.
+      response.cookies.set(SESSION_HINT_COOKIE, session.role, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        expires: new Date(session.expiresAt),
         sameSite: 'lax',
         path: '/',
       });
