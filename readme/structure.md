@@ -61,13 +61,14 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 ## API Routes
 - `src/app/api/cron/reminders/route.ts` — daily appointment-reminder cron (Bearer `CRON_SECRET`)
 - `src/app/api/cron/treatwell-sync/route.ts` — Treatwell inbound iCal sync, protected by `CRON_SECRET`. `vercel.json` currently uses the Hobby-compatible daily `0 6 * * *` schedule; Admin can trigger extra test syncs manually. After upgrading to Pro, change the expression to `*/5 * * * *` and redeploy. The schedule is Vercel project configuration and cannot be controlled by an app environment variable.
-- `src/app/api/session/route.ts` — private/no-store cosmetic header session state, split from shared marketing HTML so public pages can use Vercel ISR. Protected pages still verify the session server-side.
+- `src/app/api/session/route.ts` — private/no-store cosmetic header session state, split from shared marketing HTML so public pages can use Vercel ISR. Now only the fallback when the `session_hint` cookie is absent (pre-hint sessions); back-fills the hint so it runs at most once per browser. Protected pages still verify the session server-side.
 - `src/app/api/ical/[stylistId]/route.ts` — outbound busy feed (`?token=` secret) that Treatwell Connect subscribes to per employee; thin adapter over `stylist-ical-feed.ts`.
 
 ## Lib
 - `pin.ts` — `isValidPin`, `hashPin`, `verifyPin` (bcryptjs); unit-tested
 - `session.ts` — existing JWT session helpers + `createKioskSession`/`getKioskSession`/`deleteKioskSession` for PIN-authenticated kiosk sessions
 - `phone.ts` — `toTelHref(phone)`: pure, prisma-free — normalizes an admin-editable `SiteSettings.phone` value (strips spaces, leading `0` → `+44`) into a `tel:` URI; used by the Footer, contact page and `NewsletterWelcome` email so the displayed/dialable number follows Settings instead of being hardcoded; unit-tested
+- `session-hint.ts` — `SESSION_HINT_COOKIE` + `parseSessionHint(cookieString)`: pure parser for the non-httpOnly, role-only `session_hint` cookie set/cleared alongside the real session (createSession/deleteSession, middleware sliding refresh, `/api/session` back-fill) so the header shows account state instantly without a network request; cosmetic only — protected routes still verify the JWT; unit-tested
 
 ## Actions
 - `employees.ts` — admin CRUD for Employee records (create, update, delete); validates PIN via `pin.ts`
@@ -109,7 +110,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ## CDN / Public shell
 - `src/components/layout/Header.tsx` — static server wrapper for public offer state.
-- `src/components/layout/HeaderClient.tsx` — shared-cache-safe marketing header; account links hydrate from `/api/session` rather than putting cookies into the page render.
+- `src/components/layout/HeaderClient.tsx` — shared-cache-safe marketing header; account links read the `session_hint` cookie on hydration and on every navigation (survives soft navs in the root layout), with `/api/session` as one-time fallback for pre-hint sessions; sign-out flips the UI optimistically via `useTransition` before the server action clears cookies and redirects.
 - Public pages export route revalidation intervals and are delivered through Vercel ISR. Homepage output is static with a one-hour revalidation interval; Admin and API routes remain dynamic.
 
 ## Components (responsive shell)

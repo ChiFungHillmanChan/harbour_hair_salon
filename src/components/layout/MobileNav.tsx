@@ -8,14 +8,13 @@ import dynamic from 'next/dynamic';
 const MobileMenuOverlay = dynamic(() => import('./MobileMenuOverlay'), { ssr: false });
 
 interface MobileNavProps {
-  session: {
-    userId?: string;
-    role?: string;
-  } | null;
+  /** Signed-in role, or null when signed out. */
+  role: string | null;
+  onSignOut: () => void;
   hasOffers?: boolean;
 }
 
-export function MobileNav({ session, hasOffers = false }: MobileNavProps) {
+export function MobileNav({ role, onSignOut, hasOffers = false }: MobileNavProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -58,7 +57,7 @@ export function MobileNav({ session, hasOffers = false }: MobileNavProps) {
       </button>
 
       {/* Mobile Menu Overlay - Loaded dynamically */}
-      <MobileMenuOverlay isOpen={isOpen} onClose={closeMenu} session={session} hasOffers={hasOffers} />
+      <MobileMenuOverlay isOpen={isOpen} onClose={closeMenu} role={role} onSignOut={onSignOut} hasOffers={hasOffers} />
     </div>
   );
 }
