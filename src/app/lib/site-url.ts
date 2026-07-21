@@ -9,7 +9,7 @@ const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 // builds (GitHub Actions `vercel build`) this variable materializes as the
 // literal placeholder "[SENSITIVE]" instead of a URL. Fall back unless the
 // value actually parses; at runtime on Vercel the real value is decrypted.
-function isParseableUrl(value: string): boolean {
+export function isParseableUrl(value: string): boolean {
   try {
     new URL(value);
     return true;
