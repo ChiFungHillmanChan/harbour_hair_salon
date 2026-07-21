@@ -92,6 +92,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ## Database Models
 - User
+- OAuthAccount — links a user to a verified external provider identity (currently Google)
 - Stylist — includes private `treatwellIcalUrl` (inbound) and `treatwellExternalId` (future API mapping)
 - Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the £10 Consultation & Patch Test service) booleans; also `requiresConsultation` (services that must route to a consultation before they can be booked directly) and `isConsultation` (the separate free £0 Consultation service). Gated colour services route to the £10 Consultation & Patch Test; other gated services route to the free Consultation. `treatwellExternalId` maps it to the future API.
 - Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED) — also stores Treatwell provider booking id, durable sync status/error and last sync timestamp.
@@ -100,6 +101,9 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ## Components (auth)
 - `src/components/auth/PasswordVisibilityToggle.tsx` — eye / eye-off button overlaid on password inputs (used by signin + register pages)
+- `src/components/auth/GoogleAuthButton.tsx` — shared Google sign-in/register button that preserves safe post-auth redirects
+- `src/app/api/auth/google/route.ts` — starts Google OAuth using signed state, nonce, and PKCE
+- `src/app/api/auth/google/callback/route.ts` — verifies Google identity, links by verified email, creates new users, and issues the existing JWT session
 
 ## CDN / Public shell
 - `src/components/layout/Header.tsx` — static server wrapper for public offer state.

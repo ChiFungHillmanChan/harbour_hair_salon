@@ -329,6 +329,34 @@ export async function deleteAdminUser(id: string) {
   revalidatePath('/admin/users');
 }
 
+export async function promoteGoogleUserToAdmin(id: string) {
+  const { error } = await requireAdmin();
+  if (error) return;
+
+  const user = await prisma.user.findFirst({
+    where: {
+      id,
+      role: 'USER',
+      oauthAccounts: { some: { provider: 'google' } },
+    },
+    select: { id: true },
+  });
+
+  if (!user) return;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      role: 'ADMIN',
+      // Force a fresh sign-in so middleware receives a session containing the
+      // new role and the user cannot retain any stale pre-promotion session.
+      sessionVersion: { increment: 1 },
+    },
+  });
+
+  revalidatePath('/admin/users');
+}
+
 // CONFIRMED intentionally excluded: no UI path re-confirms an appointment,
 // and doing so here would bypass the in-transaction double-booking conflict
 // check that rescheduleAppointment uses. If un-confirm is ever needed, add

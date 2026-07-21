@@ -1,0 +1,161 @@
+import 'server-only';
+
+import { createHash, randomBytes } from 'node:crypto';
+import { createRemoteJWKSet, jwtVerify, SignJWT } from 'jose';
+import { sanitizeRedirect } from '@/app/lib/redirect';
+
+const GOOGLE_AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
+export const GOOGLE_OAUTH_STATE_COOKIE = 'google_oauth_state';
+
+type OAuthState = {
+  state: string;
+  nonce: string;
+  codeVerifier: string;
+  redirectTo: string;
+};
+
+export type GoogleProfile = {
+  id: string;
+  email: string;
+  name: string | null;
+};
+
+function getSessionKey() {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error('SESSION_SECRET environment variable is required');
+  return new TextEncoder().encode(secret);
+}
+
+export function getGoogleConfig() {
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    throw new Error('Google OAuth is not configured');
+  }
+  return { clientId, clientSecret };
+}
+
+export function resolveOAuthOrigin(requestOrigin: string, productionSiteUrl?: string): string {
+  const candidate = productionSiteUrl?.trim() || requestOrigin;
+  const url = new URL(candidate);
+  if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+    throw new Error('OAuth origin must use HTTPS outside local development');
+  }
+  return url.origin;
+}
+
+export function getGoogleCallbackUrl(requestOrigin: string): string {
+  const configuredSiteUrl = process.env.NODE_ENV === 'production'
+    ? process.env.NEXT_PUBLIC_SITE_URL
+    : undefined;
+  return `${resolveOAuthOrigin(requestOrigin, configuredSiteUrl)}/api/auth/google/callback`;
+}
+
+function randomUrlSafe(bytes = 32): string {
+  return randomBytes(bytes).toString('base64url');
+}
+
+export async function createGoogleAuthorization(
+  requestOrigin: string,
+  redirect: string | null
+): Promise<{ authorizationUrl: string; stateCookie: string }> {
+  const { clientId } = getGoogleConfig();
+  const callbackUrl = getGoogleCallbackUrl(requestOrigin);
+  const state: OAuthState = {
+    state: randomUrlSafe(),
+    nonce: randomUrlSafe(),
+    codeVerifier: randomUrlSafe(48),
+    redirectTo: sanitizeRedirect(redirect),
+  };
+
+  const codeChallenge = createHash('sha256').update(state.codeVerifier).digest('base64url');
+  const stateCookie = await new SignJWT(state)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('10m')
+    .sign(getSessionKey());
+
+  const url = new URL(GOOGLE_AUTHORIZATION_URL);
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('redirect_uri', callbackUrl);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('state', state.state);
+  url.searchParams.set('nonce', state.nonce);
+  url.searchParams.set('code_challenge', codeChallenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('prompt', 'select_account');
+
+  return { authorizationUrl: url.toString(), stateCookie };
+}
+
+export async function readGoogleState(
+  stateCookie: string | undefined,
+  returnedState: string | null
+): Promise<OAuthState> {
+  if (!stateCookie || !returnedState) throw new Error('Missing OAuth state');
+  const { payload } = await jwtVerify(stateCookie, getSessionKey(), { algorithms: ['HS256'] });
+  const state = payload as unknown as OAuthState;
+  if (!state.state || state.state !== returnedState || !state.nonce || !state.codeVerifier) {
+    throw new Error('Invalid OAuth state');
+  }
+  return { ...state, redirectTo: sanitizeRedirect(state.redirectTo) };
+}
+
+export async function exchangeGoogleCode(
+  code: string,
+  codeVerifier: string,
+  callbackUrl: string
+): Promise<string> {
+  const { clientId, clientSecret } = getGoogleConfig();
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: callbackUrl,
+      grant_type: 'authorization_code',
+      code_verifier: codeVerifier,
+    }),
+    cache: 'no-store',
+  });
+
+  const tokens = await response.json() as { id_token?: string; error?: string };
+  if (!response.ok || !tokens.id_token) {
+    throw new Error(`Google token exchange failed: ${tokens.error || response.status}`);
+  }
+  return tokens.id_token;
+}
+
+export async function verifyGoogleIdToken(idToken: string, nonce: string): Promise<GoogleProfile> {
+  const { clientId } = getGoogleConfig();
+  const { payload } = await jwtVerify(idToken, GOOGLE_JWKS, {
+    algorithms: ['RS256'],
+    audience: clientId,
+    issuer: ['https://accounts.google.com', 'accounts.google.com'],
+  });
+
+  if (payload.nonce !== nonce || !payload.sub || typeof payload.email !== 'string' || payload.email_verified !== true) {
+    throw new Error('Google did not return a verified identity');
+  }
+
+  return {
+    id: payload.sub,
+    email: payload.email.trim().toLowerCase(),
+    name: typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : null,
+  };
+}
+
+export function getGoogleOAuthStateCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/api/auth/google',
+    maxAge: 10 * 60,
+  };
+}

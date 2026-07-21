@@ -32,7 +32,7 @@ const REQUIRED_API_ENV = [
 
 /** Read env only when called, never at module initialization. */
 export function getTreatwellApiConfiguration(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Partial<NodeJS.ProcessEnv> = process.env,
 ): TreatwellApiConfiguration {
   const missing = REQUIRED_API_ENV.filter((key) => !env[key]?.trim());
 

@@ -23,6 +23,21 @@ model User {
   updatedAt      DateTime      @updatedAt
   appointments   Appointment[]
   reviews        Review[]
+  oauthAccounts  OAuthAccount[]
+}
+
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  provider          String
+  providerAccountId String
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@unique([provider, userId])
+  @@index([userId])
 }
 
 model Stylist {
