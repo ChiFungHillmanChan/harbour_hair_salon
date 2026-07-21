@@ -6,15 +6,9 @@ import { getSiteSettings } from '@/app/services/site-settings-service';
 import { hasActiveOffers } from '@/app/services/offers-service';
 import { toTelHref } from '@/app/lib/phone';
 
-export async function Footer() {
-  const [hasOffers, settings] = await Promise.all([
-    hasActiveOffers(),
-    getSiteSettings(),
-  ]);
-  const phoneDisplay = settings.phone.trim() || '07831 830898';
-
+export function FooterPromotions() {
   return (
-    <footer className="bg-zinc-900 text-white" id="contact">
+    <aside aria-label="Booking and newsletter">
       {/* Booking CTA strip */}
       <div className="bg-zinc-100 text-zinc-900 py-6">
         <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -45,7 +39,19 @@ export async function Footer() {
           </div>
         </div>
       </div>
+    </aside>
+  );
+}
 
+export async function Footer() {
+  const [hasOffers, settings] = await Promise.all([
+    hasActiveOffers(),
+    getSiteSettings(),
+  ]);
+  const phoneDisplay = settings.phone.trim() || '07831 830898';
+
+  return (
+    <footer className="bg-zinc-900 text-white" id="contact">
       {/* Main footer */}
       <div className="container mx-auto px-4 py-16">
         <div className="grid md:grid-cols-4 gap-12">
@@ -72,6 +78,16 @@ export async function Footer() {
               <li><Link href="/blog" className="hover:text-white transition-colors">Journal</Link></li>
               <li><Link href="/book" className="hover:text-white transition-colors">Book Online</Link></li>
               <li><Link href="/contact" className="hover:text-white transition-colors">Contact Us</Link></li>
+              <li>
+                <a
+                  href="https://www.treatwell.co.uk/place/harbour-hair-hk-hair-stylist/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white transition-colors"
+                >
+                  Treatwell
+                </a>
+              </li>
             </ul>
           </div>
 
