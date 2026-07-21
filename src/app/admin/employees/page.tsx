@@ -5,7 +5,7 @@ import KioskModeButton from '@/components/admin/KioskModeButton';
 
 export default async function AdminEmployeesPage() {
   const [employees, stylists] = await Promise.all([
-    prisma.employee.findMany({ orderBy: { name: 'asc' }, include: { stylist: true } }),
+    prisma.employee.findMany({ orderBy: { name: 'asc' }, include: { stylist: { select: { name: true } } } }),
     prisma.stylist.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
   ]);
 

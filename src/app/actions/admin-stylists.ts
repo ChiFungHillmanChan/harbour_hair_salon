@@ -98,12 +98,13 @@ export async function createStylist(
   if ('error' in arrays) return { status: 'error', message: arrays.error };
 
   const slug = parsed.data.slug || slugify(parsed.data.name);
-  const duplicate = await prisma.stylist.findUnique({ where: { slug } });
+  const duplicate = await prisma.stylist.findUnique({ where: { slug }, select: { id: true } });
   if (duplicate) {
     return { status: 'error', message: `A stylist with slug "${slug}" already exists.` };
   }
 
   const created = await prisma.stylist.create({
+    select: { id: true },
     data: {
       name: parsed.data.name,
       role: parsed.data.role,
@@ -138,7 +139,7 @@ export async function updateStylist(
   const id = formData.get('id');
   if (typeof id !== 'string' || !id) return { status: 'error', message: 'Missing id.' };
 
-  const existing = await prisma.stylist.findUnique({ where: { id } });
+  const existing = await prisma.stylist.findUnique({ where: { id }, select: { slug: true } });
   if (!existing) return { status: 'error', message: 'Stylist not found.' };
 
   const parsed = stylistSchema.safeParse(Object.fromEntries(formData));
@@ -151,12 +152,13 @@ export async function updateStylist(
 
   const slug = parsed.data.slug || slugify(parsed.data.name);
   if (slug !== existing.slug) {
-    const dup = await prisma.stylist.findUnique({ where: { slug } });
+    const dup = await prisma.stylist.findUnique({ where: { slug }, select: { id: true } });
     if (dup) return { status: 'error', message: `Slug "${slug}" already taken.` };
   }
 
   await prisma.stylist.update({
     where: { id },
+    select: { id: true },
     data: {
       name: parsed.data.name,
       role: parsed.data.role,
@@ -196,7 +198,7 @@ export async function deleteStylist(formData: FormData): Promise<void> {
     );
   }
 
-  await prisma.stylist.delete({ where: { id } });
+  await prisma.stylist.delete({ where: { id }, select: { id: true } });
 
   revalidatePath('/stylists');
   revalidatePath('/');

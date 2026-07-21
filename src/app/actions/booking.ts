@@ -159,7 +159,13 @@ async function eligibleStylistIds(salon: SalonDateTime, durationMinutes: number)
   const stylists = await prisma.stylist.findMany({
     where: { availabilities: { some: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
     orderBy: { name: 'asc' },
-    include: { availabilities: { where: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
+    select: {
+      id: true,
+      availabilities: {
+        where: { dayOfWeek: salon.dayOfWeek, isOff: false },
+        select: { startTime: true, endTime: true },
+      },
+    },
   });
   return stylists
     .filter((s) =>
@@ -373,7 +379,7 @@ export async function cancelAppointment(appointmentId: string) {
     where: { id: appointmentId },
     include: {
       user: { select: { email: true, name: true } },
-      stylist: true,
+      stylist: { select: { name: true, treatwellExternalId: true } },
       service: true,
     },
   });
@@ -455,7 +461,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
     where: { id: appointmentId },
     include: {
       user: { select: { email: true, name: true } },
-      stylist: true,
+      stylist: { select: { name: true, treatwellExternalId: true } },
       service: true,
     },
   });
@@ -558,7 +564,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
       where: { id: appointmentId },
       include: {
         user: { select: { email: true, name: true } },
-        stylist: true,
+        stylist: { select: { name: true, treatwellExternalId: true } },
         service: true,
       },
     });

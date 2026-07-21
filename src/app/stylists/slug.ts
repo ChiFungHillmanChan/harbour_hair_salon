@@ -54,6 +54,27 @@ type DbStylist = {
   updatedAt: Date;
 };
 
+// Explicit projection — never fetch the whole model here. The full row carries
+// secrets (treatwellIcalUrl, icalToken) that must stay out of public payloads,
+// and these queries run at build time for /stylists pages and the sitemap, so
+// selecting a column the database doesn't have yet would fail preview builds
+// (previews deploy without running migrations).
+const publicStylistSelect = {
+  id: true,
+  name: true,
+  bio: true,
+  imageUrl: true,
+  role: true,
+  slug: true,
+  tagline: true,
+  specialtiesJson: true,
+  languagesJson: true,
+  yearsExperience: true,
+  trainedIn: true,
+  extendedBioJson: true,
+  updatedAt: true,
+} as const;
+
 function mapStylist(row: DbStylist): StylistRuntime {
   return {
     id: row.id,
@@ -73,7 +94,10 @@ function mapStylist(row: DbStylist): StylistRuntime {
 }
 
 export async function getAllStylistsWithSlug(): Promise<StylistRuntime[]> {
-  const stylists = await prisma.stylist.findMany({ orderBy: { name: 'asc' } });
+  const stylists = await prisma.stylist.findMany({
+    orderBy: { name: 'asc' },
+    select: publicStylistSelect,
+  });
   return stylists.map(mapStylist);
 }
 
@@ -83,6 +107,9 @@ export async function getStylistBySlug(slug: string): Promise<StylistRuntime | n
 }
 
 export async function getStylistById(id: string): Promise<StylistRuntime | null> {
-  const row = await prisma.stylist.findUnique({ where: { id } });
+  const row = await prisma.stylist.findUnique({
+    where: { id },
+    select: publicStylistSelect,
+  });
   return row ? mapStylist(row) : null;
 }

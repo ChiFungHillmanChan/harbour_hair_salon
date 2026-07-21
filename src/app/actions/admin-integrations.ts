@@ -32,6 +32,7 @@ export async function generateStylistIcalFeedTokenAction(formData: FormData): Pr
   // Treatwell must be given the new one.
   await prisma.stylist.update({
     where: { id: stylistId },
+    select: { id: true },
     data: { icalToken: randomBytes(24).toString('base64url') },
   });
 
