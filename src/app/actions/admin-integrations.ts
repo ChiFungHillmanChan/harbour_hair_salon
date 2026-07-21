@@ -1,5 +1,6 @@
 'use server';
 
+import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
@@ -20,6 +21,22 @@ export async function runTreatwellIcalSyncAction(): Promise<void> {
   revalidatePath('/admin/integrations');
   revalidatePath('/book');
   redirect(`/admin/integrations?ical=complete&feeds=${results.length}&failed=${failed}&upserted=${upserted}`);
+}
+
+export async function generateStylistIcalFeedTokenAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const stylistId = formData.get('stylistId');
+  if (typeof stylistId !== 'string' || !stylistId) throw new Error('Missing stylistId');
+
+  // Rotating an existing token immediately invalidates the old feed URL —
+  // Treatwell must be given the new one.
+  await prisma.stylist.update({
+    where: { id: stylistId },
+    data: { icalToken: randomBytes(24).toString('base64url') },
+  });
+
+  revalidatePath('/admin/integrations');
+  redirect('/admin/integrations?feedToken=rotated');
 }
 
 export async function retryFailedTreatwellBookingsAction(): Promise<void> {

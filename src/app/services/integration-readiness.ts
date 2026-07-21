@@ -24,6 +24,29 @@ export type IntegrationReadiness = {
   };
 };
 
+export type OutboundIcalFeed = {
+  stylistId: string;
+  name: string;
+  /** Full secret feed URL to paste into Treatwell Connect, or null until generated. */
+  feedUrl: string | null;
+};
+
+/**
+ * Admin-only caller. Lists each stylist's outbound busy-feed URL (contains the
+ * secret token — show only inside the admin panel).
+ */
+export async function listOutboundIcalFeeds(siteUrl: string): Promise<OutboundIcalFeed[]> {
+  const stylists = await prisma.stylist.findMany({
+    select: { id: true, name: true, icalToken: true },
+    orderBy: { name: 'asc' },
+  });
+  return stylists.map((s) => ({
+    stylistId: s.id,
+    name: s.name,
+    feedUrl: s.icalToken ? `${siteUrl}/api/ical/${s.id}?token=${s.icalToken}` : null,
+  }));
+}
+
 /** Admin-only caller. Returns booleans/counts and never returns secret values. */
 export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
   const [

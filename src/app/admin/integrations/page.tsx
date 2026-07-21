@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import {
+  generateStylistIcalFeedTokenAction,
   retryFailedTreatwellBookingsAction,
   runTreatwellIcalSyncAction,
 } from '@/app/actions/admin-integrations';
-import { getIntegrationReadiness } from '@/app/services/integration-readiness';
+import { getIntegrationReadiness, listOutboundIcalFeeds } from '@/app/services/integration-readiness';
+import { SITE_URL } from '@/app/lib/site-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +15,7 @@ type SearchParams = {
   failed?: string;
   upserted?: string;
   retry?: string;
+  feedToken?: string;
 };
 
 function Status({ ready, children }: { ready: boolean; children: React.ReactNode }) {
@@ -39,7 +42,11 @@ export default async function IntegrationsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const [readiness, query] = await Promise.all([getIntegrationReadiness(), searchParams]);
+  const [readiness, outboundFeeds, query] = await Promise.all([
+    getIntegrationReadiness(),
+    listOutboundIcalFeeds(SITE_URL),
+    searchParams,
+  ]);
   const { treatwell, resend, cdn } = readiness;
 
   return (
@@ -53,11 +60,13 @@ export default async function IntegrationsPage({
         </p>
       </div>
 
-      {(query.ical === 'complete' || query.retry) && (
+      {(query.ical === 'complete' || query.retry || query.feedToken) && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {query.ical === 'complete'
             ? `iCal sync finished: ${query.feeds ?? '0'} feed(s), ${query.upserted ?? '0'} event(s), ${query.failed ?? '0'} failure(s).`
-            : `${query.retry} failed API booking(s) moved back to the pending queue.`}
+            : query.feedToken
+              ? 'Busy-feed URL generated. Copy it below and paste it into Treatwell Connect → Team → employee → External Calendar.'
+              : `${query.retry} failed API booking(s) moved back to the pending queue.`}
         </div>
       )}
 
@@ -110,6 +119,39 @@ export default async function IntegrationsPage({
             <Link href="/admin/services" className="rounded border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">
               Map services
             </Link>
+          </div>
+
+          <div className="mt-6 border-t border-zinc-200 pt-5">
+            <h3 className="text-sm font-semibold text-zinc-900">
+              Outbound busy feeds (website → Treatwell)
+            </h3>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              Each URL below contains a secret — treat it like a password. Paste it into Treatwell
+              Connect → Team → the matching employee → External Calendar → Link Calendar. Treatwell
+              then blocks times booked on this website. Rotating a URL invalidates the old one.
+            </p>
+            <ul className="mt-3 space-y-3">
+              {outboundFeeds.map((feed) => (
+                <li key={feed.stylistId} className="rounded-lg bg-zinc-50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-zinc-900">{feed.name}</span>
+                    <form action={generateStylistIcalFeedTokenAction}>
+                      <input type="hidden" name="stylistId" value={feed.stylistId} />
+                      <button className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-100">
+                        {feed.feedUrl ? 'Rotate URL' : 'Generate feed URL'}
+                      </button>
+                    </form>
+                  </div>
+                  {feed.feedUrl ? (
+                    <code className="mt-2 block overflow-x-auto whitespace-nowrap rounded border border-zinc-200 bg-white px-2 py-1.5 text-xs text-zinc-700">
+                      {feed.feedUrl}
+                    </code>
+                  ) : (
+                    <p className="mt-2 text-xs text-zinc-500">No feed URL yet.</p>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div className="mt-6 border-t border-zinc-200 pt-5">
