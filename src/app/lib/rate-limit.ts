@@ -2,6 +2,7 @@ import 'server-only';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { SlidingWindow } from '@/app/lib/sliding-window';
+import { resolveRedisCredentials, REDIS_URL_KEYS, REDIS_TOKEN_KEYS } from '@/app/lib/redis-credentials';
 
 /**
  * One rate-limiting policy.
@@ -38,15 +39,17 @@ let warnedAboutFallback = false;
 function getRedis(): Redis | null {
   if (redisClient !== undefined) return redisClient;
   // Env is read on first use, never at module load (project convention).
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
-  redisClient = url && token ? new Redis({ url, token }) : null;
+  // Accepts both the UPSTASH_* and Vercel-Marketplace KV_* naming schemes —
+  // see lib/redis-credentials.ts.
+  const credentials = resolveRedisCredentials(process.env);
+  redisClient = credentials ? new Redis(credentials) : null;
 
   if (!redisClient && !warnedAboutFallback) {
     warnedAboutFallback = true;
     console.warn(
-      '[rate-limit] UPSTASH_REDIS_REST_URL/TOKEN not set — falling back to ' +
-        'per-instance in-memory limiting. This resets on cold start and is not ' +
+      '[rate-limit] No Redis credentials found (looked for ' +
+        `${REDIS_URL_KEYS.join('/')} and ${REDIS_TOKEN_KEYS.join('/')}) — falling back ` +
+        'to per-instance in-memory limiting. This resets on cold start and is not ' +
         'shared across serverless instances. Configure Upstash for real limits.',
     );
   }
