@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { jwtVerify, SignJWT } from 'jose';
 import type { SessionPayload as FullSessionPayload } from '@/app/lib/jwt';
 import { SESSION_HINT_COOKIE } from '@/app/lib/session-hint';
+import { BOOKING_MAINTENANCE } from '@/app/lib/booking-maintenance';
 
 const secretKey = process.env.SESSION_SECRET;
 const key = secretKey ? new TextEncoder().encode(secretKey) : null;
@@ -63,7 +64,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (path.startsWith('/book')) {
-    if (!session?.userId) {
+    // During booking maintenance the page only shows the Treatwell notice, so
+    // let everyone see it without forcing a sign-in first.
+    if (!BOOKING_MAINTENANCE && !session?.userId) {
       return NextResponse.redirect(new URL('/auth/signin?redirect=/book', request.url));
     }
   }

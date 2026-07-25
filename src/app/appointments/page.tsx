@@ -26,7 +26,7 @@ export default async function AppointmentsPage() {
 
   const now = new Date();
   const upcoming = appointments
-    .filter(a => a.date >= now && a.status === 'CONFIRMED')
+    .filter(a => a.date >= now && (a.status === 'CONFIRMED' || a.status === 'PENDING'))
     .sort((a, b) => a.date.getTime() - b.date.getTime());
   const past = appointments
     .filter(a => a.date < now || a.status === 'CANCELLED' || a.status === 'COMPLETED');

@@ -8,6 +8,7 @@ import { hashPassword } from '@/app/lib/password';
 import { z } from 'zod';
 import { revalidateCategoryPages } from '@/app/actions/admin-services';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
+import { sendBookingConfirmation } from '@/app/services/email-service';
 
 // --- Validation Schemas ---
 
@@ -357,11 +358,13 @@ export async function promoteGoogleUserToAdmin(id: string) {
   revalidatePath('/admin/users');
 }
 
-// CONFIRMED intentionally excluded: no UI path re-confirms an appointment,
-// and doing so here would bypass the in-transaction double-booking conflict
-// check that rescheduleAppointment uses. If un-confirm is ever needed, add
-// it back together with that same conflict check.
-const ALLOWED_APPOINTMENT_STATUSES = ['COMPLETED', 'CANCELLED'] as const;
+// CONFIRMED is only reachable from PENDING (enforced below): bookings are
+// created as PENDING requests and an admin approves them here. Re-confirming a
+// CANCELLED appointment stays impossible — its slot may have been rebooked, and
+// approving it would bypass the in-transaction double-booking conflict check
+// that the create/reschedule paths use. A PENDING request already claimed its
+// slot inside that transaction, so PENDING → CONFIRMED needs no re-check.
+const ALLOWED_APPOINTMENT_STATUSES = ['CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
 type AppointmentStatus = (typeof ALLOWED_APPOINTMENT_STATUSES)[number];
 
 export async function updateAppointmentStatus(appointmentId: string, status: string) {
@@ -376,11 +379,16 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
     const appointment = await prisma.appointment.findUnique({
       where: { id: appointmentId },
       include: {
-        stylist: { select: { treatwellExternalId: true } },
-        service: { select: { treatwellExternalId: true } },
+        user: { select: { email: true, name: true } },
+        stylist: { select: { name: true, treatwellExternalId: true } },
+        service: { select: { name: true, price: true, duration: true, treatwellExternalId: true } },
       },
     });
     if (!appointment) return { success: false, error: 'Appointment not found' };
+
+    if (status === 'CONFIRMED' && appointment.status !== 'PENDING') {
+      return { success: false, error: 'Only pending requests can be confirmed' };
+    }
 
     const data: {
       status: string;
@@ -399,6 +407,26 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
     }
 
     await prisma.appointment.update({ where: { id: appointmentId }, data });
+
+    // The customer only gets their confirmation email once the salon approves.
+    // A committed status change must never fail because an email hiccups.
+    if (status === 'CONFIRMED') {
+      try {
+        await sendBookingConfirmation({
+          id: appointment.id,
+          date: appointment.date,
+          user: appointment.user,
+          stylist: { name: appointment.stylist.name },
+          service: {
+            name: appointment.service.name,
+            price: Number(appointment.service.price),
+            duration: appointment.service.duration,
+          },
+        });
+      } catch (emailError) {
+        console.error('Confirmation email failed (appointment still confirmed):', emailError);
+      }
+    }
   } catch {
     return { success: false, error: 'Appointment not found' };
   }

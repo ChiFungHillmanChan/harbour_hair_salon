@@ -238,9 +238,9 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h2 className="text-3xl font-serif mb-4 text-zinc-900">Booking Confirmed!</h2>
+        <h2 className="text-3xl font-serif mb-4 text-zinc-900">Booking Request Received!</h2>
         <p className="text-zinc-700 mb-8">
-          Your appointment has been booked. A confirmation email has been sent to you.
+          Your request has been sent to the salon. We&apos;ll email you as soon as it&apos;s confirmed.
         </p>
         <button
           onClick={() => window.location.href = '/appointments'}

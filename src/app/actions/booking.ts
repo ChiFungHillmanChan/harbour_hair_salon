@@ -7,7 +7,7 @@ import { SlotUnavailableError, BookingError } from '@/app/services/booking-error
 import { hasConflict, type BookedInterval } from '@/app/services/scheduling';
 import { loadExternalBusy, toBookedInterval } from '@/app/services/external-busy';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
-import { sendBookingConfirmation, sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
+import { sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -15,6 +15,7 @@ import prisma from '@/app/lib/prisma';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
+import { BOOKING_MAINTENANCE, BOOKING_MAINTENANCE_MESSAGE } from '@/app/lib/booking-maintenance';
 
 // Lazy so we never touch env at module load (per project convention). Limits
 // discount-code checks per user to stop enumeration of valid codes.
@@ -105,6 +106,10 @@ async function checkStylistHours(
 }
 
 export async function getAvailableSlotsAction(prevState: unknown, formData: FormData) {
+  if (BOOKING_MAINTENANCE) {
+    return { error: BOOKING_MAINTENANCE_MESSAGE };
+  }
+
   const stylistId = formData.get('stylistId') as string;
   const dateStr = formData.get('date') as string;
   const serviceDuration = Number(formData.get('serviceDuration'));
@@ -135,6 +140,10 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
 // Helper for client-side fetching without form state. The "Anyone" option
 // returns the union of every stylist's availability.
 export async function fetchSlots(stylistId: string, date: string, serviceDuration: number) {
+  if (BOOKING_MAINTENANCE) {
+    return [];
+  }
+
   // Guard the client-supplied duration before it reaches the slot loop (see
   // SERVICE_DURATION note above) — this path has no Zod wrapper of its own.
   // `date` is the salon-local calendar day (YYYY-MM-DD) the customer saw.
@@ -210,6 +219,12 @@ export async function validateDiscountCode(code: string) {
 }
 
 export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
+  // Hard server-side block while online booking is in maintenance — checked
+  // before anything else so no client (or direct action call) can bypass it.
+  if (BOOKING_MAINTENANCE) {
+    return { success: false, error: BOOKING_MAINTENANCE_MESSAGE };
+  }
+
   // Require authentication
   const session = await verifySession();
 
@@ -236,9 +251,10 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     }
   }
 
-  // Hard cap on outstanding future bookings per user.
+  // Hard cap on outstanding future bookings per user. PENDING requests count
+  // too — otherwise a user could stack unlimited unapproved requests.
   const activeCount = await prisma.appointment.count({
-    where: { userId: session.userId, status: 'CONFIRMED', date: { gt: new Date() } },
+    where: { userId: session.userId, status: { in: ['PENDING', 'CONFIRMED'] }, date: { gt: new Date() } },
   });
   if (activeCount >= MAX_ACTIVE_BOOKINGS) {
     return { success: false, error: 'You already have the maximum number of upcoming bookings. Please manage your existing appointments first.' };
@@ -323,40 +339,27 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   try {
     // The discount code is validated + claimed INSIDE the booking transaction
     // (see booking-service), so a failed booking never burns a code's usedCount.
-    const appointment = isAnyStylist
-      ? await createBookingForFirstAvailable({
-          candidateStylistIds,
-          serviceId: validData.serviceId,
-          date: fullDate,
-          userId: session.userId,
-          discountCode: validData.discountCode,
-          notes,
-        })
-      : await createBooking({
-          stylistId: validData.stylistId,
-          serviceId: validData.serviceId,
-          date: fullDate,
-          userId: session.userId,
-          discountCode: validData.discountCode,
-          notes,
-        });
-
-    // Send confirmation email. A committed booking must never fail because an
-    // email hiccups, so swallow send errors here (they now throw from email-service).
-    try {
-      await sendBookingConfirmation({
-        id: appointment.id,
-        date: appointment.date,
-        user: appointment.user,
-        stylist: appointment.stylist,
-        service: {
-          name: appointment.service.name,
-          price: Number(appointment.service.price),
-          duration: appointment.service.duration,
-        },
+    // No confirmation email is sent here: the booking is only a PENDING request
+    // at this point. The confirmation email goes out when an admin approves it —
+    // see updateAppointmentStatus in actions/admin.ts.
+    if (isAnyStylist) {
+      await createBookingForFirstAvailable({
+        candidateStylistIds,
+        serviceId: validData.serviceId,
+        date: fullDate,
+        userId: session.userId,
+        discountCode: validData.discountCode,
+        notes,
       });
-    } catch (emailError) {
-      console.error('Booking confirmation email failed (booking still created):', emailError);
+    } else {
+      await createBooking({
+        stylistId: validData.stylistId,
+        serviceId: validData.serviceId,
+        date: fullDate,
+        userId: session.userId,
+        discountCode: validData.discountCode,
+        notes,
+      });
     }
 
     revalidatePath('/book');
@@ -388,12 +391,14 @@ export async function cancelAppointment(appointmentId: string) {
     return { success: false, error: 'Appointment not found' };
   }
 
-  if (appointment.status !== 'CONFIRMED') {
-    return { success: false, error: 'Only confirmed appointments can be cancelled' };
+  if (appointment.status !== 'CONFIRMED' && appointment.status !== 'PENDING') {
+    return { success: false, error: 'Only pending or confirmed appointments can be cancelled' };
   }
 
+  // The 24-hour rule only protects slots the salon has actually confirmed; a
+  // customer may withdraw a still-PENDING request at any time.
   const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
-  if (hoursUntil < 24) {
+  if (appointment.status === 'CONFIRMED' && hoursUntil < 24) {
     return { success: false, error: 'Cannot cancel within 24 hours of appointment' };
   }
 
@@ -450,6 +455,12 @@ export async function checkColourEligibility(serviceId: string, dateStr: string)
 }
 
 export async function rescheduleAppointment(appointmentId: string, dateStr: string, time: string) {
+  // Rescheduling books a new slot, so it is blocked during maintenance too.
+  // (Cancellation stays available — see cancelAppointment.)
+  if (BOOKING_MAINTENANCE) {
+    return { success: false, error: BOOKING_MAINTENANCE_MESSAGE };
+  }
+
   const session = await verifySession();
 
   // Reject malformed date/time before any DB work (no Zod schema on this path).

@@ -2,6 +2,7 @@ import prisma from '@/app/lib/prisma';
 import Image from 'next/image';
 import { BookingWizard } from '@/components/booking/BookingWizard';
 import { getAggregateRating } from '@/app/services/review-service';
+import { BOOKING_MAINTENANCE, TREATWELL_BOOKING_URL } from '@/app/lib/booking-maintenance';
 
 export const metadata = {
   title: 'Book Your Hair Appointment in Leeds',
@@ -39,6 +40,39 @@ async function getStylists() {
 }
 
 export default async function BookPage() {
+  if (BOOKING_MAINTENANCE) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
+        <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-8 md:p-12 text-center">
+          <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
+          <h1 className="text-3xl md:text-4xl font-serif text-zinc-900 mb-4 tracking-tight">
+            Online Booking Under Maintenance
+          </h1>
+          <p className="text-zinc-600 leading-relaxed mb-8">
+            Our website booking system is temporarily under maintenance. Please book
+            your appointment through Treatwell instead. Thank you, and sorry for any
+            inconvenience.
+          </p>
+          <a
+            href={TREATWELL_BOOKING_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block bg-zinc-900 text-white px-8 py-3 rounded-md font-medium hover:bg-zinc-700 transition-colors"
+          >
+            Book on Treatwell
+          </a>
+          <p className="mt-6 text-sm text-zinc-500">
+            Existing appointments can still be viewed and cancelled from{' '}
+            <a href="/appointments" className="underline hover:text-zinc-900">
+              My Appointments
+            </a>
+            .
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const [services, stylists, aggregateRating] = await Promise.all([
     getServices(),
     getStylists(),

@@ -47,10 +47,17 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
   });
 
   const statusColors: Record<string, string> = {
+    PENDING: 'bg-amber-100 text-amber-800',
     CONFIRMED: 'bg-green-100 text-green-800',
     CANCELLED: 'bg-red-100 text-red-800',
     COMPLETED: 'bg-zinc-100 text-zinc-600',
   };
+
+  // A PENDING request may be withdrawn at any time; the 24-hour lock only
+  // applies once the salon has confirmed. Rescheduling requires a confirmed
+  // appointment (the server enforces both — this just mirrors it in the UI).
+  const isPending = appointment.status === 'PENDING';
+  const cancelLocked = !isPending && isWithin24Hours;
 
   async function handleCancel() {
     if (!window.confirm('Are you sure you want to cancel this appointment?')) return;
@@ -94,21 +101,23 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
 
             {isUpcoming && (
               <div className="flex gap-2">
-                <button
-                  onClick={() => setShowReschedule(true)}
-                  disabled={isWithin24Hours}
-                  className="px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={isWithin24Hours ? 'Cannot reschedule within 24 hours' : undefined}
-                >
-                  Reschedule
-                </button>
+                {!isPending && (
+                  <button
+                    onClick={() => setShowReschedule(true)}
+                    disabled={isWithin24Hours}
+                    className="px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={isWithin24Hours ? 'Cannot reschedule within 24 hours' : undefined}
+                  >
+                    Reschedule
+                  </button>
+                )}
                 <button
                   onClick={handleCancel}
-                  disabled={isWithin24Hours || cancelling}
+                  disabled={cancelLocked || cancelling}
                   className="px-4 py-2 text-sm border border-red-300 rounded-md text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={isWithin24Hours ? 'Cannot cancel within 24 hours' : undefined}
+                  title={cancelLocked ? 'Cannot cancel within 24 hours' : undefined}
                 >
-                  {cancelling ? 'Cancelling...' : 'Cancel'}
+                  {cancelling ? 'Cancelling...' : isPending ? 'Withdraw request' : 'Cancel'}
                 </button>
               </div>
             )}
@@ -129,7 +138,12 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
 
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
-        {isUpcoming && isWithin24Hours && (
+        {isUpcoming && isPending && (
+          <p className="mt-3 text-xs text-amber-700">
+            Awaiting confirmation from the salon — we&apos;ll email you once it&apos;s confirmed.
+          </p>
+        )}
+        {isUpcoming && cancelLocked && (
           <p className="mt-3 text-xs text-zinc-400">
             Changes cannot be made within 24 hours of your appointment.
           </p>

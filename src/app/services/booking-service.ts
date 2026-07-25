@@ -262,7 +262,9 @@ export async function createBooking(data: {
         stylistId: data.stylistId,
         serviceId: data.serviceId,
         userId: data.userId,
-        status: 'CONFIRMED',
+        // Double-confirm flow: requests start PENDING and only become CONFIRMED
+        // when an admin approves them from the schedule board (updateAppointmentStatus).
+        status: 'PENDING',
         discountCodeId,
         priceAtBooking: service.price,
         notes: data.notes ?? null,
@@ -354,7 +356,9 @@ export async function createBookingForFirstAvailable(data: {
         stylistId,
         serviceId: data.serviceId,
         userId: data.userId,
-        status: 'CONFIRMED',
+        // Double-confirm flow: requests start PENDING and only become CONFIRMED
+        // when an admin approves them from the schedule board (updateAppointmentStatus).
+        status: 'PENDING',
         discountCodeId,
         priceAtBooking: service.price,
         notes: data.notes ?? null,

@@ -13,6 +13,48 @@ type AppointmentWithDetails = Appointment & {
 
 type ViewMode = 'day' | 'month' | 'year';
 
+const statusChipClass = (status: string) =>
+  status === 'CONFIRMED'
+    ? 'bg-green-100 text-green-700'
+    : status === 'PENDING'
+      ? 'bg-amber-100 text-amber-800'
+      : 'bg-zinc-100 text-zinc-600';
+
+async function setAppointmentStatus(
+  apptId: string,
+  status: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED',
+  onDone: () => void,
+) {
+  const { updateAppointmentStatus } = await import('@/app/actions/admin');
+  const res = await updateAppointmentStatus(apptId, status);
+  if (res.success) { onDone(); } else { alert(res.error ?? 'Failed to update'); }
+}
+
+// Approve / decline buttons for a PENDING booking request (double-confirm flow:
+// customers submit requests, the salon confirms them here).
+const PendingActions = ({ apptId, onDone }: { apptId: string; onDone: () => void }) => (
+  <div className="flex gap-2">
+    <button
+      type="button"
+      onClick={() => setAppointmentStatus(apptId, 'CONFIRMED', onDone)}
+      className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+    >
+      Confirm booking
+    </button>
+    <button
+      type="button"
+      onClick={() => {
+        if (window.confirm('Decline this booking request? The customer will need to book again.')) {
+          setAppointmentStatus(apptId, 'CANCELLED', onDone);
+        }
+      }}
+      className="rounded border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+    >
+      Decline
+    </button>
+  </div>
+);
+
 interface YearViewProps {
   currentDate: Date;
   setCurrentDate: (date: Date) => void;
@@ -104,7 +146,10 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
               </div>
               <div className="space-y-1">
                 {dayAppts.slice(0, 3).map(appt => (
-                  <div key={appt.id} className="text-[10px] truncate bg-zinc-800 text-white rounded px-1 py-0.5">
+                  <div
+                    key={appt.id}
+                    className={`text-[10px] truncate text-white rounded px-1 py-0.5 ${appt.status === 'PENDING' ? 'bg-amber-600' : 'bg-zinc-800'}`}
+                  >
                     {format(new Date(appt.date), 'HH:mm')} {appt.user.name}
                   </div>
                 ))}
@@ -150,9 +195,7 @@ const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
                                   <h4 className="font-semibold text-zinc-900">{appt.user.name}</h4>
                                   <p className="text-zinc-600 text-sm">{appt.service.name} • {appt.service.duration} mins</p>
                               </div>
-                              <span className={`text-xs px-2 py-1 rounded-full font-medium
-                                  ${appt.status === 'CONFIRMED' ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-600'}
-                              `}>
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusChipClass(appt.status)}`}>
                                   {appt.status}
                               </span>
                           </div>
@@ -160,14 +203,15 @@ const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
                               <span>Stylist: {appt.stylist.name}</span>
                               <span>£{Number(appt.service.price).toFixed(2)}</span>
                           </div>
+                          {appt.status === 'PENDING' && (
+                            <div className="mt-2">
+                              <PendingActions apptId={appt.id} onDone={onRefresh} />
+                            </div>
+                          )}
                           {appt.status === 'CONFIRMED' && (
                             <button
                               type="button"
-                              onClick={async () => {
-                                const { updateAppointmentStatus } = await import('@/app/actions/admin');
-                                const res = await updateAppointmentStatus(appt.id, 'COMPLETED');
-                                if (res.success) { onRefresh(); } else { alert(res.error ?? 'Failed to update'); }
-                              }}
+                              onClick={() => setAppointmentStatus(appt.id, 'COMPLETED', onRefresh)}
                               className="mt-2 rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
                             >
                               Mark completed
@@ -287,17 +331,16 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
                                      <p className="text-sm text-zinc-500">{appt.service.name} with {appt.stylist.name}</p>
                                  </div>
                                  <div className="flex items-center gap-2">
-                                     <div className={`text-xs px-2 py-1 rounded font-medium ${appt.status === 'CONFIRMED' ? 'bg-green-100 text-green-800' : 'bg-gray-100'}`}>
+                                     <div className={`text-xs px-2 py-1 rounded font-medium ${statusChipClass(appt.status)}`}>
                                          {appt.status}
                                      </div>
+                                     {appt.status === 'PENDING' && (
+                                       <PendingActions apptId={appt.id} onDone={() => router.refresh()} />
+                                     )}
                                      {appt.status === 'CONFIRMED' && (
                                        <button
                                          type="button"
-                                         onClick={async () => {
-                                           const { updateAppointmentStatus } = await import('@/app/actions/admin');
-                                           const res = await updateAppointmentStatus(appt.id, 'COMPLETED');
-                                           if (res.success) { router.refresh(); } else { alert(res.error ?? 'Failed to update'); }
-                                         }}
+                                         onClick={() => setAppointmentStatus(appt.id, 'COMPLETED', () => router.refresh())}
                                          className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
                                        >
                                          Mark completed
