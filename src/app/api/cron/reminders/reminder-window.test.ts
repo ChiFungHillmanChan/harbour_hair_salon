@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { safeCompare, reminderWindowEnd, reviewWindow } from './reminder-window';
+import {
+  safeCompare,
+  reminderWindowEnd,
+  reviewWindow,
+  hasSendBudgetLeft,
+  SEND_BUDGET_MS,
+} from './reminder-window';
 
 test('safeCompare — equal strings match', () => {
   assert.equal(safeCompare('Bearer secret123', 'Bearer secret123'), true);
@@ -40,4 +46,24 @@ test('reviewWindow — start is 14 days ago, end is 1 day ago', () => {
   assert.equal(start.toISOString(), '2026-07-01T12:00:00.000Z');
   assert.equal(end.toISOString(), '2026-07-14T12:00:00.000Z');
   assert.ok(start.getTime() < end.getTime());
+});
+
+test('send budget allows work at the start of a run', () => {
+  assert.equal(hasSendBudgetLeft(1_000, 1_000), true);
+  assert.equal(hasSendBudgetLeft(1_000, 1_000 + 44_999), true);
+});
+
+test('send budget stops work once the window is spent', () => {
+  // Exactly at the budget is already too late — leave room to return a response.
+  assert.equal(hasSendBudgetLeft(1_000, 1_000 + SEND_BUDGET_MS), false);
+  assert.equal(hasSendBudgetLeft(1_000, 1_000 + SEND_BUDGET_MS + 5_000), false);
+});
+
+test('send budget stays under the route maxDuration of 60s', () => {
+  assert.ok(SEND_BUDGET_MS < 60_000, 'must finish before Vercel kills the function');
+});
+
+test('send budget honours an explicit override', () => {
+  assert.equal(hasSendBudgetLeft(0, 500, 1_000), true);
+  assert.equal(hasSendBudgetLeft(0, 1_500, 1_000), false);
 });

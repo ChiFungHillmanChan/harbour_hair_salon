@@ -3,8 +3,7 @@
 import { z } from 'zod';
 import { headers } from 'next/headers';
 import { Resend } from 'resend';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { createRateLimiter } from '@/app/lib/rate-limit';
 
 const unsubscribeSchema = z.object({
   email: z.string().trim().toLowerCase().email('Please enter a valid email address.'),
@@ -25,36 +24,15 @@ function getClientIp(headersList: Headers): string {
   return forwarded?.split(',')[0]?.trim() || 'unknown';
 }
 
-let unsubLimiter: Ratelimit | null | undefined;
-function getUnsubLimiter(): Ratelimit | null {
-  if (unsubLimiter !== undefined) return unsubLimiter;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  unsubLimiter = url && token
-    ? new Ratelimit({
-        redis: new Redis({ url, token }),
-        limiter: Ratelimit.slidingWindow(3, '1 h'),
-        prefix: 'rl:unsub',
-      })
-    : null;
-  return unsubLimiter;
-}
+const unsubLimiter = createRateLimiter({ prefix: 'rl:unsub', limit: 3, windowSeconds: 60 * 60 });
 
 export async function unsubscribeFromMarketing(
   _prev: UnsubscribeState,
   formData: FormData
 ): Promise<UnsubscribeState> {
   const ip = getClientIp(await headers());
-  const limiter = getUnsubLimiter();
-  if (limiter) {
-    try {
-      const { success } = await limiter.limit(ip);
-      if (!success) {
-        return { status: 'error', message: 'Too many requests. Please try again in an hour.' };
-      }
-    } catch (err) {
-      console.error('Unsubscribe rate limiter unavailable, allowing request:', err);
-    }
+  if (!(await unsubLimiter.check(ip))) {
+    return { status: 'error', message: 'Too many requests. Please try again in an hour.' };
   }
 
   const parsed = unsubscribeSchema.safeParse({ email: formData.get('email') });

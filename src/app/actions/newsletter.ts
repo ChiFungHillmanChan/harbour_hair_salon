@@ -3,8 +3,7 @@
 import { z } from 'zod';
 import { headers } from 'next/headers';
 import { Resend } from 'resend';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { newsletterLimiter } from '@/app/lib/rate-limit';
 import { sendNewsletterWelcome } from '@/app/services/email-service';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 
@@ -18,33 +17,11 @@ function getClientIp(headersList: Headers): string {
   return forwarded?.split(',')[0]?.trim() || 'unknown';
 }
 
-let newsletterLimiter: Ratelimit | null | undefined;
-
-function getNewsletterLimiter(): Ratelimit | null {
-  if (newsletterLimiter !== undefined) return newsletterLimiter;
-  const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-  newsletterLimiter = upstashUrl && upstashToken
-    ? new Ratelimit({
-        redis: new Redis({ url: upstashUrl, token: upstashToken }),
-        limiter: Ratelimit.slidingWindow(3, '1 h'),
-        prefix: 'rl:newsletter',
-      })
-    : null;
-  return newsletterLimiter;
-}
-
-async function checkRate(ip: string): Promise<boolean> {
-  const newsletterLimiter = getNewsletterLimiter();
-  if (!newsletterLimiter) return true;
-  try {
-    const { success } = await newsletterLimiter.limit(ip);
-    return success;
-  } catch (err) {
-    console.error('Newsletter rate limiter unavailable, allowing request:', err);
-    return true;
-  }
-}
+// This action is UNAUTHENTICATED and sends a real email to a caller-supplied
+// address, so the limiter is the only thing standing between it and being used
+// as an open relay. It previously returned `true` unconditionally whenever
+// Upstash was unconfigured (which it was, in production) — lib/rate-limit.ts
+// now falls back to in-process limiting instead.
 
 type SubscribeState =
   | { status: 'idle' }
@@ -58,7 +35,7 @@ export async function subscribeToNewsletter(
   const headersList = await headers();
   const ip = getClientIp(headersList);
 
-  if (!(await checkRate(ip))) {
+  if (!(await newsletterLimiter.check(ip))) {
     return {
       status: 'error',
       message: 'Too many requests. Please try again in an hour.',

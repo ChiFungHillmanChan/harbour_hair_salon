@@ -7,6 +7,10 @@ import { BookingReschedule } from '@/components/emails/BookingReschedule';
 import { AppointmentReminder } from '@/components/emails/AppointmentReminder';
 import { ReviewRequest, type ReviewRequestAppointment } from '@/components/emails/ReviewRequest';
 import { NewsletterWelcome } from '@/components/emails/NewsletterWelcome';
+import { BookingRequestReceived } from '@/components/emails/BookingRequestReceived';
+import { NewBookingAlert, type NewBookingAlertAppointment } from '@/components/emails/NewBookingAlert';
+import { PasswordReset } from '@/components/emails/PasswordReset';
+import { RESET_TOKEN_TTL_MS } from '@/app/lib/password-reset';
 import { buildBookingConfirmationText } from './booking-confirmation-copy';
 
 export type AppointmentWithDetails = {
@@ -28,6 +32,15 @@ function getResendClient(): Resend {
 // owner, so it is a dev-only fallback — set EMAIL_FROM in production.
 function getFromAddress(): string {
   return process.env.EMAIL_FROM || 'Harbour Hair Salon <onboarding@resend.dev>';
+}
+
+/**
+ * Where internal staff alerts go. SALON_NOTIFY_EMAIL wins; otherwise reuse
+ * EMAIL_REPLY_TO, which is already the address the salon reads. Returns null
+ * when neither is set so callers can skip (and log) instead of throwing.
+ */
+export function getSalonNotifyAddress(): string | null {
+  return process.env.SALON_NOTIFY_EMAIL?.trim() || process.env.EMAIL_REPLY_TO?.trim() || null;
 }
 
 type SendArgs = {
@@ -81,6 +94,43 @@ export async function sendBookingConfirmation(appointment: AppointmentWithDetail
   });
 }
 
+/**
+ * Customer acknowledgement for a PENDING request. Idempotency-keyed on the
+ * appointment id so a retry can never double-send.
+ */
+export async function sendBookingRequestReceived(
+  appointment: AppointmentWithDetails,
+  salonPhone: string,
+): Promise<void> {
+  await send({
+    to: appointment.user.email,
+    subject: 'We’ve received your booking request — Harbour Hair Salon',
+    react: BookingRequestReceived({ appointment, salonPhone }),
+    idempotencyKey: `booking-request-${appointment.id}`,
+  });
+}
+
+/**
+ * Internal alert to the salon that a request needs approving. No-ops (with a
+ * warning) when no notification address is configured.
+ */
+export async function sendNewBookingAlert(appointment: NewBookingAlertAppointment): Promise<void> {
+  const to = getSalonNotifyAddress();
+  if (!to) {
+    console.warn(
+      'No SALON_NOTIFY_EMAIL or EMAIL_REPLY_TO configured — new booking request ' +
+        `${appointment.id} was not announced to the salon.`,
+    );
+    return;
+  }
+  await send({
+    to,
+    subject: `New booking request: ${appointment.user.name || appointment.user.email}`,
+    react: NewBookingAlert({ appointment }),
+    idempotencyKey: `booking-alert-${appointment.id}`,
+  });
+}
+
 export async function sendBookingCancellation(appointment: AppointmentWithDetails): Promise<void> {
   await send({
     to: appointment.user.email,
@@ -113,6 +163,25 @@ export async function sendReviewRequest(appointment: ReviewRequestAppointment): 
     to: appointment.user.email,
     subject: 'How was your visit? — Harbour Hair Salon',
     react: ReviewRequest({ appointment }),
+  });
+}
+
+/**
+ * Password reset link. Deliberately NOT idempotency-keyed: each request issues
+ * a fresh token that invalidates the previous one, so every send must go out.
+ */
+export async function sendPasswordReset(
+  user: { email: string; name: string | null },
+  token: string,
+): Promise<void> {
+  await send({
+    to: user.email,
+    subject: 'Reset your password — Harbour Hair Salon',
+    react: PasswordReset({
+      name: user.name,
+      token,
+      expiresInMinutes: Math.round(RESET_TOKEN_TTL_MS / 60_000),
+    }),
   });
 }
 

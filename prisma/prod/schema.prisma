@@ -24,6 +24,7 @@ model User {
   appointments   Appointment[]
   reviews        Review[]
   oauthAccounts  OAuthAccount[]
+  passwordResets PasswordResetToken[]
 }
 
 model OAuthAccount {
@@ -358,4 +359,20 @@ model Shift {
 
   @@index([employeeId, date])
   @@index([date])
+}
+
+
+// Single-use password reset grants. Only the SHA-256 hash of the token is
+// stored, so a database leak cannot be replayed against the reset endpoint.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique @db.VarChar(64)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }

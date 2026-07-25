@@ -1,15 +1,18 @@
 import 'server-only';
 import prisma from '@/app/lib/prisma';
 import { getTreatwellApiConfiguration } from './treatwell-api';
+import { evaluateSyncCoverage, type SyncCoverage } from './treatwell-sync-coverage';
 
 export type IntegrationReadiness = {
   treatwell: {
     api: ReturnType<typeof getTreatwellApiConfiguration>;
     adapterImplementation: 'AWAITING_OFFICIAL_API_CONTRACT';
-    stylists: { total: number; icalMapped: number; apiMapped: number };
+    stylists: { total: number; icalMapped: number; apiMapped: number; feedTokens: number };
     services: { total: number; apiMapped: number };
     outbound: { pending: number; failed: number; synced: number };
     lastIcalSyncAt: Date | null;
+    /** Whether two-way calendar sync actually covers every stylist. */
+    syncCoverage: SyncCoverage;
   };
   resend: {
     apiKeyConfigured: boolean;
@@ -47,11 +50,26 @@ export async function listOutboundIcalFeeds(siteUrl: string): Promise<OutboundIc
   }));
 }
 
+/**
+ * Just the sync-coverage verdict, for callers (like the admin dashboard) that
+ * want the double-booking warning without paying for the full readiness report.
+ * Three cheap COUNTs instead of nine queries.
+ */
+export async function getTreatwellSyncCoverage(): Promise<SyncCoverage> {
+  const [totalStylists, inboundConfigured, outboundConfigured] = await Promise.all([
+    prisma.stylist.count(),
+    prisma.stylist.count({ where: { treatwellIcalUrl: { not: null } } }),
+    prisma.stylist.count({ where: { icalToken: { not: null } } }),
+  ]);
+  return evaluateSyncCoverage({ totalStylists, inboundConfigured, outboundConfigured });
+}
+
 /** Admin-only caller. Returns booleans/counts and never returns secret values. */
 export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
   const [
     stylistTotal,
     icalMapped,
+    feedTokens,
     stylistApiMapped,
     serviceTotal,
     serviceApiMapped,
@@ -62,6 +80,7 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
   ] = await Promise.all([
     prisma.stylist.count(),
     prisma.stylist.count({ where: { treatwellIcalUrl: { not: null } } }),
+    prisma.stylist.count({ where: { icalToken: { not: null } } }),
     prisma.stylist.count({ where: { treatwellExternalId: { not: null } } }),
     prisma.service.count(),
     prisma.service.count({ where: { treatwellExternalId: { not: null } } }),
@@ -78,10 +97,15 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
     treatwell: {
       api: getTreatwellApiConfiguration(),
       adapterImplementation: 'AWAITING_OFFICIAL_API_CONTRACT',
-      stylists: { total: stylistTotal, icalMapped, apiMapped: stylistApiMapped },
+      stylists: { total: stylistTotal, icalMapped, apiMapped: stylistApiMapped, feedTokens },
       services: { total: serviceTotal, apiMapped: serviceApiMapped },
       outbound: { pending, failed, synced },
       lastIcalSyncAt: latestBusy?.lastSyncAt ?? null,
+      syncCoverage: evaluateSyncCoverage({
+        totalStylists: stylistTotal,
+        inboundConfigured: icalMapped,
+        outboundConfigured: feedTokens,
+      }),
     },
     resend: {
       apiKeyConfigured: Boolean(process.env.RESEND_API_KEY?.trim()),

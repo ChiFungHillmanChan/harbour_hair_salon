@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { BookingWizard } from '@/components/booking/BookingWizard';
 import { getAggregateRating } from '@/app/services/review-service';
 import { BOOKING_MAINTENANCE, TREATWELL_BOOKING_URL } from '@/app/lib/booking-maintenance';
+import { getSiteSettings } from '@/app/services/site-settings-service';
 
 export const metadata = {
   title: 'Book Your Hair Appointment in Leeds',
@@ -41,6 +42,11 @@ async function getStylists() {
 
 export default async function BookPage() {
   if (BOOKING_MAINTENANCE) {
+    // Phone and Treatwell URL come from SiteSettings so the salon can change
+    // them from the admin panel without a redeploy.
+    const settings = await getSiteSettings();
+    const treatwellUrl = settings.treatwellUrl || TREATWELL_BOOKING_URL;
+
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
         <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-8 md:p-12 text-center">
@@ -49,18 +55,30 @@ export default async function BookPage() {
             Online Booking Under Maintenance
           </h1>
           <p className="text-zinc-600 leading-relaxed mb-8">
-            Our website booking system is temporarily under maintenance. Please book
-            your appointment through Treatwell instead. Thank you, and sorry for any
+            Our website booking system is temporarily under maintenance. You can still
+            book by phone or through Treatwell. Thank you, and sorry for any
             inconvenience.
           </p>
-          <a
-            href={TREATWELL_BOOKING_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block bg-zinc-900 text-white px-8 py-3 rounded-md font-medium hover:bg-zinc-700 transition-colors"
-          >
-            Book on Treatwell
-          </a>
+
+          {/* Phone first and equally prominent: a phone booking costs the salon
+              no marketplace commission, so it should never look like a fallback. */}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <a
+              href={`tel:${settings.phone.replace(/\s+/g, '')}`}
+              className="inline-block bg-zinc-900 text-white px-8 py-3 rounded-md font-medium hover:bg-zinc-700 transition-colors"
+            >
+              Call {settings.phone}
+            </a>
+            <a
+              href={treatwellUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block border border-zinc-900 text-zinc-900 px-8 py-3 rounded-md font-medium hover:bg-zinc-100 transition-colors"
+            >
+              Book on Treatwell
+            </a>
+          </div>
+
           <p className="mt-6 text-sm text-zinc-500">
             Existing appointments can still be viewed and cancelled from{' '}
             <a href="/appointments" className="underline hover:text-zinc-900">

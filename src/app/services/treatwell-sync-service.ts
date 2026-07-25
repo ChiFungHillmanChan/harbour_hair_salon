@@ -19,6 +19,9 @@ type Deps = {
 const FETCH_TIMEOUT_MS = 8_000;
 // Reject feeds larger than this before buffering/parsing them in memory.
 const MAX_FEED_BYTES = 5 * 1024 * 1024;
+// Concurrent upserts per batch. Kept at/below the Prisma pool size (see
+// lib/prisma.ts connection_limit=5) so a sync can never starve web requests.
+const UPSERT_BATCH_SIZE = 5;
 
 /**
  * Pull every stylist's Treatwell iCal feed and reconcile it into
@@ -75,26 +78,36 @@ export async function syncTreatwellFeeds(deps: Deps = {}): Promise<SyncResult[]>
         continue;
       }
 
-      for (const iv of intervals) {
-        await db.externalBusyBlock.upsert({
-          where: { source_externalUid: { source: 'TREATWELL', externalUid: iv.uid } },
-          create: {
-            source: 'TREATWELL',
-            externalUid: iv.uid,
-            stylistId: s.id,
-            start: iv.start,
-            end: iv.end,
-            summary: iv.summary ?? null,
-            lastSyncAt: now,
-          },
-          update: {
-            stylistId: s.id,
-            start: iv.start,
-            end: iv.end,
-            summary: iv.summary ?? null,
-            lastSyncAt: now,
-          },
-        });
+      // Upsert in bounded concurrent batches rather than one-at-a-time. A busy
+      // stylist can have hundreds of future events, and a strictly sequential
+      // loop cost one full DB round-trip each — enough to push a multi-stylist
+      // run past the 60s function budget. The batch size stays well inside the
+      // Prisma pool (connection_limit=5) so this cannot exhaust connections.
+      for (let i = 0; i < intervals.length; i += UPSERT_BATCH_SIZE) {
+        const batch = intervals.slice(i, i + UPSERT_BATCH_SIZE);
+        await Promise.all(
+          batch.map((iv) =>
+            db.externalBusyBlock.upsert({
+              where: { source_externalUid: { source: 'TREATWELL', externalUid: iv.uid } },
+              create: {
+                source: 'TREATWELL',
+                externalUid: iv.uid,
+                stylistId: s.id,
+                start: iv.start,
+                end: iv.end,
+                summary: iv.summary ?? null,
+                lastSyncAt: now,
+              },
+              update: {
+                stylistId: s.id,
+                start: iv.start,
+                end: iv.end,
+                summary: iv.summary ?? null,
+                lastSyncAt: now,
+              },
+            }),
+          ),
+        );
       }
 
       // Prune future blocks no longer present in the feed (cancelled on Treatwell).
