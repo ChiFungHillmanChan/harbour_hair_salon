@@ -40,3 +40,28 @@ export function reviewWindow(now: Date): { start: Date; end: Date } {
     end: new Date(now.getTime() - DAY_MS),
   };
 }
+
+/**
+ * Wall-clock budget for one cron run, in ms. Deliberately below the route's
+ * `maxDuration = 60` so the handler can finish cleanly and return a report
+ * instead of being killed mid-send.
+ */
+export const SEND_BUDGET_MS = 45_000;
+
+/**
+ * Whether the run still has room to attempt another email.
+ *
+ * The route can queue up to 200 sends (100 reminders + 100 review requests) and
+ * Resend is rate-limited, so a full batch can exceed the function timeout. Both
+ * loops mark each row as sent immediately, which makes the work resumable — so
+ * stopping early is safe: the next daily run picks up whatever was deferred,
+ * and the 36h reminder window is deliberately wider than the 24h cron interval
+ * to absorb exactly this.
+ */
+export function hasSendBudgetLeft(
+  startedAt: number,
+  now: number,
+  budgetMs: number = SEND_BUDGET_MS,
+): boolean {
+  return now - startedAt < budgetMs;
+}

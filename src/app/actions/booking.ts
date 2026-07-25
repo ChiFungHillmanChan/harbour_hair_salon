@@ -7,48 +7,25 @@ import { SlotUnavailableError, BookingError } from '@/app/services/booking-error
 import { hasConflict, type BookedInterval } from '@/app/services/scheduling';
 import { loadExternalBusy, toBookedInterval } from '@/app/services/external-busy';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
-import { sendBookingCancellation, sendBookingReschedule } from '@/app/services/email-service';
+import {
+  sendBookingCancellation,
+  sendBookingReschedule,
+  sendBookingRequestReceived,
+  sendNewBookingAlert,
+} from '@/app/services/email-service';
+import { getSiteSettings } from '@/app/services/site-settings-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { bookingLimiter, discountLimiter } from '@/app/lib/rate-limit';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
 import { BOOKING_MAINTENANCE, BOOKING_MAINTENANCE_MESSAGE } from '@/app/lib/booking-maintenance';
 
-// Lazy so we never touch env at module load (per project convention). Limits
-// discount-code checks per user to stop enumeration of valid codes.
-let discountLimiter: Ratelimit | null | undefined;
-function getDiscountLimiter(): Ratelimit | null {
-  if (discountLimiter !== undefined) return discountLimiter;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  discountLimiter = url && token
-    ? new Ratelimit({
-        redis: new Redis({ url, token }),
-        limiter: Ratelimit.slidingWindow(10, '15 m'),
-        prefix: 'rl:discount',
-      })
-    : null;
-  return discountLimiter;
-}
-
-// Limits booking creation per authenticated user to curb calendar-blockade abuse.
-let bookingLimiter: Ratelimit | null | undefined;
-function getBookingLimiter(): Ratelimit | null {
-  if (bookingLimiter !== undefined) return bookingLimiter;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  bookingLimiter = url && token
-    ? new Ratelimit({
-        redis: new Redis({ url, token }),
-        limiter: Ratelimit.slidingWindow(6, '1 h'),
-        prefix: 'rl:booking',
-      })
-    : null;
-  return bookingLimiter;
-}
+// discountLimiter stops enumeration of valid discount codes; bookingLimiter
+// curbs calendar-blockade abuse. Both come from lib/rate-limit.ts, which falls
+// back to in-process limiting when Upstash is unconfigured — these two call
+// sites previously skipped limiting entirely in that case.
 
 const MAX_ACTIVE_BOOKINGS = 6;
 
@@ -187,14 +164,8 @@ export async function validateDiscountCode(code: string) {
   const session = await verifySession();
   if (!code) return { valid: false, error: 'Code is empty' };
 
-  const limiter = getDiscountLimiter();
-  if (limiter) {
-    try {
-      const { success } = await limiter.limit(`user:${session.userId}`);
-      if (!success) return { valid: false, error: 'Too many attempts. Please try again shortly.' };
-    } catch (err) {
-      console.error('Discount rate limiter unavailable, allowing request:', err);
-    }
+  if (!(await discountLimiter.check(`user:${session.userId}`))) {
+    return { valid: false, error: 'Too many attempts. Please try again shortly.' };
   }
 
   try {
@@ -238,17 +209,10 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
   const validData = result.data;
 
-  // Per-user rate limit (fail open on Redis outage, matching the rest of the app).
-  const limiter = getBookingLimiter();
-  if (limiter) {
-    try {
-      const { success } = await limiter.limit(`user:${session.userId}`);
-      if (!success) {
-        return { success: false, error: 'Too many booking attempts. Please try again shortly.' };
-      }
-    } catch (err) {
-      console.error('Booking rate limiter unavailable, allowing request:', err);
-    }
+  // Per-user rate limit. Degrades to in-process limiting on a Redis outage or
+  // missing config, rather than failing open.
+  if (!(await bookingLimiter.check(`user:${session.userId}`))) {
+    return { success: false, error: 'Too many booking attempts. Please try again shortly.' };
   }
 
   // Hard cap on outstanding future bookings per user. PENDING requests count
@@ -339,28 +303,59 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   try {
     // The discount code is validated + claimed INSIDE the booking transaction
     // (see booking-service), so a failed booking never burns a code's usedCount.
-    // No confirmation email is sent here: the booking is only a PENDING request
+    // No CONFIRMATION email is sent here: the booking is only a PENDING request
     // at this point. The confirmation email goes out when an admin approves it —
-    // see updateAppointmentStatus in actions/admin.ts.
-    if (isAnyStylist) {
-      await createBookingForFirstAvailable({
-        candidateStylistIds,
-        serviceId: validData.serviceId,
-        date: fullDate,
-        userId: session.userId,
-        discountCode: validData.discountCode,
-        notes,
-      });
-    } else {
-      await createBooking({
-        stylistId: validData.stylistId,
-        serviceId: validData.serviceId,
-        date: fullDate,
-        userId: session.userId,
-        discountCode: validData.discountCode,
-        notes,
-      });
-    }
+    // see updateAppointmentStatus in actions/admin.ts. What is sent below is the
+    // customer's "we got your request" acknowledgement plus the salon's alert.
+    const appointment = isAnyStylist
+      ? await createBookingForFirstAvailable({
+          candidateStylistIds,
+          serviceId: validData.serviceId,
+          date: fullDate,
+          userId: session.userId,
+          discountCode: validData.discountCode,
+          notes,
+        })
+      : await createBooking({
+          stylistId: validData.stylistId,
+          serviceId: validData.serviceId,
+          date: fullDate,
+          userId: session.userId,
+          discountCode: validData.discountCode,
+          notes,
+        });
+
+    // Tell BOTH sides that a request landed. Neither send may fail the booking —
+    // it is already committed — so each is caught and logged independently.
+    //
+    // Before this, a PENDING request produced total silence: the customer had no
+    // acknowledgement (the confirmation email only goes out on admin approval)
+    // and the salon had no signal at all, so requests sat unactioned until
+    // someone happened to open the admin dashboard.
+    const priceNumber = Number(appointment.service.price);
+    await Promise.allSettled([
+      (async () => {
+        try {
+          const settings = await getSiteSettings();
+          await sendBookingRequestReceived(
+            { ...appointment, service: { ...appointment.service, price: priceNumber } },
+            settings.phone,
+          );
+        } catch (emailError) {
+          console.error('Request-received email failed (booking still created):', emailError);
+        }
+      })(),
+      (async () => {
+        try {
+          await sendNewBookingAlert({
+            ...appointment,
+            service: { ...appointment.service, price: priceNumber },
+          });
+        } catch (emailError) {
+          console.error('Salon new-booking alert failed (booking still created):', emailError);
+        }
+      })(),
+    ]);
 
     revalidatePath('/book');
     revalidatePath('/appointments');

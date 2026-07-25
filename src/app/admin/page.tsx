@@ -1,5 +1,7 @@
+import Link from 'next/link';
 import prisma from '@/app/lib/prisma';
 import { ScheduleCalendar } from '@/components/admin/ScheduleCalendar';
+import { getTreatwellSyncCoverage } from '@/app/services/integration-readiness';
 import { startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
 import { Suspense } from 'react';
 
@@ -27,7 +29,7 @@ async function ScheduleContent() {
   const rangeStart = startOfMonth(subMonths(now, 1));
   const rangeEnd = endOfMonth(addMonths(now, 1));
 
-  const [appointments, todayStats] = await Promise.all([
+  const [appointments, todayStats, syncCoverage] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         date: {
@@ -55,6 +57,7 @@ async function ScheduleContent() {
       },
       _count: true,
     }),
+    getTreatwellSyncCoverage(),
   ]);
 
   const todayConfirmed = todayStats.find(s => s.status === 'CONFIRMED')?._count ?? 0;
@@ -64,6 +67,23 @@ async function ScheduleContent() {
 
   return (
     <>
+      {/* Surfaced here (not only on /admin/integrations) because this is the
+          page the salon actually opens every day. */}
+      {syncCoverage.warning && (
+        <div
+          role="alert"
+          className="mb-6 rounded-lg border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-900"
+        >
+          <p className="font-semibold uppercase tracking-wide text-xs text-red-700">
+            Treatwell sync incomplete
+          </p>
+          <p className="mt-2 leading-6">{syncCoverage.warning}</p>
+          <Link href="/admin/integrations" className="mt-2 inline-block font-semibold underline">
+            Fix in Integrations →
+          </Link>
+        </div>
+      )}
+
       {/* Quick stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className={`p-5 rounded-lg shadow border ${pendingCount > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-zinc-200'}`}>

@@ -54,8 +54,9 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `treatwell-sync-service.ts` — `syncTreatwellFeeds(deps?)`: fetch each stylist's Treatwell iCal → upsert `ExternalBusyBlock` → prune stale; fail-safe (no prune on fetch error); unit-tested
 - `treatwell-api.ts` — provider-neutral Phase 2 contract, API environment readiness, stable booking command builder and queue-status rules; unit-tested. The official HTTP/auth adapter is intentionally deferred until Treatwell supplies its private API contract.
 - `treatwell-api-worker.ts` — durable outbound queue processor. Accepts an injected official adapter, maps `PENDING` appointments to upsert/cancel commands, and records `SYNCED`/`FAILED` state for Admin retry; unit-tested.
-- `integration-readiness.ts` — admin-only, secret-safe readiness summary for Treatwell mappings/queue, Resend environment and Vercel ISR; also `listOutboundIcalFeeds(siteUrl)` → per-stylist outbound busy-feed URLs (secret — admin panel only).
+- `integration-readiness.ts` — also `getTreatwellSyncCoverage()` (3 cheap counts) for the dashboard banner; admin-only, secret-safe readiness summary for Treatwell mappings/queue, Resend environment and Vercel ISR; also `listOutboundIcalFeeds(siteUrl)` → per-stylist outbound busy-feed URLs (secret — admin panel only).
 - `stylist-ical-feed.ts` — `buildStylistIcalFeed(stylistId, token, deps?)`: token-guarded (timing-safe, uniform 404) per-stylist busy iCal for Treatwell Connect's "External Calendar" import; UTC VEVENTs, fixed `Busy` summary, no customer PII; unit-tested.
+- `treatwell-sync-coverage.ts` — pure `evaluateSyncCoverage({totalStylists, inboundConfigured, outboundConfigured})` → whether BOTH sync directions cover every stylist, plus an operator warning. Drives the double-booking banner on the admin dashboard and Integrations page; unit-tested
 - `booking-confirmation-copy.ts` — plain-text fallback for the branded Resend confirmation email; unit-tested.
 
 ## API Routes
@@ -68,6 +69,10 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `pin.ts` — `isValidPin`, `hashPin`, `verifyPin` (bcryptjs); unit-tested
 - `session.ts` — existing JWT session helpers + `createKioskSession`/`getKioskSession`/`deleteKioskSession` for PIN-authenticated kiosk sessions
 - `phone.ts` — `toTelHref(phone)`: pure, prisma-free — normalizes an admin-editable `SiteSettings.phone` value (strips spaces, leading `0` → `+44`) into a `tel:` URI; used by the Footer, contact page and `NewsletterWelcome` email so the displayed/dialable number follows Settings instead of being hardcoded; unit-tested
+- `register-gate.ts` — `decideRegistration(existing)` → `CREATE` / `CLAIM_GUEST` / `REJECT`: pure rule deciding what `/auth/register` may do with an email. Treats a row as a claimable guest placeholder ONLY when it has no password AND no linked OAuth provider — a password-less Google account is NOT claimable (closes the account-takeover hole); unit-tested
+- `sliding-window.ts` — `SlidingWindow`: pure, dependency-free in-process sliding-window counter with bounded key eviction; the fallback backing `rate-limit.ts`; unit-tested
+- `rate-limit.ts` — server-only `createRateLimiter(policy)` + shared policies (`loginLimiter`, `registerLimiter`, `bookingLimiter`, `discountLimiter`, `newsletterLimiter`, `clockLimiter`, `passwordResetLimiter`). Uses Upstash Redis when `UPSTASH_REDIS_REST_URL`/`_TOKEN` are set and otherwise degrades to `SlidingWindow` — an unset env can no longer silently disable limiting, and a Redis outage falls back rather than failing open
+- `password-reset.ts` — `generateResetToken`, `hashResetToken` (SHA-256; only the hash is stored), `evaluateResetToken`, `RESET_TOKEN_TTL_MS` (1h), shared enumeration-safe copy; unit-tested
 - `session-hint.ts` — `SESSION_HINT_COOKIE` + `parseSessionHint(cookieString)`: pure parser for the non-httpOnly, role-only `session_hint` cookie set/cleared alongside the real session (createSession/deleteSession, middleware sliding refresh, `/api/session` back-fill) so the header shows account state instantly without a network request; cosmetic only — protected routes still verify the JWT; unit-tested
 
 ## Actions
@@ -75,6 +80,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `kiosk.ts` — `clockToggle` (employee clock-in/out with PIN + rate-limit), `enableKioskMode`, `disableKioskMode`
 - `timesheets.ts` — admin timesheet management: create/edit/delete TimesheetEntry rows
 - `payroll.ts` — `runPayrollAction(year, month)`, `updateAdjustmentAction`, `finalizePayrollAction`; delegates to `payroll-service.ts`
+- `password-reset.ts` — `requestPasswordReset` (enumeration-safe: identical response whether or not the email exists) and `resetPassword` (single-use token redeemed in a transaction, bumps `sessionVersion` to sign out every existing session)
 - `admin-integrations.ts` — admin-only manual iCal sync, failed Treatwell outbound queue retry, and per-stylist busy-feed token generate/rotate.
 
 ## Pages
@@ -82,6 +88,8 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `src/app/admin/timesheets/page.tsx` — admin timesheet browser and manual entry editor
 - `src/app/admin/payroll/page.tsx` — admin payroll runner: period picker, computed gross lines, CSV export, finalize
 - `src/app/admin/integrations/page.tsx` — Treatwell/Resend/CDN readiness dashboard. Shows only booleans, counts and timestamps; never secret values.
+- `src/app/auth/forgot-password/page.tsx` — request a reset link; always shows the same confirmation so accounts cannot be enumerated
+- `src/app/auth/reset-password/page.tsx` — redeem `?token=` and set a new password; handles missing/invalid/expired links
 - `src/app/kiosk/page.tsx` — PIN kiosk screen: employee roster with clock-in/out via `KioskClock`
 
 ## Components (new — payroll / kiosk build)
@@ -100,7 +108,14 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the £10 Consultation & Patch Test service) booleans; also `requiresConsultation` (services that must route to a consultation before they can be booked directly) and `isConsultation` (the separate free £0 Consultation service). Gated colour services route to the £10 Consultation & Patch Test; other gated services route to the free Consultation. `treatwellExternalId` maps it to the future API.
 - Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED) — also stores Treatwell provider booking id, durable sync status/error and last sync timestamp.
 - Availability
+- PasswordResetToken — single-use, 1-hour password reset grants. Stores only the SHA-256 `tokenHash` (never the raw token), plus `expiresAt`/`usedAt`; cascade-deleted with the user
 - ExternalBusyBlock — busy times imported from Treatwell (per-stylist iCal); `Stylist.treatwellIcalUrl` holds the feed URL
+
+## Email templates
+- `src/components/emails/BookingRequestReceived.tsx` — customer acknowledgement sent the moment a PENDING request is created (explicitly NOT a confirmation); monochrome brand
+- `src/components/emails/NewBookingAlert.tsx` — internal salon alert that a request needs approving; includes customer contact details (staff-only recipient)
+- `src/components/emails/PasswordReset.tsx` — reset link email; monochrome brand
+- Note: the older templates (BookingConfirmation, BookingCancellation, BookingReschedule, AppointmentReminder, ReviewRequest, NewsletterWelcome) still use the legacy blue/gold palette and have not been migrated to the monochrome brand.
 
 ## Components (auth)
 - `src/components/auth/PasswordVisibilityToggle.tsx` — eye / eye-off button overlaid on password inputs (used by signin + register pages)

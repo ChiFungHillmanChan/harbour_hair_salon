@@ -271,7 +271,8 @@ export async function createBooking(data: {
         treatwellSyncStatus,
       },
       include: {
-        user: { select: { email: true, name: true } },
+        // phone is here for the salon's internal new-request alert email.
+        user: { select: { email: true, name: true, phone: true } },
         stylist: { select: { name: true } },
         service: { select: { name: true, price: true, duration: true } },
       },
@@ -365,7 +366,8 @@ export async function createBookingForFirstAvailable(data: {
         treatwellSyncStatus,
       },
       include: {
-        user: { select: { email: true, name: true } },
+        // phone is here for the salon's internal new-request alert email.
+        user: { select: { email: true, name: true, phone: true } },
         stylist: { select: { name: true } },
         service: { select: { name: true, price: true, duration: true } },
       },

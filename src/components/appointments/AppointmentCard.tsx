@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cancelAppointment } from '@/app/actions/booking';
+import { BOOKING_MAINTENANCE } from '@/app/lib/booking-maintenance';
 import { RescheduleModal } from './RescheduleModal';
 
 type SerializedAppointment = {
@@ -58,6 +59,17 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
   // appointment (the server enforces both — this just mirrors it in the UI).
   const isPending = appointment.status === 'PENDING';
   const cancelLocked = !isPending && isWithin24Hours;
+  // Rescheduling books a new slot, so it is blocked server-side during
+  // maintenance. Mirror that here: without this the button stayed live, the
+  // slot fetch returned an empty list for every date, and the customer just saw
+  // "No available slots" — reading as though the salon were fully booked.
+  // Cancelling stays available.
+  const rescheduleLocked = BOOKING_MAINTENANCE || isWithin24Hours;
+  const rescheduleTitle = BOOKING_MAINTENANCE
+    ? 'Online rescheduling is temporarily unavailable — please call the salon'
+    : isWithin24Hours
+      ? 'Cannot reschedule within 24 hours'
+      : undefined;
 
   async function handleCancel() {
     if (!window.confirm('Are you sure you want to cancel this appointment?')) return;
@@ -104,9 +116,9 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
                 {!isPending && (
                   <button
                     onClick={() => setShowReschedule(true)}
-                    disabled={isWithin24Hours}
+                    disabled={rescheduleLocked}
                     className="px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={isWithin24Hours ? 'Cannot reschedule within 24 hours' : undefined}
+                    title={rescheduleTitle}
                   >
                     Reschedule
                   </button>
@@ -146,6 +158,12 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
         {isUpcoming && cancelLocked && (
           <p className="mt-3 text-xs text-zinc-400">
             Changes cannot be made within 24 hours of your appointment.
+          </p>
+        )}
+        {isUpcoming && !isPending && BOOKING_MAINTENANCE && !isWithin24Hours && (
+          <p className="mt-3 text-xs text-amber-700">
+            Online rescheduling is temporarily unavailable while our booking system is
+            under maintenance. Please call the salon to move this appointment.
           </p>
         )}
       </div>

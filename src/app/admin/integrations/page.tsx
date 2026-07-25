@@ -60,6 +60,25 @@ export default async function IntegrationsPage({
         </p>
       </div>
 
+      {treatwell.syncCoverage.warning && (
+        <div
+          role="alert"
+          className="rounded-lg border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-900"
+        >
+          <p className="font-semibold uppercase tracking-wide text-xs text-red-700">
+            Two-way calendar sync incomplete
+          </p>
+          <p className="mt-2 leading-6">{treatwell.syncCoverage.warning}</p>
+          <p className="mt-2 leading-6">
+            Fix this <strong>before</strong> re-enabling online booking (
+            <code className="text-xs">BOOKING_MAINTENANCE</code> in{' '}
+            <code className="text-xs">src/app/lib/booking-maintenance.ts</code>), or the same slot can
+            be sold twice. Set each stylist&apos;s Treatwell iCal URL below, generate their busy-feed
+            URL, and paste it into Treatwell Connect → Team → employee → External Calendar.
+          </p>
+        </div>
+      )}
+
       {(query.ical === 'complete' || query.retry || query.feedToken) && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {query.ical === 'complete'

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/prisma';
 import { sendAppointmentReminder, sendReviewRequest } from '@/app/services/email-service';
-import { safeCompare, reminderWindowEnd, reviewWindow } from './reminder-window';
+import { safeCompare, reminderWindowEnd, reviewWindow, hasSendBudgetLeft } from './reminder-window';
 
-// Up to 200 sequential email sends per run — give the function room on Vercel.
+// Queues up to 200 sequential email sends per run — give the function room on
+// Vercel. Actual work is capped by SEND_BUDGET_MS (45s) so the handler always
+// returns a report instead of being killed mid-send; anything not reached is
+// deferred to the next daily run.
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
@@ -18,6 +21,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const startedAt = Date.now();
   const now = new Date();
   // 36h (not 24h) so a send that fails today is retried on tomorrow's run while
   // still within the window (the cron only runs once per day).
@@ -43,8 +47,16 @@ export async function GET(request: NextRequest) {
 
   const sentIds: string[] = [];
   const failedIds: string[] = [];
+  let deferredReminders = 0;
 
   for (const appointment of appointments) {
+    // Stop before the function is killed mid-send. Every row is marked sent as
+    // soon as it succeeds, so the remainder is simply picked up tomorrow.
+    if (!hasSendBudgetLeft(startedAt, Date.now())) {
+      deferredReminders = appointments.length - (sentIds.length + failedIds.length);
+      console.warn(`Reminder send budget exhausted — deferring ${deferredReminders} reminder(s) to the next run.`);
+      break;
+    }
     try {
       try {
         await sendAppointmentReminder({
@@ -100,8 +112,14 @@ export async function GET(request: NextRequest) {
 
   const reviewSentIds: string[] = [];
   const reviewFailedIds: string[] = [];
+  let deferredReviews = 0;
 
   for (const appointment of pastAppointments) {
+    if (!hasSendBudgetLeft(startedAt, Date.now())) {
+      deferredReviews = pastAppointments.length - (reviewSentIds.length + reviewFailedIds.length);
+      console.warn(`Review-request send budget exhausted — deferring ${deferredReviews} request(s) to the next run.`);
+      break;
+    }
     try {
       await sendReviewRequest({
         id: appointment.id,
@@ -127,12 +145,15 @@ export async function GET(request: NextRequest) {
     reminders: {
       sent: sentIds.length,
       failed: failedIds.length,
+      deferred: deferredReminders,
       total: appointments.length,
     },
     reviewRequests: {
       sent: reviewSentIds.length,
       failed: reviewFailedIds.length,
+      deferred: deferredReviews,
       total: pastAppointments.length,
     },
+    durationMs: Date.now() - startedAt,
   });
 }

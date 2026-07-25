@@ -25,6 +25,12 @@ async function requireAdmin() {
 // export async functions" rule applies to exported *values*, and this helper
 // already is an async function — no new shared module needed for one helper.
 export async function revalidateCategoryPages() {
+  // Every export of a 'use server' module is a callable action endpoint, so this
+  // helper gets its own auth check rather than relying on its callers having
+  // already run one. All current callers are admin-gated, making this a no-op
+  // in practice — it just stops the endpoint being an unauthenticated way to
+  // trigger DB reads and cache purges.
+  await requireAdmin();
   const cats = await getAllCategoryContent();
   for (const c of cats) revalidatePath(`/services/${c.slug}`);
 }
