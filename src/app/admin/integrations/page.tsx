@@ -70,11 +70,13 @@ export default async function IntegrationsPage({
           </p>
           <p className="mt-2 leading-6">{treatwell.syncCoverage.warning}</p>
           <p className="mt-2 leading-6">
-            Fix this <strong>before</strong> re-enabling online booking (
-            <code className="text-xs">BOOKING_MAINTENANCE</code> in{' '}
-            <code className="text-xs">src/app/lib/booking-maintenance.ts</code>), or the same slot can
-            be sold twice. Set each stylist&apos;s Treatwell iCal URL below, generate their busy-feed
-            URL, and paste it into Treatwell Connect → Team → employee → External Calendar.
+            Fix this <strong>before</strong> turning on{' '}
+            <Link href="/admin/settings" className="font-semibold underline">
+              Settings → Online booking
+            </Link>
+            , or the same slot can be sold twice. Set each stylist&apos;s Treatwell iCal URL below,
+            generate their busy-feed URL, and paste it into Treatwell Connect → Team → employee →
+            External Calendar.
           </p>
         </div>
       )}

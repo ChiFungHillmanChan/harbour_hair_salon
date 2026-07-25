@@ -17,6 +17,8 @@ export type SiteSettings = {
   heroTitleLine1: string;
   heroTitleLine2: string;
   heroSubtitle: string;
+  /** Online-booking master switch, toggled from Admin -> Settings. */
+  bookingEnabled: boolean;
 };
 
 const SINGLETON_ID = 'singleton';
@@ -35,6 +37,9 @@ const DEFAULTS: SiteSettings = {
   heroTitleLine1: 'Expert Hair',
   heroTitleLine2: 'Styling',
   heroSubtitle: 'Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.',
+  // Fail CLOSED: if settings cannot be read, booking stays off rather than
+  // silently opening a booking flow that may double-book against Treatwell.
+  bookingEnabled: false,
 };
 
 function mapRow(row: {
@@ -51,6 +56,7 @@ function mapRow(row: {
   heroTitleLine1: string;
   heroTitleLine2: string;
   heroSubtitle: string;
+  bookingEnabled: boolean;
 }): SiteSettings {
   return {
     phone: row.phone,
@@ -66,6 +72,7 @@ function mapRow(row: {
     heroTitleLine1: row.heroTitleLine1,
     heroTitleLine2: row.heroTitleLine2,
     heroSubtitle: row.heroSubtitle,
+    bookingEnabled: row.bookingEnabled,
   };
 }
 

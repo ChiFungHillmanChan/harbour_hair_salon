@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/treatwell-sync",
-      "schedule": "0 6 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

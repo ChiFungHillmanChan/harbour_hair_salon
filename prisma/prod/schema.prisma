@@ -225,6 +225,10 @@ model SiteSettings {
   heroTitleLine1    String   @default("Expert Hair")
   heroTitleLine2    String   @default("Styling")
   heroSubtitle      String   @default("Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.")
+  // Online-booking master switch, toggled from Admin -> Settings. Defaults to
+  // FALSE (booking closed) so a fresh environment can never accidentally take
+  // bookings before Treatwell two-way sync is configured.
+  bookingEnabled    Boolean  @default(false)
   updatedAt         DateTime @updatedAt
 }
 

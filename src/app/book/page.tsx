@@ -2,7 +2,9 @@ import prisma from '@/app/lib/prisma';
 import Image from 'next/image';
 import { BookingWizard } from '@/components/booking/BookingWizard';
 import { getAggregateRating } from '@/app/services/review-service';
-import { BOOKING_MAINTENANCE, TREATWELL_BOOKING_URL } from '@/app/lib/booking-maintenance';
+import { redirect } from 'next/navigation';
+import { isBookingEnabled, TREATWELL_BOOKING_URL } from '@/app/lib/booking-maintenance';
+import { getSession } from '@/app/lib/session';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 
 export const metadata = {
@@ -16,8 +18,11 @@ export const metadata = {
   },
 };
 
-// Revalidate frequently for booking page
-export const revalidate = 60;
+// Whether booking is open now lives in the database and the signed-in check
+// moved here from middleware, so this route reads per-request state and cannot
+// be ISR-cached. /book is robots-disallowed and low traffic, so the extra reads
+// are negligible; SiteSettings itself is still cached (unstable_cache, 1h).
+export const dynamic = 'force-dynamic';
 
 async function getServices() {
   const services = await prisma.service.findMany({
@@ -41,7 +46,7 @@ async function getStylists() {
 }
 
 export default async function BookPage() {
-  if (BOOKING_MAINTENANCE) {
+  if (!(await isBookingEnabled())) {
     // Phone and Treatwell URL come from SiteSettings so the salon can change
     // them from the admin panel without a redeploy.
     const settings = await getSiteSettings();
@@ -89,6 +94,13 @@ export default async function BookPage() {
         </div>
       </div>
     );
+  }
+
+  // Booking is open — it requires an account, so send anonymous visitors to
+  // sign in (this gate used to live in middleware).
+  const session = await getSession();
+  if (!session?.userId) {
+    redirect('/auth/signin?redirect=/book');
   }
 
   const [services, stylists, aggregateRating] = await Promise.all([

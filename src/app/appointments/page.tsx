@@ -1,6 +1,7 @@
 import { verifySession } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { AppointmentCard } from '@/components/appointments/AppointmentCard';
+import { isBookingEnabled } from '@/app/lib/booking-maintenance';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 
 export default async function AppointmentsPage() {
   const session = await verifySession();
+  const bookingEnabled = await isBookingEnabled();
 
   const appointments = await prisma.appointment.findMany({
     where: { userId: session.userId },
@@ -51,7 +53,7 @@ export default async function AppointmentsPage() {
           ) : (
             <div className="space-y-4">
               {serialize(upcoming).map(a => (
-                <AppointmentCard key={a.id} appointment={a} isUpcoming />
+                <AppointmentCard key={a.id} appointment={a} isUpcoming bookingEnabled={bookingEnabled} />
               ))}
             </div>
           )}
@@ -64,7 +66,7 @@ export default async function AppointmentsPage() {
           ) : (
             <div className="space-y-4">
               {serialize(past).map(a => (
-                <AppointmentCard key={a.id} appointment={a} isUpcoming={false} />
+                <AppointmentCard key={a.id} appointment={a} isUpcoming={false} bookingEnabled={bookingEnabled} />
               ))}
             </div>
           )}
