@@ -31,6 +31,47 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
       )}
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+        <div>
+          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Online booking</h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            The master switch for booking on this website. Takes effect as soon as you save —
+            no redeploy needed.
+          </p>
+        </div>
+
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            name="bookingEnabled"
+            defaultChecked={settings.bookingEnabled}
+            className="mt-1 h-5 w-5 rounded border-zinc-300 text-zinc-900 focus:ring-2 focus:ring-zinc-900"
+          />
+          <span>
+            <span className="block text-sm font-medium text-zinc-900">
+              Accept bookings on the website
+            </span>
+            <span className="block text-xs text-zinc-500 mt-1">
+              When off, <code className="text-[11px]">/book</code> shows the maintenance notice
+              with your phone number and a Treatwell link, new bookings and reschedules are
+              refused server-side, and the Reschedule button is disabled. Customers can still
+              cancel existing appointments either way.
+            </span>
+          </span>
+        </label>
+
+        {!settings.bookingEnabled && (
+          <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
+            <strong>Booking is currently OFF.</strong> Before switching it on, check{' '}
+            <a href="/admin/integrations" className="underline font-semibold">
+              Integrations
+            </a>{' '}
+            — if Treatwell two-way calendar sync is not configured for every stylist, the same
+            slot can be sold twice.
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Contact</h2>
 
         <div>

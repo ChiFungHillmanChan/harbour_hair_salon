@@ -20,7 +20,7 @@ import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
 import { bookingLimiter, discountLimiter } from '@/app/lib/rate-limit';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
-import { BOOKING_MAINTENANCE, BOOKING_MAINTENANCE_MESSAGE } from '@/app/lib/booking-maintenance';
+import { isBookingEnabled, BOOKING_MAINTENANCE_MESSAGE } from '@/app/lib/booking-maintenance';
 
 // discountLimiter stops enumeration of valid discount codes; bookingLimiter
 // curbs calendar-blockade abuse. Both come from lib/rate-limit.ts, which falls
@@ -83,7 +83,7 @@ async function checkStylistHours(
 }
 
 export async function getAvailableSlotsAction(prevState: unknown, formData: FormData) {
-  if (BOOKING_MAINTENANCE) {
+  if (!(await isBookingEnabled())) {
     return { error: BOOKING_MAINTENANCE_MESSAGE };
   }
 
@@ -117,7 +117,7 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
 // Helper for client-side fetching without form state. The "Anyone" option
 // returns the union of every stylist's availability.
 export async function fetchSlots(stylistId: string, date: string, serviceDuration: number) {
-  if (BOOKING_MAINTENANCE) {
+  if (!(await isBookingEnabled())) {
     return [];
   }
 
@@ -192,7 +192,7 @@ export async function validateDiscountCode(code: string) {
 export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   // Hard server-side block while online booking is in maintenance — checked
   // before anything else so no client (or direct action call) can bypass it.
-  if (BOOKING_MAINTENANCE) {
+  if (!(await isBookingEnabled())) {
     return { success: false, error: BOOKING_MAINTENANCE_MESSAGE };
   }
 
@@ -452,7 +452,7 @@ export async function checkColourEligibility(serviceId: string, dateStr: string)
 export async function rescheduleAppointment(appointmentId: string, dateStr: string, time: string) {
   // Rescheduling books a new slot, so it is blocked during maintenance too.
   // (Cancellation stays available — see cancelAppointment.)
-  if (BOOKING_MAINTENANCE) {
+  if (!(await isBookingEnabled())) {
     return { success: false, error: BOOKING_MAINTENANCE_MESSAGE };
   }
 

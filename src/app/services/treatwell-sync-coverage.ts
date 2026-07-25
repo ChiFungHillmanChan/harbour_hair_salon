@@ -4,7 +4,7 @@
 // Why this exists: the sync code was fully implemented and shipped, but in
 // production NO stylist had `treatwellIcalUrl` (inbound) or `icalToken`
 // (outbound) set, and ExternalBusyBlock was empty. That is harmless only while
-// online booking is disabled — the moment BOOKING_MAINTENANCE is flipped off,
+// online booking is disabled — the moment Settings → Online booking is switched on,
 // the site and Treatwell would be selling the same slots with nothing
 // reconciling them. This turns that silent state into a visible warning.
 

@@ -38,6 +38,9 @@ const settingsSchema = z.object({
     .default(
       'Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.'
     ),
+  // An unchecked checkbox is absent from FormData entirely, so this is parsed
+  // from an explicit boolean the action computes rather than from the raw entry.
+  bookingEnabled: z.boolean().default(false),
 });
 
 export type SettingsActionState =
@@ -51,7 +54,10 @@ export async function updateSiteSettings(
 ): Promise<SettingsActionState> {
   await requireAdmin();
 
-  const parsed = settingsSchema.safeParse(Object.fromEntries(formData));
+  const parsed = settingsSchema.safeParse({
+    ...Object.fromEntries(formData),
+    bookingEnabled: formData.get('bookingEnabled') === 'on',
+  });
   if (!parsed.success) {
     return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid input' };
   }
@@ -65,6 +71,10 @@ export async function updateSiteSettings(
   updateTag('site-settings');
   revalidatePath('/', 'layout');
   revalidatePath('/sitemap.xml');
+  // Opening or closing booking must take effect immediately on the pages that
+  // branch on it, not after the settings cache happens to expire.
+  revalidatePath('/book');
+  revalidatePath('/appointments');
 
   return { status: 'success' };
 }

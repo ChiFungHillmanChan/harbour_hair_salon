@@ -3,7 +3,6 @@ import type { NextRequest } from 'next/server';
 import { jwtVerify, SignJWT } from 'jose';
 import type { SessionPayload as FullSessionPayload } from '@/app/lib/jwt';
 import { SESSION_HINT_COOKIE } from '@/app/lib/session-hint';
-import { BOOKING_MAINTENANCE } from '@/app/lib/booking-maintenance';
 
 const secretKey = process.env.SESSION_SECRET;
 const key = secretKey ? new TextEncoder().encode(secretKey) : null;
@@ -63,13 +62,13 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (path.startsWith('/book')) {
-    // During booking maintenance the page only shows the Treatwell notice, so
-    // let everyone see it without forcing a sign-in first.
-    if (!BOOKING_MAINTENANCE && !session?.userId) {
-      return NextResponse.redirect(new URL('/auth/signin?redirect=/book', request.url));
-    }
-  }
+  // NOTE: /book deliberately has no auth gate here any more. Whether booking is
+  // open now lives in the database (SiteSettings.bookingEnabled), and middleware
+  // runs on every matched request — querying Neon from here would add a DB
+  // round-trip to each one. The gate moved into src/app/book/page.tsx, which
+  // already renders server-side and can read both the setting and the session.
+  // This costs nothing in security: every booking action independently calls
+  // verifySession(), so the middleware check was only an early UX redirect.
 
   if (path.startsWith('/reviews/new')) {
     if (!session?.userId) {

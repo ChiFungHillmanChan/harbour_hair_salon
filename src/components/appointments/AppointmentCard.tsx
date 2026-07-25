@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cancelAppointment } from '@/app/actions/booking';
-import { BOOKING_MAINTENANCE } from '@/app/lib/booking-maintenance';
 import { RescheduleModal } from './RescheduleModal';
 
 type SerializedAppointment = {
@@ -21,9 +20,14 @@ type SerializedAppointment = {
 interface AppointmentCardProps {
   appointment: SerializedAppointment;
   isUpcoming: boolean;
+  /**
+   * Passed down from the server page rather than imported: whether booking is
+   * open is a database setting now, and a client component cannot read it.
+   */
+  bookingEnabled: boolean;
 }
 
-export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProps) {
+export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: AppointmentCardProps) {
   const router = useRouter();
   const [cancelling, setCancelling] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
@@ -64,8 +68,8 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
   // slot fetch returned an empty list for every date, and the customer just saw
   // "No available slots" — reading as though the salon were fully booked.
   // Cancelling stays available.
-  const rescheduleLocked = BOOKING_MAINTENANCE || isWithin24Hours;
-  const rescheduleTitle = BOOKING_MAINTENANCE
+  const rescheduleLocked = !bookingEnabled || isWithin24Hours;
+  const rescheduleTitle = !bookingEnabled
     ? 'Online rescheduling is temporarily unavailable — please call the salon'
     : isWithin24Hours
       ? 'Cannot reschedule within 24 hours'
@@ -160,7 +164,7 @@ export function AppointmentCard({ appointment, isUpcoming }: AppointmentCardProp
             Changes cannot be made within 24 hours of your appointment.
           </p>
         )}
-        {isUpcoming && !isPending && BOOKING_MAINTENANCE && !isWithin24Hours && (
+        {isUpcoming && !isPending && !bookingEnabled && !isWithin24Hours && (
           <p className="mt-3 text-xs text-amber-700">
             Online rescheduling is temporarily unavailable while our booking system is
             under maintenance. Please call the salon to move this appointment.
