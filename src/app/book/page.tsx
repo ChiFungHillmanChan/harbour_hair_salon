@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { isBookingEnabled, TREATWELL_BOOKING_URL } from '@/app/lib/booking-maintenance';
 import { getSession } from '@/app/lib/session';
 import { getSiteSettings } from '@/app/services/site-settings-service';
+import { getActiveGlobalOffer } from '@/app/services/offers-service';
 
 export const metadata = {
   title: 'Book Your Hair Appointment in Leeds',
@@ -103,10 +104,11 @@ export default async function BookPage() {
     redirect('/auth/signin?redirect=/book');
   }
 
-  const [services, stylists, aggregateRating] = await Promise.all([
+  const [services, stylists, aggregateRating, activeOffer] = await Promise.all([
     getServices(),
     getStylists(),
     getAggregateRating(),
+    getActiveGlobalOffer(),
   ]);
 
   return (
@@ -144,7 +146,7 @@ export default async function BookPage() {
 
       <div className="container mx-auto px-4 py-8 md:py-12">
         
-        <BookingWizard services={services} stylists={stylists} />
+        <BookingWizard services={services} stylists={stylists} activeOffer={activeOffer} />
       </div>
     </div>
   );

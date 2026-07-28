@@ -332,7 +332,9 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     // acknowledgement (the confirmation email only goes out on admin approval)
     // and the salon had no signal at all, so requests sat unactioned until
     // someone happened to open the admin dashboard.
-    const priceNumber = Number(appointment.service.price);
+    // Show the price actually recorded for this booking (global offer applied),
+    // so the email matches what the public pages advertised — not the list price.
+    const priceNumber = Number(appointment.priceAtBooking ?? appointment.service.price);
     await Promise.allSettled([
       (async () => {
         try {
@@ -413,7 +415,7 @@ export async function cancelAppointment(appointmentId: string) {
   try {
     await sendBookingCancellation({
       ...appointment,
-      service: { ...appointment.service, price: Number(appointment.service.price) },
+      service: { ...appointment.service, price: Number(appointment.priceAtBooking ?? appointment.service.price) },
     });
   } catch (emailError) {
     console.error('Cancellation email failed (appointment still cancelled):', emailError);
@@ -543,7 +545,8 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
       const blocking: BookedInterval[] = [
         ...existingAppointments.map((appt) => ({
           start: new Date(appt.date),
-          durationMin: appt.service.duration,
+          // Prefer the duration frozen at booking time (see booking-service).
+          durationMin: appt.durationAtBooking ?? appt.service.duration,
         })),
         ...externalBlocks.map(toBookedInterval),
       ];
@@ -578,7 +581,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
     if (updated) {
       try {
         await sendBookingReschedule(
-          { ...updated, service: { ...updated.service, price: Number(updated.service.price) } },
+          { ...updated, service: { ...updated.service, price: Number(updated.priceAtBooking ?? updated.service.price) } },
           oldDate,
         );
       } catch (emailError) {

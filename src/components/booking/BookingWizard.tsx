@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { fetchSlots, submitBooking, validateDiscountCode } from '@/app/actions/booking';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
+import { applyOfferToPrice, type ActiveOffer } from '@/app/services/offer-pricing';
 
 // Define a ClientService type where price is number instead of Decimal
 type ClientService = Omit<Service, 'price'> & { price: number };
@@ -22,6 +23,8 @@ type Step = 'SERVICE' | 'STYLIST' | 'DATE' | 'CONFIRM';
 interface BookingWizardProps {
   services: ClientService[];
   stylists: PublicStylist[];
+  /** The live site-wide offer, so the wizard charges/shows what the public pages advertise. */
+  activeOffer?: ActiveOffer;
 }
 
 const CATEGORIES = [
@@ -32,7 +35,7 @@ const CATEGORIES = [
   'Styling'
 ];
 
-export function BookingWizard({ services, stylists }: BookingWizardProps) {
+export function BookingWizard({ services, stylists, activeOffer = null }: BookingWizardProps) {
   const [step, setStep] = useState<Step>('SERVICE');
   const [selectedService, setSelectedService] = useState<ClientService | null>(null);
   const [selectedStylist, setSelectedStylist] = useState<SelectedStylist | null>(null);
@@ -124,7 +127,9 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
 
   const getFinalPrice = () => {
     if (!selectedService) return 0;
-    const originalPrice = selectedService.price;
+    // Start from the site-wide offer price (what the public pages advertise and
+    // what the server records as priceAtBooking), then apply any discount code.
+    const originalPrice = applyOfferToPrice(selectedService.price, activeOffer);
     if (!appliedDiscount) return originalPrice;
 
     if (appliedDiscount.type === 'PERCENTAGE') {
@@ -386,7 +391,14 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                         )}
                       </div>
                     </div>
-                    <span className="font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">£{service.price.toFixed(2)}</span>
+                    {activeOffer ? (
+                      <span className="font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">
+                        <span className="line-through text-zinc-400 text-base mr-2">£{service.price.toFixed(2)}</span>
+                        £{applyOfferToPrice(service.price, activeOffer).toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">£{service.price.toFixed(2)}</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -630,13 +642,19 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                 <div className="flex justify-between items-center">
                   <span className="text-zinc-600 font-medium">Total Price</span>
                   <div className="flex items-center gap-3">
-                    {appliedDiscount ? (
+                    {appliedDiscount || activeOffer ? (
                       <>
                         <span className="line-through text-zinc-400 text-sm">£{selectedService?.price.toFixed(2)}</span>
                         <span className="text-xl font-bold text-zinc-900">£{getFinalPrice().toFixed(2)}</span>
-                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md font-medium border border-green-200">
-                          {appliedDiscount.code} applied
-                        </span>
+                        {appliedDiscount ? (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md font-medium border border-green-200">
+                            {appliedDiscount.code} applied
+                          </span>
+                        ) : (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md font-medium border border-green-200">
+                            Offer applied
+                          </span>
+                        )}
                       </>
                     ) : (
                       <span className="text-xl font-bold text-zinc-900">£{selectedService?.price.toFixed(2)}</span>

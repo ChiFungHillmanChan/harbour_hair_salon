@@ -9,6 +9,8 @@ import { firstFreeStylist, hasConflict, buildSlotsForWindow, type BookedInterval
 import { loadExternalBusy, toBookedInterval, toSlotAppointment } from './external-busy';
 import { SlotUnavailableError, DiscountUnavailableError } from './booking-errors';
 import { getTreatwellApiConfiguration, initialTreatwellSyncStatus } from './treatwell-api';
+import { getActiveGlobalOffer } from './offers-service';
+import { applyOfferToPrice } from './offer-pricing';
 
 /**
  * Run a Serializable transaction, retrying a few times on Postgres serialization
@@ -109,8 +111,16 @@ export async function getAvailableSlots(
     loadExternalBusy(prisma, [stylistId], window),
   ]);
 
-  // 3. Merge Treatwell (external) busy blocks for this stylist/day, then build slots
-  const busy = [...existingAppointments, ...externalBlocks.map(toSlotAppointment)];
+  // 3. Merge Treatwell (external) busy blocks for this stylist/day, then build slots.
+  // Use the frozen booking duration so a later service-duration edit doesn't make
+  // us offer a slot the conflict check would then reject.
+  const busy = [
+    ...existingAppointments.map((appt) => ({
+      ...appt,
+      service: { duration: appt.durationAtBooking ?? appt.service.duration },
+    })),
+    ...externalBlocks.map(toSlotAppointment),
+  ];
 
   return buildStylistSlots(availability, busy, dateStr, serviceDuration);
 }
@@ -154,7 +164,8 @@ export async function getAvailableSlotsUnion(
   const apptsByStylist = new Map<string, SlotAppointment[]>();
   for (const appt of appointments) {
     const list = apptsByStylist.get(appt.stylistId) ?? [];
-    list.push(appt);
+    // Frozen booking duration wins over the live service duration (see getAvailableSlots).
+    list.push({ ...appt, service: { duration: appt.durationAtBooking ?? appt.service.duration } });
     apptsByStylist.set(appt.stylistId, list);
   }
 
@@ -209,6 +220,10 @@ export async function createBooking(data: {
   discountCode?: string;
   notes?: string;
 }) {
+  // Snapshot the live global offer so the recorded price matches what the public
+  // pages advertise. Read outside the tx: it is a rarely-changing announcement,
+  // not part of the double-booking invariant.
+  const globalOffer = await getActiveGlobalOffer();
   // Use Serializable transaction to prevent double-booking race conditions
   const appointment = await runSerializableWithRetry(async (tx) => {
     const [service, stylist] = await Promise.all([
@@ -237,7 +252,10 @@ export async function createBooking(data: {
     const blocking: BookedInterval[] = [
       ...existingAppointments.map((appt) => ({
         start: new Date(appt.date),
-        durationMin: appt.service.duration,
+        // Prefer the duration frozen at booking time so editing a service's
+        // duration later cannot retroactively resize (and overlap) existing
+        // bookings. Falls back to the live duration for legacy rows.
+        durationMin: appt.durationAtBooking ?? appt.service.duration,
       })),
       ...externalBlocks.map(toBookedInterval),
     ];
@@ -266,7 +284,8 @@ export async function createBooking(data: {
         // when an admin approves them from the schedule board (updateAppointmentStatus).
         status: 'PENDING',
         discountCodeId,
-        priceAtBooking: service.price,
+        priceAtBooking: applyOfferToPrice(Number(service.price), globalOffer),
+        durationAtBooking: service.duration,
         notes: data.notes ?? null,
         treatwellSyncStatus,
       },
@@ -296,6 +315,7 @@ export async function createBookingForFirstAvailable(data: {
   discountCode?: string;
   notes?: string;
 }) {
+  const globalOffer = await getActiveGlobalOffer();
   const appointment = await runSerializableWithRetry(async (tx) => {
     const service = await tx.service.findUnique({ where: { id: data.serviceId } });
     if (!service) throw new Error('Service not found');
@@ -314,7 +334,8 @@ export async function createBookingForFirstAvailable(data: {
     const bookedByStylist = new Map<string, BookedInterval[]>();
     for (const appt of existing) {
       const list = bookedByStylist.get(appt.stylistId) ?? [];
-      list.push({ start: new Date(appt.date), durationMin: appt.service.duration });
+      // Frozen duration wins over the live service duration (see createBooking).
+      list.push({ start: new Date(appt.date), durationMin: appt.durationAtBooking ?? appt.service.duration });
       bookedByStylist.set(appt.stylistId, list);
     }
 
@@ -361,7 +382,8 @@ export async function createBookingForFirstAvailable(data: {
         // when an admin approves them from the schedule board (updateAppointmentStatus).
         status: 'PENDING',
         discountCodeId,
-        priceAtBooking: service.price,
+        priceAtBooking: applyOfferToPrice(Number(service.price), globalOffer),
+        durationAtBooking: service.duration,
         notes: data.notes ?? null,
         treatwellSyncStatus,
       },

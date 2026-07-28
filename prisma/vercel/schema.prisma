@@ -90,6 +90,7 @@ model Appointment {
   status              String    @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
   notes               String?
   priceAtBooking      Decimal?
+  durationAtBooking   Int?
   reminderSent        Boolean   @default(false)
   reviewRequestSent   Boolean   @default(false)
   treatwellBookingId  String?

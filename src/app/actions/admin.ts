@@ -390,6 +390,13 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       return { success: false, error: 'Only pending requests can be confirmed' };
     }
 
+    // A cancelled appointment must not be revived: its slot may have been
+    // rebooked, and reviving it (e.g. to COMPLETED) would double-count it for
+    // commission and re-trigger customer emails. Create a new booking instead.
+    if (appointment.status === 'CANCELLED' && status !== 'CANCELLED') {
+      return { success: false, error: 'A cancelled appointment cannot be reinstated — create a new booking.' };
+    }
+
     const data: {
       status: string;
       treatwellSyncStatus?: string;
@@ -419,7 +426,7 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
           stylist: { name: appointment.stylist.name },
           service: {
             name: appointment.service.name,
-            price: Number(appointment.service.price),
+            price: Number(appointment.priceAtBooking ?? appointment.service.price),
             duration: appointment.service.duration,
           },
         });
