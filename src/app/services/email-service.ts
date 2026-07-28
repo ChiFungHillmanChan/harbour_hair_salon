@@ -12,6 +12,7 @@ import { NewBookingAlert, type NewBookingAlertAppointment } from '@/components/e
 import { PasswordReset } from '@/components/emails/PasswordReset';
 import { RESET_TOKEN_TTL_MS } from '@/app/lib/password-reset';
 import { buildBookingConfirmationText } from './booking-confirmation-copy';
+import { salonRelativeDay } from './salon-time';
 
 export type AppointmentWithDetails = {
   id: string;
@@ -151,9 +152,12 @@ export async function sendBookingReschedule(
 }
 
 export async function sendAppointmentReminder(appointment: AppointmentWithDetails): Promise<void> {
+  // The reminder cron scans a 36h window, so the appointment may be today rather
+  // than tomorrow — keep the subject line honest instead of always "tomorrow".
+  const when = salonRelativeDay(appointment.date) ?? 'soon';
   await send({
     to: appointment.user.email,
-    subject: 'Reminder: your appointment is tomorrow — Harbour Hair Salon',
+    subject: `Reminder: your appointment is ${when} — Harbour Hair Salon`,
     react: AppointmentReminder({ appointment }),
   });
 }

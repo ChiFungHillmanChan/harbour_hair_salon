@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cancelAppointment } from '@/app/actions/booking';
+import { formatSalonDate, formatSalonTime } from '@/app/services/salon-time';
 import { RescheduleModal } from './RescheduleModal';
 
 type SerializedAppointment = {
@@ -39,17 +40,11 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
     return hoursUntil < 24;
   });
 
-  const formattedDate = appointmentDate.toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-
-  const formattedTime = appointmentDate.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  // Pin to salon time so the server render (UTC on Vercel) and the browser render
+  // agree — otherwise BST produces a hydration mismatch and non-UK viewers see
+  // their own timezone. Always shows the salon-local time.
+  const formattedDate = formatSalonDate(appointmentDate);
+  const formattedTime = formatSalonTime(appointmentDate);
 
   const statusColors: Record<string, string> = {
     PENDING: 'bg-amber-100 text-amber-800',
@@ -81,14 +76,18 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
     setCancelling(true);
     setError(null);
 
-    const result = await cancelAppointment(appointment.id);
-
-    if (result.success) {
-      router.refresh();
-    } else {
-      setError(result.error || 'Failed to cancel');
+    try {
+      const result = await cancelAppointment(appointment.id);
+      if (result.success) {
+        router.refresh();
+      } else {
+        setError(result.error || 'Failed to cancel');
+      }
+    } catch {
+      setError('Something went wrong. Please try again, or call the salon.');
+    } finally {
+      setCancelling(false);
     }
-    setCancelling(false);
   }
 
   return (

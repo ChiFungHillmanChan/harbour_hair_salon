@@ -12,6 +12,7 @@ import {
   Column,
 } from '@react-email/components';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
+import { formatSalonDate, formatSalonTime } from '@/app/services/salon-time';
 
 export type NewBookingAlertAppointment = {
   id: string;
@@ -42,16 +43,8 @@ const SURFACE = '#FAFAFA';
  * details (the customer-facing templates deliberately do not).
  */
 export function NewBookingAlert({ appointment }: NewBookingAlertProps) {
-  const dateFormatted = appointment.date.toLocaleDateString('en-GB', {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-  const timeFormatted = appointment.date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const dateFormatted = formatSalonDate(appointment.date);
+  const timeFormatted = formatSalonTime(appointment.date);
   const bookingReference = appointment.id.slice(-8).toUpperCase();
   const customerName = appointment.user.name || 'Name not given';
 
