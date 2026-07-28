@@ -59,11 +59,24 @@ export async function GET(request: NextRequest) {
         matchedUser = await tx.user.create({
           data: { email: profile.email, name: profile.name, role: 'USER' },
         });
-      } else if (!matchedUser.name && profile.name) {
-        matchedUser = await tx.user.update({
-          where: { id: matchedUser.id },
-          data: { name: profile.name },
-        });
+      } else {
+        // Linking Google to an existing row. If that row already has a password,
+        // it may have been planted by an attacker who pre-registered this address
+        // to hijack it — Google has just verified the address belongs to the
+        // person signing in, so DESTROY the pre-set credential and bump
+        // sessionVersion (revoking any session the attacker holds). Also fill in a
+        // missing display name. Without this, the attacker's password kept working.
+        const needsNameFill = !matchedUser.name && !!profile.name;
+        const hasPassword = matchedUser.password !== null;
+        if (hasPassword || needsNameFill) {
+          matchedUser = await tx.user.update({
+            where: { id: matchedUser.id },
+            data: {
+              ...(needsNameFill ? { name: profile.name } : {}),
+              ...(hasPassword ? { password: null, sessionVersion: { increment: 1 } } : {}),
+            },
+          });
+        }
       }
 
       await tx.oAuthAccount.create({

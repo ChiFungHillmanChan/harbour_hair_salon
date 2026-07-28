@@ -19,7 +19,12 @@ const urlOrEmpty = z
   });
 
 const settingsSchema = z.object({
-  phone: z.string().trim().max(40).default('07831 830898'),
+  phone: z
+    .string()
+    .trim()
+    .max(40)
+    .regex(/^[0-9+()\s-]*$/, 'Phone can only contain digits, spaces and + - ( )')
+    .default('07831 830898'),
   twitterHandle: z.string().trim().max(40).default(''),
   gscVerification: z.string().trim().max(200).default(''),
   googleBusinessUrl: urlOrEmpty.default(''),

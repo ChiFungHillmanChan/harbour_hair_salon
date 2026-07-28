@@ -200,7 +200,8 @@ export async function getAvailableSlotsUnion(
  * DiscountUnavailableError if the code can't be claimed.
  */
 async function claimDiscountInTx(tx: Prisma.TransactionClient, code: string): Promise<string> {
-  const discount = await tx.discountCode.findUnique({ where: { code } });
+  // Codes are stored upper-cased; normalise so a lower-cased submission still matches.
+  const discount = await tx.discountCode.findUnique({ where: { code: code.trim().toUpperCase() } });
   if (!discount || !discount.isActive) throw new DiscountUnavailableError();
   if (discount.expiresAt && new Date() > discount.expiresAt) throw new DiscountUnavailableError();
   if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) throw new DiscountUnavailableError();

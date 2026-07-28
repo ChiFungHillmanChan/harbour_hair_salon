@@ -173,7 +173,10 @@ async function eligibleStylistIds(salon: SalonDateTime, durationMinutes: number)
 
 export async function validateDiscountCode(code: string) {
   const session = await verifySession();
-  if (!code) return { valid: false, error: 'Code is empty' };
+  // Codes are stored upper-cased (admin.ts), so normalise the customer's input —
+  // otherwise someone typing "summer20" on a phone gets "Invalid code".
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) return { valid: false, error: 'Code is empty' };
 
   if (!(await discountLimiter.check(`user:${session.userId}`))) {
     return { valid: false, error: 'Too many attempts. Please try again shortly.' };
@@ -181,7 +184,7 @@ export async function validateDiscountCode(code: string) {
 
   try {
     const discount = await prisma.discountCode.findUnique({
-      where: { code },
+      where: { code: normalized },
     });
 
     if (!discount) return { valid: false, error: 'Invalid code' };

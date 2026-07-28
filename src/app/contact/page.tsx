@@ -8,6 +8,7 @@ import { SITE_URL } from '@/app/lib/site-url';
 import SocialLinks from '@/components/layout/SocialLinks';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { toTelHref } from '@/app/lib/phone';
+import { jsonLdScript } from '@/app/lib/json-ld';
 
 export const metadata: Metadata = {
   title: 'Contact & Find Us in Leeds City Centre',
@@ -51,7 +52,7 @@ export default async function ContactPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLdScript({
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
@@ -64,7 +65,7 @@ export default async function ContactPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLdScript({
             '@context': 'https://schema.org',
             '@type': 'HairSalon',
             name: 'Harbour Hair Salon',

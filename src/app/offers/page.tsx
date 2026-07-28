@@ -4,6 +4,7 @@ import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
 import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
 import { SITE_URL } from '@/app/lib/site-url';
+import { jsonLdScript } from '@/app/lib/json-ld';
 
 export const metadata: Metadata = {
   title: 'Special Offers & Promotions in Leeds',
@@ -38,7 +39,7 @@ export default async function OffersPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLdScript({
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
