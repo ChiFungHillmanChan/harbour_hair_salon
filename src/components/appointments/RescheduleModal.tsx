@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { fetchSlots, rescheduleAppointment } from '@/app/actions/booking';
 import type { TimeSlot } from '@/app/services/booking-service';
+import { formatSalonDate, formatSalonTime, resolveSalonDateTime } from '@/app/services/salon-time';
 
 interface RescheduleModalProps {
   appointmentId: string;
@@ -44,10 +45,15 @@ export function RescheduleModal({
     try {
       // dateStr is the salon-local calendar day (YYYY-MM-DD) from the date input;
       // pass it straight through so slots share the server's salon day frame.
-      const available = await fetchSlots(stylistId, dateStr, serviceDuration);
-      setSlots(available);
+      const result = await fetchSlots(stylistId, dateStr, serviceDuration);
+      if (result.ok) {
+        setSlots(result.slots);
+      } else {
+        setSlots([]);
+        setError("We couldn't load available times. Please try again, or call the salon.");
+      }
     } catch {
-      setError('Failed to load available slots');
+      setError("We couldn't load available times. Please try again, or call the salon.");
       setSlots([]);
     } finally {
       setLoadingSlots(false);
@@ -60,45 +66,37 @@ export function RescheduleModal({
     setSubmitting(true);
     setError(null);
 
-    // Pass the salon-local date + time as plain strings; the server resolves them
-    // to the correct UTC instant in the salon timezone (Europe/London).
-    const result = await rescheduleAppointment(appointmentId, selectedDate, selectedSlot);
-
-    if (result.success) {
-      onClose();
-    } else {
-      setError(result.error || 'Reschedule failed');
+    try {
+      // Pass the salon-local date + time as plain strings; the server resolves them
+      // to the correct UTC instant in the salon timezone (Europe/London).
+      const result = await rescheduleAppointment(appointmentId, selectedDate, selectedSlot);
+      if (result.success) {
+        onClose();
+      } else {
+        setError(result.error || 'Reschedule failed');
+      }
+    } catch {
+      setError('Something went wrong. Please try again, or call the salon.');
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }
 
   const availableSlots = slots.filter(s => s.available);
 
+  // Pin to salon time so "Old" reads the salon-local time regardless of viewer TZ.
   const formatDateTime = (isoString: string) => {
     const d = new Date(isoString);
-    return d.toLocaleDateString('en-GB', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return `${formatSalonDate(d)}, ${formatSalonTime(d)}`;
   };
 
+  // Build the "New" preview from the SAME strings the server receives, resolved
+  // in the salon timezone — a host-local `new Date(dateStr)` + setHours drifted a
+  // day for viewers west of UTC.
   const formatNewDateTime = () => {
     if (!selectedDate || !selectedSlot) return '';
-    const [hours, minutes] = selectedSlot.split(':').map(Number);
-    const d = new Date(selectedDate);
-    d.setHours(hours, minutes, 0, 0);
-    return d.toLocaleDateString('en-GB', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const { utc } = resolveSalonDateTime(selectedDate, selectedSlot);
+    return `${formatSalonDate(utc)}, ${formatSalonTime(utc)}`;
   };
 
   return (

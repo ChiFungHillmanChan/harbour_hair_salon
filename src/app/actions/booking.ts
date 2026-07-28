@@ -116,9 +116,17 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
 
 // Helper for client-side fetching without form state. The "Anyone" option
 // returns the union of every stylist's availability.
-export async function fetchSlots(stylistId: string, date: string, serviceDuration: number) {
+export type FetchSlotsResult =
+  | { ok: true; slots: Awaited<ReturnType<typeof getAvailableSlots>> }
+  | { ok: false };
+
+export async function fetchSlots(
+  stylistId: string,
+  date: string,
+  serviceDuration: number,
+): Promise<FetchSlotsResult> {
   if (!(await isBookingEnabled())) {
-    return [];
+    return { ok: true, slots: [] };
   }
 
   // Guard the client-supplied duration before it reaches the slot loop (see
@@ -126,16 +134,19 @@ export async function fetchSlots(stylistId: string, date: string, serviceDuratio
   // `date` is the salon-local calendar day (YYYY-MM-DD) the customer saw.
   const duration = SERVICE_DURATION.safeParse(serviceDuration);
   if (!duration.success || !isValidSalonDate(date)) {
-    return [];
+    return { ok: true, slots: [] };
   }
   try {
-    if (stylistId === ANY_STYLIST_ID) {
-      return await getAvailableSlotsUnion(date, duration.data);
-    }
-    return await getAvailableSlots(stylistId, date, duration.data);
+    const slots =
+      stylistId === ANY_STYLIST_ID
+        ? await getAvailableSlotsUnion(date, duration.data)
+        : await getAvailableSlots(stylistId, date, duration.data);
+    return { ok: true, slots };
   } catch (error) {
-    console.error(error);
-    return [];
+    // A lookup failure is NOT "no availability" — return a distinct result so the
+    // UI can say "couldn't load" instead of silently implying the day is full.
+    console.error('fetchSlots failed', { stylistId, date, duration: duration.data }, error);
+    return { ok: false };
   }
 }
 
