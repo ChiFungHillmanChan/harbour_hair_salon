@@ -26,14 +26,10 @@ const BRAND = '#18181b';
 const ACCENT = '#18181b';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
+import { formatSalonDate } from '@/app/services/salon-time';
 
 export function ReviewRequest({ appointment }: ReviewRequestProps) {
-  const dateFormatted = appointment.date.toLocaleDateString('en-GB', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const dateFormatted = formatSalonDate(appointment.date);
 
   const reviewUrl = `${BASE_URL}/reviews/new?appointmentId=${appointment.id}`;
 

@@ -13,6 +13,9 @@ async function requireAdmin() {
   return { error: null, session };
 }
 
+/** Matches the { error?, success? } convention RowActionButton consumes. */
+type ActionResult = { error?: string; success?: boolean };
+
 const editSchema = z.object({
   date: z.string().refine(isValidSalonDate, 'Invalid date'),
   clockInTime: z.string().refine(isValidSalonTime, 'Invalid clock-in time'),
@@ -21,7 +24,7 @@ const editSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
-export async function updateTimeEntry(id: string, formData: FormData) {
+export async function updateTimeEntry(id: string, formData: FormData): Promise<ActionResult> {
   const { error, session } = await requireAdmin();
   if (error || !session) return { error: error ?? 'Unauthorized' };
 
@@ -41,7 +44,7 @@ export async function updateTimeEntry(id: string, formData: FormData) {
     return { error: 'Clock-out must be after clock-in' };
   }
 
-  await prisma.timeEntry.update({
+  const updated = await prisma.timeEntry.updateMany({
     where: { id },
     data: {
       clockIn,
@@ -52,21 +55,46 @@ export async function updateTimeEntry(id: string, formData: FormData) {
       editedByAdminId: session.userId,
     },
   });
+  if (updated.count === 0) return { error: 'That time entry no longer exists.' };
   revalidatePath('/admin/timesheets');
+  return { success: true };
 }
 
-export async function approveTimeEntry(id: string) {
-  const { error } = await requireAdmin();
-  if (error) return;
-  const entry = await prisma.timeEntry.findUnique({ where: { id } });
-  if (!entry || !entry.clockOut) return; // cannot approve an open entry
-  await prisma.timeEntry.update({ where: { id }, data: { status: 'APPROVED' } });
-  revalidatePath('/admin/timesheets');
-}
-
-export async function approveMonth(year: number, month: number) {
+export async function approveTimeEntry(id: string): Promise<ActionResult> {
   const { error } = await requireAdmin();
   if (error) return { error };
+  const entry = await prisma.timeEntry.findUnique({ where: { id } });
+  if (!entry) return { error: 'That time entry no longer exists.' };
+  if (!entry.clockOut) return { error: 'Still clocked in — this entry can only be approved once it has a clock-out time.' };
+  await prisma.timeEntry.update({ where: { id }, data: { status: 'APPROVED' } });
+  revalidatePath('/admin/timesheets');
+  return { success: true };
+}
+
+/**
+ * Reverses an approval. Sends the entry back to EDITED (not PENDING) so it reads
+ * as "an admin touched this" and lands in the same needs-approval bucket that
+ * approveMonth picks up. Written as an updateMany so the APPROVED precondition
+ * and the write are one atomic statement.
+ */
+export async function unapproveTimeEntry(id: string): Promise<ActionResult> {
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
+  const res = await prisma.timeEntry.updateMany({
+    where: { id, status: 'APPROVED' },
+    data: { status: 'EDITED', editedByAdminId: session.userId },
+  });
+  if (res.count === 0) return { error: 'That entry is not approved, so there is nothing to un-approve.' };
+  revalidatePath('/admin/timesheets');
+  return { success: true };
+}
+
+export async function approveMonth(year: number, month: number): Promise<{ error?: string; count?: number }> {
+  const { error } = await requireAdmin();
+  if (error) return { error };
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return { error: 'Invalid month.' };
+  }
   const start = fromZonedTime(`${year}-${String(month).padStart(2, '0')}-01T00:00:00.000`, SALON_TIMEZONE);
   const end = fromZonedTime(`${month === 12 ? year + 1 : year}-${String(month === 12 ? 1 : month + 1).padStart(2, '0')}-01T00:00:00.000`, SALON_TIMEZONE);
   const res = await prisma.timeEntry.updateMany({
@@ -77,9 +105,11 @@ export async function approveMonth(year: number, month: number) {
   return { count: res.count };
 }
 
-export async function deleteTimeEntry(id: string) {
+export async function deleteTimeEntry(id: string): Promise<ActionResult> {
   const { error } = await requireAdmin();
-  if (error) return;
-  await prisma.timeEntry.delete({ where: { id } });
+  if (error) return { error };
+  const res = await prisma.timeEntry.deleteMany({ where: { id } });
+  if (res.count === 0) return { error: 'That time entry has already been removed.' };
   revalidatePath('/admin/timesheets');
+  return { success: true };
 }

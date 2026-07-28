@@ -9,6 +9,7 @@ import {
   getCategoryContentBySlug,
 } from '@/app/services/category-content-service';
 import { Faq } from '@/components/seo/Faq';
+import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
 export const revalidate = 3600;
@@ -75,12 +76,26 @@ export default async function ServiceCategoryPage({
   const cat = await getCategoryContentBySlug(slug);
   if (!cat) notFound();
 
-  const [services, activeOffer, relatedResults] = await Promise.all([
+  const [services, activeOffer, relatedResults, keyedFaqs] = await Promise.all([
     getServicesForCategory(cat.category),
     getActiveGlobalOffer(),
     Promise.all(cat.relatedSlugs.map((s) => getCategoryContentBySlug(s))),
+    getFaqsByKey(`category:${cat.slug}`),
   ]);
   const related = relatedResults.filter((c): c is NonNullable<typeof c> => Boolean(c));
+
+  // FAQs come from two admin screens: the JSON block on this category row, and
+  // Faq rows saved under the key `category:<slug>` in Admin → FAQs. Show both,
+  // de-duplicated by question so a repeated entry is not indexed twice.
+  const seenQuestions = new Set<string>();
+  const faqItems = [...cat.faqs, ...keyedFaqs]
+    .filter(({ question }) => {
+      const key = question.trim().toLowerCase();
+      if (seenQuestions.has(key)) return false;
+      seenQuestions.add(key);
+      return true;
+    })
+    .map(({ question, answer }) => ({ question, answer }));
 
   const breadcrumbSchema = {
     '@context': 'https://schema.org',
@@ -161,15 +176,17 @@ export default async function ServiceCategoryPage({
       </section>
 
       {/* Long-form overview */}
-      <section className="container mx-auto px-4 py-20 max-w-3xl">
-        <div className="prose-lg space-y-6 text-zinc-700 leading-relaxed font-light">
-          {cat.overview.map((p, i) => (
-            <p key={i} className="text-lg">
-              {p}
-            </p>
-          ))}
-        </div>
-      </section>
+      {cat.overview.length > 0 && (
+        <section className="container mx-auto px-4 py-20 max-w-3xl">
+          <div className="prose-lg space-y-6 text-zinc-700 leading-relaxed font-light">
+            {cat.overview.map((p, i) => (
+              <p key={i} className="text-lg">
+                {p}
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Pricing table */}
       <section className="container mx-auto px-4 py-12 max-w-4xl">
@@ -230,69 +247,77 @@ export default async function ServiceCategoryPage({
       </section>
 
       {/* What's included */}
-      <section className="bg-zinc-50 border-y border-zinc-100 py-20">
-        <div className="container mx-auto px-4 max-w-3xl">
+      {cat.includes.length > 0 && (
+        <section className="bg-zinc-50 border-y border-zinc-100 py-20">
+          <div className="container mx-auto px-4 max-w-3xl">
+            <div className="text-center mb-12">
+              <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
+              <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
+                What&apos;s included
+              </h2>
+            </div>
+            <ul className="grid md:grid-cols-2 gap-4">
+              {cat.includes.map((item, i) => (
+                <li key={i} className="flex items-start gap-3 bg-white p-5 rounded-lg border border-zinc-100">
+                  <span className="mt-0.5 w-5 h-5 rounded-full bg-zinc-900/10 flex items-center justify-center shrink-0">
+                    <svg className="w-3 h-3 text-zinc-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </span>
+                  <span className="text-zinc-700 font-light leading-relaxed">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* Process */}
+      {cat.process.length > 0 && (
+        <section className="container mx-auto px-4 py-20 max-w-3xl">
           <div className="text-center mb-12">
             <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
             <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
-              What&apos;s included
+              What to expect
             </h2>
           </div>
-          <ul className="grid md:grid-cols-2 gap-4">
-            {cat.includes.map((item, i) => (
-              <li key={i} className="flex items-start gap-3 bg-white p-5 rounded-lg border border-zinc-100">
-                <span className="mt-0.5 w-5 h-5 rounded-full bg-zinc-900/10 flex items-center justify-center shrink-0">
-                  <svg className="w-3 h-3 text-zinc-900" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
+          <ol className="space-y-8">
+            {cat.process.map((p, i) => (
+              <li key={i} className="flex gap-6">
+                <span className="shrink-0 w-12 h-12 rounded-full border-2 border-zinc-300 flex items-center justify-center text-zinc-900 font-serif text-xl">
+                  {i + 1}
                 </span>
-                <span className="text-zinc-700 font-light leading-relaxed">{item}</span>
+                <div>
+                  <h3 className="text-xl font-serif text-zinc-900 mb-2">{p.step}</h3>
+                  <p className="text-zinc-600 font-light leading-relaxed">{p.detail}</p>
+                </div>
               </li>
             ))}
-          </ul>
-        </div>
-      </section>
+          </ol>
+        </section>
+      )}
 
-      {/* Process */}
-      <section className="container mx-auto px-4 py-20 max-w-3xl">
-        <div className="text-center mb-12">
-          <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
-          <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
-            What to expect
-          </h2>
-        </div>
-        <ol className="space-y-8">
-          {cat.process.map((p, i) => (
-            <li key={i} className="flex gap-6">
-              <span className="shrink-0 w-12 h-12 rounded-full border-2 border-zinc-300 flex items-center justify-center text-zinc-900 font-serif text-xl">
-                {i + 1}
-              </span>
-              <div>
-                <h3 className="text-xl font-serif text-zinc-900 mb-2">{p.step}</h3>
-                <p className="text-zinc-600 font-light leading-relaxed">{p.detail}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {/* Aftercare */}
+      {/* Aftercare — the heading and tips are optional; the booking CTA is not. */}
       <section className="bg-zinc-900 text-white py-20">
         <div className="container mx-auto px-4 max-w-3xl">
-          <div className="text-center mb-12">
-            <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
-            <h2 className="text-3xl md:text-4xl font-serif tracking-tight">
-              How to look after it
-            </h2>
-          </div>
-          <ul className="space-y-4">
-            {cat.aftercare.map((tip, i) => (
-              <li key={i} className="flex gap-4 items-start text-zinc-300 font-light leading-relaxed">
-                <span className="shrink-0 mt-2 w-1.5 h-1.5 rounded-full bg-white/50" />
-                <span>{tip}</span>
-              </li>
-            ))}
-          </ul>
+          {cat.aftercare.length > 0 && (
+            <>
+              <div className="text-center mb-12">
+                <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
+                <h2 className="text-3xl md:text-4xl font-serif tracking-tight">
+                  How to look after it
+                </h2>
+              </div>
+              <ul className="space-y-4">
+                {cat.aftercare.map((tip, i) => (
+                  <li key={i} className="flex gap-4 items-start text-zinc-300 font-light leading-relaxed">
+                    <span className="shrink-0 mt-2 w-1.5 h-1.5 rounded-full bg-white/50" />
+                    <span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <div className="mt-12 text-center">
             <Link
               href="/book"
@@ -304,12 +329,14 @@ export default async function ServiceCategoryPage({
         </div>
       </section>
 
-      {/* FAQ */}
-      <Faq
-        title={`${cat.category} FAQs`}
-        intro={`Common questions about ${cat.category.toLowerCase()} at Harbour Hair Salon.`}
-        items={cat.faqs}
-      />
+      {/* FAQ — omitted entirely when empty so no bare heading or empty FAQPage schema is emitted. */}
+      {faqItems.length > 0 && (
+        <Faq
+          title={`${cat.category} FAQs`}
+          intro={`Common questions about ${cat.category.toLowerCase()} at Harbour Hair Salon.`}
+          items={faqItems}
+        />
+      )}
 
       {/* Related */}
       {related.length > 0 && (

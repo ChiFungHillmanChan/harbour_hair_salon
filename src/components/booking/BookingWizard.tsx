@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { fetchSlots, submitBooking, validateDiscountCode } from '@/app/actions/booking';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
+import { applyOfferToPrice, type ActiveOffer } from '@/app/services/offer-pricing';
 
 // Define a ClientService type where price is number instead of Decimal
 type ClientService = Omit<Service, 'price'> & { price: number };
@@ -22,6 +23,8 @@ type Step = 'SERVICE' | 'STYLIST' | 'DATE' | 'CONFIRM';
 interface BookingWizardProps {
   services: ClientService[];
   stylists: PublicStylist[];
+  /** The live site-wide offer, so the wizard charges/shows what the public pages advertise. */
+  activeOffer?: ActiveOffer;
 }
 
 const CATEGORIES = [
@@ -32,13 +35,16 @@ const CATEGORIES = [
   'Styling'
 ];
 
-export function BookingWizard({ services, stylists }: BookingWizardProps) {
+export function BookingWizard({ services, stylists, activeOffer = null }: BookingWizardProps) {
   const [step, setStep] = useState<Step>('SERVICE');
   const [selectedService, setSelectedService] = useState<ClientService | null>(null);
   const [selectedStylist, setSelectedStylist] = useState<SelectedStylist | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  // True when the last slot lookup failed (vs a genuinely empty day) — lets us
+  // show "couldn't load times" instead of implying the salon is fully booked.
+  const [slotLoadFailed, setSlotLoadFailed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
@@ -68,13 +74,26 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
       let cancelled = false;
       const loadSlots = async () => {
         setIsLoading(true);
+        setSlotLoadFailed(false);
         // Reset selected time when date/stylist changes
         setSelectedTime(null);
-        const slots = await fetchSlots(selectedStylist.id, format(selectedDate, 'yyyy-MM-dd'), selectedService.duration);
-        // Ignore a response that arrived after the inputs changed (out-of-order guard)
-        if (cancelled) return;
-        setAvailableSlots(slots.filter(s => s.available).map(s => s.time));
-        setIsLoading(false);
+        try {
+          const result = await fetchSlots(selectedStylist.id, format(selectedDate, 'yyyy-MM-dd'), selectedService.duration);
+          // Ignore a response that arrived after the inputs changed (out-of-order guard)
+          if (cancelled) return;
+          if (result.ok) {
+            setAvailableSlots(result.slots.filter(s => s.available).map(s => s.time));
+          } else {
+            setAvailableSlots([]);
+            setSlotLoadFailed(true);
+          }
+        } catch {
+          if (cancelled) return;
+          setAvailableSlots([]);
+          setSlotLoadFailed(true);
+        } finally {
+          if (!cancelled) setIsLoading(false);
+        }
       };
       loadSlots();
       return () => { cancelled = true; };
@@ -106,25 +125,33 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
     setDiscountError('');
     setIsValidatingDiscount(true);
 
-    const result = await validateDiscountCode(discountCode);
+    try {
+      const result = await validateDiscountCode(discountCode);
 
-    if (result.valid) {
-      setAppliedDiscount({
-        code: discountCode,
-        value: result.value!,
-        type: result.type!,
-      });
-      setDiscountError('');
-    } else {
+      if (result.valid) {
+        setAppliedDiscount({
+          code: discountCode,
+          value: result.value!,
+          type: result.type!,
+        });
+        setDiscountError('');
+      } else {
+        setAppliedDiscount(null);
+        setDiscountError(result.error || 'Invalid code');
+      }
+    } catch {
       setAppliedDiscount(null);
-      setDiscountError(result.error || 'Invalid code');
+      setDiscountError('Could not check that code. Please try again.');
+    } finally {
+      setIsValidatingDiscount(false);
     }
-    setIsValidatingDiscount(false);
   };
 
   const getFinalPrice = () => {
     if (!selectedService) return 0;
-    const originalPrice = selectedService.price;
+    // Start from the site-wide offer price (what the public pages advertise and
+    // what the server records as priceAtBooking), then apply any discount code.
+    const originalPrice = applyOfferToPrice(selectedService.price, activeOffer);
     if (!appliedDiscount) return originalPrice;
 
     if (appliedDiscount.type === 'PERCENTAGE') {
@@ -142,23 +169,30 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
 
     setIsLoading(true);
     setBookingError(null);
-    const result = await submitBooking({
-      stylistId: selectedStylist.id,
-      serviceId: selectedService.id,
-      // Send the salon-local calendar day the customer saw as a plain string so
-      // the server (slot grid, conflict window and weekday) all share one day
-      // frame — a browser-local Date would drift a day under BST.
-      date: format(selectedDate, 'yyyy-MM-dd'),
-      time: selectedTime,
-      discountCode: appliedDiscount?.code,
-      consultationForServiceId: consultationOrigin?.id,
-    });
+    try {
+      const result = await submitBooking({
+        stylistId: selectedStylist.id,
+        serviceId: selectedService.id,
+        // Send the salon-local calendar day the customer saw as a plain string so
+        // the server (slot grid, conflict window and weekday) all share one day
+        // frame — a browser-local Date would drift a day under BST.
+        date: format(selectedDate, 'yyyy-MM-dd'),
+        time: selectedTime,
+        discountCode: appliedDiscount?.code,
+        consultationForServiceId: consultationOrigin?.id,
+      });
 
-    setIsLoading(false);
-    if (result.success) {
-      setIsSubmitted(true);
-    } else {
-      setBookingError(result.error || 'Booking failed. Please try again.');
+      if (result.success) {
+        setIsSubmitted(true);
+      } else {
+        setBookingError(result.error || 'Booking failed. Please try again.');
+      }
+    } catch {
+      // A rejected action (dropped connection, DB error) must not leave the
+      // button stuck on "Processing…" — surface a message and re-enable it.
+      setBookingError('Something went wrong. Please try again, or call the salon.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -386,7 +420,14 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                         )}
                       </div>
                     </div>
-                    <span className="font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">£{service.price.toFixed(2)}</span>
+                    {activeOffer ? (
+                      <span className="font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">
+                        <span className="line-through text-zinc-400 text-base mr-2">£{service.price.toFixed(2)}</span>
+                        £{applyOfferToPrice(service.price, activeOffer).toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">£{service.price.toFixed(2)}</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -567,8 +608,8 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                   <svg className="w-12 h-12 text-zinc-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <p className="font-medium">No appointments available</p>
-                  <p className="text-sm text-zinc-500 mt-1">Please try selecting a different date or stylist.</p>
+                  <p className="font-medium">{slotLoadFailed ? "We couldn't load available times" : 'No appointments available'}</p>
+                  <p className="text-sm text-zinc-500 mt-1">{slotLoadFailed ? 'Please try again in a moment, or call the salon to book.' : 'Please try selecting a different date or stylist.'}</p>
                 </div>
               )}
             </div>
@@ -630,13 +671,19 @@ export function BookingWizard({ services, stylists }: BookingWizardProps) {
                 <div className="flex justify-between items-center">
                   <span className="text-zinc-600 font-medium">Total Price</span>
                   <div className="flex items-center gap-3">
-                    {appliedDiscount ? (
+                    {appliedDiscount || activeOffer ? (
                       <>
                         <span className="line-through text-zinc-400 text-sm">£{selectedService?.price.toFixed(2)}</span>
                         <span className="text-xl font-bold text-zinc-900">£{getFinalPrice().toFixed(2)}</span>
-                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md font-medium border border-green-200">
-                          {appliedDiscount.code} applied
-                        </span>
+                        {appliedDiscount ? (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md font-medium border border-green-200">
+                            {appliedDiscount.code} applied
+                          </span>
+                        ) : (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-md font-medium border border-green-200">
+                            Offer applied
+                          </span>
+                        )}
                       </>
                     ) : (
                       <span className="text-xl font-bold text-zinc-900">£{selectedService?.price.toFixed(2)}</span>

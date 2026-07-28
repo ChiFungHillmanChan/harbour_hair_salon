@@ -9,7 +9,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function UnsubscribePage() {
+export default async function UnsubscribePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ email?: string }>;
+}) {
+  const { email } = await searchParams;
   return (
     <div className="min-h-screen bg-zinc-50 py-16 px-4">
       <div className="mx-auto max-w-md rounded-xl border border-zinc-200 bg-white p-8 shadow-sm">
@@ -18,7 +23,7 @@ export default function UnsubscribePage() {
           Enter your email address and we will remove it from Harbour Hair Salon marketing emails.
           Booking confirmations, appointment changes and service emails may still be sent when needed.
         </p>
-        <UnsubscribeForm />
+        <UnsubscribeForm defaultEmail={email ?? ''} />
         <p className="mt-6 text-sm text-zinc-500">
           Need help? <Link href="/contact" className="text-zinc-900 underline">Contact the salon</Link>.
         </p>

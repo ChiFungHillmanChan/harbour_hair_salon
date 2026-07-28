@@ -25,23 +25,19 @@ interface AppointmentReminderProps {
 const BRAND = '#18181b';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
+import { formatSalonDate, formatSalonTime, salonRelativeDay } from '@/app/services/salon-time';
 
 export function AppointmentReminder({ appointment }: AppointmentReminderProps) {
-  const dateFormatted = appointment.date.toLocaleDateString('en-GB', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-  const timeFormatted = appointment.date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const dateFormatted = formatSalonDate(appointment.date);
+  const timeFormatted = formatSalonTime(appointment.date);
+  // The reminder cron scans a 36h window, so a picked-up appointment can be
+  // today rather than tomorrow — say the right word instead of always "tomorrow".
+  const when = salonRelativeDay(appointment.date) ?? 'soon';
 
   return (
     <Html>
       <Head />
-      <Preview>Reminder: your appointment is tomorrow — {appointment.service.name} at {timeFormatted}</Preview>
+      <Preview>Reminder: your appointment is {when} — {appointment.service.name} at {timeFormatted}</Preview>
       <Body style={{ backgroundColor: '#f4f4f5', fontFamily: 'Georgia, serif', margin: 0, padding: '32px 0' }}>
         <Container style={{ maxWidth: '560px', margin: '0 auto', backgroundColor: '#ffffff', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e4e4e7' }}>
           {/* Header */}
@@ -57,10 +53,10 @@ export function AppointmentReminder({ appointment }: AppointmentReminderProps) {
           {/* Body */}
           <Section style={{ padding: '40px 40px 24px' }}>
             <Text style={{ fontSize: '24px', fontWeight: 'bold', color: '#18181b', margin: '0 0 8px' }}>
-              See You Tomorrow!
+              {when === 'today' ? 'See You Today!' : 'See You Tomorrow!'}
             </Text>
             <Text style={{ fontSize: '15px', color: '#52525b', margin: '0 0 24px', lineHeight: '1.6' }}>
-              Hi {appointment.user.name || 'there'}, this is a friendly reminder about your appointment tomorrow.
+              Hi {appointment.user.name || 'there'}, this is a friendly reminder about your appointment {when}.
             </Text>
 
             <Hr style={{ borderColor: '#e4e4e7', margin: '0 0 24px' }} />

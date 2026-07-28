@@ -10,6 +10,9 @@ import {
   salonDateKey,
   salonMinutesOfDay,
   toSalonDateStr,
+  formatSalonDate,
+  formatSalonTime,
+  salonRelativeDay,
 } from './salon-time';
 
 // These assertions are host-timezone independent: they pin the salon wall-clock
@@ -38,6 +41,39 @@ test('exposes salon-local calendar date, weekday and minutes', () => {
   assert.equal(r.dayOfWeek, 6);
   assert.equal(r.timeMinutes, 600);
   assert.equal(r.utc.toISOString(), '2000-01-01T10:00:00.000Z');
+});
+
+// Presentation formatters must show SALON-local time regardless of the host
+// timezone. On Vercel (TZ=UTC) an unpinned toLocaleTimeString printed a 14:00
+// BST booking as "13:00" in every email — these assertions fail if anyone drops
+// the timeZone pin again. They must hold whether the test host is UTC or London.
+test('formatSalonTime shows salon-local time for a BST instant (regression: email off-by-one-hour)', () => {
+  // 2026-08-01 14:00 BST is stored as 13:00Z.
+  const instant = new Date('2026-08-01T13:00:00.000Z');
+  assert.equal(formatSalonTime(instant), '14:00');
+});
+
+test('formatSalonTime is correct in winter (GMT)', () => {
+  const instant = new Date('2026-01-15T09:30:00.000Z');
+  assert.equal(formatSalonTime(instant), '09:30');
+});
+
+test('formatSalonDate shows the salon-local date for a BST instant', () => {
+  const instant = new Date('2026-08-01T13:00:00.000Z');
+  assert.equal(formatSalonDate(instant), 'Saturday, 1 August 2026');
+});
+
+test('formatSalonDate does not roll the date backward late at night (BST)', () => {
+  // 2026-08-01 23:30 BST = 22:30Z — must still read 1 August, not 1 August 22:30 UTC edge cases.
+  const instant = new Date('2026-08-01T22:30:00.000Z');
+  assert.equal(formatSalonDate(instant), 'Saturday, 1 August 2026');
+});
+
+test('salonRelativeDay classifies today / tomorrow / further out in salon days', () => {
+  const now = new Date('2026-08-01T09:00:00.000Z'); // 10:00 BST, 1 Aug
+  assert.equal(salonRelativeDay(new Date('2026-08-01T16:00:00.000Z'), now), 'today');
+  assert.equal(salonRelativeDay(new Date('2026-08-02T10:00:00.000Z'), now), 'tomorrow');
+  assert.equal(salonRelativeDay(new Date('2026-08-04T10:00:00.000Z'), now), null);
 });
 
 test('isWithinAvailability — a time inside the window is allowed', () => {

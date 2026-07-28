@@ -88,27 +88,47 @@ const moderateSchema = z.object({
   action: z.enum(['APPROVE', 'REJECT']),
 });
 
-export async function moderateReview(formData: FormData) {
+export type ModerationActionState = { error?: string; success?: boolean };
+
+/**
+ * Set a review's published state. Bound-argument shape so the admin rows can
+ * drive it through RowActionButton and surface a failure (expired session,
+ * deleted review) next to the review instead of throwing.
+ *
+ * There is deliberately no guard on the CURRENT status: moderation runs both
+ * ways, so REJECT doubles as "unpublish" for a review that was already
+ * approved, and APPROVE re-publishes one that was rejected by mistake.
+ */
+export async function moderateReview(
+  reviewId: string,
+  action: 'APPROVE' | 'REJECT'
+): Promise<ModerationActionState> {
   const session = await verifySession();
   if (session.role !== 'ADMIN') {
-    throw new Error('Unauthorized');
+    return { error: 'Unauthorized' };
   }
 
-  const parsed = moderateSchema.safeParse({
-    reviewId: formData.get('reviewId'),
-    action: formData.get('action'),
-  });
+  const parsed = moderateSchema.safeParse({ reviewId, action });
 
   if (!parsed.success) {
-    throw new Error('Invalid moderation payload');
+    return { error: 'Invalid moderation payload' };
   }
 
-  await prisma.review.update({
-    where: { id: parsed.data.reviewId },
-    data: { status: parsed.data.action === 'APPROVE' ? 'APPROVED' : 'REJECTED' },
-  });
+  try {
+    await prisma.review.update({
+      where: { id: parsed.data.reviewId },
+      data: { status: parsed.data.action === 'APPROVE' ? 'APPROVED' : 'REJECTED' },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      return { error: 'That review no longer exists.' };
+    }
+    console.error('moderateReview failed:', error);
+    return { error: 'Failed to update this review. Please try again.' };
+  }
 
   revalidatePath('/admin/reviews');
   revalidatePath('/reviews');
   revalidatePath('/');
+  return { success: true };
 }

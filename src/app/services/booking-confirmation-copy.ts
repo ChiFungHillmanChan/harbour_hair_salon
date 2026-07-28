@@ -1,10 +1,9 @@
 import type { AppointmentWithDetails } from '@/components/emails/BookingConfirmation';
+import { formatSalonDate, formatSalonTime } from '@/app/services/salon-time';
 
 export function buildBookingConfirmationText(appointment: AppointmentWithDetails): string {
-  const date = appointment.date.toLocaleDateString('en-GB', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
-  const time = appointment.date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const date = formatSalonDate(appointment.date);
+  const time = formatSalonTime(appointment.date);
   const reference = appointment.id.slice(-8).toUpperCase();
 
   return [

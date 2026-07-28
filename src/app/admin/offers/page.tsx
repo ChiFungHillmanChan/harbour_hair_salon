@@ -11,6 +11,13 @@ export default async function AdminOffersPage() {
     orderBy: { createdAt: 'desc' },
   });
 
+  // The public pages and the booking price resolve the site-wide discount with
+  // findFirst({ isActive, isGlobal }) ordered by createdAt desc, so exactly ONE
+  // global offer is ever applied. Offers are already listed newest first, so
+  // that winner is the first match here — every other global offer is dormant,
+  // and the badge has to say so rather than implying they all apply.
+  const effectiveGlobalOfferId = offers.find((o) => o.isActive && o.isGlobal)?.id ?? null;
+
   const updateOfferAction: (
     prev: OfferActionState,
     formData: FormData
@@ -36,12 +43,31 @@ export default async function AdminOffersPage() {
             isGlobal: offer.isGlobal,
           };
 
+          const isEffectiveGlobal = offer.id === effectiveGlobalOfferId;
+
           return (
             <div key={offer.id} className="bg-white rounded-lg shadow border border-zinc-200 p-6">
               <div className="flex justify-between items-start mb-4">
                 {offer.isGlobal && (
-                  <span className="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-zinc-900 text-white rounded-full">
-                    Global Discount
+                  <span
+                    title={
+                      isEffectiveGlobal
+                        ? 'This is the site-wide discount currently applied to service prices.'
+                        : offer.isActive
+                          ? 'A newer active global offer is applied instead — only the most recent one takes effect.'
+                          : 'Inactive, so it is not applied to service prices.'
+                    }
+                    className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full ${
+                      isEffectiveGlobal
+                        ? 'bg-zinc-900 text-white'
+                        : 'bg-zinc-100 text-zinc-500 border border-zinc-300'
+                    }`}
+                  >
+                    {isEffectiveGlobal
+                      ? 'Global — in effect'
+                      : offer.isActive
+                        ? 'Global — superseded'
+                        : 'Global — not in effect'}
                   </span>
                 )}
                 <span className={`ml-auto px-2 py-1 text-xs font-medium rounded-full ${offer.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>

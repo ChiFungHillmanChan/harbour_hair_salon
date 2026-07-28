@@ -191,6 +191,12 @@ export async function deleteStylist(formData: FormData): Promise<void> {
   const id = formData.get('id');
   if (typeof id !== 'string' || !id) throw new Error('Missing id');
 
+  // Read the slug while the row still exists: /stylists/[slug] is ISR
+  // (revalidate 3600), so without purging that exact path the deleted stylist's
+  // profile stays live and bookable for up to an hour.
+  const existing = await prisma.stylist.findUnique({ where: { id }, select: { slug: true } });
+  if (!existing) throw new Error('Stylist not found');
+
   const appointmentCount = await prisma.appointment.count({ where: { stylistId: id } });
   if (appointmentCount > 0) {
     throw new Error(
@@ -201,6 +207,7 @@ export async function deleteStylist(formData: FormData): Promise<void> {
   await prisma.stylist.delete({ where: { id }, select: { id: true } });
 
   revalidatePath('/stylists');
+  if (existing.slug) revalidatePath(`/stylists/${existing.slug}`);
   revalidatePath('/');
   revalidatePath('/admin/stylists');
   revalidatePath('/sitemap.xml');

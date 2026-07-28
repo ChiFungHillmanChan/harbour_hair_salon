@@ -5,6 +5,7 @@ import { useActionState } from 'react';
 import { BlogSectionEditor } from './BlogSectionEditor';
 import type { BlogActionState } from '@/app/actions/admin-blog';
 import type { BlogPostRuntime } from '@/app/services/blog-service';
+import { SALON_TIMEZONE } from '@/app/services/salon-time';
 
 type FormAction = (prev: BlogActionState, formData: FormData) => Promise<BlogActionState>;
 
@@ -15,9 +16,26 @@ interface BlogPostFormProps {
   saved?: boolean;
 }
 
+const salonDateTimeParts = new Intl.DateTimeFormat('en-GB', {
+  timeZone: SALON_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/**
+ * "YYYY-MM-DDTHH:mm" in salon time, not the browser's. Reading the local getters
+ * would re-save the published date shifted by the editor's UTC offset each time
+ * the form is opened abroad.
+ */
 function toDateTimeLocal(date: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const parts = salonDateTimeParts.formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '00';
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
 }
 
 export function BlogPostForm({ mode, action, post, saved }: BlogPostFormProps) {
@@ -25,7 +43,9 @@ export function BlogPostForm({ mode, action, post, saved }: BlogPostFormProps) {
     status: 'idle',
   });
 
-  const showSavedBanner = saved || state.status === 'success';
+  // `saved` comes from ?saved=1 and never clears, so it must not outlive a
+  // failed save — otherwise the green banner sits next to the red error.
+  const showSavedBanner = state.status === 'success' || (!!saved && state.status !== 'error');
 
   return (
     <form action={formAction} className="space-y-8 pb-16">
@@ -147,7 +167,7 @@ export function BlogPostForm({ mode, action, post, saved }: BlogPostFormProps) {
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
           />
           <p className="text-xs text-zinc-500 mt-1">
-            Path to an image in /public or a full URL.
+            Path to an image in /public (starting with /), or a Cloudinary/Google image URL.
           </p>
         </div>
 

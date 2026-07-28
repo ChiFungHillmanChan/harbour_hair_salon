@@ -14,7 +14,14 @@ export async function getKioskRoster() {
   const employees = await prisma.employee.findMany({
     where: { isActive: true },
     orderBy: { name: 'asc' },
-    include: { stylist: { select: { imageUrl: true } } },
+    // Project in the query, not just in the mapping below — keep pinHash, pay
+    // rates and salary out of what a kiosk device (behind only a cookie) loads.
+    select: {
+      id: true,
+      name: true,
+      title: true,
+      stylist: { select: { imageUrl: true } },
+    },
   });
   const openByEmployee = new Set(
     (await prisma.timeEntry.findMany({ where: { clockOut: null }, select: { employeeId: true } })).map((t) => t.employeeId),

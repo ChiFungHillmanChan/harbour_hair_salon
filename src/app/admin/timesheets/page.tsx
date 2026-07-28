@@ -3,10 +3,22 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { format } from 'date-fns';
 import { SALON_TIMEZONE, salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
 import { segmentWorkedMinutes } from '@/app/services/timesheet-calc';
-import { approveTimeEntry, approveMonth } from '@/app/actions/timesheets';
+import { approveTimeEntry, unapproveTimeEntry, deleteTimeEntry } from '@/app/actions/timesheets';
 import { evaluateShift, type ShiftEvaluation } from '@/app/services/shift-flags';
+import { RowActionButton } from '@/components/admin/RowActionButton';
+import { TimeEntryEditForm } from '@/components/admin/TimeEntryEditForm';
+import { ApproveMonthButton } from '@/components/admin/ApproveMonthButton';
+import { MonthSelector } from '@/components/admin/MonthSelector';
 
 const GRACE_MIN = 5;
+
+/** TimeEntry.status is a raw code in the database; the owner sees plain English. */
+const STATUS_LABELS: Record<string, string> = {
+  OPEN: 'Still clocked in',
+  PENDING: 'Needs approval',
+  EDITED: 'Edited — needs approval',
+  APPROVED: 'Approved',
+};
 
 function monthBounds(year: number, month: number) {
   const start = fromZonedTime(`${year}-${String(month).padStart(2, '0')}-01T00:00:00.000`, SALON_TIMEZONE);
@@ -21,11 +33,17 @@ function parseShiftMin(t: string): number {
   return h * 60 + m;
 }
 
+function inRange(value: number, min: number, max: number): number | null {
+  return Number.isInteger(value) && value >= min && value <= max ? value : null;
+}
+
 export default async function TimesheetsPage({ searchParams }: { searchParams: Promise<{ year?: string; month?: string }> }) {
   const sp = await searchParams;
   const now = toZonedTime(new Date(), SALON_TIMEZONE);
-  const year = Number(sp.year) || now.getFullYear();
-  const month = Number(sp.month) || now.getMonth() + 1;
+  // Timesheets default to the month in progress; out-of-range params fall back
+  // rather than building nonsense month bounds.
+  const year = inRange(Number(sp.year), 2020, 2100) ?? now.getFullYear();
+  const month = inRange(Number(sp.month), 1, 12) ?? now.getMonth() + 1;
   const { start, end } = monthBounds(year, month);
 
   const [entries, shifts] = await Promise.all([
@@ -66,14 +84,16 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
   }
 
   const fmt = (d: Date) => format(toZonedTime(d, SALON_TIMEZONE), 'dd MMM HH:mm');
+  const dateInput = (d: Date) => format(toZonedTime(d, SALON_TIMEZONE), 'yyyy-MM-dd');
+  const timeInput = (d: Date) => format(toZonedTime(d, SALON_TIMEZONE), 'HH:mm');
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
       <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">Timesheets — {year}-{String(month).padStart(2, '0')}</h1>
 
-      <form action={async () => { 'use server'; await approveMonth(year, month); }}>
-        <button className="bg-zinc-900 text-white px-4 py-2 rounded">Approve all (closed) for this month</button>
-      </form>
+      <MonthSelector basePath="/admin/timesheets" year={year} month={month} />
+
+      <ApproveMonthButton year={year} month={month} />
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
@@ -90,12 +110,12 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
               const ev = shiftMap.get(evalKey);
               return (
                 <tr key={e.id} className="border-b">
-                  <td className="p-2">{e.employee.name}</td>
-                  <td className="p-2 whitespace-nowrap">{fmt(e.clockIn)}</td>
-                  <td className="p-2 whitespace-nowrap">{e.clockOut ? fmt(e.clockOut) : <span className="text-zinc-900">OPEN</span>}</td>
-                  <td className="p-2 whitespace-nowrap">{hours}</td>
-                  <td className="p-2 whitespace-nowrap">{e.status}</td>
-                  <td className="p-2 space-x-1 whitespace-nowrap">
+                  <td className="p-2 align-top">{e.employee.name}</td>
+                  <td className="p-2 align-top whitespace-nowrap">{fmt(e.clockIn)}</td>
+                  <td className="p-2 align-top whitespace-nowrap">{e.clockOut ? fmt(e.clockOut) : <span className="text-zinc-900">OPEN</span>}</td>
+                  <td className="p-2 align-top whitespace-nowrap">{hours}</td>
+                  <td className="p-2 align-top whitespace-nowrap">{STATUS_LABELS[e.status] ?? e.status}</td>
+                  <td className="p-2 align-top space-x-1 whitespace-nowrap">
                     {ev?.late && (
                       <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
                         Late {ev.lateByMin}m
@@ -107,12 +127,43 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
                       </span>
                     )}
                   </td>
-                  <td className="p-2 whitespace-nowrap">
-                    {e.clockOut && e.status !== 'APPROVED' && (
-                      <form action={async () => { 'use server'; await approveTimeEntry(e.id); }}>
-                        <button className="text-zinc-900 underline">Approve</button>
-                      </form>
-                    )}
+                  <td className="p-2 align-top">
+                    <div className="flex flex-col items-start gap-1">
+                      {e.clockOut && e.status !== 'APPROVED' && (
+                        <RowActionButton
+                          action={approveTimeEntry.bind(null, e.id)}
+                          label="Approve"
+                          pendingLabel="Approving…"
+                          buttonClassName="text-sm text-zinc-900 underline"
+                        />
+                      )}
+                      {e.status === 'APPROVED' && (
+                        <RowActionButton
+                          action={unapproveTimeEntry.bind(null, e.id)}
+                          label="Un-approve"
+                          pendingLabel="Un-approving…"
+                          buttonClassName="text-sm text-zinc-700 hover:text-zinc-900 underline"
+                        />
+                      )}
+                      <details>
+                        <summary className="cursor-pointer text-sm text-zinc-700 hover:text-zinc-900 underline">Edit</summary>
+                        <TimeEntryEditForm
+                          entryId={e.id}
+                          date={dateInput(e.clockIn)}
+                          clockInTime={timeInput(e.clockIn)}
+                          clockOutTime={e.clockOut ? timeInput(e.clockOut) : ''}
+                          breakMinutes={e.breakMinutes}
+                          note={e.note ?? ''}
+                        />
+                      </details>
+                      <RowActionButton
+                        action={deleteTimeEntry.bind(null, e.id)}
+                        label="Delete"
+                        pendingLabel="Deleting…"
+                        buttonClassName="text-sm text-red-600 hover:text-red-800"
+                        confirmMessage="Delete this time entry? This cannot be undone."
+                      />
+                    </div>
                   </td>
                 </tr>
               );

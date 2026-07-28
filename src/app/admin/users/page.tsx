@@ -3,6 +3,7 @@ import { AdminUserForm } from '@/components/admin/AdminUserForm';
 import { deleteAdminUser, promoteGoogleUserToAdmin } from '@/app/actions/admin';
 import { verifySession } from '@/app/lib/session';
 import { ResetPasswordButton } from '@/components/admin/ResetPasswordButton';
+import { RowActionButton } from '@/components/admin/RowActionButton';
 
 export default async function AdminUsersPage() {
   const session = await verifySession();
@@ -62,9 +63,13 @@ export default async function AdminUsersPage() {
                   {admin.id !== session.userId && (
                     <div className="flex justify-end gap-2">
                       <ResetPasswordButton userId={admin.id} userName={admin.name || 'User'} />
-                      <form action={deleteAdminUser.bind(null, admin.id)}>
-                        <button className="text-red-600 hover:text-red-900">Delete</button>
-                      </form>
+                      <RowActionButton
+                        action={deleteAdminUser.bind(null, admin.id)}
+                        label="Delete"
+                        pendingLabel="Deleting…"
+                        buttonClassName="text-red-600 hover:text-red-900"
+                        confirmMessage={`Delete admin "${admin.name || admin.email}"? This cannot be undone.`}
+                      />
                     </div>
                   )}
                   {admin.id === session.userId && (

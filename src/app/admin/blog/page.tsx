@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getAllPostsForAdmin } from '@/app/services/blog-service';
 import { deleteBlogPost, toggleBlogPostStatus } from '@/app/actions/admin-blog';
+import { RowActionButton } from '@/components/admin/RowActionButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,24 +124,23 @@ export default async function AdminBlogListPage() {
                       >
                         Edit
                       </Link>
-                      <form action={toggleBlogPostStatus}>
-                        <input type="hidden" name="id" value={post.id} />
-                        <button
-                          type="submit"
-                          className="text-xs font-medium px-3 py-1.5 rounded transition-colors text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
-                        >
-                          {post.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
-                        </button>
-                      </form>
-                      <form action={deleteBlogPost}>
-                        <input type="hidden" name="id" value={post.id} />
-                        <button
-                          type="submit"
-                          className="text-xs font-medium px-3 py-1.5 rounded transition-colors text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          Delete
-                        </button>
-                      </form>
+                      <RowActionButton
+                        action={toggleBlogPostStatus.bind(
+                          null,
+                          post.id,
+                          post.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED'
+                        )}
+                        label={post.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
+                        pendingLabel={post.status === 'PUBLISHED' ? 'Unpublishing…' : 'Publishing…'}
+                        buttonClassName="text-xs font-medium px-3 py-1.5 rounded transition-colors text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                      />
+                      <RowActionButton
+                        action={deleteBlogPost.bind(null, post.id)}
+                        label="Delete"
+                        pendingLabel="Deleting…"
+                        buttonClassName="text-xs font-medium px-3 py-1.5 rounded transition-colors text-red-600 hover:text-red-700 hover:bg-red-50"
+                        confirmMessage={`Permanently delete "${post.title}"? This cannot be undone.`}
+                      />
                     </div>
                   </td>
                 </tr>

@@ -19,7 +19,12 @@ const urlOrEmpty = z
   });
 
 const settingsSchema = z.object({
-  phone: z.string().trim().max(40).default('07831 830898'),
+  phone: z
+    .string()
+    .trim()
+    .max(40)
+    .regex(/^[0-9+()\s-]*$/, 'Phone can only contain digits, spaces and + - ( )')
+    .default('07831 830898'),
   twitterHandle: z.string().trim().max(40).default(''),
   gscVerification: z.string().trim().max(200).default(''),
   googleBusinessUrl: urlOrEmpty.default(''),
@@ -59,7 +64,28 @@ export async function updateSiteSettings(
     bookingEnabled: formData.get('bookingEnabled') === 'on',
   });
   if (!parsed.success) {
-    return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid input' };
+    // Name the offending field — otherwise the owner just sees a raw Zod message
+    // (e.g. "Too big: expected string to have <=400 characters") over 14 boxes
+    // with no idea which one to fix.
+    const issue = parsed.error.issues[0];
+    const FIELD_LABELS: Record<string, string> = {
+      phone: 'Phone number',
+      twitterHandle: 'Twitter handle',
+      gscVerification: 'Google verification code',
+      googleBusinessUrl: 'Google Business URL',
+      facebookUrl: 'Facebook URL',
+      instagramUrl: 'Instagram URL',
+      treatwellUrl: 'Treatwell URL',
+      freshaUrl: 'Fresha URL',
+      booksyUrl: 'Booksy URL',
+      heroEyebrow: 'Hero eyebrow text',
+      heroTitleLine1: 'Hero title line 1',
+      heroTitleLine2: 'Hero title line 2',
+      heroSubtitle: 'Hero subtitle',
+    };
+    const label = FIELD_LABELS[String(issue?.path[0] ?? '')];
+    const message = issue?.message ?? 'Invalid input';
+    return { status: 'error', message: label ? `${label}: ${message}` : message };
   }
 
   await prisma.siteSettings.upsert({

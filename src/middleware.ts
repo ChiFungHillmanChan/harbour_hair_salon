@@ -4,14 +4,24 @@ import { jwtVerify, SignJWT } from 'jose';
 import type { SessionPayload as FullSessionPayload } from '@/app/lib/jwt';
 import { SESSION_HINT_COOKIE } from '@/app/lib/session-hint';
 
-const secretKey = process.env.SESSION_SECRET;
-const key = secretKey ? new TextEncoder().encode(secretKey) : null;
+// Resolve the signing key per request rather than once at module load, and warn
+// loudly if it is missing — so an unset SESSION_SECRET surfaces in the logs as a
+// misconfiguration instead of silently bouncing every protected route to signin.
+function getKey(): Uint8Array | null {
+  const secretKey = process.env.SESSION_SECRET;
+  if (!secretKey) {
+    console.error('SESSION_SECRET is not set — all protected routes will reject.');
+    return null;
+  }
+  return new TextEncoder().encode(secretKey);
+}
 
 // Mirrors src/app/lib/jwt.ts SessionPayload, but with expiresAt as the string
 // it actually is once round-tripped through JSON in the JWT payload.
 type SessionPayload = Omit<FullSessionPayload, 'expiresAt'> & { expiresAt: string };
 
 async function getSessionFromRequest(request: NextRequest) {
+  const key = getKey();
   if (!key) return null;
   const cookie = request.cookies.get('session')?.value;
   if (!cookie) return null;
@@ -24,6 +34,7 @@ async function getSessionFromRequest(request: NextRequest) {
 }
 
 async function hasKioskCookie(request: NextRequest): Promise<boolean> {
+  const key = getKey();
   if (!key) return false;
   const cookie = request.cookies.get('kiosk')?.value;
   if (!cookie) return false;
@@ -84,7 +95,8 @@ export async function middleware(request: NextRequest) {
 
   // Sliding session: refresh token if less than 7 days remaining
   const response = NextResponse.next({ request: { headers: requestHeaders } });
-  if (session?.userId && key) {
+  const signingKey = getKey();
+  if (session?.userId && signingKey) {
     const timeLeft = new Date(session.expiresAt).getTime() - Date.now();
     if (timeLeft < 7 * 24 * 60 * 60 * 1000 && timeLeft > 0) {
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -97,7 +109,7 @@ export async function middleware(request: NextRequest) {
         .setProtectedHeader({ alg: 'HS256' })
         .setIssuedAt()
         .setExpirationTime('30d')
-        .sign(key);
+        .sign(signingKey);
 
       response.cookies.set('session', newToken, {
         httpOnly: true,

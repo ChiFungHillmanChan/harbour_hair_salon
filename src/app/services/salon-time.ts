@@ -90,6 +90,49 @@ export function salonDayWindow(instant: Date): { start: Date; end: Date } {
   };
 }
 
+/**
+ * Format an absolute instant as the salon-local (Europe/London) date, e.g.
+ * "Saturday, 1 August 2026". Pinned to the salon timezone so it is identical on
+ * a UTC server (Vercel) and in any visitor's browser — this is what stops the
+ * BST off-by-one-hour / off-by-one-day rendering. Use everywhere an appointment
+ * instant is shown to a human (emails, My Bookings, plain-text copy).
+ */
+export function formatSalonDate(instant: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALON_TIMEZONE,
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(instant);
+}
+
+/** Format an absolute instant as the salon-local time, e.g. "14:00". */
+export function formatSalonTime(instant: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALON_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(instant);
+}
+
+/**
+ * Relative wording for an appointment instant against "now", both compared in
+ * salon-local days: 'today', 'tomorrow', or null (further out). Lets the
+ * reminder email say the right thing instead of a hard-coded "tomorrow" — the
+ * reminder cron scans a 36h window, so an appointment picked up can be today.
+ */
+export function salonRelativeDay(instant: Date, now: Date = new Date()): 'today' | 'tomorrow' | null {
+  const target = salonDateKey(instant);
+  const todayKey = salonDateKey(now);
+  if (target === todayKey) return 'today';
+  // Tomorrow = the salon day after today. Compare against the key one day on.
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  if (target === salonDateKey(tomorrow)) return 'tomorrow';
+  return null;
+}
+
 /** Minutes since salon-local midnight (Europe/London) for an absolute instant. */
 export function salonMinutesOfDay(instant: Date): number {
   const parts = new Intl.DateTimeFormat('en-GB', {

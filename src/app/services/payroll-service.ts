@@ -212,18 +212,24 @@ export async function runPayroll(year: number, month: number) {
   return runPayrollWith(prisma as unknown as PayrollDb, year, month);
 }
 
-export async function updateAdjustment(lineId: string, amount: number, note: string) {
+export type PayrollMutationResult = { error?: string; success?: boolean };
+
+export async function updateAdjustment(lineId: string, amount: number, note: string): Promise<PayrollMutationResult> {
   const { default: prisma } = await import('@/app/lib/prisma');
   const line = await prisma.payrollLine.findUnique({ where: { id: lineId }, include: { period: true } });
-  if (!line || line.period.status !== 'DRAFT') return;
+  if (!line) return { error: 'That payroll line no longer exists.' };
+  if (line.period.status !== 'DRAFT') {
+    return { error: 'This payroll month is finalized. Reopen it before changing adjustments.' };
+  }
   const baseGross = Number(line.basePay.toString()) + Number(line.overtimePay.toString()) + Number(line.commissionPay.toString());
   await prisma.payrollLine.update({
     where: { id: lineId },
     data: { adjustments: amount, adjustmentNote: note || null, grossPay: round2(baseGross + amount) },
   });
+  return { success: true };
 }
 
-export async function finalizePayroll(periodId: string, adminId: string) {
+export async function finalizePayroll(periodId: string, adminId: string): Promise<PayrollMutationResult> {
   const { default: prisma } = await import('@/app/lib/prisma');
   // Atomically claim the period: only a DRAFT can be finalized, and only once.
   // Prevents a double-click (or a re-finalize) from re-snapshotting and
@@ -232,7 +238,7 @@ export async function finalizePayroll(periodId: string, adminId: string) {
     where: { id: periodId, status: 'DRAFT' },
     data: { status: 'FINALIZED', finalizedByAdminId: adminId, finalizedAt: new Date() },
   });
-  if (claim.count === 0) return; // already finalized or not found — no-op
+  if (claim.count === 0) return { error: 'That payroll month is not a draft — it may already be finalized.' };
 
   const lines = await prisma.payrollLine.findMany({ where: { periodId } });
   const lineUpdates = lines.map((l) =>
@@ -256,4 +262,25 @@ export async function finalizePayroll(periodId: string, adminId: string) {
   );
   // Status was already flipped atomically above; here we only snapshot the lines.
   await prisma.$transaction(lineUpdates);
+  return { success: true };
+}
+
+/**
+ * Reverses a finalize so a month can be corrected and recomputed. Mirrors
+ * finalizePayroll: the FINALIZED precondition and the status flip are one
+ * atomic claim, so two clicks can't both "reopen".
+ */
+export async function reopenPayroll(periodId: string): Promise<PayrollMutationResult> {
+  const { default: prisma } = await import('@/app/lib/prisma');
+  const claim = await prisma.payrollPeriod.updateMany({
+    where: { id: periodId, status: 'FINALIZED' },
+    data: { status: 'DRAFT', finalizedByAdminId: null, finalizedAt: null },
+  });
+  if (claim.count === 0) return { error: 'That payroll month is not finalized, so there is nothing to reopen.' };
+
+  // Clear the finalize-time snapshots: a DRAFT month's lines are recomputable,
+  // so a retained snapshot would describe figures that no longer hold. A fresh
+  // one is written if the month is finalized again.
+  await prisma.payrollLine.updateMany({ where: { periodId }, data: { snapshotJson: '' } });
+  return { success: true };
 }

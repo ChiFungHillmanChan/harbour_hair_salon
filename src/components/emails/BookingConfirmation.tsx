@@ -12,6 +12,7 @@ import {
   Column,
 } from '@react-email/components';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
+import { formatSalonDate, formatSalonTime } from '@/app/services/salon-time';
 
 export type AppointmentWithDetails = {
   id: string;
@@ -33,16 +34,8 @@ const MUTED = '#5F6B76';
 const SALON_ADDRESS = 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX';
 
 export function BookingConfirmation({ appointment }: BookingConfirmationProps) {
-  const dateFormatted = appointment.date.toLocaleDateString('en-GB', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-  const timeFormatted = appointment.date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const dateFormatted = formatSalonDate(appointment.date);
+  const timeFormatted = formatSalonTime(appointment.date);
   const bookingReference = appointment.id.slice(-8).toUpperCase();
 
   return (
