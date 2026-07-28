@@ -13,6 +13,7 @@ import { PasswordReset } from '@/components/emails/PasswordReset';
 import { RESET_TOKEN_TTL_MS } from '@/app/lib/password-reset';
 import { buildBookingConfirmationText } from './booking-confirmation-copy';
 import { salonRelativeDay } from './salon-time';
+import { SITE_URL } from '@/app/lib/site-url';
 
 export type AppointmentWithDetails = {
   id: string;
@@ -50,6 +51,7 @@ type SendArgs = {
   react: ReactElement;
   text?: string;
   idempotencyKey?: string;
+  headers?: Record<string, string>;
 };
 
 const SEND_TIMEOUT_MS = 10_000;
@@ -60,7 +62,7 @@ const SEND_TIMEOUT_MS = 10_000;
  * the caller can decide whether to fail loudly (cron: track + retry) or swallow
  * (booking flow: never fail a committed booking on an email hiccup).
  */
-async function send({ to, subject, react, text, idempotencyKey }: SendArgs): Promise<void> {
+async function send({ to, subject, react, text, idempotencyKey, headers }: SendArgs): Promise<void> {
   const resend = getResendClient();
   const replyTo = process.env.EMAIL_REPLY_TO?.trim();
   const result = await Promise.race([
@@ -72,16 +74,20 @@ async function send({ to, subject, react, text, idempotencyKey }: SendArgs): Pro
         react,
         ...(text ? { text } : {}),
         ...(replyTo ? { replyTo } : {}),
+        ...(headers ? { headers } : {}),
       },
       idempotencyKey ? { idempotencyKey } : undefined,
     ),
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Resend timed out after ${SEND_TIMEOUT_MS}ms for "${subject}" to ${to}`)), SEND_TIMEOUT_MS),
+      // Do NOT interpolate `to` (the customer's email) — these errors are logged
+      // to Vercel by every caller. The appointment id logged alongside is enough
+      // to correlate without depositing plaintext PII into the logs.
+      setTimeout(() => reject(new Error(`Resend timed out after ${SEND_TIMEOUT_MS}ms for "${subject}"`)), SEND_TIMEOUT_MS),
     ),
   ]);
   const { error } = result;
   if (error) {
-    throw new Error(`Resend failed for "${subject}" to ${to}: ${error.message ?? String(error)}`);
+    throw new Error(`Resend failed for "${subject}": ${error.message ?? String(error)}`);
   }
 }
 
@@ -190,9 +196,17 @@ export async function sendPasswordReset(
 }
 
 export async function sendNewsletterWelcome(email: string, phone: string): Promise<void> {
+  // List-Unsubscribe improves marketing deliverability (Gmail/Yahoo bulk-sender
+  // rules) and gives mail clients a one-click unsubscribe. The address param
+  // pre-fills the unsubscribe form.
+  const unsubscribeUrl = `${SITE_URL}/unsubscribe?email=${encodeURIComponent(email)}`;
   await send({
     to: email,
     subject: 'Welcome to Harbour Hair Salon',
     react: NewsletterWelcome({ phone }),
+    headers: {
+      'List-Unsubscribe': `<${unsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
   });
 }

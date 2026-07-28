@@ -6,7 +6,7 @@ import { createShift } from '@/app/actions/shifts';
 type Employee = { id: string; name: string };
 
 export function ShiftForm({ employees }: { employees: Employee[] }) {
-  const [state, action] = useActionState(createShift, undefined);
+  const [state, action, isPending] = useActionState(createShift, undefined);
 
   return (
     <form action={action} className="flex flex-wrap gap-3 items-end">
@@ -59,9 +59,10 @@ export function ShiftForm({ employees }: { employees: Employee[] }) {
       </div>
       <button
         type="submit"
-        className="bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+        disabled={isPending}
+        className="bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
       >
-        Add shift
+        {isPending ? 'Adding…' : 'Add shift'}
       </button>
     </form>
   );

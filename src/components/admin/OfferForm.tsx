@@ -78,7 +78,7 @@ export function OfferForm() {
               className="w-4 h-4 text-zinc-900 border-zinc-300 rounded focus:ring-zinc-900"
             />
             <label htmlFor="isGlobal" className="text-sm font-medium text-zinc-700">
-              Apply 10% Discount Badge to All Services
+              Apply discount badge to all services
             </label>
           </div>
         </div>

@@ -39,10 +39,20 @@ export async function getApprovedReviews(limit = 30) {
   });
 }
 
-export async function getPendingReviews() {
+/** Review.status is a plain String column — these are its three valid values. */
+export type ReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+/**
+ * Reviews for the admin moderation screen, including the client's email so an
+ * admin can tell two same-named clients apart. Takes the status so the screen
+ * can also list what has already been approved or rejected: moderation is not
+ * one-way, and an approved review has to be reachable to be pulled back down.
+ */
+export async function getReviewsForModeration(status: ReviewStatus, limit = 100) {
   return prisma.review.findMany({
-    where: { status: 'PENDING' },
+    where: { status },
     orderBy: { createdAt: 'desc' },
+    take: limit,
     include: {
       user: { select: { name: true, email: true } },
       appointment: {
@@ -53,4 +63,8 @@ export async function getPendingReviews() {
       },
     },
   });
+}
+
+export async function getPendingReviews() {
+  return getReviewsForModeration('PENDING');
 }

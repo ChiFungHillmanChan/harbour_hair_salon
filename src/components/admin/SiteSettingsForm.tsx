@@ -82,6 +82,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
             type="text"
             name="phone"
             required
+            maxLength={40}
             defaultValue={settings.phone}
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
           />
@@ -104,6 +105,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
             type="text"
             name="heroEyebrow"
             required
+            maxLength={80}
             defaultValue={settings.heroEyebrow}
             placeholder="Leeds City Centre"
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -118,6 +120,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
             type="text"
             name="heroTitleLine1"
             required
+            maxLength={60}
             defaultValue={settings.heroTitleLine1}
             placeholder="Expert Hair"
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -132,6 +135,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
             type="text"
             name="heroTitleLine2"
             required
+            maxLength={60}
             defaultValue={settings.heroTitleLine2}
             placeholder="Styling"
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -146,6 +150,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
             name="heroSubtitle"
             required
             rows={3}
+            maxLength={400}
             defaultValue={settings.heroSubtitle}
             placeholder="Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment."
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -168,6 +173,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           <input
             type="url"
             name="instagramUrl"
+            maxLength={500}
             defaultValue={settings.instagramUrl}
             placeholder="https://www.instagram.com/harbourhair_leeds/"
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -181,6 +187,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           <input
             type="url"
             name="googleBusinessUrl"
+            maxLength={500}
             defaultValue={settings.googleBusinessUrl}
             placeholder="https://maps.google.com/?cid=..."
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -194,6 +201,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           <input
             type="url"
             name="facebookUrl"
+            maxLength={500}
             defaultValue={settings.facebookUrl}
             placeholder="https://www.facebook.com/harbourhairleeds"
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -207,6 +215,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           <input
             type="url"
             name="treatwellUrl"
+            maxLength={500}
             defaultValue={settings.treatwellUrl}
             placeholder="https://www.treatwell.co.uk/place/..."
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -220,6 +229,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           <input
             type="url"
             name="freshaUrl"
+            maxLength={500}
             defaultValue={settings.freshaUrl}
             placeholder="https://www.fresha.com/..."
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -233,6 +243,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           <input
             type="url"
             name="booksyUrl"
+            maxLength={500}
             defaultValue={settings.booksyUrl}
             placeholder="https://booksy.com/..."
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -257,6 +268,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           <input
             type="text"
             name="twitterHandle"
+            maxLength={40}
             defaultValue={settings.twitterHandle}
             placeholder="@harbourhair_leeds"
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
@@ -270,6 +282,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           <input
             type="text"
             name="gscVerification"
+            maxLength={200}
             defaultValue={settings.gscVerification}
             placeholder="google-site-verification=..."
             className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"

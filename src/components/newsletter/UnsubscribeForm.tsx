@@ -8,7 +8,7 @@ import {
 
 const initialState: UnsubscribeState = { status: 'idle' };
 
-export function UnsubscribeForm() {
+export function UnsubscribeForm({ defaultEmail = '' }: { defaultEmail?: string }) {
   const [state, action, pending] = useActionState(unsubscribeFromMarketing, initialState);
 
   return (
@@ -23,6 +23,7 @@ export function UnsubscribeForm() {
           type="email"
           required
           autoComplete="email"
+          defaultValue={defaultEmail}
           className="w-full rounded-md border border-zinc-300 px-4 py-3 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900"
           placeholder="you@example.com"
         />

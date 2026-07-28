@@ -1,7 +1,7 @@
 import prisma from '@/app/lib/prisma';
 import { DiscountForm } from '@/components/admin/DiscountForm';
 import { RowActionButton } from '@/components/admin/RowActionButton';
-import { deleteDiscountCode } from '@/app/actions/admin';
+import { deleteDiscountCode, toggleDiscountCodeStatus } from '@/app/actions/admin';
 import { format } from 'date-fns';
 
 export default async function DiscountsPage() {
@@ -52,13 +52,26 @@ export default async function DiscountsPage() {
                   {discount.expiresAt ? format(new Date(discount.expiresAt), 'MMM d, yyyy') : 'Never'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <RowActionButton
-                    action={deleteDiscountCode.bind(null, discount.id)}
-                    label="Delete"
-                    pendingLabel="Deleting…"
-                    buttonClassName="text-red-600 hover:text-red-900"
-                    confirmMessage="Delete this discount code? Used codes will be deactivated instead."
-                  />
+                  <div className="flex items-start justify-end gap-4">
+                    <RowActionButton
+                      action={toggleDiscountCodeStatus.bind(null, discount.id, !discount.isActive)}
+                      label={discount.isActive ? 'Deactivate' : 'Activate'}
+                      pendingLabel={discount.isActive ? 'Deactivating…' : 'Activating…'}
+                      buttonClassName="text-zinc-600 hover:text-zinc-900"
+                    />
+                    {/* A redeemed code can only ever be deactivated — the server
+                        turns its delete into a deactivation to keep the
+                        appointment's foreign key intact. */}
+                    {discount.usedCount === 0 && (
+                      <RowActionButton
+                        action={deleteDiscountCode.bind(null, discount.id)}
+                        label="Delete"
+                        pendingLabel="Deleting…"
+                        buttonClassName="text-red-600 hover:text-red-900"
+                        confirmMessage={`Delete discount code "${discount.code}"? This cannot be undone.`}
+                      />
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

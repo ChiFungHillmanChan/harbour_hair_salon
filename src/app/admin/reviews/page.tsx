@@ -1,8 +1,32 @@
-import { getPendingReviews } from '@/app/services/review-service';
+import Link from 'next/link';
+import { getReviewsForModeration, type ReviewStatus } from '@/app/services/review-service';
 import { moderateReview } from '@/app/actions/reviews';
+import { RowActionButton } from '@/components/admin/RowActionButton';
 import prisma from '@/app/lib/prisma';
 
 export const dynamic = 'force-dynamic';
+
+const TABS: { status: ReviewStatus; label: string; href: string; countClassName: string }[] = [
+  { status: 'PENDING', label: 'Pending', href: '/admin/reviews', countClassName: 'text-zinc-900' },
+  {
+    status: 'APPROVED',
+    label: 'Approved',
+    href: '/admin/reviews?status=approved',
+    countClassName: 'text-emerald-600',
+  },
+  {
+    status: 'REJECTED',
+    label: 'Rejected',
+    href: '/admin/reviews?status=rejected',
+    countClassName: 'text-zinc-600',
+  },
+];
+
+const EMPTY_MESSAGE: Record<ReviewStatus, string> = {
+  PENDING: 'No pending reviews to moderate.',
+  APPROVED: 'No approved reviews yet. Approve a pending review to publish it.',
+  REJECTED: 'No rejected reviews.',
+};
 
 function Stars({ value }: { value: number }) {
   return (
@@ -27,9 +51,18 @@ function Stars({ value }: { value: number }) {
   );
 }
 
-export default async function AdminReviewsPage() {
-  const [pending, counts] = await Promise.all([
-    getPendingReviews(),
+export default async function AdminReviewsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const { status: requested } = await searchParams;
+  const normalised = (requested ?? '').toUpperCase();
+  const activeStatus: ReviewStatus =
+    normalised === 'APPROVED' || normalised === 'REJECTED' ? normalised : 'PENDING';
+
+  const [reviews, counts] = await Promise.all([
+    getReviewsForModeration(activeStatus),
     prisma.review.groupBy({
       by: ['status'],
       _count: { _all: true },
@@ -45,32 +78,43 @@ export default async function AdminReviewsPage() {
         <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">Reviews</h1>
         <p className="text-zinc-700 mt-2">
           Moderate client reviews. Approved reviews appear on the public reviews page and feed the
-          aggregate rating in structured data.
+          aggregate rating in structured data. Switch view below to unpublish a review you have
+          already approved, or to reinstate one you rejected.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Pending</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{statusCount('PENDING')}</p>
-        </div>
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Approved</p>
-          <p className="text-3xl font-bold text-emerald-600 mt-1">{statusCount('APPROVED')}</p>
-        </div>
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Rejected</p>
-          <p className="text-3xl font-bold text-zinc-600 mt-1">{statusCount('REJECTED')}</p>
-        </div>
-      </div>
+      <nav className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" aria-label="Review status">
+        {TABS.map((tab) => {
+          const isActive = tab.status === activeStatus;
+          return (
+            <Link
+              key={tab.status}
+              href={tab.href}
+              aria-current={isActive ? 'page' : undefined}
+              className={`block bg-white p-5 rounded-lg shadow border transition-colors ${
+                isActive
+                  ? 'border-zinc-900 ring-1 ring-zinc-900'
+                  : 'border-zinc-200 hover:border-zinc-400'
+              }`}
+            >
+              <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">
+                {tab.label}
+              </p>
+              <p className={`text-3xl font-bold mt-1 ${tab.countClassName}`}>
+                {statusCount(tab.status)}
+              </p>
+            </Link>
+          );
+        })}
+      </nav>
 
-      {pending.length === 0 ? (
+      {reviews.length === 0 ? (
         <div className="bg-white border border-zinc-200 rounded-lg p-12 text-center">
-          <p className="text-zinc-500">No pending reviews to moderate.</p>
+          <p className="text-zinc-500">{EMPTY_MESSAGE[activeStatus]}</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {pending.map((review) => (
+          {reviews.map((review) => (
             <div
               key={review.id}
               className="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm"
@@ -93,26 +137,28 @@ export default async function AdminReviewsPage() {
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <form action={moderateReview}>
-                    <input type="hidden" name="reviewId" value={review.id} />
-                    <input type="hidden" name="action" value="APPROVE" />
-                    <button
-                      type="submit"
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-4 py-2 rounded font-medium transition-colors"
-                    >
-                      Approve
-                    </button>
-                  </form>
-                  <form action={moderateReview}>
-                    <input type="hidden" name="reviewId" value={review.id} />
-                    <input type="hidden" name="action" value="REJECT" />
-                    <button
-                      type="submit"
-                      className="bg-zinc-200 hover:bg-zinc-300 text-zinc-700 text-sm px-4 py-2 rounded font-medium transition-colors"
-                    >
-                      Reject
-                    </button>
-                  </form>
+                  {activeStatus !== 'APPROVED' && (
+                    <RowActionButton
+                      action={moderateReview.bind(null, review.id, 'APPROVE')}
+                      label={activeStatus === 'REJECTED' ? 'Publish' : 'Approve'}
+                      pendingLabel="Publishing…"
+                      buttonClassName="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-4 py-2 rounded font-medium transition-colors"
+                      confirmMessage="Publish this review on the public reviews page?"
+                    />
+                  )}
+                  {activeStatus !== 'REJECTED' && (
+                    <RowActionButton
+                      action={moderateReview.bind(null, review.id, 'REJECT')}
+                      label={activeStatus === 'APPROVED' ? 'Unpublish' : 'Reject'}
+                      pendingLabel={activeStatus === 'APPROVED' ? 'Unpublishing…' : 'Rejecting…'}
+                      buttonClassName="bg-zinc-200 hover:bg-zinc-300 text-zinc-700 text-sm px-4 py-2 rounded font-medium transition-colors"
+                      confirmMessage={
+                        activeStatus === 'APPROVED'
+                          ? 'Unpublish this review? It will be removed from the public reviews page and from the aggregate rating.'
+                          : 'Reject this review? It stays hidden from the public page.'
+                      }
+                    />
+                  )}
                 </div>
               </div>
               {review.comment && (

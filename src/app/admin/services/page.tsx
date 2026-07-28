@@ -1,8 +1,33 @@
 import Link from 'next/link';
+import { unstable_rethrow } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { deleteService } from '@/app/actions/admin-services';
+import { RowActionButton, type RowActionResult } from '@/components/admin/RowActionButton';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * deleteService reports its admin and appointment guards by throwing, which in
+ * production reaches the browser as an opaque digest and replaces the page with
+ * an error boundary. Adapt it to the `{ error }` shape RowActionButton renders
+ * so the reason lands next to the row. The admin guard still runs first — it is
+ * deleteService's own first statement, before anything is read or written.
+ */
+async function deleteServiceRow(id: string): Promise<RowActionResult> {
+  'use server';
+  const formData = new FormData();
+  formData.set('id', id);
+
+  try {
+    await deleteService(formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error('deleteService failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to delete service.' };
+  }
+
+  return { success: true };
+}
 
 async function getServicesGrouped() {
   const services = await prisma.service.findMany({
@@ -138,15 +163,13 @@ export default async function AdminServicesPage() {
                                 Edit
                               </Link>
                               {bookings === 0 ? (
-                                <form action={deleteService}>
-                                  <input type="hidden" name="id" value={service.id} />
-                                  <button
-                                    type="submit"
-                                    className="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
-                                  >
-                                    Delete
-                                  </button>
-                                </form>
+                                <RowActionButton
+                                  action={deleteServiceRow.bind(null, service.id)}
+                                  label="Delete"
+                                  pendingLabel="Deleting…"
+                                  buttonClassName="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                                  confirmMessage={`Delete "${service.name}"? This cannot be undone.`}
+                                />
                               ) : (
                                 <span
                                   className="text-xs text-zinc-400 px-3 py-1.5"

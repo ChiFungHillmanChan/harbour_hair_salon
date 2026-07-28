@@ -1,8 +1,19 @@
 import prisma from '@/app/lib/prisma';
 import { deleteShift } from '@/app/actions/shifts';
 import { ShiftForm } from '@/components/admin/ShiftForm';
+import { RowActionButton } from '@/components/admin/RowActionButton';
+import { salonDateKey } from '@/app/services/salon-time';
+
+export const dynamic = 'force-dynamic';
 
 export default async function AdminShiftsPage() {
+  // createShift stores a shift at UTC midnight of its salon calendar date, so
+  // today's floor is that same midnight for the salon's current date. Without
+  // this filter the "Upcoming shifts" table was the OLDEST 100 rows ever
+  // created, and newly added shifts stopped appearing once the salon passed
+  // 100 historic shifts.
+  const todayStart = new Date(`${salonDateKey(new Date())}T00:00:00.000Z`);
+
   const [employees, shifts] = await Promise.all([
     prisma.employee.findMany({
       where: { isActive: true },
@@ -10,6 +21,7 @@ export default async function AdminShiftsPage() {
       select: { id: true, name: true },
     }),
     prisma.shift.findMany({
+      where: { date: { gte: todayStart } },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
       take: 100,
       include: { employee: { select: { name: true } } },
@@ -39,33 +51,31 @@ export default async function AdminShiftsPage() {
               </tr>
             </thead>
             <tbody>
-              {shifts.map((s) => (
-                <tr key={s.id} className="border-b">
-                  <td className="p-2">{s.employee.name}</td>
-                  <td className="p-2">{s.date.toISOString().slice(0, 10)}</td>
-                  <td className="p-2">{s.startTime}</td>
-                  <td className="p-2">{s.endTime}</td>
-                  <td className="p-2">
-                    <form
-                      action={async () => {
-                        'use server';
-                        await deleteShift(s.id);
-                      }}
-                    >
-                      <button
-                        type="submit"
-                        className="text-red-600 hover:text-red-800 text-xs"
-                      >
-                        Delete
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
+              {shifts.map((s) => {
+                const dateStr = s.date.toISOString().slice(0, 10);
+
+                return (
+                  <tr key={s.id} className="border-b">
+                    <td className="p-2">{s.employee.name}</td>
+                    <td className="p-2">{dateStr}</td>
+                    <td className="p-2">{s.startTime}</td>
+                    <td className="p-2">{s.endTime}</td>
+                    <td className="p-2">
+                      <RowActionButton
+                        action={deleteShift.bind(null, s.id)}
+                        label="Delete"
+                        pendingLabel="Deleting…"
+                        buttonClassName="text-red-600 hover:text-red-800 text-xs font-medium"
+                        confirmMessage={`Delete ${s.employee.name}'s shift on ${dateStr} (${s.startTime}–${s.endTime})?`}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
               {shifts.length === 0 && (
                 <tr>
                   <td colSpan={5} className="p-2 text-center text-zinc-500">
-                    No shifts found.
+                    No upcoming shifts.
                   </td>
                 </tr>
               )}

@@ -1,9 +1,34 @@
 import Link from 'next/link';
+import { unstable_rethrow } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { getAllStylistsWithSlug } from '@/app/stylists/slug';
 import { deleteStylist } from '@/app/actions/admin-stylists';
+import { RowActionButton, type RowActionResult } from '@/components/admin/RowActionButton';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * deleteStylist reports its admin and appointment guards by throwing, which in
+ * production reaches the browser as an opaque digest and replaces the page with
+ * an error boundary. Adapt it to the `{ error }` shape RowActionButton renders
+ * so the reason lands next to the row. The admin guard still runs first — it is
+ * deleteStylist's own first statement, before anything is read or written.
+ */
+async function deleteStylistRow(id: string): Promise<RowActionResult> {
+  'use server';
+  const formData = new FormData();
+  formData.set('id', id);
+
+  try {
+    await deleteStylist(formData);
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error('deleteStylist failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to delete stylist.' };
+  }
+
+  return { success: true };
+}
 
 export default async function AdminStylistsPage() {
   const [stylists, counts] = await Promise.all([
@@ -98,15 +123,13 @@ export default async function AdminStylistsPage() {
                           Edit
                         </Link>
                         {bookings === 0 ? (
-                          <form action={deleteStylist}>
-                            <input type="hidden" name="id" value={s.id} />
-                            <button
-                              type="submit"
-                              className="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
-                            >
-                              Delete
-                            </button>
-                          </form>
+                          <RowActionButton
+                            action={deleteStylistRow.bind(null, s.id)}
+                            label="Delete"
+                            pendingLabel="Deleting…"
+                            buttonClassName="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                            confirmMessage={`Delete "${s.name}"? This cannot be undone.`}
+                          />
                         ) : (
                           <span className="text-xs text-zinc-400 px-3 py-1.5" title="Has appointments">
                             Locked

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getAllCategoryContent } from '@/app/services/category-content-service';
 import { deleteCategoryContent } from '@/app/actions/admin-categories';
+import { RowActionButton } from '@/components/admin/RowActionButton';
 import prisma from '@/app/lib/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -101,15 +102,13 @@ export default async function AdminCategoriesPage() {
                         >
                           Edit
                         </Link>
-                        <form action={deleteCategoryContent}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <button
-                            type="submit"
-                            className="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
-                          >
-                            Delete
-                          </button>
-                        </form>
+                        <RowActionButton
+                          action={deleteCategoryContent.bind(null, c.id)}
+                          label="Delete"
+                          pendingLabel="Deleting…"
+                          buttonClassName="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                          confirmMessage={`Permanently delete "${c.title}"? This cannot be undone.`}
+                        />
                       </div>
                     </td>
                   </tr>

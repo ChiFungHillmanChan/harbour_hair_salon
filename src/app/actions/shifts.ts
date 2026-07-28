@@ -44,9 +44,12 @@ export async function createShift(_prevState: unknown, formData: FormData): Prom
   return { error: null };
 }
 
-export async function deleteShift(id: string) {
+export async function deleteShift(id: string): Promise<{ error?: string; success?: boolean }> {
   const { error } = await requireAdmin();
-  if (error) return;
-  await prisma.shift.delete({ where: { id } });
+  if (error) return { error };
+  // deleteMany, not delete: a second submission of the same row (double click,
+  // stale tab) would otherwise throw an unhandled P2025 instead of no-opping.
+  await prisma.shift.deleteMany({ where: { id } });
   revalidatePath('/admin/shifts');
+  return { success: true };
 }

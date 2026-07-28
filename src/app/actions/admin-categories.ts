@@ -21,15 +21,26 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+// Messages are phrased to read as "<block> <n>: <message>" in the admin banner.
 const processStepSchema = z.object({
-  step: z.string().trim().min(1).max(200),
-  detail: z.string().trim().min(1).max(800),
+  step: z.string().trim().min(1, 'step name is required').max(200, 'step name is too long (max 200 characters)'),
+  detail: z.string().trim().min(1, 'detail is required').max(800, 'detail is too long (max 800 characters)'),
 });
 
 const faqSchema = z.object({
-  question: z.string().trim().min(5).max(300),
-  answer: z.string().trim().min(10).max(1200),
+  question: z
+    .string()
+    .trim()
+    .min(5, 'question must be at least 5 characters')
+    .max(300, 'question is too long (max 300 characters)'),
+  answer: z
+    .string()
+    .trim()
+    .min(10, 'answer must be at least 10 characters')
+    .max(1200, 'answer is too long (max 1200 characters)'),
 });
+
+const listEntrySchema = z.string().trim().min(1, 'cannot be empty');
 
 const contentSchema = z.object({
   slug: z.string().trim().min(2).max(100).transform(slugify),
@@ -47,6 +58,37 @@ const contentSchema = z.object({
   displayOrder: z.coerce.number().int().min(0).max(1000).default(0),
 });
 
+/**
+ * Validates one content block, naming the block and the offending entry so the
+ * admin banner says "FAQ 2: question must be at least 5 characters" instead of
+ * a wall of raw Zod JSON.
+ */
+function parseJsonBlock<S extends z.ZodType>(
+  label: string,
+  json: string,
+  entrySchema: S
+): { error: string } | { value: z.output<S>[] } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return { error: `${label}s: the content could not be read. Please re-enter this block.` };
+  }
+  if (!Array.isArray(raw)) {
+    return { error: `${label}s: expected a list of entries.` };
+  }
+
+  const result = z.array(entrySchema).safeParse(raw);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const index = typeof issue?.path[0] === 'number' ? issue.path[0] + 1 : 1;
+    const field = typeof issue?.path[1] === 'string' ? `${issue.path[1]} ` : '';
+    return { error: `${label} ${index}: ${field}${issue?.message ?? 'is invalid'}` };
+  }
+
+  return { value: result.data };
+}
+
 function validateJsonArrays(
   input: z.infer<typeof contentSchema>
 ):
@@ -58,17 +100,28 @@ function validateJsonArrays(
       aftercare: string[];
       faqs: { question: string; answer: string }[];
     } {
-  try {
-    const overview = z.array(z.string().min(1)).parse(JSON.parse(input.overviewJson));
-    const includes = z.array(z.string().min(1)).parse(JSON.parse(input.includesJson));
-    const process = z.array(processStepSchema).parse(JSON.parse(input.processJson));
-    const aftercare = z.array(z.string().min(1)).parse(JSON.parse(input.aftercareJson));
-    const faqs = z.array(faqSchema).parse(JSON.parse(input.faqsJson));
-    return { overview, includes, process, aftercare, faqs };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Invalid content block';
-    return { error: msg };
-  }
+  const overview = parseJsonBlock('Overview paragraph', input.overviewJson, listEntrySchema);
+  if ('error' in overview) return overview;
+
+  const includes = parseJsonBlock("What's included item", input.includesJson, listEntrySchema);
+  if ('error' in includes) return includes;
+
+  const process = parseJsonBlock('Process step', input.processJson, processStepSchema);
+  if ('error' in process) return process;
+
+  const aftercare = parseJsonBlock('Aftercare tip', input.aftercareJson, listEntrySchema);
+  if ('error' in aftercare) return aftercare;
+
+  const faqs = parseJsonBlock('FAQ', input.faqsJson, faqSchema);
+  if ('error' in faqs) return faqs;
+
+  return {
+    overview: overview.value,
+    includes: includes.value,
+    process: process.value,
+    aftercare: aftercare.value,
+    faqs: faqs.value,
+  };
 }
 
 export type CategoryActionState =
@@ -84,6 +137,11 @@ export async function createCategoryContent(
   const parsed = contentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  }
+  // min(2) is checked on the raw input, before slugify() strips it — so "頭髮"
+  // or "--" passes validation and would otherwise save an empty slug.
+  if (!parsed.data.slug) {
+    return { status: 'error', message: 'Could not derive a slug — use letters or numbers.' };
   }
 
   const arrays = validateJsonArrays(parsed.data);
@@ -147,6 +205,9 @@ export async function updateCategoryContent(
   if (!parsed.success) {
     return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid input' };
   }
+  if (!parsed.data.slug) {
+    return { status: 'error', message: 'Could not derive a slug — use letters or numbers.' };
+  }
 
   const arrays = validateJsonArrays(parsed.data);
   if ('error' in arrays) return { status: 'error', message: arrays.error };
@@ -200,18 +261,27 @@ export async function updateCategoryContent(
   return { status: 'success' };
 }
 
-export async function deleteCategoryContent(formData: FormData): Promise<void> {
+/** Result shape shared by the per-row buttons on /admin/categories (see RowActionButton). */
+export type CategoryRowActionState = { error?: string; success?: boolean };
+
+export async function deleteCategoryContent(id: string): Promise<CategoryRowActionState> {
   await requireAdmin();
-  const id = formData.get('id');
-  if (typeof id !== 'string' || !id) throw new Error('Missing id');
+  if (!id) return { error: 'Missing id.' };
 
   const existing = await prisma.serviceCategoryContent.findUnique({ where: { id } });
-  if (!existing) return;
+  if (!existing) return { error: 'Category page not found — it may already have been deleted.' };
 
-  await prisma.serviceCategoryContent.delete({ where: { id } });
+  try {
+    await prisma.serviceCategoryContent.delete({ where: { id } });
+  } catch (error) {
+    console.error('deleteCategoryContent failed:', error);
+    return { error: 'Failed to delete this category page. Please try again.' };
+  }
 
   revalidatePath('/services');
   revalidatePath(`/services/${existing.slug}`);
   revalidatePath('/admin/categories');
   revalidatePath('/sitemap.xml');
+
+  return { success: true };
 }

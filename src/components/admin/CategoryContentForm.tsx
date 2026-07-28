@@ -193,7 +193,9 @@ export function CategoryContentForm({
     status: 'idle',
   });
 
-  const showSavedBanner = saved || state.status === 'success';
+  // `saved` comes from ?saved=1 and never clears, so it must not outlive a
+  // failed save — otherwise the green banner sits next to the red error.
+  const showSavedBanner = state.status === 'success' || (!!saved && state.status !== 'error');
 
   return (
     <form action={formAction} className="space-y-6 pb-16">

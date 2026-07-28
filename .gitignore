@@ -45,3 +45,7 @@ next-env.d.ts
 .env*.local
 .superpowers/
 .env*
+
+# SQLite dev databases (never commit — may contain password hashes)
+*.db
+*.db-journal

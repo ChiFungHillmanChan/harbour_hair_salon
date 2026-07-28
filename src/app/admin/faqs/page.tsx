@@ -2,8 +2,26 @@ import Link from 'next/link';
 import { getAllFaqs, getAllFaqKeys } from '@/app/services/faq-service';
 import { deleteFaq, updateFaq, type FaqActionState } from '@/app/actions/admin-faqs';
 import { FaqInlineEditor } from '@/components/admin/FaqInlineEditor';
+import { RowActionButton } from '@/components/admin/RowActionButton';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Adapts the FormData-based `deleteFaq` action to the id-bound signature
+ * RowActionButton expects, so the delete can be confirmed before it runs.
+ */
+async function deleteFaqById(id: string): Promise<{ error?: string; success?: boolean }> {
+  'use server';
+  const formData = new FormData();
+  formData.set('id', id);
+  try {
+    await deleteFaq(formData);
+  } catch (error) {
+    console.error('deleteFaq failed:', error);
+    return { error: 'Failed to delete this FAQ. Please try again.' };
+  }
+  return { success: true };
+}
 
 const KEY_LABELS: Record<string, string> = {
   home: 'Home page',
@@ -100,15 +118,13 @@ export default async function AdminFaqsPage({
                   <li key={faq.id} className="p-6">
                     <FaqInlineEditor faq={faq} action={updateFaqAction} />
                     <div className="mt-3 flex justify-end">
-                      <form action={deleteFaq}>
-                        <input type="hidden" name="id" value={faq.id} />
-                        <button
-                          type="submit"
-                          className="text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded transition-colors"
-                        >
-                          Delete
-                        </button>
-                      </form>
+                      <RowActionButton
+                        action={deleteFaqById.bind(null, faq.id)}
+                        label="Delete"
+                        pendingLabel="Deleting…"
+                        buttonClassName="text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded transition-colors"
+                        confirmMessage={`Permanently delete "${faq.question}"? This cannot be undone.`}
+                      />
                     </div>
                   </li>
                 ))}

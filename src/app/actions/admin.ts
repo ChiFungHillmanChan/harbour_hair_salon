@@ -39,6 +39,7 @@ const offerSchema = z.object({
 // useActionState instead of silently discarding them.
 export type OfferActionState = { error?: string; success?: boolean };
 export type DiscountActionState = { error?: string; success?: boolean };
+export type AdminUserActionState = { error?: string; success?: boolean };
 
 const adminUserSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
@@ -121,6 +122,35 @@ export async function deleteDiscountCode(id: string): Promise<DiscountActionStat
   } catch (error) {
     console.error('deleteDiscountCode failed:', error);
     return { error: 'Failed to delete discount code. Please try again.' };
+  }
+
+  revalidatePath('/admin/discounts');
+  return { success: true };
+}
+
+/**
+ * Flips a code between active and inactive. Deleting a code that has already
+ * been redeemed only deactivates it (see above) and its `code` stays taken by
+ * the unique index, so without this the salon could never bring a seasonal code
+ * back — they had to invent a new one. Reversible, so no confirm prompt.
+ */
+export async function toggleDiscountCodeStatus(
+  id: string,
+  isActive: boolean
+): Promise<DiscountActionState> {
+  const { error } = await requireAdmin();
+  if (error) return { error };
+
+  try {
+    await prisma.discountCode.update({
+      where: { id },
+      data: { isActive },
+    });
+  } catch (error) {
+    console.error('toggleDiscountCodeStatus failed:', error);
+    return {
+      error: `Failed to ${isActive ? 'activate' : 'deactivate'} discount code. Please try again.`,
+    };
   }
 
   revalidatePath('/admin/discounts');
@@ -274,7 +304,10 @@ export async function deleteOffer(id: string): Promise<OfferActionState> {
 
 // --- Admin Users ---
 
-export async function createAdminUser(formData: FormData) {
+export async function createAdminUser(
+  _prevState: AdminUserActionState,
+  formData: FormData
+): Promise<AdminUserActionState> {
   const { error } = await requireAdmin();
   if (error) return { error };
 
@@ -308,26 +341,39 @@ export async function createAdminUser(formData: FormData) {
   }
 
   revalidatePath('/admin/users');
+  return { success: true };
 }
 
-export async function deleteAdminUser(id: string) {
+export async function deleteAdminUser(id: string): Promise<AdminUserActionState> {
   const { error, session } = await requireAdmin();
-  if (error || !session) return;
+  if (error || !session) return { error: error ?? 'Unauthorized' };
 
-  if (id === session.userId) return;
+  if (id === session.userId) {
+    return { error: 'You cannot delete your own account.' };
+  }
 
-  // Check if user has appointments — skip deletion if so
+  // Their appointments carry the booking history and hold a foreign key to the
+  // user row, so the account has to stay. Say why — silently doing nothing left
+  // the admin clicking Delete over and over.
   const appointmentCount = await prisma.appointment.count({
     where: { userId: id },
   });
 
-  if (appointmentCount > 0) return;
+  if (appointmentCount > 0) {
+    return { error: `This admin has ${appointmentCount} appointment(s) and cannot be deleted.` };
+  }
 
-  await prisma.user.delete({
-    where: { id },
-  });
+  try {
+    await prisma.user.delete({
+      where: { id },
+    });
+  } catch (error) {
+    console.error('deleteAdminUser failed:', error);
+    return { error: 'Failed to delete admin user. Please try again.' };
+  }
 
   revalidatePath('/admin/users');
+  return { success: true };
 }
 
 export async function promoteGoogleUserToAdmin(id: string) {
