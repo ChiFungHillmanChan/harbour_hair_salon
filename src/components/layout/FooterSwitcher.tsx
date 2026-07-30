@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 
 /**
- * Shows the booking/newsletter promotions only on the homepage and hides all
+ * Shows the booking promotion strip only on the homepage and hides all
  * footer chrome on auth pages, per route, on the client — so soft navigation
  * swaps the chrome correctly. The server root layout renders the chrome once
  * and passes it down; App Router

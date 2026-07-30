@@ -110,6 +110,5 @@ export const loginLimiter = createRateLimiter({ prefix: 'rl:login', limit: 5, wi
 export const registerLimiter = createRateLimiter({ prefix: 'rl:register', limit: 5, windowSeconds: 15 * 60 });
 export const bookingLimiter = createRateLimiter({ prefix: 'rl:booking', limit: 6, windowSeconds: 60 * 60 });
 export const discountLimiter = createRateLimiter({ prefix: 'rl:discount', limit: 10, windowSeconds: 15 * 60 });
-export const newsletterLimiter = createRateLimiter({ prefix: 'rl:newsletter', limit: 3, windowSeconds: 60 * 60 });
 export const clockLimiter = createRateLimiter({ prefix: 'rl:clock', limit: 8, windowSeconds: 5 * 60 });
 export const passwordResetLimiter = createRateLimiter({ prefix: 'rl:pwreset', limit: 5, windowSeconds: 60 * 60 });

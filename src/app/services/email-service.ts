@@ -6,14 +6,12 @@ import { BookingCancellation } from '@/components/emails/BookingCancellation';
 import { BookingReschedule } from '@/components/emails/BookingReschedule';
 import { AppointmentReminder } from '@/components/emails/AppointmentReminder';
 import { ReviewRequest, type ReviewRequestAppointment } from '@/components/emails/ReviewRequest';
-import { NewsletterWelcome } from '@/components/emails/NewsletterWelcome';
 import { BookingRequestReceived } from '@/components/emails/BookingRequestReceived';
 import { NewBookingAlert, type NewBookingAlertAppointment } from '@/components/emails/NewBookingAlert';
 import { PasswordReset } from '@/components/emails/PasswordReset';
 import { RESET_TOKEN_TTL_MS } from '@/app/lib/password-reset';
 import { buildBookingConfirmationText } from './booking-confirmation-copy';
 import { salonRelativeDay } from './salon-time';
-import { SITE_URL } from '@/app/lib/site-url';
 
 export type AppointmentWithDetails = {
   id: string;
@@ -192,21 +190,5 @@ export async function sendPasswordReset(
       token,
       expiresInMinutes: Math.round(RESET_TOKEN_TTL_MS / 60_000),
     }),
-  });
-}
-
-export async function sendNewsletterWelcome(email: string, phone: string): Promise<void> {
-  // List-Unsubscribe improves marketing deliverability (Gmail/Yahoo bulk-sender
-  // rules) and gives mail clients a one-click unsubscribe. The address param
-  // pre-fills the unsubscribe form.
-  const unsubscribeUrl = `${SITE_URL}/unsubscribe?email=${encodeURIComponent(email)}`;
-  await send({
-    to: email,
-    subject: 'Welcome to Harbour Hair Salon',
-    react: NewsletterWelcome({ phone }),
-    headers: {
-      'List-Unsubscribe': `<${unsubscribeUrl}>`,
-      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-    },
   });
 }
