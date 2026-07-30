@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
-import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
 import { SITE_URL } from '@/app/lib/site-url';
 import { jsonLdScript } from '@/app/lib/json-ld';
 
@@ -132,15 +131,6 @@ export default async function OffersPage() {
         )}
       </section>
 
-      {/* Newsletter capture */}
-      <section className="container mx-auto px-4 pb-24 max-w-3xl">
-        <NewsletterForm
-          variant="card"
-          source="offers-page"
-          title="Never miss an offer"
-          description="Join our list to hear about seasonal promotions, new services and early-access bookings before they go public."
-        />
-      </section>
     </div>
   );
 }

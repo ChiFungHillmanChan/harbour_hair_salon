@@ -1,6 +1,5 @@
 import React from 'react';
 import Link from 'next/link';
-import { NewsletterForm } from '@/components/newsletter/NewsletterForm';
 import SocialLinks from '@/components/layout/SocialLinks';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { hasActiveOffers } from '@/app/services/offers-service';
@@ -8,7 +7,7 @@ import { toTelHref } from '@/app/lib/phone';
 
 export function FooterPromotions() {
   return (
-    <aside aria-label="Booking and newsletter">
+    <aside aria-label="Booking">
       {/* Booking CTA strip */}
       <div className="bg-zinc-100 text-zinc-900 py-6">
         <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -21,22 +20,6 @@ export function FooterPromotions() {
           >
             Book Appointment
           </Link>
-        </div>
-      </div>
-
-      {/* Newsletter strip */}
-      <div className="border-b border-zinc-800 bg-zinc-950">
-        <div className="container mx-auto px-4 py-14 max-w-xl text-center">
-          <div className="w-12 h-px bg-white/50 mx-auto mb-5" />
-          <h3 className="text-2xl md:text-3xl font-serif text-white tracking-tight mb-3">
-            Stay in the loop
-          </h3>
-          <p className="text-zinc-400 font-light leading-relaxed mb-6 text-sm">
-            Seasonal offers and stylist tips, straight to your inbox. No spam, unsubscribe any time.
-          </p>
-          <div className="max-w-sm mx-auto">
-            <NewsletterForm variant="inline" source="footer" />
-          </div>
         </div>
       </div>
     </aside>
