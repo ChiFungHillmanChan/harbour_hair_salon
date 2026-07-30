@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, isToday, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { Appointment, Service, Stylist } from '@prisma/client';
@@ -231,6 +231,23 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // The salon leaves this board open on a screen all day. Re-pull server data
+  // every minute (and immediately when the tab regains visibility) so new
+  // booking requests and Treatwell busy blocks show up without a manual reload.
+  // router.refresh() re-renders the server component only — view mode and the
+  // selected date are client state and survive the refresh.
+  useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') router.refresh();
+    };
+    const id = setInterval(refreshIfVisible, 60_000);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [router]);
 
   // Navigation Handlers
   const next = () => {
