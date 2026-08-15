@@ -28,6 +28,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Cost kill-switch, and it MUST stay above `syncTreatwellFeeds()`.
+  //
+  // Neon bills compute time, and its free tier suspends the endpoint after 5
+  // minutes idle. `syncTreatwellFeeds()` opens with a `stylist.findMany` — so
+  // merely *entering* it wakes the database, even when no stylist has a feed
+  // URL and the run is a guaranteed no-op. On a 5-minute cron that single query
+  // pinned the compute awake 24/7 and burned the whole monthly CU-hour
+  // allowance for zero work. Returning here keeps the request DB-free.
+  //
+  // Off unless explicitly enabled: re-enabling costs money, so it has to be a
+  // deliberate act. Admin → Integrations → "Run iCal sync now" is unaffected
+  // (it calls the service directly) and stays available for one-off runs.
+  if (process.env.TREATWELL_SYNC_ENABLED !== 'true') {
+    return NextResponse.json({ ok: true, skipped: 'disabled', results: [] });
+  }
+
   const results = await syncTreatwellFeeds();
   const ok = results.every((r) => r.ok);
   if (!ok) console.error('Treatwell sync had failures', results.filter((r) => !r.ok));
