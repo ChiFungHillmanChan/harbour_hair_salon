@@ -45,7 +45,7 @@ npx vercel --prod     # Deploy to Vercel production
 - **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`. Session helpers in `src/app/lib/session.ts`. Route protection in `middleware.ts`.
 - **Email**: Resend SDK with React Email templates. Service in `src/app/services/email-service.ts`, templates in `src/components/emails/`.
 - **Validation**: Zod
-- **Deployment**: Vercel (Pro plan) with Neon Postgres. Cron: appointment reminders daily at 8am UTC, Treatwell inbound sync every 5 min (the */5 schedule requires Pro — Hobby only allows daily crons and would fail the build).
+- **Deployment**: Vercel (Pro plan) with Neon Postgres. Cron: appointment reminders daily at 8am UTC — **that is the only cron**. See "Neon compute budget" below before adding another.
 
 ### Environment Variables
 
@@ -54,6 +54,42 @@ npx vercel --prod     # Deploy to Vercel production
 - `SESSION_SECRET` — JWT signing key (required, no fallback)
 - `RESEND_API_KEY` — Email service
 - `CRON_SECRET` — Vercel cron auth (auto-injected)
+- `TREATWELL_SYNC_ENABLED` — kill-switch for `/api/cron/treatwell-sync`. Unset/anything but `"true"` makes the route return before touching the DB. Deliberately off (see below).
+
+### Neon compute budget (read before scheduling anything)
+
+Neon bills **compute time (CU-hours), not queries**, and its free tier suspends the
+compute endpoint after **5 minutes idle**. The dominant cost driver is therefore
+*how often something touches the database*, not how heavy the work is. One
+trivial query every 5 minutes costs far more than a heavy query once an hour,
+because it keeps the endpoint from ever suspending.
+
+This bit us in August 2026: a `*/5` Treatwell sync cron sat exactly on the
+suspend threshold and held the compute awake 24/7 — roughly the entire monthly
+CU-hour allowance — while doing literally nothing, since no stylist has ever had
+`treatwellIcalUrl` set and `ExternalBusyBlock` was empty. Fixed by removing the
+cron and gating the route behind `TREATWELL_SYNC_ENABLED`.
+
+Rules that follow from this:
+
+- **Any new cron needs an interval over 5 minutes** (30+ preferred) and a
+  business-hours window where possible. Vercel cron schedules are **UTC**; the
+  salon runs on Europe/London, so a year-round window must cover both GMT and
+  BST — `*/30 9-19 * * *` covers Mon–Fri 10:00–19:30 and Sat–Sun 10:30–18:00
+  local in either season. `*/10` is *not* a meaningful reduction from `*/5`; the
+  endpoint still never suspends.
+- **Put cost kill-switches above the first DB call**, never below. Entering a
+  function that opens with a query already wakes the compute, so an early return
+  that sits after the query has bought nothing. `treatwell-sync/route.ts` has a
+  test locking this ordering.
+- **Keep public pages on ISR** (`export const revalidate`). They currently serve
+  from cache and stay off the database; making one `force-dynamic` puts bot and
+  crawler traffic directly onto Neon compute.
+- **`/api/health` runs `SELECT 1` and is `force-dynamic`.** Never point a
+  frequent uptime monitor at it — that alone would pin the compute awake 24/7,
+  independent of any cron.
+- `infra/aws/treatwell-sync/` is a **dormant** EventBridge→Lambda fallback for
+  the same endpoint. Do not deploy it; see its README.
 
 ### Source Layout
 

@@ -1,10 +1,21 @@
 # Treatwell sync — legacy AWS trigger (runbook)
 
-> The primary trigger now lives in `vercel.json`: daily at 06:00 UTC while the
-> project is on Vercel Hobby, with extra test runs available from Admin. After a
-> Pro upgrade it can be changed to every five minutes. Keep this AWS setup only
-> as a fallback if the trigger is deliberately moved away from Vercel. Do not
-> deploy both schedules together.
+> **DO NOT DEPLOY THIS.** There is currently **no** scheduled trigger for the
+> sync, on Vercel or here — the `vercel.json` cron was removed and the route
+> itself is gated behind `TREATWELL_SYNC_ENABLED`, which is off.
+>
+> Why: the route's first act is a database query, so scheduling it at all wakes
+> Neon's compute. At a 5-minute cadence the endpoint never idles long enough to
+> suspend (Neon's threshold is 5 minutes), which pinned it awake 24/7 and burned
+> the monthly CU-hour allowance — for a run that did nothing, because no stylist
+> has ever had an iCal feed URL. Standing this Lambda up would reintroduce that
+> cost while bypassing the kill-switch's intent.
+>
+> Keep this only as a fallback for the day the sync is genuinely needed *and*
+> the trigger has to live outside Vercel. Before deploying: map iCal URLs to
+> stylists, set `TREATWELL_SYNC_ENABLED=true`, use an interval **over** 5
+> minutes (30 is plenty) within a business-hours window, and never run this
+> alongside a `vercel.json` cron.
 
 Drives `GET /api/cron/treatwell-sync` on a schedule **without** paying for Vercel
 Pro (Hobby caps cron at once/day). EventBridge Scheduler → Lambda → Vercel route.

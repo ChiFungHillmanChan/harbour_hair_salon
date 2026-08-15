@@ -48,6 +48,9 @@ export default async function IntegrationsPage({
     searchParams,
   ]);
   const { treatwell, resend, cdn } = readiness;
+  // Mirrors the kill-switch in the cron route so this panel can never claim a
+  // scheduled sync that isn't running. Read per-request, not at module level.
+  const scheduledSyncEnabled = process.env.TREATWELL_SYNC_ENABLED === 'true';
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-10">
@@ -123,9 +126,21 @@ export default async function IntegrationsPage({
           </p>
 
           <p className="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-            Automatic iCal sync runs every 5 minutes (Vercel Pro cron). A Treatwell booking can
-            therefore take up to ~5 minutes to block a slot here. Use the button below for an
-            immediate manual run.
+            {scheduledSyncEnabled ? (
+              <>
+                Scheduled iCal sync is on. A Treatwell booking can take up to one sync interval to
+                block a slot here. Use the button below for an immediate manual run.
+              </>
+            ) : (
+              <>
+                <strong>Scheduled iCal sync is off.</strong> Treatwell bookings are <em>not</em>{' '}
+                blocking slots here automatically — run the sync manually below. It was disabled to
+                stop the cron holding the database awake around the clock for a run that did nothing
+                (no stylist has an iCal feed URL). To turn it back on: map feed URLs to stylists, set{' '}
+                <code className="font-mono">TREATWELL_SYNC_ENABLED=true</code>, and re-add the cron
+                to <code className="font-mono">vercel.json</code> at an interval over 5 minutes.
+              </>
+            )}
           </p>
 
           <div className="mt-5 flex flex-wrap gap-3">
