@@ -52,21 +52,24 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
             </span>
             <span className="block text-xs text-zinc-500 mt-1">
               When off, <code className="text-[11px]">/book</code> shows the maintenance notice
-              with your phone number and a Treatwell link, new bookings and reschedules are
-              refused server-side, and the Reschedule button is disabled. Customers can still
-              cancel existing appointments either way.
+              with your phone number and a link to each marketplace you have a URL for below,
+              new bookings and reschedules are refused server-side, and the Reschedule button
+              is disabled. Customers can still cancel existing appointments either way.
             </span>
           </span>
         </label>
 
         {!settings.bookingEnabled && (
           <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
-            <strong>Booking is currently OFF.</strong> Before switching it on, check{' '}
+            <strong>Booking is currently OFF.</strong> Before switching it on, set your{' '}
+            <a href="/admin/opening-hours" className="underline font-semibold">
+              opening hours
+            </a>{' '}
+            — and if any marketplace below is still selling the same chairs, check{' '}
             <a href="/admin/integrations" className="underline font-semibold">
               Integrations
             </a>{' '}
-            — if Treatwell two-way calendar sync is not configured for every stylist, the same
-            slot can be sold twice.
+            first: without two-way calendar sync the same slot can be sold twice.
           </div>
         )}
       </section>

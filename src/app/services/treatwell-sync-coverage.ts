@@ -15,6 +15,12 @@ export type SyncCoverageInput = {
   inboundConfigured: number;
   /** Stylists with an outbound busy-feed token generated (site → Treatwell). */
   outboundConfigured: number;
+  /**
+   * Marketplaces currently advertised on the site, by name — the ones that can
+   * actually sell the same chairs. Empty means this site is the only channel,
+   * so there is nothing to reconcile and no risk to warn about.
+   */
+  activeMarketplaces: string[];
 };
 
 export type SyncCoverage = {
@@ -32,25 +38,36 @@ export type SyncCoverage = {
 };
 
 export function evaluateSyncCoverage(input: SyncCoverageInput): SyncCoverage {
-  const { totalStylists, inboundConfigured, outboundConfigured } = input;
+  const { totalStylists, inboundConfigured, outboundConfigured, activeMarketplaces } = input;
 
   const missingInbound = Math.max(0, totalStylists - inboundConfigured);
   const missingOutbound = Math.max(0, totalStylists - outboundConfigured);
-
-  // With no stylists at all there is nothing to reconcile, but there is also
-  // nothing bookable — treat it as not ready rather than silently "safe".
   const inboundReady = totalStylists > 0 && missingInbound === 0;
   const outboundReady = totalStylists > 0 && missingOutbound === 0;
-  const safeToEnableOnlineBooking = inboundReady && outboundReady;
+  const counts = { inboundReady, outboundReady, missingInbound, missingOutbound };
 
-  if (safeToEnableOnlineBooking) {
-    return { inboundReady, outboundReady, missingInbound, missingOutbound, safeToEnableOnlineBooking, warning: null };
+  // Nothing is bookable at all — a different problem, but still not "ready".
+  if (totalStylists === 0) {
+    return {
+      ...counts,
+      inboundReady: false,
+      outboundReady: false,
+      safeToEnableOnlineBooking: false,
+      warning: 'Double-booking risk: no stylists are set up yet.',
+    };
+  }
+
+  // No marketplace is selling these chairs, so this site is the only place a
+  // slot can be taken and calendar sync is not needed. Without this the banner
+  // fires permanently once Treatwell is switched off, and a warning that is
+  // always on is a warning nobody reads.
+  if (activeMarketplaces.length === 0) {
+    return { ...counts, safeToEnableOnlineBooking: true, warning: null };
   }
 
   const parts: string[] = [];
-  if (totalStylists === 0) {
-    parts.push('no stylists are set up yet');
-  } else {
+
+  if (activeMarketplaces.includes('Treatwell')) {
     if (missingInbound > 0) {
       parts.push(
         `${missingInbound} of ${totalStylists} stylist(s) have no Treatwell iCal URL, so Treatwell bookings will NOT block slots on this site`,
@@ -63,12 +80,22 @@ export function evaluateSyncCoverage(input: SyncCoverageInput): SyncCoverage {
     }
   }
 
+  // Treatwell is the only channel with a sync implementation. Any other live
+  // marketplace has no path in either direction, so being fully configured for
+  // Treatwell proves nothing about it.
+  for (const name of activeMarketplaces.filter((m) => m !== 'Treatwell')) {
+    parts.push(
+      `${name} is listed on the site but has no calendar sync in either direction, so ${name} bookings and bookings made here will not block each other`,
+    );
+  }
+
+  if (parts.length === 0) {
+    return { ...counts, safeToEnableOnlineBooking: true, warning: null };
+  }
+
   return {
-    inboundReady,
-    outboundReady,
-    missingInbound,
-    missingOutbound,
-    safeToEnableOnlineBooking,
+    ...counts,
+    safeToEnableOnlineBooking: false,
     warning: `Double-booking risk: ${parts.join('; ')}.`,
   };
 }

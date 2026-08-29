@@ -75,7 +75,7 @@ async function ScheduleContent() {
           className="mb-6 rounded-lg border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-900"
         >
           <p className="font-semibold uppercase tracking-wide text-xs text-red-700">
-            Treatwell sync incomplete
+            Double-booking risk
           </p>
           <p className="mt-2 leading-6">{syncCoverage.warning}</p>
           <Link href="/admin/integrations" className="mt-2 inline-block font-semibold underline">
