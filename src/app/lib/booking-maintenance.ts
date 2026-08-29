@@ -13,8 +13,10 @@ import { getSiteSettings } from '@/app/services/site-settings-service';
 // flow that could double-book against Treatwell.
 //
 // While booking is closed:
-//   - /book renders a maintenance notice pointing customers to the salon phone
-//     and Treatwell, and is viewable without signing in
+//   - /book renders a maintenance notice pointing customers to the salon phone,
+//     plus a link per marketplace the salon currently advertises (none of which
+//     is hardcoded — see marketplace-channels.ts), and is viewable without
+//     signing in
 //   - submitBooking / rescheduleAppointment refuse server-side, so the block
 //     cannot be bypassed by calling the actions directly
 //   - slot-fetching actions return nothing
@@ -23,11 +25,11 @@ import { getSiteSettings } from '@/app/services/site-settings-service';
 // Cancellation is deliberately NOT blocked — customers may always cancel an
 // existing appointment.
 
-export const TREATWELL_BOOKING_URL =
-  'https://www.treatwell.co.uk/place/harbour-hair-hk-hair-stylist/';
-
+// Returned by submitBooking / rescheduleAppointment, which have no business
+// knowing which marketplaces are live — that is settings data, and naming one
+// here is exactly what made the Treatwell link impossible to switch off.
 export const BOOKING_MAINTENANCE_MESSAGE =
-  'Our online booking is temporarily under maintenance. Please book via Treatwell instead — thank you, and sorry for any inconvenience.';
+  'Online booking is closed at the moment. Please call the salon to book — thank you, and sorry for any inconvenience.';
 
 /** True when customers may create or move bookings online. */
 export async function isBookingEnabled(): Promise<boolean> {

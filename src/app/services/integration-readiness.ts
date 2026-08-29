@@ -2,6 +2,8 @@ import 'server-only';
 import prisma from '@/app/lib/prisma';
 import { getTreatwellApiConfiguration } from './treatwell-api';
 import { evaluateSyncCoverage, type SyncCoverage } from './treatwell-sync-coverage';
+import { activeMarketplaces } from './marketplace-channels';
+import { getSiteSettings } from './site-settings-service';
 
 export type IntegrationReadiness = {
   treatwell: {
@@ -56,12 +58,21 @@ export async function listOutboundIcalFeeds(siteUrl: string): Promise<OutboundIc
  * Three cheap COUNTs instead of nine queries.
  */
 export async function getTreatwellSyncCoverage(): Promise<SyncCoverage> {
-  const [totalStylists, inboundConfigured, outboundConfigured] = await Promise.all([
+  // Settings are unstable_cache'd, so this adds no database round-trip in the
+  // common case — but it is what stops the warning firing for a marketplace the
+  // salon no longer sells through.
+  const [totalStylists, inboundConfigured, outboundConfigured, settings] = await Promise.all([
     prisma.stylist.count(),
     prisma.stylist.count({ where: { treatwellIcalUrl: { not: null } } }),
     prisma.stylist.count({ where: { icalToken: { not: null } } }),
+    getSiteSettings(),
   ]);
-  return evaluateSyncCoverage({ totalStylists, inboundConfigured, outboundConfigured });
+  return evaluateSyncCoverage({
+    totalStylists,
+    inboundConfigured,
+    outboundConfigured,
+    activeMarketplaces: activeMarketplaces(settings).map((m) => m.name),
+  });
 }
 
 /** Admin-only caller. Returns booleans/counts and never returns secret values. */
@@ -77,6 +88,7 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
     failed,
     synced,
     latestBusy,
+    settings,
   ] = await Promise.all([
     prisma.stylist.count(),
     prisma.stylist.count({ where: { treatwellIcalUrl: { not: null } } }),
@@ -91,6 +103,7 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
       orderBy: { lastSyncAt: 'desc' },
       select: { lastSyncAt: true },
     }),
+    getSiteSettings(),
   ]);
 
   return {
@@ -105,6 +118,7 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
         totalStylists: stylistTotal,
         inboundConfigured: icalMapped,
         outboundConfigured: feedTokens,
+        activeMarketplaces: activeMarketplaces(settings).map((m) => m.name),
       }),
     },
     resend: {

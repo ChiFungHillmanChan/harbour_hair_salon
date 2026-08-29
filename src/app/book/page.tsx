@@ -3,7 +3,8 @@ import Image from 'next/image';
 import { BookingWizard } from '@/components/booking/BookingWizard';
 import { getAggregateRating } from '@/app/services/review-service';
 import { redirect } from 'next/navigation';
-import { isBookingEnabled, TREATWELL_BOOKING_URL } from '@/app/lib/booking-maintenance';
+import { isBookingEnabled } from '@/app/lib/booking-maintenance';
+import { activeMarketplaces } from '@/app/services/marketplace-channels';
 import { getSession } from '@/app/lib/session';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { getActiveGlobalOffer } from '@/app/services/offers-service';
@@ -48,22 +49,25 @@ async function getStylists() {
 
 export default async function BookPage() {
   if (!(await isBookingEnabled())) {
-    // Phone and Treatwell URL come from SiteSettings so the salon can change
-    // them from the admin panel without a redeploy.
+    // Phone and marketplace links come from SiteSettings so the salon can change
+    // them from the admin panel without a redeploy — including removing one
+    // entirely, which a hardcoded fallback used to make impossible.
     const settings = await getSiteSettings();
-    const treatwellUrl = settings.treatwellUrl || TREATWELL_BOOKING_URL;
+    const marketplaces = activeMarketplaces(settings);
 
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
         <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-8 md:p-12 text-center">
           <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
           <h1 className="text-3xl md:text-4xl font-serif text-zinc-900 mb-4 tracking-tight">
-            Online Booking Under Maintenance
+            {marketplaces.length > 0
+              ? 'Online booking is on its way'
+              : 'Booking by phone for now'}
           </h1>
           <p className="text-zinc-600 leading-relaxed mb-8">
-            Our website booking system is temporarily under maintenance. You can still
-            book by phone or through Treatwell. Thank you, and sorry for any
-            inconvenience.
+            {marketplaces.length > 0
+              ? 'Our own online booking is being set up. In the meantime you can call the salon directly, or book through one of the sites below.'
+              : 'Our online booking is being set up. Give us a ring and we will find you a time — it only takes a minute, and you will speak to the salon directly.'}
           </p>
 
           {/* Phone first and equally prominent: a phone booking costs the salon
@@ -75,15 +79,24 @@ export default async function BookPage() {
             >
               Call {settings.phone}
             </a>
-            <a
-              href={treatwellUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block border border-zinc-900 text-zinc-900 px-8 py-3 rounded-md font-medium hover:bg-zinc-100 transition-colors"
-            >
-              Book on Treatwell
-            </a>
+            {marketplaces.map((m) => (
+              <a
+                key={m.name}
+                href={m.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block border border-zinc-900 text-zinc-900 px-8 py-3 rounded-md font-medium hover:bg-zinc-100 transition-colors"
+              >
+                Book on {m.name}
+              </a>
+            ))}
           </div>
+
+          {marketplaces.length === 0 && (
+            <p className="mt-5 text-sm text-zinc-500 leading-relaxed">
+              We answer the phone during salon hours.
+            </p>
+          )}
 
           <p className="mt-6 text-sm text-zinc-500">
             Existing appointments can still be viewed and cancelled from{' '}

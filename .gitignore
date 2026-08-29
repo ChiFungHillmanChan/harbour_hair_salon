@@ -49,3 +49,6 @@ next-env.d.ts
 # SQLite dev databases (never commit — may contain password hashes)
 *.db
 *.db-journal
+
+# Design canvas working files (mockups; the published artifact is the deliverable)
+.design/

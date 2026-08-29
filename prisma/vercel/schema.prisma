@@ -164,7 +164,7 @@ model Availability {
   stylistId String
   stylist   Stylist @relation(fields: [stylistId], references: [id], onDelete: Cascade)
 
-  @@index([stylistId, dayOfWeek])
+  @@unique([stylistId, dayOfWeek])
 }
 
 model DiscountCode {
