@@ -7,6 +7,7 @@ import { useFormStatus } from 'react-dom';
 
 const NAV_LINKS = [
   { href: '/admin', label: 'Schedule' },
+  { href: '/admin/opening-hours', label: 'Opening Hours' },
   { href: '/admin/services', label: 'Services & Pricing' },
   { href: '/admin/categories', label: 'Category Pages' },
   { href: '/admin/stylists', label: 'Stylists' },

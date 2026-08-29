@@ -1,0 +1,79 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import prisma from '@/app/lib/prisma';
+import { verifySession } from '@/app/lib/session';
+import { validateWeek, type DayInput } from '@/app/services/opening-hours';
+
+async function requireAdmin() {
+  const session = await verifySession();
+  if (session.role !== 'ADMIN') {
+    throw new Error('Unauthorized');
+  }
+}
+
+export type OpeningHoursState =
+  | { status: 'idle' }
+  | { status: 'error'; message: string }
+  | { status: 'success' };
+
+/**
+ * Replaces one stylist's whole week in a single transaction.
+ *
+ * Whole-week rather than per-day because the form submits the week as a unit:
+ * a partial write would leave the site selling a mix of old and new hours, and
+ * there is no UI that can express "Tuesday saved, Wednesday didn't".
+ */
+export async function updateStylistAvailability(
+  _prev: OpeningHoursState,
+  formData: FormData
+): Promise<OpeningHoursState> {
+  await requireAdmin();
+
+  const stylistId = formData.get('stylistId');
+  if (typeof stylistId !== 'string' || !stylistId) {
+    return { status: 'error', message: 'Missing stylist.' };
+  }
+
+  const days: DayInput[] = [];
+  for (let dayOfWeek = 0; dayOfWeek <= 6; dayOfWeek++) {
+    days.push({
+      dayOfWeek,
+      // An unchecked checkbox is absent from FormData entirely, so "open" is
+      // read as an explicit presence test rather than a value comparison.
+      isOff: formData.get(`open-${dayOfWeek}`) !== 'on',
+      startTime: String(formData.get(`start-${dayOfWeek}`) ?? ''),
+      endTime: String(formData.get(`end-${dayOfWeek}`) ?? ''),
+    });
+  }
+
+  const validated = validateWeek(days);
+  if (!validated.ok) {
+    return { status: 'error', message: validated.error };
+  }
+
+  await prisma.$transaction(
+    validated.days.map((day) =>
+      prisma.availability.upsert({
+        where: { stylistId_dayOfWeek: { stylistId, dayOfWeek: day.dayOfWeek } },
+        update: { isOff: day.isOff, startTime: day.startTime, endTime: day.endTime },
+        // validateWeek() has already normalised closed days to a storable
+        // window, so create and update take the same values.
+        create: {
+          stylistId,
+          dayOfWeek: day.dayOfWeek,
+          isOff: day.isOff,
+          startTime: day.startTime,
+          endTime: day.endTime,
+        },
+      })
+    )
+  );
+
+  // /book reads availability per request, but the admin screen and the booking
+  // page both need to reflect the new week immediately.
+  revalidatePath('/admin/opening-hours');
+  revalidatePath('/book');
+
+  return { status: 'success' };
+}

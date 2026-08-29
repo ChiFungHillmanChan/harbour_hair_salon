@@ -38,8 +38,16 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `src/components/admin/ScheduleCalendar.tsx` — "Mark completed" control on CONFIRMED appointments.
 - `src/components/admin/ServiceForm.tsx` + `src/app/actions/admin-services.ts` — manage `requiresPatchTest`/`isPatchTest` per service.
 
+### Opening Hours (Admin → Opening Hours)
+The hours the booking engine sells from. Before this, `Availability` was written only by `prisma/seed.ts` — production had no way to change it.
+- `src/app/services/opening-hours.ts` — pure, dependency-free: `validateWeek(days)` (structure, time format, close-after-open, normalises closed days), `countSlots(start, end, duration)` and `DAY_NAMES`. Unit-tested in `opening-hours.test.ts`; `countSlots` is pinned against the booking engine's own `buildSlotsForWindow` so the two cannot drift.
+- `src/app/actions/admin-availability.ts` — `updateStylistAvailability` replaces one stylist's whole week in a `$transaction` of upserts. Admin-gated and validated before any write (locked by `opening-hours-schema.test.ts`).
+- `src/app/admin/opening-hours/page.tsx` — pads stylists with fewer than seven rows to a full week; explicit `select` so the secret `treatwellIcalUrl`/`icalToken` never reach the client.
+- `src/components/admin/OpeningHoursForm.tsx` — stylist tabs, per-day open/closed + time inputs, live slot-count preview, copy-hours-to-all-open-days.
+
 ## Services
 - `booking-service.ts` — slot availability, booking creation, patch-test eligibility query
+- `opening-hours.ts` — pure opening-hours validation and slot counting (see Opening Hours above)
 - `offers-service.ts` — `hasActiveOffers()`: React-`cache()`d active-offer flag shared by Header + Footer (one count query per request)
 - `email-service.ts` — Resend + React Email templates
 - `patch-test-eligibility.ts` — pure colour-gate eligibility logic
@@ -61,7 +69,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ## API Routes
 - `src/app/api/cron/reminders/route.ts` — daily appointment-reminder cron (Bearer `CRON_SECRET`)
-- `src/app/api/cron/treatwell-sync/route.ts` — Treatwell inbound iCal sync, protected by `CRON_SECRET`. `vercel.json` runs it every 5 minutes (`*/5 * * * *`), which **requires the Vercel Pro plan** — Hobby only allows daily crons and would fail the deploy build. Admin can also trigger extra test syncs manually. The schedule is Vercel project configuration and cannot be controlled by an app environment variable.
+- `src/app/api/cron/treatwell-sync/route.ts` — Treatwell inbound iCal sync, protected by `CRON_SECRET`. **No cron runs it**: the `*/5` schedule was removed in PR #38 because it held the Neon compute awake 24/7 (Neon bills idle compute, and its free tier suspends after 5 minutes). The route is additionally gated behind `TREATWELL_SYNC_ENABLED`, checked **above** the first DB call. Admin → Integrations can still trigger a sync manually (it calls the service directly). See "Neon compute budget" in CLAUDE.md before re-adding any schedule.
 - `src/app/api/session/route.ts` — private/no-store cosmetic header session state, split from shared marketing HTML so public pages can use Vercel ISR. Now only the fallback when the `session_hint` cookie is absent (pre-hint sessions); back-fills the hint so it runs at most once per browser. Protected pages still verify the session server-side.
 - `src/app/api/ical/[stylistId]/route.ts` — outbound busy feed (`?token=` secret) that Treatwell Connect subscribes to per employee; thin adapter over `stylist-ical-feed.ts`.
 
@@ -108,7 +116,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - Stylist — includes private `treatwellIcalUrl` (inbound) and `treatwellExternalId` (future API mapping)
 - Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the £10 Consultation & Patch Test service) booleans; also `requiresConsultation` (services that must route to a consultation before they can be booked directly) and `isConsultation` (the separate free £0 Consultation service). Gated colour services route to the £10 Consultation & Patch Test; other gated services route to the free Consultation. `treatwellExternalId` maps it to the future API.
 - Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED) — also stores Treatwell provider booking id, durable sync status/error and last sync timestamp.
-- Availability
+- Availability — per-stylist weekly opening hours (`dayOfWeek` 0-6 Sun-Sat, `startTime`/`endTime` `HH:mm`, `isOff`). `@@unique([stylistId, dayOfWeek])` so the editor can upsert one row per stylist-day; `getAvailableSlots` reads it with `findFirst`, so duplicates would make the hours the site sells depend on row order. Edited in Admin → Opening Hours
 - PasswordResetToken — single-use, 1-hour password reset grants. Stores only the SHA-256 `tokenHash` (never the raw token), plus `expiresAt`/`usedAt`; cascade-deleted with the user
 - ExternalBusyBlock — busy times imported from Treatwell (per-stylist iCal); `Stylist.treatwellIcalUrl` holds the feed URL
 
