@@ -152,13 +152,9 @@ export function BookingWizard({ services, stylists, activeOffer = null }: Bookin
     // Start from the site-wide offer price (what the public pages advertise and
     // what the server records as priceAtBooking), then apply any discount code.
     const originalPrice = applyOfferToPrice(selectedService.price, activeOffer);
-    if (!appliedDiscount) return originalPrice;
-
-    if (appliedDiscount.type === 'PERCENTAGE') {
-      return originalPrice - (originalPrice * (appliedDiscount.value / 100));
-    } else {
-      return Math.max(0, originalPrice - appliedDiscount.value);
-    }
+    return applyOfferToPrice(originalPrice, appliedDiscount
+      ? { discountType: appliedDiscount.type, discountValue: appliedDiscount.value }
+      : null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

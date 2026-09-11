@@ -114,3 +114,13 @@ test('queries only bookable appointments for the right stylist', async () => {
   assert.ok(where.date.gte instanceof Date);
   assert.ok(where.date.gte < NOW);
 });
+
+test('booked duration remains fixed when the current service duration changes', async () => {
+  const db = fakeDb({ id: 's1', icalToken: 'tok' }, [
+    { id: 'a1', date: new Date('2026-08-05T09:00:00Z'), durationAtBooking: 90, service: { duration: 30 } } as FakeAppt,
+  ]);
+  const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW });
+  assert.equal(result.status, 200);
+  if (result.status === 200) assert.match(result.body, /DTEND:20260805T103000Z/);
+  assert.equal((db.findManyCalls[0].select as { durationAtBooking?: boolean }).durationAtBooking, true);
+});

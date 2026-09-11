@@ -23,7 +23,7 @@ test('parses a single timed VEVENT into one interval', () => {
   assert.equal(out[0].uid, 'abc-123');
   assert.equal(out[0].start.toISOString(), '2026-07-01T09:00:00.000Z');
   assert.equal(out[0].end.toISOString(), '2026-07-01T10:00:00.000Z');
-  assert.equal(out[0].summary, 'Treatwell booking');
+  assert.equal('summary' in out[0], false);
 });
 
 test('drops events that already ended before now', () => {
@@ -39,7 +39,7 @@ test('drops events beyond the window end', () => {
   assert.deepEqual(out, []);
 });
 
-test('skips recurring (rrule) events in v1', () => {
+test('refuses recurring events through the legacy parser too', () => {
   const recurring = ICS(
     [
       'BEGIN:VEVENT',
@@ -52,7 +52,7 @@ test('skips recurring (rrule) events in v1', () => {
     ].join('\r\n'),
   );
   const out = parseIcalBusyIntervals(recurring, { now: new Date('2026-06-01T00:00:00Z') });
-  assert.deepEqual(out, []);
+  assert.equal(out, null);
 });
 
 test('returns [] for a valid but empty calendar (prune is then correct)', () => {

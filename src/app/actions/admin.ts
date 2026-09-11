@@ -8,7 +8,10 @@ import { hashPassword } from '@/app/lib/password';
 import { z } from 'zod';
 import { revalidateCategoryPages } from '@/app/actions/admin-services';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
-import { sendBookingConfirmation } from '@/app/services/email-service';
+import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
+import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
+import { assertAppointmentSlotAvailable, runSerializableWithRetry } from '@/app/services/booking-service';
+import { BookingError } from '@/app/services/booking-errors';
 
 // --- Validation Schemas ---
 
@@ -404,12 +407,9 @@ export async function promoteGoogleUserToAdmin(id: string) {
   revalidatePath('/admin/users');
 }
 
-// CONFIRMED is only reachable from PENDING (enforced below): bookings are
-// created as PENDING requests and an admin approves them here. Re-confirming a
-// CANCELLED appointment stays impossible — its slot may have been rebooked, and
-// approving it would bypass the in-transaction double-booking conflict check
-// that the create/reschedule paths use. A PENDING request already claimed its
-// slot inside that transaction, so PENDING → CONFIRMED needs no re-check.
+// Requests need explicit approval. Every transition checks the current row in
+// the same transaction as its conditional write, so cancellation cannot race
+// an approval and revive a slot that has already been released.
 const ALLOWED_APPOINTMENT_STATUSES = ['CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
 type AppointmentStatus = (typeof ALLOWED_APPOINTMENT_STATUSES)[number];
 
@@ -422,69 +422,62 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
     return { success: false, error: 'Invalid status' };
   }
   try {
-    const appointment = await prisma.appointment.findUnique({
-      where: { id: appointmentId },
-      include: {
+    const { appointment, changed } = await runSerializableWithRetry(async (tx) => {
+      const include = {
         user: { select: { email: true, name: true } },
         stylist: { select: { name: true, treatwellExternalId: true } },
         service: { select: { name: true, price: true, duration: true, treatwellExternalId: true } },
-      },
-    });
-    if (!appointment) return { success: false, error: 'Appointment not found' };
-
-    if (status === 'CONFIRMED' && appointment.status !== 'PENDING') {
-      return { success: false, error: 'Only pending requests can be confirmed' };
-    }
-
-    // A cancelled appointment must not be revived: its slot may have been
-    // rebooked, and reviving it (e.g. to COMPLETED) would double-count it for
-    // commission and re-trigger customer emails. Create a new booking instead.
-    if (appointment.status === 'CANCELLED' && status !== 'CANCELLED') {
-      return { success: false, error: 'A cancelled appointment cannot be reinstated — create a new booking.' };
-    }
-
-    const data: {
-      status: string;
-      treatwellSyncStatus?: string;
-      treatwellSyncError?: null;
-    } = { status };
-    if (status === 'CANCELLED') {
-      const api = getTreatwellApiConfiguration();
-      data.treatwellSyncStatus = changedTreatwellSyncStatus({
-        apiReady: api.enabled && api.configured,
-        treatwellBookingId: appointment.treatwellBookingId,
-        stylistExternalId: appointment.stylist.treatwellExternalId,
-        serviceExternalId: appointment.service.treatwellExternalId,
-      });
-      data.treatwellSyncError = null;
-    }
-
-    await prisma.appointment.update({ where: { id: appointmentId }, data });
-
-    // The customer only gets their confirmation email once the salon approves.
-    // A committed status change must never fail because an email hiccups.
-    if (status === 'CONFIRMED') {
-      try {
-        await sendBookingConfirmation({
-          id: appointment.id,
-          date: appointment.date,
-          user: appointment.user,
-          stylist: { name: appointment.stylist.name },
-          service: {
-            name: appointment.service.name,
-            price: Number(appointment.priceAtBooking ?? appointment.service.price),
-            duration: appointment.service.duration,
-          },
-        });
-      } catch (emailError) {
-        console.error('Confirmation email failed (appointment still confirmed):', emailError);
+      } as const;
+      const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
+      if (!current) throw new BookingError('Appointment not found');
+      if (current.status === status) return { appointment: current, changed: false };
+      if (status === 'CONFIRMED' && current.status !== 'PENDING') {
+        throw new BookingError('Only pending requests can be confirmed');
       }
-    }
-  } catch {
-    return { success: false, error: 'Appointment not found' };
+      if (current.status === 'CANCELLED') {
+        throw new BookingError('A cancelled appointment cannot be reinstated — create a new booking.');
+      }
+
+      if (status === 'CONFIRMED') {
+        const readiness = await checkCalendarBookingReadiness(tx);
+        if (!readiness.ready) throw new BookingError('Calendar setup needs attention. Check Integrations before confirming this request.');
+        // Imported bookings or opening hours may have changed since the request.
+        await assertAppointmentSlotAvailable(tx, current, current.date);
+      }
+
+      const data: Prisma.AppointmentUpdateManyMutationInput = {
+        status,
+        notificationVersion: { increment: 1 },
+      };
+      if (status === 'CANCELLED') {
+        const api = getTreatwellApiConfiguration();
+        data.treatwellSyncStatus = changedTreatwellSyncStatus({
+          apiReady: api.enabled && api.configured,
+          treatwellBookingId: current.treatwellBookingId,
+          stylistExternalId: current.stylist.treatwellExternalId,
+          serviceExternalId: current.service.treatwellExternalId,
+        });
+        data.treatwellSyncError = null;
+      }
+
+      const result = await tx.appointment.updateMany({
+        where: { id: appointmentId, status: current.status, date: current.date, updatedAt: current.updatedAt },
+        data,
+      });
+      if (result.count !== 1) throw new BookingError('This appointment has changed. Please refresh and try again.');
+      const updated = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
+      if (!updated) throw new BookingError('Appointment not found');
+      if (status === 'CONFIRMED' || status === 'CANCELLED') await enqueueAppointmentNotification(tx, status === 'CONFIRMED' ? 'CONFIRMATION' : 'CANCELLATION', updated);
+      return { appointment: updated, changed: true };
+    });
+
+    if (changed) await dispatchAppointmentNotifications(appointment.id);
+  } catch (error) {
+    return { success: false, error: error instanceof BookingError ? error.message : 'Could not update the appointment. Please try again.' };
   }
   revalidatePath('/admin');
   revalidatePath('/appointments');
+  revalidatePath('/book');
   return { success: true };
 }
 

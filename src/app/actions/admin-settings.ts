@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { revalidatePath, updateTag } from 'next/cache';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
+import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
+import { checkOperationsBookingReadiness } from '@/app/services/operations-readiness';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -88,11 +90,32 @@ export async function updateSiteSettings(
     return { status: 'error', message: label ? `${label}: ${message}` : message };
   }
 
-  await prisma.siteSettings.upsert({
-    where: { id: 'singleton' },
-    update: parsed.data,
-    create: { id: 'singleton', ...parsed.data },
-  });
+  try {
+    const blockers = await prisma.$transaction(async (tx) => {
+      // Closing booking must remain possible during any provider outage.
+      if (parsed.data.bookingEnabled) {
+        const calendar = await checkCalendarBookingReadiness(tx);
+        const operations = await checkOperationsBookingReadiness(tx);
+        const reasons = [...calendar.blockers, ...operations.blockers];
+        const activeChannels = await tx.calendarConnection.count({ where: { receivesBookings: true } });
+        if (activeChannels && process.env.CALENDAR_SYNC_ENABLED !== 'true') {
+          reasons.push('Enable CALENDAR_SYNC_ENABLED and deploy the calendar schedule for active booking channels.');
+        }
+        if (!calendar.ready || !operations.ready || reasons.length) {
+          return reasons.length ? reasons : ['Calendar and operational readiness must both pass.'];
+        }
+      }
+      await tx.siteSettings.upsert({
+        where: { id: 'singleton' },
+        update: parsed.data,
+        create: { id: 'singleton', ...parsed.data },
+      });
+      return [];
+    }, { isolationLevel: 'Serializable' });
+    if (blockers.length) return { status: 'error', message: `Settings were not saved. ${blockers.join(' ')}` };
+  } catch {
+    return { status: 'error', message: 'Settings could not be saved. Retry after checking database availability.' };
+  }
 
   updateTag('site-settings');
   revalidatePath('/', 'layout');

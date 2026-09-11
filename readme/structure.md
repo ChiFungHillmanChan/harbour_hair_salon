@@ -98,13 +98,13 @@ Which third-party booking sites are live is derived from the URLs set in Admin �
 - `timesheets.ts` — admin timesheet management: create/edit/delete TimesheetEntry rows
 - `payroll.ts` — `runPayrollAction(year, month)`, `updateAdjustmentAction`, `finalizePayrollAction`; delegates to `payroll-service.ts`
 - `password-reset.ts` — `requestPasswordReset` (enumeration-safe: identical response whether or not the email exists) and `resetPassword` (single-use token redeemed in a transaction, bumps `sessionVersion` to sign out every existing session)
-- `admin-integrations.ts` — admin-only manual iCal sync, failed Treatwell outbound queue retry, and per-stylist busy-feed token generate/rotate.
+- `admin-integrations.ts` — admin-only provider connection setup, bounded manual calendar sync, and per-stylist busy-feed token rotation with subscription invalidation.
 
 ## Pages
 - `src/app/admin/employees/page.tsx` — admin employee list with create/edit/delete via `EmployeeForm`
 - `src/app/admin/timesheets/page.tsx` — admin timesheet browser and manual entry editor
 - `src/app/admin/payroll/page.tsx` — admin payroll runner: period picker, computed gross lines, CSV export, finalize
-- `src/app/admin/integrations/page.tsx` — Treatwell/Resend/CDN readiness dashboard. Shows only booleans, counts and timestamps; never secret values.
+- `src/app/admin/integrations/page.tsx` — per-stylist Fresha/Treatwell setup and synchronization evidence. Inbound URLs stay masked; secret outbound subscription URLs are available only to administrators.
 - `src/app/auth/forgot-password/page.tsx` — request a reset link; always shows the same confirmation so accounts cannot be enumerated
 - `src/app/auth/reset-password/page.tsx` — redeem `?token=` and set a new password; handles missing/invalid/expired links
 - `src/app/kiosk/page.tsx` — PIN kiosk screen: employee roster with clock-in/out via `KioskClock`
@@ -121,12 +121,12 @@ Which third-party booking sites are live is derived from the URLs set in Admin �
 ## Database Models
 - User
 - OAuthAccount — links a user to a verified external provider identity (currently Google)
-- Stylist — includes private `treatwellIcalUrl` (inbound) and `treatwellExternalId` (future API mapping)
+- Stylist — `icalToken` protects the local busy feed; `treatwellIcalUrl` is retained only as a legacy migration source; `treatwellExternalId` is a future API mapping.
 - Service — includes `requiresPatchTest` (colour services) and `isPatchTest` (the £10 Consultation & Patch Test service) booleans; also `requiresConsultation` (services that must route to a consultation before they can be booked directly) and `isConsultation` (the separate free £0 Consultation service). Gated colour services route to the £10 Consultation & Patch Test; other gated services route to the free Consultation. `treatwellExternalId` maps it to the future API.
 - Appointment (status: PENDING / CONFIRMED / COMPLETED / CANCELLED) — also stores Treatwell provider booking id, durable sync status/error and last sync timestamp.
 - Availability — per-stylist weekly opening hours (`dayOfWeek` 0-6 Sun-Sat, `startTime`/`endTime` `HH:mm`, `isOff`). `@@unique([stylistId, dayOfWeek])` so the editor can upsert one row per stylist-day; `getAvailableSlots` reads it with `findFirst`, so duplicates would make the hours the site sells depend on row order. Edited in Admin → Opening Hours
 - PasswordResetToken — single-use, 1-hour password reset grants. Stores only the SHA-256 `tokenHash` (never the raw token), plus `expiresAt`/`usedAt`; cascade-deleted with the user
-- ExternalBusyBlock — busy times imported from Treatwell (per-stylist iCal); `Stylist.treatwellIcalUrl` holds the feed URL
+- ExternalBusyBlock — busy periods imported per source/stylist/UID from CalendarConnection; contains no customer title.
 
 ## Email templates
 - `src/components/emails/BookingRequestReceived.tsx` — customer acknowledgement sent the moment a PENDING request is created (explicitly NOT a confirmation); monochrome brand
@@ -148,3 +148,26 @@ Which third-party booking sites are live is derived from the URLs set in Admin �
 ## Components (responsive shell)
 - `src/components/admin/AdminSidebar.tsx` — admin nav shell: hamburger top bar + slide-in drawer < lg, sticky sidebar ≥ lg; closes on backdrop/✕/Escape/route change
 - `src/components/layout/FooterSwitcher.tsx` — client-side gate (usePathname) that hides the marketing footer+book bar on /auth pages (which get no footer at all), so soft navigation swaps chrome correctly
+
+
+## Production readiness and calendar integration (September 2026)
+- `src/app/services/calendar-feed-url.ts` — public HTTPS validation, DNS pinning, redirect rejection, bounded response size and deadline.
+- `src/app/services/calendar-ical.ts` — discrete UTC/IANA/all-day events; rejects unsupported recurring appointments and malformed feeds atomically.
+- `src/app/services/calendar-sync-service.ts` — per-connection leases and transactional reconciliation; preserves busy periods on failure.
+- `src/app/services/integration-readiness.ts` — `checkCalendarBookingReadiness` uses caller transaction, current staff hours, successful sync freshness and confirmed outbound subscriptions.
+- `src/app/services/booking-horizon.ts` — shared reservation horizon constrained by the imported calendar window and freshness margin.
+- `src/app/services/booking-service.ts` — `assertAppointmentSlotAvailable` rechecks frozen duration, current hours, calendar horizon and internal/external conflicts.
+- `src/app/lib/booking-maintenance.ts` — uncached master switch plus calendar/operational runtime prerequisites; cancellation stays available.
+- `src/app/services/notification-outbox-service.ts` — transactional notification snapshots, stable event keys, leases, bounded retries and obsolete-message suppression.
+- `src/app/services/notification-cron-service.ts` — reminder/review discovery and queue delivery with persisted job status.
+- `src/app/services/email-service.ts` — renders frozen email requests and sends through the Resend API with abortable requests; password resets stay out of the queue.
+- `src/app/services/operations-readiness.ts` — explicit read-only DB/Resend/Redis diagnostics, cached evidence and configuration fingerprints; runtime checks do not expire daily.
+- `src/app/actions/admin-operations.ts`, `src/app/admin/operations/page.tsx` — diagnostic controls and safe cron/notification metadata; no recipient payloads displayed.
+- `src/app/api/cron/calendar-sync/route.ts`, `src/app/api/cron/notifications/route.ts` — authenticated 30-minute schedules, disabled before database access unless explicitly enabled.
+- `CalendarConnection` — provider sales activity, private inbound URL, inbound/outbound evidence, success/failure timestamps and lease.
+- `NotificationDelivery` — durable appointment event; its customer snapshot is removed after delivery/obsolescence and expired after 30 days by the worker.
+- `BackgroundJobState` — safe diagnostics and scheduler progress/lease records.
+- `src/test/load-server-module.ts` — test-only source loader replacing explicit I/O dependencies.
+- `scripts/verify-production-readiness.ts` — PostgreSQL concurrency/rollback/calendar integration checks, restricted to a disposable localhost database named `salon_test`.
+- `readme/salon-visit-handover-cantonese.md` — owner access and business-data collection checklist.
+- `readme/production-readiness-rollout-cantonese.md` — verified implementation, remaining external requirements and deployment acceptance sequence.

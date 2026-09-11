@@ -1,241 +1,45 @@
 import Link from 'next/link';
-import {
-  generateStylistIcalFeedTokenAction,
-  retryFailedTreatwellBookingsAction,
-  runTreatwellIcalSyncAction,
-} from '@/app/actions/admin-integrations';
-import { getIntegrationReadiness, listOutboundIcalFeeds } from '@/app/services/integration-readiness';
+import { verifySession } from '@/app/lib/session';
+import { retryFailedTreatwellBookingsAction } from '@/app/actions/admin-integrations';
+import { getIntegrationReadiness, listCalendarConnectionsForAdmin } from '@/app/services/integration-readiness';
+import { CalendarConnectionsSetup } from '@/components/admin/CalendarConnectionsSetup';
 import { SITE_URL } from '@/app/lib/site-url';
 
 export const dynamic = 'force-dynamic';
 
-type SearchParams = {
-  ical?: string;
-  feeds?: string;
-  failed?: string;
-  upserted?: string;
-  retry?: string;
-  feedToken?: string;
-};
-
-function Status({ ready, children }: { ready: boolean; children: React.ReactNode }) {
-  return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-      ready ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-    }`}>
-      {children}
-    </span>
-  );
-}
-
+type SearchParams = { ical?: string; feeds?: string; failed?: string; skipped?: string; upserted?: string; retry?: string; feedToken?: string; calendar?: string; calendarError?: string };
 function ConfigRow({ label, ready }: { label: string; ready: boolean }) {
-  return (
-    <li className="flex items-center justify-between gap-4 border-b border-zinc-100 py-2 last:border-0">
-      <code className="text-xs text-zinc-700">{label}</code>
-      <Status ready={ready}>{ready ? 'Configured' : 'Missing'}</Status>
-    </li>
-  );
+  return <li className="flex items-center justify-between gap-4 border-b border-zinc-100 py-2 last:border-0"><code className="text-xs text-zinc-700">{label}</code><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ready ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{ready ? 'Configured' : 'Missing'}</span></li>;
 }
-
-export default async function IntegrationsPage({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
-  const [readiness, outboundFeeds, query] = await Promise.all([
-    getIntegrationReadiness(),
-    listOutboundIcalFeeds(SITE_URL),
-    searchParams,
-  ]);
+export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const session = await verifySession();
+  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const [readiness, stylists, query] = await Promise.all([getIntegrationReadiness(), listCalendarConnectionsForAdmin(SITE_URL), searchParams]);
   const { treatwell, resend, cdn } = readiness;
-  // Mirrors the kill-switch in the cron route so this panel can never claim a
-  // scheduled sync that isn't running. Read per-request, not at module level.
-  const scheduledSyncEnabled = process.env.TREATWELL_SYNC_ENABLED === 'true';
-
-  return (
-    <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-10">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#174F7F]">Operations</p>
-        <h1 className="mt-2 text-3xl font-serif font-bold text-zinc-900">Integrations</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
-          Configuration status only — secret values are never shown. Treatwell API mode stays disabled
-          until the official contract and credentials are available.
-        </p>
-      </div>
-
-      {treatwell.syncCoverage.warning && (
-        <div
-          role="alert"
-          className="rounded-lg border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-900"
-        >
-          <p className="font-semibold uppercase tracking-wide text-xs text-red-700">
-            Two-way calendar sync incomplete
-          </p>
-          <p className="mt-2 leading-6">{treatwell.syncCoverage.warning}</p>
-          <p className="mt-2 leading-6">
-            Fix this <strong>before</strong> turning on{' '}
-            <Link href="/admin/settings" className="font-semibold underline">
-              Settings → Online booking
-            </Link>
-            , or the same slot can be sold twice. Set each stylist&apos;s Treatwell iCal URL below,
-            generate their busy-feed URL, and paste it into Treatwell Connect → Team → employee →
-            External Calendar.
-          </p>
-        </div>
-      )}
-
-      {(query.ical === 'complete' || query.retry || query.feedToken) && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {query.ical === 'complete'
-            ? `iCal sync finished: ${query.feeds ?? '0'} feed(s), ${query.upserted ?? '0'} event(s), ${query.failed ?? '0'} failure(s).`
-            : query.feedToken
-              ? 'Busy-feed URL generated. Copy it below and paste it into Treatwell Connect → Team → employee → External Calendar.'
-              : `${query.retry} failed API booking(s) moved back to the pending queue.`}
-        </div>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-zinc-900">Treatwell</h2>
-              <p className="mt-1 text-sm text-zinc-500">Current iCal inbound + future API outbound</p>
-            </div>
-            <Status ready={treatwell.api.enabled && treatwell.api.configured}>
-              {treatwell.api.enabled && treatwell.api.configured ? 'API config ready' : 'API not enabled'}
-            </Status>
-          </div>
-
-          <dl className="mt-6 grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-lg bg-zinc-50 p-3"><dt className="text-zinc-500">iCal staff</dt><dd className="mt-1 text-xl font-bold">{treatwell.stylists.icalMapped}/{treatwell.stylists.total}</dd></div>
-            <div className="rounded-lg bg-zinc-50 p-3"><dt className="text-zinc-500">API staff mapping</dt><dd className="mt-1 text-xl font-bold">{treatwell.stylists.apiMapped}/{treatwell.stylists.total}</dd></div>
-            <div className="rounded-lg bg-zinc-50 p-3"><dt className="text-zinc-500">API service mapping</dt><dd className="mt-1 text-xl font-bold">{treatwell.services.apiMapped}/{treatwell.services.total}</dd></div>
-            <div className="rounded-lg bg-zinc-50 p-3"><dt className="text-zinc-500">Last iCal event sync</dt><dd className="mt-1 text-sm font-semibold">{treatwell.lastIcalSyncAt ? treatwell.lastIcalSyncAt.toLocaleString('en-GB') : 'Never'}</dd></div>
-          </dl>
-
-          <ul className="mt-5">
-            <ConfigRow label="TREATWELL_API_ENABLED=true" ready={treatwell.api.enabled} />
-            <ConfigRow label="TREATWELL_API_BASE_URL" ready={treatwell.api.baseUrlConfigured} />
-            <ConfigRow label="TREATWELL_API_KEY" ready={treatwell.api.apiKeyConfigured} />
-            <ConfigRow label="TREATWELL_VENUE_ID" ready={treatwell.api.venueIdConfigured} />
-          </ul>
-
-          <p className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
-            Code boundary, database mappings and queue state are ready. The HTTP adapter deliberately
-            waits for Treatwell&apos;s official endpoint, auth and webhook documentation.
-          </p>
-
-          <p className="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-            {scheduledSyncEnabled ? (
-              <>
-                Scheduled iCal sync is on. A Treatwell booking can take up to one sync interval to
-                block a slot here. Use the button below for an immediate manual run.
-              </>
-            ) : (
-              <>
-                <strong>Scheduled iCal sync is off.</strong> Treatwell bookings are <em>not</em>{' '}
-                blocking slots here automatically — run the sync manually below. It was disabled to
-                stop the cron holding the database awake around the clock for a run that did nothing
-                (no stylist has an iCal feed URL). To turn it back on: map feed URLs to stylists, set{' '}
-                <code className="font-mono">TREATWELL_SYNC_ENABLED=true</code>, and re-add the cron
-                to <code className="font-mono">vercel.json</code> at an interval over 5 minutes.
-              </>
-            )}
-          </p>
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <form action={runTreatwellIcalSyncAction}>
-              <button className="rounded bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700">
-                Run iCal sync now
-              </button>
-            </form>
-            <Link href="/admin/stylists" className="rounded border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">
-              Map stylists
-            </Link>
-            <Link href="/admin/services" className="rounded border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">
-              Map services
-            </Link>
-          </div>
-
-          <div className="mt-6 border-t border-zinc-200 pt-5">
-            <h3 className="text-sm font-semibold text-zinc-900">
-              Outbound busy feeds (website → Treatwell)
-            </h3>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">
-              Each URL below contains a secret — treat it like a password. Paste it into Treatwell
-              Connect → Team → the matching employee → External Calendar → Link Calendar. Treatwell
-              then blocks times booked on this website. Rotating a URL invalidates the old one.
-            </p>
-            <ul className="mt-3 space-y-3">
-              {outboundFeeds.map((feed) => (
-                <li key={feed.stylistId} className="rounded-lg bg-zinc-50 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-zinc-900">{feed.name}</span>
-                    <form action={generateStylistIcalFeedTokenAction}>
-                      <input type="hidden" name="stylistId" value={feed.stylistId} />
-                      <button className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-100">
-                        {feed.feedUrl ? 'Rotate URL' : 'Generate feed URL'}
-                      </button>
-                    </form>
-                  </div>
-                  {feed.feedUrl ? (
-                    <code className="mt-2 block overflow-x-auto whitespace-nowrap rounded border border-zinc-200 bg-white px-2 py-1.5 text-xs text-zinc-700">
-                      {feed.feedUrl}
-                    </code>
-                  ) : (
-                    <p className="mt-2 text-xs text-zinc-500">No feed URL yet.</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="mt-6 border-t border-zinc-200 pt-5">
-            <p className="text-sm text-zinc-700">
-              Outbound queue: <strong>{treatwell.outbound.pending}</strong> pending,{' '}
-              <strong className={treatwell.outbound.failed ? 'text-red-700' : ''}>{treatwell.outbound.failed}</strong> failed,{' '}
-              <strong>{treatwell.outbound.synced}</strong> synced.
-            </p>
-            {treatwell.outbound.failed > 0 && (
-              <form action={retryFailedTreatwellBookingsAction} className="mt-3">
-                <button className="text-sm font-semibold text-[#174F7F] underline underline-offset-4">
-                  Retry all failed bookings
-                </button>
-              </form>
-            )}
-          </div>
-        </section>
-
-        <div className="space-y-6">
-          <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div><h2 className="text-xl font-semibold">Resend</h2><p className="mt-1 text-sm text-zinc-500">Transactional and marketing email</p></div>
-              <Status ready={resend.apiKeyConfigured && resend.fromAddressConfigured}>
-                {resend.apiKeyConfigured && resend.fromAddressConfigured ? 'Sending ready' : 'Setup needed'}
-              </Status>
-            </div>
-            <ul className="mt-5">
-              <ConfigRow label="RESEND_API_KEY" ready={resend.apiKeyConfigured} />
-              <ConfigRow label="EMAIL_FROM" ready={resend.fromAddressConfigured} />
-              <ConfigRow label="EMAIL_REPLY_TO" ready={resend.replyToConfigured} />
-              <ConfigRow label="RESEND_AUDIENCE_ID" ready={resend.audienceConfigured} />
-            </ul>
-            <p className="mt-4 text-xs leading-5 text-zinc-500">Verify a Harbour Hair sending domain in Resend, then use an address such as bookings@your-domain.</p>
-          </section>
-
-          <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div><h2 className="text-xl font-semibold">Vercel CDN</h2><p className="mt-1 text-sm text-zinc-500">ISR public-page delivery</p></div>
-              <Status ready={cdn.siteUrlConfigured}>{cdn.siteUrlConfigured ? 'Site URL ready' : 'Domain setting missing'}</Status>
-            </div>
-            <dl className="mt-5 space-y-3 text-sm">
-              <div className="flex justify-between gap-4"><dt className="text-zinc-500">Strategy</dt><dd className="font-semibold">Incremental Static Regeneration</dd></div>
-              <div className="flex justify-between gap-4"><dt className="text-zinc-500">Homepage refresh</dt><dd className="font-semibold">Every {cdn.homeRevalidateSeconds / 60} minutes + on-demand</dd></div>
-              <div className="flex justify-between gap-4"><dt className="text-zinc-500">Required env</dt><dd className="font-mono text-xs">NEXT_PUBLIC_SITE_URL</dd></div>
-            </dl>
-          </section>
-        </div>
-      </div>
+  const scheduledSyncEnabled = process.env.CALENDAR_SYNC_ENABLED === 'true';
+  return <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-10">
+    <header><p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#174F7F]">Operations</p><h1 className="mt-2 text-3xl font-serif font-bold text-zinc-900">Integrations</h1><p className="mt-2 text-sm leading-6 text-zinc-600">Set up each stylist&apos;s calendar connections, then test the feeds before enabling website booking.</p></header>
+    {query.calendarError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Calendar settings were not saved. {query.calendarError.slice(0, 300)}</div>}
+    {(query.ical || query.calendar || query.feedToken || query.retry) && <div role="status" className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      {query.ical === 'complete' ? `Sync finished: ${query.feeds ?? '0'} feed(s), ${query.upserted ?? '0'} event(s), ${query.failed ?? '0'} failure(s), ${query.skipped ?? '0'} skipped. Check each feed below.` : query.feedToken ? 'Secret URL rotated. Update provider subscriptions and confirm them again.' : query.retry ? `${query.retry} failed API job(s) queued for retry.` : query.calendar === 'confirmed' ? 'Outbound subscription check recorded.' : 'Calendar settings saved. Test changed feeds before enabling website booking.'}
+    </div>}
+    <section className={`rounded-lg border p-5 ${treatwell.syncCoverage.safeToEnableOnlineBooking ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
+      <h2 className="font-semibold">{treatwell.syncCoverage.safeToEnableOnlineBooking ? 'Calendar setup checks pass' : 'Calendar setup needs attention'}</h2>
+      {treatwell.syncCoverage.blockers.length > 0 && <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">{treatwell.syncCoverage.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>}
+      <p className="mt-3 text-sm leading-6">Calendar feeds are delayed and do not reserve a slot on every platform at once. Review new booking requests against all provider calendars before confirming. <Link href="/admin/opening-hours" className="font-semibold underline">Opening hours</Link> must be complete, and active feeds must have succeeded within 45 minutes.</p>
+    </section>
+    <section className="rounded-xl border border-zinc-200 bg-white p-5">
+      <h2 className="text-xl font-semibold">Treatwell and Fresha calendar setup</h2>
+      <p className="mt-2 text-sm leading-6 text-zinc-600">Use the provider&apos;s supported per-stylist iCal export and external-calendar subscription if available for your account. If either direction is unavailable, leave its setup unconfirmed and keep website booking closed. No private provider API is assumed.</p>
+      <p className="mt-3 text-sm leading-6 text-zinc-600">The website imports provider busy times and exports website bookings with a fixed “Busy” title. Imported Treatwell blocks are not forwarded to Fresha, or vice versa, because forwarded events can create calendar loops. Staff must reconcile bookings between the provider calendars.</p>
+      <p className="mt-3 text-sm leading-6 text-zinc-600">Feeds must use HTTPS and discrete events with UTC or named time zones. Recurrence rules, redirects and ambiguous feed formats fail the test and retain previous busy times. Successful empty feeds clear canceled busy times.</p>
+      <p className="mt-3 rounded bg-zinc-50 p-3 text-sm">{scheduledSyncEnabled ? 'Scheduled inbound sync is enabled. The configured job runs every 30 minutes; provider export and import delays can add to this.' : 'Scheduled inbound sync is off. Manual tests are available below. Enable CALENDAR_SYNC_ENABLED=true in the deployment only after configuring and testing feeds.'}</p>
+    </section>
+    <CalendarConnectionsSetup stylists={stylists} />
+    <div className="grid gap-6 lg:grid-cols-2">
+      <section className="rounded-xl border border-zinc-200 bg-white p-6"><h2 className="text-xl font-semibold">Resend email configuration</h2><ul className="mt-4"><ConfigRow label="RESEND_API_KEY" ready={resend.apiKeyConfigured} /><ConfigRow label="EMAIL_FROM" ready={resend.fromAddressConfigured} /><ConfigRow label="EMAIL_REPLY_TO" ready={resend.replyToConfigured} /><ConfigRow label="RESEND_AUDIENCE_ID" ready={resend.audienceConfigured} /></ul><p className="mt-4 text-xs leading-5 text-zinc-500">Configuration alone does not prove delivery. Verify the sending domain in Resend and complete the notification checks before launch.</p></section>
+      <section className="rounded-xl border border-zinc-200 bg-white p-6"><h2 className="text-xl font-semibold">Vercel CDN</h2><p className="mt-2 text-sm text-zinc-600">Public pages use incremental static regeneration. Homepage refresh: every {cdn.homeRevalidateSeconds / 60} minutes and on demand.</p><ul className="mt-4"><ConfigRow label="NEXT_PUBLIC_SITE_URL" ready={cdn.siteUrlConfigured} /></ul></section>
     </div>
-  );
+    <details className="rounded-xl border border-zinc-200 bg-white p-5"><summary className="cursor-pointer font-semibold">Future Treatwell API adapter</summary><p className="mt-3 text-sm leading-6 text-zinc-600">The HTTP adapter remains unavailable until an official API contract is supplied. Environment variables and mappings do not establish a working connection.</p><p className="mt-3 text-sm">Queue: {treatwell.outbound.pending} pending, {treatwell.outbound.failed} failed, {treatwell.outbound.synced} synced.</p>{treatwell.outbound.failed > 0 && <form action={retryFailedTreatwellBookingsAction} className="mt-3"><button className="text-sm font-semibold text-[#174F7F] underline">Retry failed API jobs</button></form>}</details>
+  </div>;
 }

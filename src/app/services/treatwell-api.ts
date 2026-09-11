@@ -69,6 +69,7 @@ export type TreatwellSyncableAppointment = {
   status: string;
   notes: string | null;
   treatwellBookingId: string | null;
+  durationAtBooking?: number | null;
   user: { name: string | null; email: string; phone: string | null };
   stylist: { treatwellExternalId: string | null };
   service: { duration: number; treatwellExternalId: string | null };
@@ -103,7 +104,7 @@ export function buildTreatwellBookingCommand(
   if (!serviceExternalId) return { ok: false, reason: 'MISSING_SERVICE_MAPPING' };
 
   const startsAt = new Date(appointment.date);
-  const endsAt = new Date(startsAt.getTime() + appointment.service.duration * 60_000);
+  const endsAt = new Date(startsAt.getTime() + (appointment.durationAtBooking ?? appointment.service.duration) * 60_000);
 
   return {
     ok: true,

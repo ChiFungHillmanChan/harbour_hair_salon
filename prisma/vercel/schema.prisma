@@ -64,6 +64,7 @@ model Stylist {
   availabilities      Availability[]
   employee            Employee?
   externalBusyBlocks  ExternalBusyBlock[]
+  calendarConnections CalendarConnection[]
 }
 
 model Service {
@@ -112,6 +113,9 @@ model Appointment {
   discountCodeId String?
   discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
 
+  notificationVersion Int @default(0)
+  notifications NotificationDelivery[]
+
   review Review?
 
   @@index([stylistId, date])
@@ -133,7 +137,7 @@ model ExternalBusyBlock {
   summary     String? // raw event title, for debugging only
   lastSyncAt  DateTime @default(now())
 
-  @@unique([source, externalUid])
+  @@unique([source, stylistId, externalUid])
   @@index([stylistId, start])
 }
 
@@ -381,4 +385,59 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+// A provider's sales activity is independent of its public marketing link.
+model CalendarConnection {
+  id                  String    @id @default(cuid())
+  stylistId           String
+  stylist             Stylist   @relation(fields: [stylistId], references: [id], onDelete: Cascade)
+  provider            String
+  receivesBookings    Boolean   @default(false)
+  inboundUrl          String?
+  inboundEnabled      Boolean   @default(false)
+  outboundConfirmedAt DateTime?
+  lastAttemptAt       DateTime?
+  lastSuccessAt       DateTime?
+  lastError           String?
+  lockedUntil         DateTime?
+  lockToken           String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([stylistId, provider])
+  @@index([inboundEnabled])
+}
+
+model NotificationDelivery {
+  id            String       @id @default(cuid())
+  eventKey      String       @unique
+  kind          String
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  payloadJson   String
+  status        String       @default("PENDING")
+  attempts      Int          @default(0)
+  firstAttemptAt DateTime?
+  nextAttemptAt DateTime     @default(now())
+  lockedAt      DateTime?
+  lockToken     String?
+  sentAt        DateTime?
+  lastError     String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([status, nextAttemptAt])
+}
+
+model BackgroundJobState {
+  name            String   @id
+  lastStartedAt   DateTime?
+  lastSucceededAt DateTime?
+  lastFailedAt    DateTime?
+  lastError       String?
+  lastResultJson  String?
+  lockToken       String?
+  lockedUntil     DateTime?
+  updatedAt       DateTime @updatedAt
 }

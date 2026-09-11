@@ -1,9 +1,9 @@
 import 'server-only';
 import prisma from '@/app/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import { getTreatwellApiConfiguration } from './treatwell-api';
 import { evaluateSyncCoverage, type SyncCoverage } from './treatwell-sync-coverage';
-import { activeMarketplaces } from './marketplace-channels';
-import { getSiteSettings } from './site-settings-service';
+
 
 export type IntegrationReadiness = {
   treatwell: {
@@ -55,24 +55,34 @@ export async function listOutboundIcalFeeds(siteUrl: string): Promise<OutboundIc
 /**
  * Just the sync-coverage verdict, for callers (like the admin dashboard) that
  * want the double-booking warning without paying for the full readiness report.
- * Three cheap COUNTs instead of nine queries.
+ * Loads current staff hours and calendar connection evidence.
  */
-export async function getTreatwellSyncCoverage(): Promise<SyncCoverage> {
-  // Settings are unstable_cache'd, so this adds no database round-trip in the
-  // common case — but it is what stops the warning firing for a marketplace the
-  // salon no longer sells through.
-  const [totalStylists, inboundConfigured, outboundConfigured, settings] = await Promise.all([
-    prisma.stylist.count(),
-    prisma.stylist.count({ where: { treatwellIcalUrl: { not: null } } }),
-    prisma.stylist.count({ where: { icalToken: { not: null } } }),
-    getSiteSettings(),
-  ]);
-  return evaluateSyncCoverage({
-    totalStylists,
-    inboundConfigured,
-    outboundConfigured,
-    activeMarketplaces: activeMarketplaces(settings).map((m) => m.name),
+export async function getCalendarSyncCoverage(db: Pick<Prisma.TransactionClient, 'stylist'> = prisma, now = new Date()): Promise<SyncCoverage> {
+  const stylists = await db.stylist.findMany({
+    select: {
+      id: true, name: true, icalToken: true,
+      availabilities: { select: { dayOfWeek: true, isOff: true, startTime: true, endTime: true } },
+      calendarConnections: { select: {
+        provider: true, receivesBookings: true, inboundUrl: true, inboundEnabled: true,
+        outboundConfirmedAt: true, lastSuccessAt: true, lastError: true,
+      } },
+    },
   });
+  return evaluateSyncCoverage({ stylists, now });
+}
+
+/** Uses the caller's transaction; never falls back to another connection. */
+export async function checkCalendarBookingReadiness(
+  db: Pick<Prisma.TransactionClient, 'stylist'>,
+  now = new Date(),
+): Promise<{ ready: boolean; blockers: string[] }> {
+  const coverage = await getCalendarSyncCoverage(db, now);
+  return { ready: coverage.safeToEnableOnlineBooking, blockers: coverage.blockers };
+}
+
+/** Compatibility for existing dashboard consumers. */
+export async function getTreatwellSyncCoverage(): Promise<SyncCoverage> {
+  return getCalendarSyncCoverage();
 }
 
 /** Admin-only caller. Returns booleans/counts and never returns secret values. */
@@ -87,11 +97,11 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
     pending,
     failed,
     synced,
-    latestBusy,
-    settings,
+    latestConnection,
+    syncCoverage,
   ] = await Promise.all([
     prisma.stylist.count(),
-    prisma.stylist.count({ where: { treatwellIcalUrl: { not: null } } }),
+    prisma.calendarConnection.count({ where: { provider: 'TREATWELL', inboundEnabled: true, inboundUrl: { not: null } } }),
     prisma.stylist.count({ where: { icalToken: { not: null } } }),
     prisma.stylist.count({ where: { treatwellExternalId: { not: null } } }),
     prisma.service.count(),
@@ -99,11 +109,12 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
     prisma.appointment.count({ where: { treatwellSyncStatus: 'PENDING' } }),
     prisma.appointment.count({ where: { treatwellSyncStatus: 'FAILED' } }),
     prisma.appointment.count({ where: { treatwellSyncStatus: 'SYNCED' } }),
-    prisma.externalBusyBlock.findFirst({
-      orderBy: { lastSyncAt: 'desc' },
-      select: { lastSyncAt: true },
+    prisma.calendarConnection.findFirst({
+      where: { provider: 'TREATWELL', lastSuccessAt: { not: null } },
+      orderBy: { lastSuccessAt: 'desc' },
+      select: { lastSuccessAt: true },
     }),
-    getSiteSettings(),
+    getCalendarSyncCoverage(),
   ]);
 
   return {
@@ -113,13 +124,8 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
       stylists: { total: stylistTotal, icalMapped, apiMapped: stylistApiMapped, feedTokens },
       services: { total: serviceTotal, apiMapped: serviceApiMapped },
       outbound: { pending, failed, synced },
-      lastIcalSyncAt: latestBusy?.lastSyncAt ?? null,
-      syncCoverage: evaluateSyncCoverage({
-        totalStylists: stylistTotal,
-        inboundConfigured: icalMapped,
-        outboundConfigured: feedTokens,
-        activeMarketplaces: activeMarketplaces(settings).map((m) => m.name),
-      }),
+      lastIcalSyncAt: latestConnection?.lastSuccessAt ?? null,
+      syncCoverage,
     },
     resend: {
       apiKeyConfigured: Boolean(process.env.RESEND_API_KEY?.trim()),
@@ -133,4 +139,20 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
       siteUrlConfigured: Boolean(process.env.NEXT_PUBLIC_SITE_URL?.trim()),
     },
   };
+}
+
+/** Private feed URLs are projected to a boolean before reaching UI components. */
+export async function listCalendarConnectionsForAdmin(siteUrl: string) {
+  const stylists = await prisma.stylist.findMany({
+    orderBy: { name: 'asc' },
+    select: {
+      id: true, name: true, icalToken: true,
+      calendarConnections: { select: { id: true, provider: true, receivesBookings: true, inboundUrl: true, inboundEnabled: true, outboundConfirmedAt: true, lastAttemptAt: true, lastSuccessAt: true, lastError: true } },
+    },
+  });
+  return stylists.map((stylist) => ({
+    id: stylist.id, name: stylist.name, feedToken: stylist.icalToken,
+    feedUrl: stylist.icalToken ? `${siteUrl.replace(/\/$/, '')}/api/ical/${stylist.id}?token=${stylist.icalToken}` : null,
+    connections: stylist.calendarConnections.map(({ inboundUrl, ...connection }) => ({ ...connection, inboundUrlConfigured: Boolean(inboundUrl?.trim()) })),
+  }));
 }

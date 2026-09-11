@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'crypto';
 import { syncTreatwellFeeds } from '@/app/services/treatwell-sync-service';
 
 // Fetches + parses one external feed per stylist; keep it off the default limit.
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 function safeCompare(a: string, b: string): boolean {
   // Compare BYTE lengths, not `String.length` (UTF-16 code units): a multibyte

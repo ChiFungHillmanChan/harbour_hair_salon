@@ -1,103 +1,42 @@
-import { test } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateSyncCoverage } from './treatwell-sync-coverage';
-
-test('both directions covering every stylist is safe and warning-free', () => {
-  const r = evaluateSyncCoverage({ totalStylists: 2, inboundConfigured: 2, outboundConfigured: 2, activeMarketplaces: ['Treatwell'] });
-  assert.equal(r.safeToEnableOnlineBooking, true);
-  assert.equal(r.warning, null);
-  assert.equal(r.missingInbound, 0);
-  assert.equal(r.missingOutbound, 0);
+import { evaluateSyncCoverage, type CoverageStylist } from './treatwell-sync-coverage';
+const now = new Date('2026-09-11T12:00:00Z');
+function stylist(): CoverageStylist {
+  return { id: 's1', name: 'Stylist one', icalToken: 'secret', availabilities: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, isOff: dayOfWeek === 0, startTime: '09:00', endTime: '17:00' })), calendarConnections: [{ provider: 'TREATWELL', receivesBookings: true, inboundUrl: 'https://example.com/private', inboundEnabled: true, outboundConfirmedAt: now, lastSuccessAt: now, lastError: null }] };
+}
+test('a generated token and configured URL do not prove either direction works', () => {
+  const row = stylist(); row.calendarConnections[0].lastSuccessAt = null; row.calendarConnections[0].outboundConfirmedAt = null;
+  const result = evaluateSyncCoverage({ stylists: [row], now });
+  assert.equal(result.safeToEnableOnlineBooking, false);
+  assert.equal(result.missingInbound, 1); assert.equal(result.missingOutbound, 1);
 });
-
-test('the real production state (nothing configured) is flagged unsafe', () => {
-  // 2 stylists, 0 iCal URLs, 0 feed tokens — exactly what prod looked like.
-  const r = evaluateSyncCoverage({ totalStylists: 2, inboundConfigured: 0, outboundConfigured: 0, activeMarketplaces: ['Treatwell'] });
-  assert.equal(r.safeToEnableOnlineBooking, false);
-  assert.equal(r.inboundReady, false);
-  assert.equal(r.outboundReady, false);
-  assert.match(r.warning ?? '', /Double-booking risk/);
-  assert.match(r.warning ?? '', /Treatwell iCal URL/);
-  assert.match(r.warning ?? '', /outbound busy-feed token/);
+test('fresh successful empty feeds count, stale feeds and latest failures block readiness', () => {
+  const row = stylist();
+  assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, true);
+  row.calendarConnections[0].lastSuccessAt = new Date(now.getTime() - 46 * 60_000);
+  assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, false);
+  row.calendarConnections[0].lastSuccessAt = now; row.calendarConnections[0].lastError = 'HTTP 503';
+  assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, false);
 });
-
-test('inbound-only coverage is still unsafe', () => {
-  const r = evaluateSyncCoverage({ totalStylists: 3, inboundConfigured: 3, outboundConfigured: 0, activeMarketplaces: ['Treatwell'] });
-  assert.equal(r.inboundReady, true);
-  assert.equal(r.outboundReady, false);
-  assert.equal(r.safeToEnableOnlineBooking, false);
-  assert.match(r.warning ?? '', /outbound busy-feed token/);
-  assert.doesNotMatch(r.warning ?? '', /Treatwell iCal URL/);
+test('activity is explicit and independent of public links and stale stored feed URLs', () => {
+  const row = stylist(); row.calendarConnections[0].receivesBookings = false;
+  row.calendarConnections[0].lastSuccessAt = null; row.calendarConnections[0].outboundConfirmedAt = null;
+  assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, true);
 });
-
-test('outbound-only coverage is still unsafe', () => {
-  const r = evaluateSyncCoverage({ totalStylists: 3, inboundConfigured: 0, outboundConfigured: 3, activeMarketplaces: ['Treatwell'] });
-  assert.equal(r.safeToEnableOnlineBooking, false);
-  assert.match(r.warning ?? '', /Treatwell iCal URL/);
-  assert.doesNotMatch(r.warning ?? '', /outbound busy-feed token/);
+test('all active sources must be ready independently; Fresha supports the same feed contract', () => {
+  const row = stylist(); row.calendarConnections.push({ ...row.calendarConnections[0], provider: 'FRESHA', lastSuccessAt: null });
+  assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, false);
+  row.calendarConnections[1].lastSuccessAt = now;
+  assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, true);
 });
-
-test('partial coverage counts the stylists that are missing', () => {
-  const r = evaluateSyncCoverage({ totalStylists: 5, inboundConfigured: 3, outboundConfigured: 1, activeMarketplaces: ['Treatwell'] });
-  assert.equal(r.missingInbound, 2);
-  assert.equal(r.missingOutbound, 4);
-  assert.match(r.warning ?? '', /2 of 5/);
-  assert.match(r.warning ?? '', /4 of 5/);
+test('missing or invalid opening hours and no stylists block booking', () => {
+  assert.equal(evaluateSyncCoverage({ stylists: [], now }).safeToEnableOnlineBooking, false);
+  const row = stylist(); row.availabilities.pop();
+  assert.match(evaluateSyncCoverage({ stylists: [row], now }).warning ?? '', /hours/i);
 });
-
-test('zero stylists is reported as not ready, not silently safe', () => {
-  const r = evaluateSyncCoverage({ totalStylists: 0, inboundConfigured: 0, outboundConfigured: 0, activeMarketplaces: ['Treatwell'] });
-  assert.equal(r.safeToEnableOnlineBooking, false);
-  assert.match(r.warning ?? '', /no stylists are set up/);
-});
-
-test('over-counting configured stylists never yields negative missing counts', () => {
-  const r = evaluateSyncCoverage({ totalStylists: 2, inboundConfigured: 5, outboundConfigured: 5, activeMarketplaces: ['Treatwell'] });
-  assert.equal(r.missingInbound, 0);
-  assert.equal(r.missingOutbound, 0);
-  assert.equal(r.safeToEnableOnlineBooking, true);
-});
-
-test('with no marketplace live there is nothing to reconcile, so no warning', () => {
-  // From September this is the real state: Treatwell switched off, this site the
-  // only channel. The old gate fired forever here — 0 of 4 stylists configured
-  // for a marketplace nobody is selling through — which trains the salon to
-  // ignore a banner that also carries genuine warnings.
-  const r = evaluateSyncCoverage({
-    totalStylists: 4, inboundConfigured: 0, outboundConfigured: 0, activeMarketplaces: [],
-  });
-  assert.equal(r.safeToEnableOnlineBooking, true);
-  assert.equal(r.warning, null);
-});
-
-test('a live marketplace with no sync configured is still flagged', () => {
-  const r = evaluateSyncCoverage({
-    totalStylists: 4, inboundConfigured: 0, outboundConfigured: 0, activeMarketplaces: ['Treatwell'],
-  });
-  assert.equal(r.safeToEnableOnlineBooking, false);
-  assert.match(r.warning ?? '', /Double-booking risk/);
-});
-
-test('the warning names the marketplace that is actually live', () => {
-  const r = evaluateSyncCoverage({
-    totalStylists: 2, inboundConfigured: 0, outboundConfigured: 2, activeMarketplaces: ['Fresha'],
-  });
-  assert.match(r.warning ?? '', /Fresha/);
-});
-
-test('adding a second live marketplace re-opens the warning', () => {
-  const r = evaluateSyncCoverage({
-    totalStylists: 2, inboundConfigured: 2, outboundConfigured: 2, activeMarketplaces: ['Fresha', 'Treatwell'],
-  });
-  // Both directions cover every stylist for Treatwell, but Fresha has no sync
-  // path at all — being fully configured for one channel proves nothing here.
-  assert.match(r.warning ?? '', /Fresha/);
-});
-
-test('zero stylists is still not ready even with no marketplace', () => {
-  const r = evaluateSyncCoverage({
-    totalStylists: 0, inboundConfigured: 0, outboundConfigured: 0, activeMarketplaces: [],
-  });
-  assert.equal(r.safeToEnableOnlineBooking, false);
-  assert.match(r.warning ?? '', /no stylists are set up/);
+test('readiness reports no inbound URL or tokens in its warning', () => {
+  const row = stylist(); row.calendarConnections[0].lastSuccessAt = null;
+  const result = evaluateSyncCoverage({ stylists: [row], now });
+  assert.doesNotMatch(JSON.stringify(result), /https:|secret/);
 });

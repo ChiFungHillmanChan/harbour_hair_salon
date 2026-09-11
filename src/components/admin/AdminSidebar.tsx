@@ -19,6 +19,7 @@ const NAV_LINKS = [
   { href: '/admin/users', label: 'Admin Users' },
   { href: '/admin/settings', label: 'Site Settings' },
   { href: '/admin/integrations', label: 'Integrations' },
+  { href: '/admin/operations', label: 'Operations' },
   { href: '/admin/employees', label: 'Employees' },
   { href: '/admin/timesheets', label: 'Timesheets' },
   { href: '/admin/shifts', label: 'Shifts' },

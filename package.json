@@ -27,7 +27,8 @@
     "db:vercel:push": "prisma db push --schema prisma/vercel/schema.prisma",
     "db:vercel:studio": "prisma studio --schema prisma/vercel/schema.prisma",
     "db:backfill:patch-test": "tsx prisma/backfill-patch-test-flags.ts",
-    "db:backfill:consultation": "tsx prisma/backfill-consultation-flags.ts"
+    "db:backfill:consultation": "tsx prisma/backfill-consultation-flags.ts",
+    "test:integration": "node --conditions=react-server --import tsx scripts/verify-production-readiness.ts"
   },
   "pnpm": {
     "overrides": {

@@ -116,3 +116,15 @@ test('refuses to build a command until both admin mappings exist', () => {
 
   assert.deepEqual(result, { ok: false, reason: 'MISSING_SERVICE_MAPPING' });
 });
+
+test('outbound API command uses duration captured at booking after service edits', () => {
+  const appointment = {
+    id: 'a', date: new Date('2026-09-12T09:00:00Z'), status: 'CONFIRMED', notes: null,
+    treatwellBookingId: null, durationAtBooking: 90,
+    user: { name: null, email: 'a@example.com', phone: null },
+    stylist: { treatwellExternalId: 'staff' }, service: { duration: 30, treatwellExternalId: 'service' },
+  };
+  const result = buildTreatwellBookingCommand(appointment);
+  assert.ok(result.ok);
+  if (result.ok) assert.equal(result.command.endsAt, '2026-09-12T10:30:00.000Z');
+});

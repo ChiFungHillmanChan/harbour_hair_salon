@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/reminders",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/notifications",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/calendar-sync",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

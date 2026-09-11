@@ -143,23 +143,28 @@ export async function resetPassword(
   const hashedPassword = await hashPassword(parsed.data.password);
 
   try {
-    await prisma.$transaction([
-      // Conditional update: `usedAt: null` in the filter means two concurrent
-      // redemptions of the same link cannot both succeed — the second matches
-      // zero rows.
-      prisma.passwordResetToken.updateMany({
-        where: { id: record.id, usedAt: null },
-        data: { usedAt: new Date() },
-      }),
-      prisma.user.update({
+    const redeemed = await prisma.$transaction(async (tx) => {
+      // Claim the still-live token before changing the password. An array
+      // transaction cannot branch on count=0, so it would also change the
+      // password for a concurrent request that lost this single-use claim.
+      const now = new Date();
+      const claim = await tx.passwordResetToken.updateMany({
+        where: { id: record.id, usedAt: null, expiresAt: { gt: now } },
+        data: { usedAt: now },
+      });
+      if (claim.count !== 1) return false;
+
+      await tx.user.update({
         where: { id: record.userId },
         data: { password: hashedPassword, sessionVersion: { increment: 1 } },
-      }),
+      });
       // Clear any other outstanding links for this account.
-      prisma.passwordResetToken.deleteMany({
+      await tx.passwordResetToken.deleteMany({
         where: { userId: record.userId, usedAt: null },
-      }),
-    ]);
+      });
+      return true;
+    });
+    if (!redeemed) return { status: 'error', message: INVALID_RESET_LINK_MESSAGE };
   } catch (error) {
     console.error('Password reset failed:', error);
     return { status: 'error', message: 'Could not reset your password. Please try again.' };

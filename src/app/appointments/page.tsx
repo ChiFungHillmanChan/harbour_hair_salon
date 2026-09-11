@@ -35,9 +35,17 @@ export default async function AppointmentsPage() {
 
   const serialize = (appts: typeof appointments) =>
     appts.map(a => ({
-      ...a,
+      id: a.id,
       date: a.date.toISOString(),
-      service: { ...a.service, price: Number(a.service.price) },
+      status: a.status,
+      stylistId: a.stylistId,
+      stylist: a.stylist,
+      serviceId: a.serviceId,
+      service: {
+        name: a.service.name,
+        price: Number(a.priceAtBooking ?? a.service.price),
+        duration: a.durationAtBooking ?? a.service.duration,
+      },
       hasReview: Boolean(a.review),
     }));
 

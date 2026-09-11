@@ -61,7 +61,7 @@ export async function buildStylistIcalFeed(
       status: { in: ['PENDING', 'CONFIRMED'] },
       date: { gte: new Date(now.getTime() - LOOKBACK_MS) },
     },
-    select: { id: true, date: true, service: { select: { duration: true } } },
+    select: { id: true, date: true, durationAtBooking: true, service: { select: { duration: true } } },
     orderBy: { date: 'asc' },
   });
 
@@ -75,7 +75,7 @@ export async function buildStylistIcalFeed(
 
   for (const appt of appointments) {
     const start = new Date(appt.date);
-    const end = new Date(start.getTime() + appt.service.duration * 60_000);
+    const end = new Date(start.getTime() + (appt.durationAtBooking ?? appt.service.duration) * 60_000);
     if (end <= now) continue; // fully in the past — no longer blocks anything
     lines.push(
       'BEGIN:VEVENT',

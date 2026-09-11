@@ -1,26 +1,18 @@
 'use server';
 
-import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
+import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest, runSerializableWithRetry, assertAppointmentSlotAvailable } from '@/app/services/booking-service';
 import { evaluateBookingGates, type PatchTestGateReason } from '@/app/services/booking-gates';
-import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, salonDayWindow, SALON_TIME_RE, SALON_DATE_RE, type SalonDateTime } from '@/app/services/salon-time';
-import { SlotUnavailableError, BookingError } from '@/app/services/booking-errors';
-import { hasConflict, type BookedInterval } from '@/app/services/scheduling';
-import { loadExternalBusy, toBookedInterval } from '@/app/services/external-busy';
+import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, SALON_TIME_RE, SALON_DATE_RE, type SalonDateTime } from '@/app/services/salon-time';
+import { BookingError } from '@/app/services/booking-errors';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
-import {
-  sendBookingCancellation,
-  sendBookingReschedule,
-  sendBookingRequestReceived,
-  sendNewBookingAlert,
-} from '@/app/services/email-service';
-import { getSiteSettings } from '@/app/services/site-settings-service';
+import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
 import { bookingLimiter, discountLimiter } from '@/app/lib/rate-limit';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
-import { isBookingEnabled, BOOKING_MAINTENANCE_MESSAGE } from '@/app/lib/booking-maintenance';
+import { isBookingEnabled, assertOnlineBookingReady, BOOKING_MAINTENANCE_MESSAGE } from '@/app/lib/booking-maintenance';
 
 // discountLimiter stops enumeration of valid discount codes; bookingLimiter
 // curbs calendar-blockade abuse. Both come from lib/rate-limit.ts, which falls
@@ -339,39 +331,7 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
           notes,
         });
 
-    // Tell BOTH sides that a request landed. Neither send may fail the booking —
-    // it is already committed — so each is caught and logged independently.
-    //
-    // Before this, a PENDING request produced total silence: the customer had no
-    // acknowledgement (the confirmation email only goes out on admin approval)
-    // and the salon had no signal at all, so requests sat unactioned until
-    // someone happened to open the admin dashboard.
-    // Show the price actually recorded for this booking (global offer applied),
-    // so the email matches what the public pages advertised — not the list price.
-    const priceNumber = Number(appointment.priceAtBooking ?? appointment.service.price);
-    await Promise.allSettled([
-      (async () => {
-        try {
-          const settings = await getSiteSettings();
-          await sendBookingRequestReceived(
-            { ...appointment, service: { ...appointment.service, price: priceNumber } },
-            settings.phone,
-          );
-        } catch (emailError) {
-          console.error('Request-received email failed (booking still created):', emailError);
-        }
-      })(),
-      (async () => {
-        try {
-          await sendNewBookingAlert({
-            ...appointment,
-            service: { ...appointment.service, price: priceNumber },
-          });
-        } catch (emailError) {
-          console.error('Salon new-booking alert failed (booking still created):', emailError);
-        }
-      })(),
-    ]);
+    await dispatchAppointmentNotifications(appointment.id);
 
     revalidatePath('/book');
     revalidatePath('/appointments');
@@ -421,18 +381,20 @@ export async function cancelAppointment(appointmentId: string) {
     serviceExternalId: appointment.service.treatwellExternalId,
   });
 
-  await prisma.appointment.update({
-    where: { id: appointmentId },
-    data: { status: 'CANCELLED', treatwellSyncStatus, treatwellSyncError: null },
-  });
-
   try {
-    await sendBookingCancellation({
-      ...appointment,
-      service: { ...appointment.service, price: Number(appointment.priceAtBooking ?? appointment.service.price) },
+    await runSerializableWithRetry(async (tx) => {
+      const changed = await tx.appointment.updateMany({
+        where: { id: appointmentId, userId: session.userId, status: appointment.status, date: appointment.date, updatedAt: appointment.updatedAt },
+        data: { status: 'CANCELLED', treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 } },
+      });
+      if (changed.count !== 1) throw new BookingError('This appointment has changed. Please refresh and try again.');
+      const cancelled = await tx.appointment.findUnique({ where: { id: appointmentId }, include: { user: true, stylist: true, service: true } });
+      if (!cancelled) throw new BookingError('Appointment not found');
+      await enqueueAppointmentNotification(tx, 'CANCELLATION', cancelled);
     });
-  } catch (emailError) {
-    console.error('Cancellation email failed (appointment still cancelled):', emailError);
+    await dispatchAppointmentNotifications(appointmentId);
+  } catch (error) {
+    return { success: false, error: error instanceof BookingError ? error.message : 'Could not cancel the appointment. Please try again.' };
   }
 
   revalidatePath('/appointments');
@@ -517,7 +479,8 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
   }
 
   // Validate the new time falls within stylist availability for this day
-  const hoursCheck = await checkStylistHours(appointment.stylistId, salon, appointment.service.duration);
+  const duration = appointment.durationAtBooking ?? appointment.service.duration;
+  const hoursCheck = await checkStylistHours(appointment.stylistId, salon, duration);
   if (!hoursCheck.ok) {
     return { success: false, error: hoursCheck.error };
   }
@@ -539,35 +502,9 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
   try {
     const oldDate = appointment.date;
 
-    await runSerializableWithRetry(async (tx) => {
-      const { start: dayStart, end: dayEnd } = salonDayWindow(newDate);
-
-      const existingAppointments = await tx.appointment.findMany({
-        where: {
-          stylistId: appointment.stylistId,
-          date: { gte: dayStart, lte: dayEnd },
-          status: { not: 'CANCELLED' },
-          id: { not: appointmentId },
-        },
-        include: { service: { select: { duration: true } } },
-      });
-
-      // Treatwell (external) busy blocks count as conflicts too — the create
-      // paths already do this; reschedule previously skipped them, allowing a
-      // customer to reschedule directly onto a Treatwell-booked slot.
-      const externalBlocks = await loadExternalBusy(tx, [appointment.stylistId], { start: dayStart, end: dayEnd });
-      const blocking: BookedInterval[] = [
-        ...existingAppointments.map((appt) => ({
-          start: new Date(appt.date),
-          // Prefer the duration frozen at booking time (see booking-service).
-          durationMin: appt.durationAtBooking ?? appt.service.duration,
-        })),
-        ...externalBlocks.map(toBookedInterval),
-      ];
-
-      if (hasConflict(newDate, appointment.service.duration, blocking)) {
-        throw new SlotUnavailableError('This time slot is no longer available.');
-      }
+    const updated = await runSerializableWithRetry(async (tx) => {
+      await assertOnlineBookingReady(tx);
+      await assertAppointmentSlotAvailable(tx, appointment, newDate);
 
       const treatwellApi = getTreatwellApiConfiguration();
       const treatwellSyncStatus = changedTreatwellSyncStatus({
@@ -577,31 +514,25 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
         serviceExternalId: appointment.service.treatwellExternalId,
       });
 
-      await tx.appointment.update({
-        where: { id: appointmentId },
-        data: { date: newDate, reminderSent: false, treatwellSyncStatus, treatwellSyncError: null },
+      const changed = await tx.appointment.updateMany({
+        where: { id: appointmentId, userId: session.userId, status: 'CONFIRMED', date: appointment.date, updatedAt: appointment.updatedAt },
+        data: { date: newDate, reminderSent: false, treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 } },
       });
+      if (changed.count !== 1) throw new BookingError('This appointment has changed. Please refresh and try again.');
+      const rescheduled = await tx.appointment.findUnique({
+        where: { id: appointmentId },
+        include: {
+          user: { select: { email: true, name: true } },
+          stylist: { select: { name: true, treatwellExternalId: true } },
+          service: true,
+        },
+      });
+      if (!rescheduled) throw new BookingError('Appointment not found');
+      await enqueueAppointmentNotification(tx, 'RESCHEDULE', rescheduled, { oldDate });
+      return rescheduled;
     });
 
-    const updated = await prisma.appointment.findUnique({
-      where: { id: appointmentId },
-      include: {
-        user: { select: { email: true, name: true } },
-        stylist: { select: { name: true, treatwellExternalId: true } },
-        service: true,
-      },
-    });
-
-    if (updated) {
-      try {
-        await sendBookingReschedule(
-          { ...updated, service: { ...updated.service, price: Number(updated.priceAtBooking ?? updated.service.price) } },
-          oldDate,
-        );
-      } catch (emailError) {
-        console.error('Reschedule email failed (appointment still rescheduled):', emailError);
-      }
-    }
+    await dispatchAppointmentNotifications(updated.id);
 
     revalidatePath('/appointments');
     revalidatePath('/admin');
