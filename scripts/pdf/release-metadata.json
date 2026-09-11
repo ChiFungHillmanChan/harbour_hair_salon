@@ -1,0 +1,14 @@
+{
+  "release_status": "程式已部署；網站預約待驗收",
+  "release_summary": "正式網站及資料庫已核對；13 個 migrations 完成，382 項測試通過。預約、通知及日曆同步保持關閉，待 salon 真實帳戶、DNS、Redis、更表及平台驗收。",
+  "release_ref": "e3426c2 / harbourhair.co.uk",
+  "recorded_at": "2026-09-11 / Europe-London",
+  "deployment_evidence": "正式 www.harbourhair.co.uk 已部署 e3426c2；13/13 migrations 完成、資料庫 health 正常。三條 cron 已設定但保持 disabled，無真實寄信；booking 維持關閉。",
+  "production_url": "https://www.harbourhair.co.uk",
+  "deployment_id": "dpl_E4XW1BUkudyaP5kwDCaonsnzCEzL",
+  "github_actions_run": "34637283268",
+  "migration_status": "13/13 applied; zero unfinished",
+  "booking_enabled": false,
+  "notifications_enabled": false,
+  "calendar_sync_enabled": false
+}

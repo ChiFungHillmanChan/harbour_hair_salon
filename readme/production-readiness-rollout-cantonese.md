@@ -2,7 +2,9 @@
 
 檢查及實作日期：2026-09-11。分支：`codex/production-readiness-integrations`。
 
-**程式已補上預約正確性、日曆設定、通知重試及營運檢查；正式網站仍未可以當作已完成 Fresha／Treatwell 接駁並全面驗收。** 本次修改保留喺工作分支，未部署、未對正式 Neon 執行 migration、未發出真實通知。帳戶、DNS、實際訂閱及店主驗收係必須完成嘅下一步。
+**程式已部署，正式網站及資料庫已核對；Fresha／Treatwell 接駁及店主營運驗收仍未完成。** 應用程式版本 `e3426c2` 已於 2026-09-11 經 GitHub Actions 成功部署到正式 Vercel，13 個 Neon migrations 全部完成。網站預約、通知及日曆 worker 維持關閉，冇發出真實通知。帳戶、DNS、Redis、實際訂閱及店主驗收係必須完成嘅下一步。
+
+到店請用 [16 頁可填寫廣東話 PDF](../output/pdf/harbour-hair-salon-handover-fillable.pdf)：包含真正文字欄及勾選框、帳戶權限、員工更表、雙向日曆證據、驗收表，以及程式／營運分析。另存已填副本；唔好將私密憑證或已填資料放入 Git。
 
 ## 1. Google account 要攞啲乜
 
@@ -46,7 +48,7 @@
 2. 正式 `EMAIL_FROM` 用 `harbourhair.co.uk`，但當時 Resend account 只見另一個已驗證 domain；要喺正確 team 驗證 salon 發信域名。[Resend 網域設定](https://resend.com/docs/dashboard/domains/introduction)
 3. 正式 Redis hostname 當時 DNS 查詢失敗；要換成可用 database 及配對 URL／token，再驗證真實 rate-limit 寫入。後台 PING 只證明連線／認證，唔證明寫入權限。
 4. 原本 4 位 stylist，只有 1 位有完整更表；未有成功外部匯入紀錄；Fresha salon URL 空白。唔可以直接開放 online booking。
-5. 現有 Vercel production deployment 及資料庫當時可正常回應；新功能必須另行部署及驗收先會出現。
+5. 新功能現已部署到 Vercel production；網站及資料庫回應正常。真實帳戶接駁、投遞及日曆訂閱仍然要另行驗收。
 6. 確認 Neon 方案、使用量通知、備份／還原窗口、Vercel 帳單及店主接管。**Neon 唔需要用到 100% 先運作；100% 係配額耗盡風險，唔係上線條件。** 原先讀到約 6.34 CU-hours；如果該帳戶用現行 100 CU-hour Free 配額，即約 6.3%，但計劃要以店主 dashboard 為準。[Neon 官方 Free 配額資料](https://github.com/neondatabase/website/blob/main/content/faqs/free-plan-limits-and-quotas.md)
 
 ## 5. Cron 與費用
@@ -93,4 +95,15 @@ Vercel cron 唔保證自動補跑或 exactly-once；本程式用資料庫佇列�
 - **瀏覽器驗證**：虛構店主登入、Operations、Integrations、Settings 阻止未完成設定嘅開放操作、公開 `/book` 關閉流程；日曆錯誤 URL 留喺設定頁顯示安全提示，已保存 URL 保持隱藏。桌面及 390px 手機版通過目視檢查。無真實帳戶、無真實寄信、無正式資料改動。
 
 - **正式 build 通知 runtime 通過**：以模擬 Resend transport 呼叫實際 `/api/cron/notifications`，第一次執行即 `queued=1`、`sent=1`、`failed=0`；HTML 正常產生，只有一次模擬 HTTP，資料庫標記 SENT／一次嘗試、清除 payload。亦修正咗原先用較早時間作 cutoff，令新通知要等下一輪先寄嘅延遲。
-- 本機測試 app／PostgreSQL 已關閉。正式 Vercel、Neon、Resend、Treatwell 及 Fresha 未作修改。
+- 本機測試 app／PostgreSQL 已關閉。以下係之後獲授權完成嘅正式部署紀錄；本機測試本身冇發送真實電郵或建立真實預約。
+
+### 2026-09-11 正式部署核對
+
+- 應用程式 commit：`e3426c265cba68a669d045cac8f6fba96b455d36`；已推送 `main` 及工作分支。[GitHub Actions 34637283268](https://github.com/ChiFungHillmanChan/harbour_hair_salon/actions/runs/34637283268) 嘅 CI 及 production deployment 都成功。
+- 正式 Vercel deployment：`dpl_E4XW1BUkudyaP5kwDCaonsnzCEzL`，狀態 READY；[www.harbourhair.co.uk](https://www.harbourhair.co.uk) 及 apex alias 對應相同應用程式 commit。文件同 PDF 後續提交唔改變此應用程式版本。
+- 正式 Neon：13 個 migrations 全部完成，冇 unfinished migration；建立 8 條舊日曆設定 backfill 紀錄，唔代表已有成功同步或已確認平台訂閱。
+- Health HTTP 200、DB up；首頁 HTTP 200；`/book` 顯示關閉預約入口。`/admin`、`/admin/operations`、`/admin/integrations` 未登入時都返回 307 到 signin。
+- `bookingEnabled=false`；通知及日曆啟動旗標喺 production env metadata 均未設定，按程式預設停用。確認旗標狀態後，帶正確 cron auth 核對三條路由均 HTTP 200 並返回 disabled，冇執行寄信或同步。
+- Vercel project 及 deployment 記錄均有三條正確 schedule：reminders 每日 08:00 UTC，notifications／calendar-sync 每 30 分鐘；舊 Treatwell 五分鐘 cron 已移除。呢次驗證證明排程設定及停用行為，唔等於已驗證啟用後嘅 scheduler 執行或真實投遞。
+- 部署前重新核對 Neon 現有還原窗口為 21,600 秒（6 小時）；資料庫時間點為 `2026-09-11T19:07:04.284Z`。此時間點只喺滾動窗口內有效，唔係永久備份，亦未做 restore 演練。
+- 自動批准審查拒絕將完整 production database dump 匯出到本機，理由係部署授權未包含匯出客戶敏感資料。因此冇進行匯出，改用上述現有 Neon 還原窗口核對；店主仍需決定長期備份、保存期及復原驗收。

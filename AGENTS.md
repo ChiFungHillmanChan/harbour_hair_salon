@@ -45,7 +45,7 @@ npx vercel --prod     # Deploy to Vercel production
 - **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`. Session helpers in `src/app/lib/session.ts`. Route protection in `middleware.ts`.
 - **Email**: Resend SDK with React Email templates. Service in `src/app/services/email-service.ts`, templates in `src/components/emails/`.
 - **Validation**: Zod
-- **Deployment**: Vercel (Pro plan) with Neon Postgres. Cron: appointment reminders daily at 8am UTC, Treatwell inbound sync every 5 min (the */5 schedule requires Pro — Hobby only allows daily crons and would fail the build).
+- **Deployment**: Vercel (Pro plan) with Neon Postgres. Cron: appointment reminders daily at 8am UTC, notification delivery and calendar sync every 30 minutes. These sub-daily schedules require Pro. Notification and calendar jobs return before accessing the database unless their runtime flags are enabled.
 
 ### Environment Variables
 
@@ -53,7 +53,8 @@ npx vercel --prod     # Deploy to Vercel production
 - `DATABASE_URL` — Local SQLite (in `.env`)
 - `SESSION_SECRET` — JWT signing key (required, no fallback)
 - `RESEND_API_KEY` — Email service
-- `CRON_SECRET` — Vercel cron auth (auto-injected)
+- `CRON_SECRET` — Configure in Vercel; sent as the cron Authorization bearer token
+- `NOTIFICATIONS_ENABLED` / `CALENDAR_SYNC_ENABLED` — Default disabled; enable only after the corresponding production setup and acceptance checks
 
 ### Source Layout
 
@@ -62,6 +63,10 @@ npx vercel --prod     # Deploy to Vercel production
   - `lib/` — Shared utilities (`prisma.ts`, `session.ts`, `password.ts`)
   - `services/` — Business logic (`booking-service.ts`, `email-service.ts`)
   - `api/cron/reminders/` — Daily reminder cron endpoint
+  - `api/cron/notifications/` — Transactional notification outbox worker
+  - `api/cron/calendar-sync/` — Per-stylist Treatwell/Fresha ICS busy-time import
+  - `admin/integrations/` — Calendar setup, tests and outbound subscription evidence
+  - `admin/operations/` — Runtime diagnostics, cron history and notification status
   - `api/health/` — Health check endpoint
   - `appointments/` — Customer booking management page
 - `src/components/` — React components organized by feature (`home/`, `booking/`, `layout/`, `admin/`, `services/`, `appointments/`, `emails/`)
