@@ -3,6 +3,7 @@ import { verifySession } from '@/app/lib/session';
 import { retryFailedTreatwellBookingsAction } from '@/app/actions/admin-integrations';
 import { getIntegrationReadiness, listCalendarConnectionsForAdmin } from '@/app/services/integration-readiness';
 import { CalendarConnectionsSetup } from '@/components/admin/CalendarConnectionsSetup';
+import { CALENDAR_FRESHNESS_MINUTES } from '@/app/services/treatwell-sync-coverage';
 import { SITE_URL } from '@/app/lib/site-url';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +27,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
     <section className={`rounded-lg border p-5 ${treatwell.syncCoverage.safeToEnableOnlineBooking ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
       <h2 className="font-semibold">{treatwell.syncCoverage.safeToEnableOnlineBooking ? 'Calendar setup checks pass' : 'Calendar setup needs attention'}</h2>
       {treatwell.syncCoverage.blockers.length > 0 && <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">{treatwell.syncCoverage.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>}
-      <p className="mt-3 text-sm leading-6">Calendar feeds are delayed and do not reserve a slot on every platform at once. Review new booking requests against all provider calendars before confirming. <Link href="/admin/opening-hours" className="font-semibold underline">Opening hours</Link> must be complete, and active feeds must have succeeded within 45 minutes.</p>
+      <p className="mt-3 text-sm leading-6">Calendar feeds are delayed and do not reserve a slot on every platform at once. Review new booking requests against all provider calendars before confirming. <Link href="/admin/opening-hours" className="font-semibold underline">Opening hours</Link> must be complete, and active feeds must have succeeded within {CALENDAR_FRESHNESS_MINUTES} minutes.</p>
     </section>
     <section className="rounded-xl border border-zinc-200 bg-white p-5">
       <h2 className="text-xl font-semibold">Treatwell and Fresha calendar setup</h2>
