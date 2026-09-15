@@ -1,7 +1,26 @@
 import type { Availability, CalendarConnection, Stylist } from '@prisma/client';
 import { validateWeek } from './opening-hours';
 
-export const CALENDAR_FRESHNESS_MINUTES = 45;
+/**
+ * How stale a successful inbound sync may be before a connection stops counting
+ * as covered — and, because `assertOnlineBookingReady` re-checks this on every
+ * booking attempt, how long online booking survives without one.
+ *
+ * This MUST stay a comfortable multiple of the `/api/cron/calendar-sync`
+ * schedule in `vercel.json` (currently every 30 minutes). At the original 45
+ * minutes a single skipped run closed public booking for everyone until the
+ * next success, and Vercel cron is explicitly best-effort: no exactly-once
+ * guarantee and no automatic catch-up. Marketplace iCal endpoints are also slow
+ * and occasionally rate-limited, so one late run is routine rather than
+ * exceptional. 90 minutes keeps three cron cycles of headroom.
+ *
+ * The cost of widening it is the window in which a marketplace booking is not
+ * yet visible to the site. That window was never really 45 minutes anyway —
+ * Fresha documents up to ~15 minutes of its own propagation delay on top of our
+ * polling interval — so this trades illusory precision for an outage mode that
+ * was silent to the customer, who simply saw "online booking is closed".
+ */
+export const CALENDAR_FRESHNESS_MINUTES = 90;
 export const CALENDAR_PROVIDERS = ['TREATWELL', 'FRESHA'] as const;
 export type CalendarProvider = (typeof CALENDAR_PROVIDERS)[number];
 export type CoverageStylist = Pick<Stylist, 'id' | 'name' | 'icalToken'> & {

@@ -26,7 +26,7 @@
 | 同步失敗 | 保留上次忙碌時段，顯示錯誤；唔會將下載失敗當成所有時段空閒。 |
 | 日曆安全 | 公開 HTTPS、DNS 位址檢查及固定連線、拒絕 redirect、限制大小／時間；URLs 唔會出現喺一般錯誤紀錄。 |
 | 開放預約條件 | 全部 stylist 更表完整；活躍平台有新鮮成功同步及已確認 outbound 訂閱；電郵／Redis／cron 設定及診斷證據通過。改設定後舊診斷唔會繼續當有效。 |
-| 日期範圍 | 整段服務必須喺日曆匯入嘅 90 日範圍內，另預留 45 分鐘同步新鮮度餘量；客戶唔可以繞過 UI 提交遠期衝突預約。 |
+| 日期範圍 | 整段服務必須喺日曆匯入嘅 90 日範圍內，另預留 90 分鐘同步新鮮度餘量；客戶唔可以繞過 UI 提交遠期衝突預約。 |
 | 後台 | `/admin/integrations` 設定日曆；`/admin/operations` 查看檢查結果、cron 狀態及通知紀錄。 |
 
 網站預約維持 **PENDING → 店主核對 → CONFIRMED**。ICS 有同步延遲，店主確認之前仍然要核對平台最近收到嘅預約。
@@ -107,3 +107,80 @@ Vercel cron 唔保證自動補跑或 exactly-once；本程式用資料庫佇列�
 - Vercel project 及 deployment 記錄均有三條正確 schedule：reminders 每日 08:00 UTC，notifications／calendar-sync 每 30 分鐘；舊 Treatwell 五分鐘 cron 已移除。呢次驗證證明排程設定及停用行為，唔等於已驗證啟用後嘅 scheduler 執行或真實投遞。
 - 部署前重新核對 Neon 現有還原窗口為 21,600 秒（6 小時）；資料庫時間點為 `2026-09-11T19:07:04.284Z`。此時間點只喺滾動窗口內有效，唔係永久備份，亦未做 restore 演練。
 - 自動批准審查拒絕將完整 production database dump 匯出到本機，理由係部署授權未包含匯出客戶敏感資料。因此冇進行匯出，改用上述現有 Neon 還原窗口核對；店主仍需決定長期備份、保存期及復原驗收。
+
+---
+
+## 2026-09-15 上線前檢查（開放預約前最後一輪）
+
+### 修正咗一個會令預約靜靜關閉嘅問題
+
+`assertOnlineBookingReady` 每一次落單都會重新檢查日曆新鮮度，而 `CALENDAR_FRESHNESS_MINUTES`
+原本係 **45 分鐘**，但 `/api/cron/calendar-sync` 係 **每 30 分鐘**跑一次。即係話只要有
+**一次** cron 遲到或者失敗，`lastSuccessAt` 就會超過 45 分鐘，全站 online booking 會即刻
+自動關閉，而客人淨係見到「Online booking is closed at the moment」，唔會有任何解釋。
+Vercel cron 官方明確講明**唔保證 exactly-once，亦唔會自動補跑**，加上 Treatwell／Fresha
+嘅 iCal endpoint 本身就慢同會 rate-limit，所以「漏一次」係日常，唔係例外。
+
+已改為 **90 分鐘**（3 次 cron 週期嘅緩衝）。代價係 marketplace 訂單未反映到網站嘅時間窗
+闊咗，但嗰個窗本來就唔止 45 分鐘 —— Fresha 自己文件都話佢哋有約 15 分鐘傳播延遲。
+新增測試 `the freshness window survives more than one missed calendar-sync run` 會直接讀
+`vercel.json`，強制 freshness ≥ cron 間隔 × 3，將來改任何一邊都會 fail。
+
+> ⚠️ **唔好將 `calendar-sync` 改成只喺營業時間跑。** 呢條 cron 必須 24 小時運行，
+> 因為 feed 一旦過夜變 stale，第二朝開店之前 booking 就已經係關閉狀態。
+
+### 已核對嘅正式環境狀態
+
+| 項目 | 結果 |
+|---|---|
+| 網站 | 首頁／services／contact／offers／`/book` 全部 HTTP 200；apex 同 www 都正常 |
+| `/api/health` | 200，`database: up` |
+| Neon | PostgreSQL 17.11，9 MB，13 個 migration 全部 finished，**0 個未完成** |
+| Redis | `master-gibbon-175544.upstash.io` DNS 正常，PING 同**實際寫入**都成功（之前壞咗，現已修好）|
+| Cron | Vercel 平台登記咗 3 條，同 `vercel.json` 一致 |
+| Vercel | Pro，Node 24.x，`harbour_hair_salon` |
+
+### ⛔ 仲未做、會擋住開放預約嘅 4 樣嘢
+
+1. **Resend 未驗證 `harbourhair.co.uk`** — `EMAIL_FROM=bookings@harbourhair.co.uk`，但個
+   account 目前只有 `hillmanchan.com` 驗證咗。即係話**所有預約確認電郵都會寄唔出**。
+   呢個要喺 IONOS 加 DNS record，propagation 要時間，係全部工序入面最長 lead time。
+2. **Funky／Ivan／Lox 三位 stylist 一條營業時間都冇**（`Availability` 得 Chan 有 7 行）。
+   `getAvailableSlots` 對佢哋一律回 `[]`，即 4 個人有 3 個完全訂唔到。
+3. **Chan 冇 `icalToken`** — 其餘 3 位有。Chan 嘅 outbound feed URL 要喺
+   Admin → Integrations 撳「Generate secret URL」先會存在。
+4. **8 條 `CalendarConnection` 全部係空殼** — `inboundUrl` null、`inboundEnabled` false、
+   `outboundConfirmedAt` null。Fresha 嗰 4 條仲係 `receivesBookings=false`，
+   `SiteSettings.freshaUrl` 亦係空。
+
+### 本機完整綵排（用即棄 PostgreSQL 17，冇掂過正式資料）
+
+用假資料砌出「聽日全部搞掂」嘅狀態：4 位 stylist × 7 日更表、8 條健康
+CalendarConnection（Treatwell + Fresha 都 `receivesBookings=true`）、`bookingEnabled=true`。
+
+- **Operations 診斷 7 項全 PASS**（`configuration` / `email` / `notifications` / `cron` /
+  `database` / `resend` / `redis`），日曆 readiness `{ready:true, blockers:[]}`。
+- **`/book` 真係開到**：登入 → 揀服務 → 揀 stylist（特登揀咗 Funky，即係正式環境
+  完全訂唔到嗰批）→ **日曆日期列正常顯示** → 時段 10:00–18:30 分 MORNING／AFTERNOON／
+  EVENING 三組正確載入（60 分鐘服務最後一口 18:30，啱啱夠做到 19:30 收工）。
+- **`/admin/operations`** 同 **`/admin/integrations`** 兩個聽日要用嘅畫面都正常渲染，
+  Integrations 顯示「Calendar setup checks pass」。
+- `pnpm test:integration` 對住真 PostgreSQL 通過：並發預約只成功一單、折扣只扣一次、
+  通知同交易一齊 rollback、日曆匯入失敗保留 busy periods、未完成連線時拒絕預約。
+- 383／383 單元測試、`pnpm lint`、TypeScript 全部通過。
+- **冇寄出任何真電郵，冇建立任何真預約，冇改動正式資料庫。**
+
+### 聽日到店嘅次序（照呢個行，唔好跳）
+
+1. Resend 加 `harbourhair.co.uk` → IONOS 貼 DNS record →**等到 verified 為止**。
+2. Admin → Opening Hours：填 Funky／Ivan／Lox 三位嘅真實 7 日更表。
+3. Admin → Integrations：Chan 撳「Generate secret URL」。
+4. 每位 stylist × 每個平台：貼 inbound iCal URL → 剔「takes bookings」→ 剔
+   「Enable inbound sync」→ 撳 **Test and sync saved feed**，要見到 Last successful feed 有時間。
+5. 將每位 stylist 嘅 outbound URL 加入 Treatwell／Fresha 日曆訂閱 → 喺平台見到 Busy →
+   返後台剔「Confirm subscription checked」。
+6. Admin → Site Settings：填 `freshaUrl`。
+7. Vercel 設 `NOTIFICATIONS_ENABLED=true` 同 `CALENDAR_SYNC_ENABLED=true` → redeploy。
+8. Admin → Operations → **Run read-only diagnostics**，要 7 項全 PASS（24 小時內有效）。
+9. Admin → Settings → 開 `bookingEnabled`。程式會攔住未夠條件嘅開放操作。
+10. 做一次真 test booking → 確認 → 改期 → 取消，核對 salon inbox 同兩個平台嘅忙碌時段。

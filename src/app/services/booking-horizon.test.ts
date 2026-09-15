@@ -1,14 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isWithinBookingHorizon } from './booking-horizon';
+import { bookingCoverageEndsAt, isWithinBookingHorizon } from './booking-horizon';
+import { CALENDAR_FRESHNESS_MINUTES } from './treatwell-sync-coverage';
+import { CALENDAR_WINDOW_DAYS } from './calendar-ical';
 import { loadServerModule } from '../../test/load-server-module';
 
 const now = new Date('2026-09-11T10:00:00Z');
 
-test('the entire appointment must fit inside imported coverage allowing 45-minute feed age', () => {
-  // 90 days after Sep 11 is Dec 10. The final 45 minutes are unverified when a feed is stale.
-  assert.equal(isWithinBookingHorizon(new Date('2026-12-10T08:15:00Z'), 60, now), true);
-  assert.equal(isWithinBookingHorizon(new Date('2026-12-10T08:15:01Z'), 60, now), false);
+test('the entire appointment must fit inside imported coverage minus the accepted feed age', () => {
+  // Derived, not hardcoded: the horizon is the imported window less the oldest
+  // feed the readiness check still accepts, so widening either constant moves
+  // this boundary rather than breaking the test on a stale literal.
+  const lastEnd = new Date(now.getTime() + CALENDAR_WINDOW_DAYS * 86_400_000 - CALENDAR_FRESHNESS_MINUTES * 60_000);
+  assert.equal(bookingCoverageEndsAt(now).getTime(), lastEnd.getTime());
+  const lastStart = new Date(lastEnd.getTime() - 60 * 60_000);
+  assert.equal(isWithinBookingHorizon(lastStart, 60, now), true);
+  assert.equal(isWithinBookingHorizon(new Date(lastStart.getTime() + 1000), 60, now), false);
   assert.equal(isWithinBookingHorizon(new Date('2027-01-09T10:00:00Z'), 60, now), false);
 });
 
