@@ -18,7 +18,7 @@ function fixture(t: TestContext, role = 'ADMIN', sessionVersion = 0) {
   const session = loadServerModule<typeof import('./session')>('src/app/lib/session.ts', {
     'next/headers': { cookies: async () => store },
     'next/navigation': { redirect },
-    '@/app/lib/prisma': { user: { findUnique: async () => ({ role, sessionVersion, mfaEnabledAt: new Date() }) } },
+    '@/app/lib/prisma': { user: { findUnique: async () => ({ role, sessionVersion }) } },
   });
   return { values, session };
 }
@@ -62,8 +62,11 @@ test('middleware never renews a nearly expired session using stale claims', asyn
   assert.equal(result.cookies.get('session'), undefined);
 });
 
-test('a password-only administrator session cannot access protected actions', async (t) => {
+test('a password-only administrator session reaches protected actions', async (t) => {
+  // Admin sign-in is password-only by product decision: no second factor is
+  // demanded anywhere. The revocation guards below still apply to them.
   const { session } = fixture(t);
   await session.createSession('admin', 'ADMIN', 0);
-  await assert.rejects(session.verifySession());
+  assert.deepEqual(await session.verifySession(), { userId: 'admin', role: 'ADMIN' });
+  assert.deepEqual(await session.requireAdmin(), { userId: 'admin', role: 'ADMIN' });
 });

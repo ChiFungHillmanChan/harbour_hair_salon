@@ -61,13 +61,10 @@ export async function middleware(request: NextRequest) {
     if (session.role !== 'ADMIN') {
       return NextResponse.redirect(new URL('/', request.url));
     }
-    if (session.adminMfaVerified !== true) {
-      return NextResponse.redirect(new URL('/auth/signin?redirect=/admin', request.url));
-    }
   }
 
   if (path.startsWith('/kiosk')) {
-    const isAdmin = session?.userId && session.role === 'ADMIN' && session.adminMfaVerified === true;
+    const isAdmin = session?.userId && session.role === 'ADMIN';
     const isKiosk = await hasKioskCookie(request);
     if (!isAdmin && !isKiosk) {
       return NextResponse.redirect(new URL('/auth/signin?redirect=/kiosk', request.url));

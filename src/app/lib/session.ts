@@ -15,6 +15,15 @@ function getKey() {
   return new TextEncoder().encode(secretKey);
 }
 
+/**
+ * Admin sign-in is password-only by product decision: a second factor is NOT
+ * required, and nothing in the app asks for one.
+ *
+ * `adminMfaVerified` is still carried on the token, and the enrol/verify screens
+ * under /auth/mfa still work if they are linked to directly, so the requirement
+ * can be reinstated by restoring the check in `verifySession` and the redirects
+ * in actions/auth.ts and the Google callback. Until then it is never demanded.
+ */
 export async function createSession(userId: string, role: string, sessionVersion: number, adminMfaVerified = false) {
   const expiresAt = new Date(Date.now() + sessionLifetimeSeconds(role) * 1000);
   const session = await encrypt({ userId, role, sessionVersion, expiresAt, ...(role === 'ADMIN' ? { adminMfaVerified } : {}) });
@@ -53,7 +62,7 @@ export const verifySession = cache(async () => {
   // keeping it until their cookie expires. One indexed primary-key lookup.
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { role: true, sessionVersion: true, mfaEnabledAt: true },
+    select: { role: true, sessionVersion: true },
   });
 
   if (!user) {
@@ -68,10 +77,6 @@ export const verifySession = cache(async () => {
   if (user.sessionVersion !== tokenVersion) {
     redirect('/auth/signin');
   }
-  if (user.role === 'ADMIN' && (!user.mfaEnabledAt || session.adminMfaVerified !== true)) {
-    redirect('/auth/signin?redirect=/admin');
-  }
-
   return { userId: session.userId, role: user.role };
 });
 

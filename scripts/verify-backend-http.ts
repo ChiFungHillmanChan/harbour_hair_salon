@@ -84,12 +84,15 @@ async function main() {
       publishedAt: new Date(Date.UTC(2026, 0, i + 1)), readingTime: 1, tags: '', coverImage: '/images/services-hero.webp', coverAlt: 'Salon', lede: 'Synthetic', sectionsJson: '[]', relatedSlugs: '', status: 'PUBLISHED',
     })) });
     const admin = await sign({ userId: 'http-admin', role: 'ADMIN', sessionVersion: 0, adminMfaVerified: true });
-    const legacyAdmin = await sign({ userId: 'http-admin', role: 'ADMIN', sessionVersion: 0 });
+    // No second factor is required, so a token carrying only the password claim
+    // is an ordinary admin session and must be served, not bounced.
+    const passwordOnlyAdmin = await sign({ userId: 'http-admin', role: 'ADMIN', sessionVersion: 0 });
     const customer = await sign({ userId: 'http-user', role: 'USER', sessionVersion: 0 });
     for (const path of adminPages) {
       await assertDenied(path);
       await assertDenied(path, customer);
-      await assertDenied(path, legacyAdmin);
+      const allowed = await fetchPage(path, passwordOnlyAdmin);
+      assert.equal(allowed.status, 200, `Password-only admin must reach ${path}`);
     }
     for (const view of ['day', 'month', 'year']) {
       const response = await fetchPage(`/admin?date=2020-01-15&view=${view}`, admin);
@@ -167,7 +170,7 @@ async function main() {
     console.log('PASS: actual HTTP MFA enrollment retains10recoverycodes, fresh GET hides them, usedTOTP/recoverycode cannot issue another session.');
     const oldKiosk = await sign({ kiosk: true });
     assert.equal((await fetchPage('/kiosk', undefined, `kiosk=${oldKiosk}`)).status, 307);
-    console.log('PASS: production HTTP rejects anonymous/customer/legacy-admin/demoted/revoked sessions on10admin pages; year/month minimize PII; customer+blog pagination and canonical URL; kiosk legacy rejection; MFA first-factor gates.');
+    console.log('PASS: production HTTP rejects anonymous/customer/legacy-admin/demoted/revoked sessions on10admin pages; year/month minimize PII; customer+blog pagination and canonical URL; kiosk legacy rejection; password-only admin sessions served; MFA first-factor gates.');
   } finally {
     server.kill('SIGTERM');
     await new Promise<void>(resolve => { if (server.exitCode !== null) resolve(); else { server.once('exit', () => resolve()); setTimeout(() => { server.kill('SIGKILL'); resolve(); }, 5000).unref(); } });

@@ -10,7 +10,6 @@ import { headers } from 'next/headers';
 import { loginLimiter, registerLimiter } from '@/app/lib/rate-limit';
 import { sanitizeRedirect } from '@/app/lib/redirect';
 import { decideRegistration } from '@/app/lib/register-gate';
-import { beginAdminMfaChallenge } from '@/app/lib/admin-mfa';
 import { appendAuditEvent } from '@/app/lib/audit';
 
 function getClientIp(headersList: Headers): string {
@@ -66,14 +65,11 @@ export async function login(prevState: unknown, formData: FormData) {
   }
 
   const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
-  if (user.role === 'ADMIN') {
-    await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.FIRST_FACTOR', targetType: 'User', targetId: user.id, metadata: { method: 'password' } });
-    await beginAdminMfaChallenge(user.id, user.sessionVersion);
-    redirect(user.mfaEnabledAt ? '/auth/mfa' : '/auth/mfa/setup');
-  }
   await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.LOGIN', targetType: 'User', targetId: user.id, metadata: { method: 'password' } });
-  await createSession(user.id, user.role, user.sessionVersion);
-  redirect(redirectTo);
+  // Password is the only factor. The session is marked verified so nothing
+  // downstream can refuse an admin for a second factor that is never asked for.
+  await createSession(user.id, user.role, user.sessionVersion, true);
+  redirect(user.role === 'ADMIN' ? '/admin' : redirectTo);
 }
 
 export async function register(prevState: unknown, formData: FormData) {
