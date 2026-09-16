@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -31,6 +32,7 @@ export async function generateMetadata({
     description: post.description,
     alternates: { canonical: `/blog/${post.slug}` },
     openGraph: {
+      ...OG_BASE,
       title: `${post.title} | Harbour Hair Salon Leeds`,
       description: post.description,
       type: 'article',

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import { getAllStylistsWithSlug } from './slug';
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
     'Meet the Hong Kong trained stylists at Harbour Hair Salon in Leeds city centre. Our team, their specialties and what to expect at your appointment.',
   alternates: { canonical: '/stylists' },
   openGraph: {
+      ...OG_BASE,
     title: 'Meet the Stylists | Harbour Hair Salon Leeds',
     description:
       'Our Hong Kong trained stylists and what they specialise in, at Harbour Hair Salon, Leeds.',

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import prisma from '@/app/lib/prisma';
 import { publicServiceSelect } from '@/app/services/public-service-select';
@@ -22,6 +23,7 @@ export const metadata: Metadata = {
   description: 'Book your appointment at Harbour Hair Salon, Central Arcade, Leeds. Expert cuts, colours, perms and grooming by Hong Kong trained stylists.',
   alternates: { canonical: '/' },
   openGraph: {
+      ...OG_BASE,
     title: 'Harbour Hair Salon | Expert Hair Styling in Leeds',
     description: 'Professional hair salon in Leeds city centre. Book online today.',
   },

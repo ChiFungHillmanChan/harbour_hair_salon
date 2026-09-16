@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import Image from 'next/image';
 import prisma from '@/app/lib/prisma';
 import Link from 'next/link';
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
   description: 'Exclusive seasonal promotions and special offers at Harbour Hair Salon, Leeds city centre. Save on haircuts, colours and treatments.',
   alternates: { canonical: '/offers' },
   openGraph: {
+      ...OG_BASE,
     title: 'Special Offers | Harbour Hair Salon Leeds',
     description: 'Exclusive seasonal promotions. Save on haircuts, colours and treatments at our Leeds city centre salon.',
   },

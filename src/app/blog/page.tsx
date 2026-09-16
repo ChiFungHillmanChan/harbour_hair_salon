@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -13,6 +14,7 @@ const baseMetadata: Metadata = {
     'Hair care guides, styling tips and advice from the Hong Kong trained stylists at Harbour Hair Salon, Leeds city centre.',
   alternates: { canonical: '/blog' },
   openGraph: {
+      ...OG_BASE,
     title: 'The Harbour Journal | Harbour Hair Salon Leeds',
     description:
       'Guides, tips and stylist advice from Harbour Hair Salon in Leeds.',

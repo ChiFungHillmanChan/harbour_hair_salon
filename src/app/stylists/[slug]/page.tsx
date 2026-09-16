@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -30,10 +31,13 @@ export async function generateMetadata({
     description: description.slice(0, 158),
     alternates: { canonical: `/stylists/${slug}` },
     openGraph: {
+      ...OG_BASE,
       title: `${stylist.name} — ${stylist.role} | Harbour Hair Salon Leeds`,
       description: description.slice(0, 158),
       type: 'profile',
-      images: stylist.imageUrl ? [stylist.imageUrl] : undefined,
+      // Their own portrait when there is one, otherwise the salon card —
+      // never `undefined`, which would erase the OG_BASE fallback above.
+      ...(stylist.imageUrl ? { images: [stylist.imageUrl] } : {}),
     },
   };
 }

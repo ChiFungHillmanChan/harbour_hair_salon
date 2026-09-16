@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Faq } from '@/components/seo/Faq';
@@ -15,6 +16,7 @@ export const metadata: Metadata = {
   description: 'Visit Harbour Hair Salon at Unit 15 Central Arcade, Leeds LS1 6DX. Opening hours, directions from Leeds station, and contact details.',
   alternates: { canonical: '/contact' },
   openGraph: {
+      ...OG_BASE,
     title: 'Contact Harbour Hair Salon | Leeds City Centre',
     description: 'Visit us at Central Arcade, Leeds LS1 6DX. Opening hours, directions, and contact details.',
   },

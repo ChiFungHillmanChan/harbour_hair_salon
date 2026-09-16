@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import { getApprovedReviews, getAggregateRating } from '@/app/services/review-service';
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
     'Read verified reviews from Harbour Hair Salon clients in Leeds. See what our customers say about our Hong Kong trained stylists, cuts, colours and treatments.',
   alternates: { canonical: '/reviews' },
   openGraph: {
+      ...OG_BASE,
     title: 'Client Reviews | Harbour Hair Salon Leeds',
     description:
       'Verified client reviews for Harbour Hair Salon in Leeds city centre.',

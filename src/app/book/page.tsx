@@ -1,4 +1,5 @@
 import prisma from '@/app/lib/prisma';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import { publicServiceSelect } from '@/app/services/public-service-select';
 import Image from 'next/image';
 import { BookingWizard } from '@/components/booking/BookingWizard';
@@ -16,6 +17,7 @@ export const metadata = {
   alternates: { canonical: '/book' },
   robots: { index: false, follow: true },
   openGraph: {
+      ...OG_BASE,
     title: 'Book Your Appointment | Harbour Hair Salon Leeds',
     description: 'Book your next hair appointment online. Choose your service, stylist and time.',
   },

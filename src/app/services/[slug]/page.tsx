@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -35,6 +36,7 @@ export async function generateMetadata({
     description: cat.metaDescription,
     alternates: { canonical: `/services/${cat.slug}` },
     openGraph: {
+      ...OG_BASE,
       title: `${cat.title} | Harbour Hair Salon`,
       description: cat.metaDescription,
     },

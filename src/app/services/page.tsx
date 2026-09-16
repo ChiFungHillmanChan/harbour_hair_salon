@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Image from 'next/image';
 import prisma from '@/app/lib/prisma';
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
   description: 'Full menu of haircuts, colouring, perms and treatments at Harbour Hair Salon, Leeds city centre. Prices from £10. Book online.',
   alternates: { canonical: '/services' },
   openGraph: {
+      ...OG_BASE,
     title: 'Hair Services & Pricing | Harbour Hair Salon Leeds',
     description: 'Full menu of haircuts, colouring, perms and treatments. Prices from £10. Book online.',
   },
