@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Image from 'next/image';
 import prisma from '@/app/lib/prisma';
+import { publicServiceSelect } from './public-service-select';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export const revalidate = 3600;
 
 async function getServices() {
   const services = await prisma.service.findMany({
+    select: publicServiceSelect,
     orderBy: { category: 'asc' }
   });
   

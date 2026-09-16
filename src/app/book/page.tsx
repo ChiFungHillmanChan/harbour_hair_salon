@@ -1,4 +1,5 @@
 import prisma from '@/app/lib/prisma';
+import { publicServiceSelect } from '@/app/services/public-service-select';
 import Image from 'next/image';
 import { BookingWizard } from '@/components/booking/BookingWizard';
 import { getAggregateRating } from '@/app/services/review-service';
@@ -28,6 +29,7 @@ export const dynamic = 'force-dynamic';
 
 async function getServices() {
   const services = await prisma.service.findMany({
+    select: publicServiceSelect,
     orderBy: { category: 'asc' },
   });
   

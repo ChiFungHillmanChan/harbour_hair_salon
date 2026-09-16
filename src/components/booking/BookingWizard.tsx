@@ -1,6 +1,7 @@
 'use client';
 
-import { Service, Stylist } from '@prisma/client';
+import { Stylist } from '@prisma/client';
+import type { ClientPublicService } from '@/app/services/public-service-select';
 import { format, addDays, startOfToday, isSameDay } from 'date-fns';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -9,8 +10,9 @@ import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { applyOfferToPrice, type ActiveOffer } from '@/app/services/offer-pricing';
 
-// Define a ClientService type where price is number instead of Decimal
-type ClientService = Omit<Service, 'price'> & { price: number };
+// Services reach the browser through the public select, so this type must
+// stay narrower than the full Service row (see app/services/public-service-select.ts).
+type ClientService = ClientPublicService;
 
 // A named stylist or the synthetic "Anyone / first available" option.
 type SelectedStylist = Pick<Stylist, 'id' | 'name' | 'role'>;

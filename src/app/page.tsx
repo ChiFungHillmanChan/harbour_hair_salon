@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import prisma from '@/app/lib/prisma';
+import { publicServiceSelect } from '@/app/services/public-service-select';
 import { Hero } from '@/components/home/Hero';
 import { ServiceMenu } from '@/components/home/ServiceMenu';
 import { StylistShowcase } from '@/components/home/StylistShowcase';
@@ -50,7 +51,7 @@ const FEATURED_PLAN: { category: string; prefer?: RegExp }[] = [
 const SHOWCASE_EXCLUDE = /\((nhs|student[^)]*)\)|add-?on|patch test|consultation/i;
 
 async function getPopularServices() {
-  const all = await prisma.service.findMany();
+  const all = await prisma.service.findMany({ select: publicServiceSelect });
 
   const showcaseable = all.filter(
     (s) => !s.isPatchTest && !SHOWCASE_EXCLUDE.test(s.name)

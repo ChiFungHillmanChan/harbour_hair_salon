@@ -1,11 +1,12 @@
 'use client';
 
-import { Service, Offer } from '@prisma/client';
+import { Offer } from '@prisma/client';
+import type { ClientPublicService } from '@/app/services/public-service-select';
 import Link from 'next/link';
 import { useState, useMemo } from 'react';
 
 interface ServiceListProps {
-  groupedServices: Record<string, (Omit<Service, 'price'> & { price: number })[]>;
+  groupedServices: Record<string, ClientPublicService[]>;
   categories: string[];
   activeOffer: (Omit<Offer, 'discountValue'> & { discountValue: number }) | null;
   categorySlugs?: Record<string, string>;

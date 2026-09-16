@@ -1,9 +1,10 @@
-import { Service, Offer } from '@prisma/client';
+import { Offer } from '@prisma/client';
+import type { ClientPublicService } from '@/app/services/public-service-select';
 import Link from 'next/link';
 import { Reveal } from './Reveal';
 
 interface ServiceMenuProps {
-  services: (Omit<Service, 'price'> & { price: number })[];
+  services: ClientPublicService[];
   activeOffer: (Omit<Offer, 'discountValue'> & { discountValue: number }) | null;
   title?: string;
   flatList?: boolean;
@@ -29,7 +30,7 @@ export function ServiceMenu({ services, activeOffer, title = 'Our Services', fla
   };
 
   const renderServiceCard = (
-    service: Omit<Service, 'price'> & { price: number },
+    service: ClientPublicService,
     index: number
   ) => {
     const discountedPrice = getDiscountedPrice(service.price);

@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
+import { publicServiceSelect } from '../public-service-select';
 import {
   getAllCategoryContent,
   getCategoryContentBySlug,
@@ -42,6 +43,7 @@ export async function generateMetadata({
 async function getServicesForCategory(category: string) {
   const services = await prisma.service.findMany({
     where: { category },
+    select: publicServiceSelect,
     orderBy: { price: 'asc' },
   });
   return services.map((s) => ({ ...s, price: Number(s.price) }));
