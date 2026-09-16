@@ -64,15 +64,22 @@ export default async function BookPage() {
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
         <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-8 md:p-12 text-center">
           <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
+          {/* Every "Book Now" on the site lands here, so this page has to read
+              like the salon's booking page — not like an apology for one that
+              is missing. It used to say "Online booking is on its way", which
+              told every visitor on the landing page that the site was
+              unfinished, when in fact both routes below take a real booking
+              today. Copy stays marketplace-agnostic: the names come from
+              settings, so clearing a URL in the admin panel removes it here. */}
           <h1 className="text-3xl md:text-4xl font-serif text-zinc-900 mb-4 tracking-tight">
             {marketplaces.length > 0
-              ? 'Online booking is on its way'
-              : 'Booking by phone for now'}
+              ? 'Book your appointment'
+              : 'Book by phone'}
           </h1>
           <p className="text-zinc-600 leading-relaxed mb-8">
             {marketplaces.length > 0
-              ? 'Our own online booking is being set up. In the meantime you can call the salon directly, or book through one of the sites below.'
-              : 'Our online booking is being set up. Give us a ring and we will find you a time — it only takes a minute, and you will speak to the salon directly.'}
+              ? 'Call the salon and we will find you a time, or book online through the sites below.'
+              : 'Give us a ring and we will find you a time — it only takes a minute, and you will speak to the salon directly.'}
           </p>
 
           {/* Phone first and equally prominent: a phone booking costs the salon
@@ -104,7 +111,7 @@ export default async function BookPage() {
           )}
 
           <p className="mt-6 text-sm text-zinc-500">
-            Existing appointments can still be viewed and cancelled from{' '}
+            Already booked with us? View or cancel your appointment in{' '}
             <a href="/appointments" className="underline hover:text-zinc-900">
               My Appointments
             </a>

@@ -166,7 +166,13 @@ async function main() {
   console.log(`Created ${stylists.length} stylists`)
 
   // Create Admin User with Random Password
-  const adminEmail = 'admin@harbourhair.com';
+  // RFC 2606 reserves `.invalid`, so this address can never be registered or
+  // receive mail. The old value was admin@harbourhair.com — a domain owned by
+  // an unrelated Wix site, which meant a seeded ADMIN account sat in production
+  // whose password-reset link would have been delivered to a third party the
+  // moment they added an MX record. Never seed an admin at a domain we do not
+  // control, even in a script that only targets disposable databases.
+  const adminEmail = 'admin@harbourhair.invalid';
   const randomPassword = generateRandomPassword();
   const hashedPassword = await bcrypt.hash(randomPassword, 10);
   
