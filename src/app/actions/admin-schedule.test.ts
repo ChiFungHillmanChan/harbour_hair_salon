@@ -129,6 +129,7 @@ function fixture(options: {
       getTreatwellApiConfiguration: () => ({ enabled: false, configured: false }),
       changedTreatwellSyncStatus: () => 'NOT_REQUIRED',
     },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/cache': { revalidatePath: () => undefined },
   });
 

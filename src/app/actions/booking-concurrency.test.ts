@@ -166,6 +166,7 @@ function fixture(options: {
         return { ready: options.calendarReady !== false, blockers: [] };
       },
     },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/cache': { revalidatePath: () => undefined, updateTag: () => undefined },
   };
   const actions = loadServerModule<typeof import('./booking')>('src/app/actions/booking.ts', dependencies);

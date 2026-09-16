@@ -25,6 +25,7 @@ function fixture(options: { role?: string; calendarReady?: boolean; operationsRe
       if (options.outage) throw new Error('Provider unavailable');
       return { ready: options.operationsReady !== false, blockers: options.operationsReady === false ? ['Operational checks have not passed.'] : [] };
     } },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/cache': { updateTag() {}, revalidatePath() {} },
   });
   const form = new FormData();

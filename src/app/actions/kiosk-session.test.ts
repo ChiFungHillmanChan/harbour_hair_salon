@@ -56,6 +56,7 @@ function kioskFixture(t: TestContext, databaseRole = 'ADMIN') {
     'next/navigation': { redirect },
     '@/app/lib/session': session,
     '@/app/lib/prisma': db,
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/cache': { revalidatePath: () => {} },
     '@/app/services/booking-service': {},
     '@/app/lib/rate-limit': {},

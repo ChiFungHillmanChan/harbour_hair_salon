@@ -8,6 +8,7 @@ import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
+import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
 import { bookingLimiter, discountLimiter } from '@/app/lib/rate-limit';
@@ -323,6 +324,9 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
     await dispatchAppointmentNotifications(appointment.id);
 
+    // The marketplaces poll a cached feed; drop it so the new busy period is
+    // visible on their next poll rather than whenever the window expires.
+    invalidateStylistIcalFeed();
     revalidatePath('/book');
     revalidatePath('/appointments');
     revalidatePath('/admin');
@@ -387,6 +391,7 @@ export async function cancelAppointment(appointmentId: string) {
     return { success: false, error: error instanceof BookingError ? error.message : 'Could not cancel the appointment. Please try again.' };
   }
 
+  invalidateStylistIcalFeed();
   revalidatePath('/appointments');
   revalidatePath('/admin');
   revalidatePath('/book');
@@ -524,6 +529,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
 
     await dispatchAppointmentNotifications(updated.id);
 
+    invalidateStylistIcalFeed();
     revalidatePath('/appointments');
     revalidatePath('/admin');
     revalidatePath('/book');

@@ -116,6 +116,7 @@ function bookingFixture(
     '@/app/services/notification-outbox-service': queue,
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
     '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true } },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/cache': { revalidatePath: () => undefined },
   });
   return { service, code, stored, events, delivered, actions, dispatches: () => dispatches, reads: () => ({ conflicts: conflictReads, external: externalReads }) };

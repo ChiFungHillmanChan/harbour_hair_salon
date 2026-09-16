@@ -33,6 +33,7 @@ function fixture(change?: 'reopen' | 'edit', failAudit = false) {
     '@/app/lib/prisma': db,
     '@/app/lib/audited-write': writes,
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: 'ADMIN' }) },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/cache': { revalidatePath: () => {} },
   });
   return { actions, entry: () => entry, events };

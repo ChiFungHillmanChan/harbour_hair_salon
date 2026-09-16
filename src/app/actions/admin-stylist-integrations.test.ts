@@ -12,6 +12,7 @@ for (const legacyInput of [undefined, 'https://old-editor.example.test/calendar.
       } },
       '@/app/lib/session': { verifySession: async () => ({ role: 'ADMIN' }) },
       '@/app/stylists/slug': { slugify: () => 'stylist' },
+      '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
       'next/cache': { revalidatePath: () => undefined },
       'next/navigation': {},
     });

@@ -16,6 +16,7 @@ test('administrator password reset audits the actor and preserves MFA enrollment
     '@/app/lib/session': { verifySession: async () => ({ userId: 'acting-admin', role: 'ADMIN' }) },
     '@/app/lib/password': { hashPassword: async () => 'new-hash' },
     '@/app/lib/audit': { appendAuditEvent: async (event: typeof events[number], client: unknown) => { assert.equal(client, tx); events.push(event); } },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/cache': { revalidatePath: () => {} },
     '@/app/actions/admin-services': {},
     '@/app/services/treatwell-api': {},

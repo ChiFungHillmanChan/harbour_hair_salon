@@ -3,6 +3,7 @@
 import { randomBytes } from 'crypto';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { invalidateStylistIcalToken } from '@/app/services/stylist-ical-cache';
 import { redirect } from 'next/navigation';
 import { appendAuditEvent } from '@/app/lib/audit';
 import prisma from '@/app/lib/prisma';
@@ -76,6 +77,9 @@ export async function generateStylistIcalFeedTokenAction(formData: FormData): Pr
     await tx.calendarConnection.updateMany({ where: { stylistId }, data: { outboundConfirmedAt: null } });
     await appendAuditEvent({ actorUserId: session.userId, action: 'CALENDAR.TOKEN_ROTATE', targetType: 'Stylist', targetId: stylistId }, tx);
   });
+  // Without this the rotated-away token would keep working, and the new one
+  // would 404, until the token cache happened to expire.
+  invalidateStylistIcalToken();
   refreshIntegrations();
   redirect('/admin/integrations?feedToken=rotated');
 }

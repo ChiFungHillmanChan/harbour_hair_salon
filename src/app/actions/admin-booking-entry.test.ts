@@ -116,6 +116,7 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
       changedTreatwellSyncStatus: () => 'NOT_REQUIRED',
       initialTreatwellSyncStatus: () => 'NOT_REQUIRED',
     },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/cache': { revalidatePath: () => undefined },
   });
 

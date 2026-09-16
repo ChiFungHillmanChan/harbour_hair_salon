@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
+import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import type { Prisma } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
@@ -446,6 +447,9 @@ export async function searchAdminCustomers(query: string): Promise<AdminCustomer
 }
 
 function revalidateSchedule() {
+  // Salon-entered and moved bookings occupy the chair exactly like online ones,
+  // so the marketplaces' cached busy feed has to drop with them.
+  invalidateStylistIcalFeed();
   revalidatePath('/admin');
   revalidatePath('/appointments');
   revalidatePath('/book');
