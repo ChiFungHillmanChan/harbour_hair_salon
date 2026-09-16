@@ -8,10 +8,14 @@
  * that contradicts its own Treatwell page is competing against itself in local
  * search, and a customer can turn up to a closed salon.
  *
- * Verified against treatwell.co.uk on 2026-09-16. If the salon changes its
- * hours, change them HERE and update Google Business Profile, Treatwell and
- * Fresha to match; `opening-hours-public.test.ts` fails if a page reintroduces
- * its own copy.
+ * These are the salon's OFFICIAL hours, confirmed by the owner on 2026-09-16:
+ * open every day, 10:00-19:00. They deliberately do NOT match the Treatwell
+ * listing (Mon-Sat 10:15-19:00, Sun 10:30-17:30), which is out of date and
+ * needs correcting at the source — the owner is authoritative, a marketplace
+ * listing is not. If the salon changes its hours, change them HERE and update
+ * Google Business Profile, Treatwell, Fresha and the local directories to
+ * match; `opening-hours-public.test.ts` fails if a page reintroduces its own
+ * copy.
  *
  * Note this is the *marketing* opening time, which is not the same thing as
  * `Availability` in the database. That table drives which slots are bookable
@@ -27,13 +31,13 @@ export type PublicOpeningDay = {
 };
 
 export const PUBLIC_OPENING_HOURS: readonly PublicOpeningDay[] = [
-  { day: 'Monday', opens: '10:15', closes: '19:00' },
-  { day: 'Tuesday', opens: '10:15', closes: '19:00' },
-  { day: 'Wednesday', opens: '10:15', closes: '19:00' },
-  { day: 'Thursday', opens: '10:15', closes: '19:00' },
-  { day: 'Friday', opens: '10:15', closes: '19:00' },
-  { day: 'Saturday', opens: '10:15', closes: '19:00' },
-  { day: 'Sunday', opens: '10:30', closes: '17:30' },
+  { day: 'Monday', opens: '10:00', closes: '19:00' },
+  { day: 'Tuesday', opens: '10:00', closes: '19:00' },
+  { day: 'Wednesday', opens: '10:00', closes: '19:00' },
+  { day: 'Thursday', opens: '10:00', closes: '19:00' },
+  { day: 'Friday', opens: '10:00', closes: '19:00' },
+  { day: 'Saturday', opens: '10:00', closes: '19:00' },
+  { day: 'Sunday', opens: '10:00', closes: '19:00' },
 ] as const;
 
 export type OpeningHoursSpecification = {

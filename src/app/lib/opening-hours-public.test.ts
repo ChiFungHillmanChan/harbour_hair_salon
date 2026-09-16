@@ -26,41 +26,41 @@ test('every day has 24-hour HH:MM times that open before they close', () => {
   }
 });
 
-test('matches the hours published on Treatwell (verified 2026-09-16)', () => {
-  // NAP consistency is the point of this module: if the salon changes its hours
-  // the marketplace listings must change with it, so this assertion is meant to
-  // fail and be updated deliberately, together with Google and Treatwell.
+test('matches the salon\'s official hours (owner-confirmed 2026-09-16)', () => {
+  // NAP consistency is the point of this module, but the OWNER is the source of
+  // truth — not a marketplace listing. Treatwell currently says Mon-Sat
+  // 10:15-19:00 / Sun 10:30-17:30, which is stale and is being corrected at the
+  // source. This assertion is meant to fail and be updated deliberately,
+  // together with Google Business Profile, Treatwell and the directories.
   const byDay = Object.fromEntries(PUBLIC_OPENING_HOURS.map((e) => [e.day, `${e.opens}-${e.closes}`]));
-  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']) {
-    assert.equal(byDay[day], '10:15-19:00', `${day} must match Treatwell`);
+  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
+    assert.equal(byDay[day], '10:00-19:00', `${day} must match the official hours`);
   }
-  assert.equal(byDay.Sunday, '10:30-17:30', 'Sunday must match Treatwell');
 });
 
-test('groups consecutive identical days and keeps Sunday separate', () => {
+test('collapses a uniform week into a single Mon-Sun group', () => {
   const groups = groupedOpeningHours();
-  assert.equal(groups.length, 2);
-  assert.equal(groups[0].days.length, 6);
-  assert.deepEqual(groups[1].days, ['Sunday']);
-  assert.equal(shortDayRange(groups[0].days), 'Mon – Sat');
-  assert.equal(shortDayRange(groups[1].days), 'Sun');
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].days.length, 7);
+  assert.equal(shortDayRange(groups[0].days), 'Mon – Sun');
+  // A single day must still render as one label, not a degenerate range.
+  assert.equal(shortDayRange(['Sunday']), 'Sun');
 });
 
 test('emits schema.org OpeningHoursSpecification entries', () => {
   const spec = openingHoursSpecification();
-  assert.equal(spec.length, 2);
+  assert.equal(spec.length, 1);
   assert.equal(spec[0]['@type'], 'OpeningHoursSpecification');
-  assert.equal(spec[0].dayOfWeek.length, 6);
-  assert.equal(spec[0].opens, '10:15');
-  assert.equal(spec[1].dayOfWeek[0], 'Sunday');
-  assert.equal(spec[1].closes, '17:30');
+  assert.equal(spec[0].dayOfWeek.length, 7);
+  assert.equal(spec[0].opens, '10:00');
+  assert.equal(spec[0].closes, '19:00');
 });
 
 test('formats a range and a sentence for reuse in copy', () => {
-  assert.equal(formatRange('10:15', '19:00'), '10:15 – 19:00');
+  assert.equal(formatRange('10:00', '19:00'), '10:00 – 19:00');
   assert.equal(
     openingHoursSentence(),
-    'We are open Monday to Saturday from 10:15 to 19:00, and on Sunday from 10:30 to 17:30.',
+    'We are open Monday to Sunday from 10:00 to 19:00.',
   );
 });
 
