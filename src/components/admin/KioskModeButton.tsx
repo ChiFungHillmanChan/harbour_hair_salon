@@ -7,12 +7,14 @@ export default function KioskModeButton() {
   const [msg, setMsg] = useState<string | null>(null);
   return (
     <div className="flex items-center gap-3">
-      <button
-        onClick={async () => { const r = await enableKioskMode(); setMsg(r?.error ?? 'Kiosk enabled on this device — open /kiosk'); }}
-        className="bg-zinc-900 text-white px-4 py-2 rounded"
-      >
-        Enable kiosk on this device
-      </button>
+      <form action={async () => {
+        const result = await enableKioskMode();
+        if (result?.error) setMsg(result.error);
+      }}>
+        <button type="submit" className="bg-zinc-900 text-white px-4 py-2 rounded">
+          Sign out and open kiosk
+        </button>
+      </form>
       <button
         onClick={async () => { await disableKioskMode(); setMsg('Kiosk disabled on this device'); }}
         className="border px-4 py-2 rounded"

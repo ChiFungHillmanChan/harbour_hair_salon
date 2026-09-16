@@ -17,6 +17,11 @@ The [technical rollout record](readme/production-readiness-rollout-cantonese.md)
 
 ## Verification
 
+Use Node.js 24 LTS (`nvm use`) and pnpm 10.33.0. CI reads `.nvmrc`;
+`packageManager` pins the pnpm version. Install with `pnpm install --frozen-lockfile`.
+The 2026-09-16 upgrade and selected launch fixes are recorded in
+[the verification report](readme/upgrade-verification-2026-09-16-cantonese.md).
+
 ```bash
 pnpm test
 pnpm lint

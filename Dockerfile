@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -6,16 +6,17 @@ RUN apk add --no-cache libc6-compat openssl3
 WORKDIR /app
 
 # Install pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10.33.0
 
 COPY package.json pnpm-lock.yaml ./
+COPY prisma ./prisma
 RUN pnpm install --frozen-lockfile
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 RUN apk add --no-cache openssl3
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10.33.0
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 

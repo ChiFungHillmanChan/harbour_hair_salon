@@ -45,6 +45,22 @@ The hours the booking engine sells from. Before this, `Availability` was written
 - `src/app/admin/opening-hours/page.tsx` — pads stylists with fewer than seven rows to a full week; explicit `select` so the secret `treatwellIcalUrl`/`icalToken` never reach the client.
 - `src/components/admin/OpeningHoursForm.tsx` — stylist tabs, per-day open/closed + time inputs, live slot-count preview, copy-hours-to-all-open-days.
 
+### Admin schedule board — colours & drag (Admin → Schedule, Day view)
+Per-stylist colour fill + per-service stripe, and drag-to-move/resize on a stylist-column
+day grid. Admin-only: the public site stays monochrome and no public query selects
+`calendarColor`. Resizing writes `Appointment.durationAtBooking`, which every consumer
+already reads as the effective duration (clash checks, outbound iCal feed, the customer's
+appointments page, email snapshots).
+- `src/app/lib/calendar-colors.ts` — the fixed palette: 10 swatches as **literal** Tailwind class strings (a name built at runtime is invisible to the v4 scanner and ships unstyled). `resolveCalendarColor(key)` falls back to zinc for null/retired keys. Unit-tested in `calendar-colors.test.ts`, which also guards against interpolated class names.
+- `src/app/lib/calendar-geometry.ts` — pure, DOM-free drag maths: `minutesToOffset`/`offsetToMinutes`, `snapToStep` (half-steps round up in both directions), `applyMove`, `applyResizeTop`, `applyResizeBottom`; `SNAP_MINUTES`/`MIN_DURATION_MINUTES` (15). Unit-tested in `calendar-geometry.test.ts`.
+- `src/app/services/admin-move-clashes.ts` — `describeAdminMoveClashes(db, target)` **returns** clashes (`OVERLAP` / `OUTSIDE_HOURS` / `EXTERNAL_BUSY` / `PATCH_TEST`) instead of throwing, so the UI can name what it collides with. Shares `fitsWithinAvailability`, `loadExternalBusy` and `overlaps` with `assertAppointmentSlotAvailable` so admin warnings and customer rules cannot drift. Unit-tested in `admin-move-clashes.test.ts`.
+- `src/app/actions/admin-schedule.ts` — `moveAppointmentByAdmin(input)`: admin-gated, Zod-validated, salon-local `dateStr`+`time` strings, runs in `runSerializableWithRetry` with an `updatedAt` optimistic guard. Clashes warn (`overrideClashes`) rather than refuse; the check runs inside the transaction on **both** paths. Deliberately skips the 24-hour customer policy and `assertOnlineBookingReady`. Emails only when the start time or stylist changes on a CONFIRMED booking. Locked by `admin-schedule.test.ts`.
+- `src/components/admin/ScheduleDayGrid.tsx` — the stylist-column time grid: pointer-event drag/resize, 15-minute snapping, live clash highlighting, hatched non-draggable external busy blocks, inline clash-confirm panel. `sm:`+ only; phones keep the list `DayView`.
+- `src/components/admin/CalendarColorPicker.tsx` — swatch radio group; posts a palette key (empty = no colour). Used by `StylistForm` and `ServiceForm`; validated server-side in `admin-stylists.ts` / `admin-services.ts`.
+- `src/app/services/admin-calendar-range.ts` — `resolveAdminCalendarRange`: validates date/view query parameters and computes the visible London day/month/year interval, including DST and adjacent month cells.
+- `src/app/admin/page.tsx`, `src/components/admin/ScheduleCalendar.tsx` — URL-driven navigation reloads the requested period; pending requests are queried and shown independently across all dates. Regression coverage in `src/app/admin/calendar-navigation.test.ts` includes distant requests and confirmation actions.
+- `prisma/{dev,prod,vercel}/migrations/20260916153000_calendar_colours/migration.sql` — nullable service/stylist palette columns, preserving existing rows and default colours.
+
 ### Marketplace channels
 Which third-party booking sites are live is derived from the URLs set in Admin → Site Settings — there is no separate flag, and nothing is hardcoded.
 - `src/app/services/marketplace-channels.ts` — pure `activeMarketplaces(settings)` → `{name, url}[]` for any non-empty `freshaUrl` / `treatwellUrl` / `booksyUrl`. Unit-tested.
@@ -94,7 +110,7 @@ Which third-party booking sites are live is derived from the URLs set in Admin �
 
 ## Actions
 - `employees.ts` — admin CRUD for Employee records (create, update, delete); validates PIN via `pin.ts`
-- `kiosk.ts` — `clockToggle` (employee clock-in/out with PIN + rate-limit), `enableKioskMode`, `disableKioskMode`
+- `kiosk.ts` — `clockToggle` (employee clock-in/out with PIN + rate-limit), `enableKioskMode` (current-admin check, kiosk cookie, clear user session/hint, redirect to `/kiosk`), `disableKioskMode`; handoff regression tests in `kiosk-session.test.ts`.
 - `timesheets.ts` — admin timesheet management: create/edit/delete TimesheetEntry rows
 - `payroll.ts` — `runPayrollAction(year, month)`, `updateAdjustmentAction`, `finalizePayrollAction`; delegates to `payroll-service.ts`
 - `password-reset.ts` — `requestPasswordReset` (enumeration-safe: identical response whether or not the email exists) and `resetPassword` (single-use token redeemed in a transaction, bumps `sessionVersion` to sign out every existing session)
@@ -114,7 +130,7 @@ Which third-party booking sites are live is derived from the URLs set in Admin �
 - `src/components/layout/social-links-data.ts` — `getSocialLinks(settings)` → filtered, ordered `SocialLink[]`; unit-tested
 - `src/components/home/VisitFollowBlock.tsx` — "Visit & follow us" homepage section wrapping `SocialLinks`
 - `src/components/admin/EmployeeForm.tsx` — create/edit employee form (pay type, rates, overtime toggle, PIN, stylist link)
-- `src/components/admin/KioskModeButton.tsx` — toggle button for enabling/disabling kiosk mode from admin
+- `src/components/admin/KioskModeButton.tsx` — sign-out-and-open-kiosk form plus disable control; successful enable follows the server redirect.
 - `src/components/admin/PayrollAdjustmentForm.tsx` — inline form to edit adjustment amount and note on a payroll line
 - `src/components/kiosk/KioskClock.tsx` — kiosk roster grid: shows clock-in/out status, PIN entry, triggers `clockToggle`
 
@@ -158,7 +174,7 @@ Which third-party booking sites are live is derived from the URLs set in Admin �
 - `src/app/services/booking-horizon.ts` — shared reservation horizon constrained by the imported calendar window and freshness margin.
 - `src/app/services/booking-service.ts` — `assertAppointmentSlotAvailable` rechecks frozen duration, current hours, calendar horizon and internal/external conflicts.
 - `src/app/lib/booking-maintenance.ts` — uncached master switch plus calendar/operational runtime prerequisites; cancellation stays available.
-- `src/app/services/notification-outbox-service.ts` — transactional notification snapshots, stable event keys, leases, bounded retries and obsolete-message suppression.
+- `src/app/services/notification-outbox-service.ts` — transactional notification snapshots, stable event keys, leases, bounded retries and obsolete-message suppression. Central dispatch returns before DB/render/send unless `NOTIFICATIONS_ENABLED === 'true'`; queued snapshots survive disabled periods. Password reset transport is separate.
 - `src/app/services/notification-cron-service.ts` — reminder/review discovery and queue delivery with persisted job status.
 - `src/app/services/email-service.ts` — renders frozen email requests and sends through the Resend API with abortable requests; password resets stay out of the queue.
 - `src/app/services/operations-readiness.ts` — explicit read-only DB/Resend/Redis diagnostics, cached evidence and configuration fingerprints; runtime checks do not expire daily.

@@ -186,7 +186,7 @@ export function buildCustomShadePreset(hex: string): ShadePreset {
 
 export const DEFAULT_INTENSITY = 70;
 
-export const MEDIAPIPE_TASKS_VISION_VERSION = '0.10.34';
+export const MEDIAPIPE_TASKS_VISION_VERSION = '0.10.35';
 
 export const MEDIAPIPE_WASM_CDN =
   `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_TASKS_VISION_VERSION}/wasm`;

@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { isCalendarColorKey } from '@/app/lib/calendar-colors';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
@@ -43,6 +44,12 @@ const serviceSchema = z.object({
   category: z.string().trim().min(1, 'Category is required').max(100),
   imageUrl: z.string().trim().max(500).optional().transform((v) => v || null),
   treatwellExternalId: z.string().trim().max(200).optional().transform((v) => v || null),
+  calendarColor: z
+    .string()
+    .trim()
+    .optional()
+    .refine((v) => !v || isCalendarColorKey(v), 'Unknown calendar colour')
+    .transform((v) => (v ? v : null)),
 });
 
 export type ServiceActionState =

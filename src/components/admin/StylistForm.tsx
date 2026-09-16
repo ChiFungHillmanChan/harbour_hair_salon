@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import type { StylistActionState } from '@/app/actions/admin-stylists';
 import type { StylistRuntime } from '@/app/stylists/slug';
+import { CalendarColorPicker } from './CalendarColorPicker';
 
 type FormAction = (prev: StylistActionState, formData: FormData) => Promise<StylistActionState>;
 
@@ -14,6 +15,8 @@ interface StylistFormProps {
   saved?: boolean;
   /** Treatwell API staff/resource id; also kept out of public-facing types. */
   treatwellExternalId?: string | null;
+  /** Admin schedule-board colour. Admin-only, so kept out of StylistRuntime too. */
+  calendarColor?: string | null;
 }
 
 function TextareaList({
@@ -51,7 +54,7 @@ function TextareaList({
   );
 }
 
-export function StylistForm({ mode, action, stylist, saved, treatwellExternalId }: StylistFormProps) {
+export function StylistForm({ mode, action, stylist, saved, treatwellExternalId, calendarColor }: StylistFormProps) {
   const [state, formAction, pending] = useActionState<StylistActionState, FormData>(action, {
     status: 'idle',
   });
@@ -218,6 +221,16 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId 
           initial={stylist?.extendedBio ?? []}
           placeholder="One paragraph per line. Leave blank to fall back to short bio."
           help="Shown on the stylist detail page. Leave blank to hide the About section."
+        />
+      </section>
+
+      <section className="bg-white rounded-lg border border-zinc-200 p-6 space-y-4">
+        <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Schedule board</h2>
+        <CalendarColorPicker
+          name="calendarColor"
+          label="Calendar colour"
+          initial={calendarColor}
+          help="Fills this stylist's appointments on the admin schedule board. Staff-facing only — the public site stays monochrome."
         />
       </section>
 
