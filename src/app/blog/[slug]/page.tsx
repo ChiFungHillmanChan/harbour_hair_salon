@@ -4,7 +4,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import {
-  getPublishedPosts,
+  getPublishedPostSlugs,
+  getRelatedPublishedPosts,
   getPublishedPostBySlug,
   type BlogSection,
 } from '@/app/services/blog-service';
@@ -13,8 +14,7 @@ import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 export const revalidate = 3600;
 
 export async function generateStaticParams() {
-  const posts = await getPublishedPosts();
-  return posts.map((p) => ({ slug: p.slug }));
+  return getPublishedPostSlugs();
 }
 
 export async function generateMetadata({
@@ -101,10 +101,7 @@ export default async function BlogPostPage({
   const post = await getPublishedPostBySlug(slug);
   if (!post) notFound();
 
-  const relatedResults = await Promise.all(
-    (post.relatedSlugs ?? []).map((s) => getPublishedPostBySlug(s))
-  );
-  const related = relatedResults.filter((p): p is NonNullable<typeof p> => Boolean(p));
+  const related = await getRelatedPublishedPosts(post.relatedSlugs.filter((relatedSlug) => relatedSlug !== slug));
 
   const articleSchema = {
     '@context': 'https://schema.org',

@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import { notFound } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { ServiceForm } from '@/components/admin/ServiceForm';
@@ -12,6 +13,7 @@ export default async function EditServicePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ saved?: string }>;
 }) {
+  await requireAdmin();
   const { id } = await params;
   const { saved } = await searchParams;
 

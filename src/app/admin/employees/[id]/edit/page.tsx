@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
@@ -11,10 +12,15 @@ export default async function EditEmployeePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdmin();
   const { id } = await params;
 
   const [employee, stylists, linked] = await Promise.all([
-    prisma.employee.findUnique({ where: { id } }),
+    prisma.employee.findUnique({ where: { id }, select: {
+      id: true, name: true, title: true, payType: true, hourlyRate: true, monthlySalary: true,
+      commissionRate: true, overtimeEnabled: true, overtimeThresholdHours: true,
+      overtimeMultiplier: true, unpaidBreakMinutes: true, stylistId: true,
+    } }),
     prisma.stylist.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
     prisma.employee.findMany({ where: { stylistId: { not: null } }, select: { stylistId: true } }),
   ]);

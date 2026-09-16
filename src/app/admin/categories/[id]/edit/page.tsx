@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import { notFound } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { CategoryContentForm } from '@/components/admin/CategoryContentForm';
@@ -13,6 +14,7 @@ export default async function EditCategoryPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ saved?: string }>;
 }) {
+  await requireAdmin();
   const { id } = await params;
   const { saved } = await searchParams;
 

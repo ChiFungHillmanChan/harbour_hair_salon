@@ -188,3 +188,20 @@ Which third-party booking sites are live is derived from the URLs set in Admin �
 - `scripts/verify-production-readiness.ts` — PostgreSQL concurrency/rollback/calendar integration checks, restricted to a disposable localhost database named `salon_test`.
 - `readme/salon-visit-handover-cantonese.md` — owner access and business-data collection checklist.
 - `readme/production-readiness-rollout-cantonese.md` — verified implementation, remaining external requirements and deployment acceptance sequence.
+
+### Backend security and database readiness (2026-09-16)
+- `src/app/lib/session-policy.ts` — fixed ADMIN8h/USER30d JWT lifetime and registered KIOSK30d policy; `session.ts` request-local `verifySession` and `requireAdmin` check current role/version/MFA, plus registered device expiry/revocation.
+- `src/app/lib/admin-mfa.ts`, `mfa-crypto.ts`, `src/app/actions/admin-mfa.ts` — signed first-factor challenge, encrypted TOTP seeds, one-use recovery hashes, conditional redemption, durable per-account attempt budget; `/auth/mfa` and `/auth/mfa/setup` are the minimal auth flow.
+- `src/app/lib/audit.ts`, `audited-write.ts` — sanitized append-only application API; sensitive mutations and their audit record share the transaction. This does not make the database itself tamper-proof.
+- `src/app/lib/pagination.ts`, `src/components/admin/Pagination.tsx` — bounded page/search parsing, composite date cursor and reusable server-rendered navigation.
+- `src/app/services/admin-calendar-data.ts` — authorized calendar DAL: one annual aggregate, selected period DTOs, day roster/busy data and cursor-paged all-date pending queue.
+- `src/app/services/housekeeping-service.ts`, `/api/cron/housekeeping` — independent bounded retention and expired-notification-lease recovery; opt-in `HOUSEKEEPING_ENABLED`, daily03:15UTC.
+- `src/components/admin/KioskSessions.tsx` — per-device/all-device revocation controls from registered safe session metadata.
+- `blog-service.ts` — bounded public/admin summary pages, `getPublishedPostSlugs`, `getRelatedPublishedPosts`; full article getters retain request deduplication.
+- `category-content-service.ts` — thin category listing, cached detail and batched `getRelatedCategories`; `app/stylists/slug.ts` — indexed/cached detail, `getStylistSlugs`, `getRelatedStylists` with safe projections.
+- `prisma/seed-safety.ts` — explicit opt-in and canonical local disposable target validation before destructive seeding.
+- `prisma/rotate-mfa-key.ts`, `prisma/reset-admin-mfa.ts`, `prisma/create-admin.ts` — explicitly confirmed operator maintenance; `mfa-maintenance.ts` includes `bootstrapAdminOffline`, factor reset and key rotation; no web endpoint bypasses MFA.
+- `prisma/{dev,prod,vercel}/migrations/20260916230000_backend_security_readiness` — MFA/kiosk/audit/index additions and legacy provider catch-up; SQL Server requires staging validation.
+- `scripts/verify-production-readiness.ts` — disposable PostgreSQL booking caps/concurrency, payroll transaction/snapshot rollback, calendar aggregation/reconciliation and notification invariants.
+- `scripts/verify-backend-http.ts` — starts a production server against disposable synthetic data; checks admin authorization, data minimization, pagination/canonical URLs and actual MFA form submissions.
+- `readme/backend-security-operations.md`, `readme/backend-remediation-2026-09-16-cantonese.md` — rollout, retention, recovery, verification and remaining SOC2 operational evidence.

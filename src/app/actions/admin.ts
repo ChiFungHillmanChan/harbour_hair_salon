@@ -1,5 +1,6 @@
 'use server';
 
+import { appendAuditEvent } from '@/app/lib/audit';
 import prisma from '@/app/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { verifySession } from '@/app/lib/session';
@@ -311,8 +312,8 @@ export async function createAdminUser(
   _prevState: AdminUserActionState,
   formData: FormData
 ): Promise<AdminUserActionState> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
 
   const parsed = adminUserSchema.safeParse({
     name: formData.get('name'),
@@ -327,13 +328,12 @@ export async function createAdminUser(
   const hashedPassword = await hashPassword(parsed.data.password);
 
   try {
-    await prisma.user.create({
-      data: {
-        name: parsed.data.name,
-        email: parsed.data.email,
-        password: hashedPassword,
-        role: 'ADMIN',
-      },
+    await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: { name: parsed.data.name, email: parsed.data.email, password: hashedPassword, role: 'ADMIN' },
+        select: { id: true },
+      });
+      await appendAuditEvent({ actorUserId: session.userId, action: 'ADMIN.CREATED', targetType: 'User', targetId: created.id }, tx);
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -367,8 +367,9 @@ export async function deleteAdminUser(id: string): Promise<AdminUserActionState>
   }
 
   try {
-    await prisma.user.delete({
-      where: { id },
+    await prisma.$transaction(async (tx) => {
+      await tx.user.delete({ where: { id, role: 'ADMIN' } });
+      await appendAuditEvent({ actorUserId: session.userId, action: 'ADMIN.DELETED', targetType: 'User', targetId: id }, tx);
     });
   } catch (error) {
     console.error('deleteAdminUser failed:', error);
@@ -380,8 +381,8 @@ export async function deleteAdminUser(id: string): Promise<AdminUserActionState>
 }
 
 export async function promoteGoogleUserToAdmin(id: string) {
-  const { error } = await requireAdmin();
-  if (error) return;
+  const { error, session } = await requireAdmin();
+  if (error || !session) return;
 
   const user = await prisma.user.findFirst({
     where: {
@@ -394,14 +395,13 @@ export async function promoteGoogleUserToAdmin(id: string) {
 
   if (!user) return;
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      role: 'ADMIN',
-      // Force a fresh sign-in so middleware receives a session containing the
-      // new role and the user cannot retain any stale pre-promotion session.
-      sessionVersion: { increment: 1 },
-    },
+  await prisma.$transaction(async (tx) => {
+    const changed = await tx.user.updateMany({
+      where: { id: user.id, role: 'USER', oauthAccounts: { some: { provider: 'google' } } },
+      data: { role: 'ADMIN', sessionVersion: { increment: 1 } },
+    });
+    if (changed.count !== 1) return;
+    await appendAuditEvent({ actorUserId: session.userId, action: 'ADMIN.PROMOTED', targetType: 'User', targetId: user.id }, tx);
   });
 
   revalidatePath('/admin/users');
@@ -468,6 +468,7 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       const updated = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
       if (!updated) throw new BookingError('Appointment not found');
       if (status === 'CONFIRMED' || status === 'CANCELLED') await enqueueAppointmentNotification(tx, status === 'CONFIRMED' ? 'CONFIRMATION' : 'CANCELLATION', updated);
+      await appendAuditEvent({ actorUserId: session.userId, action: 'APPOINTMENT.STATUS', targetType: 'Appointment', targetId: appointmentId, metadata: { from: current.status, to: status } }, tx);
       return { appointment: updated, changed: true };
     });
 
@@ -482,8 +483,8 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
 }
 
 export async function resetUserPassword(userId: string, newPassword: string) {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
 
   if (!newPassword || newPassword.length < 8) {
     return { error: 'Password must be at least 8 characters' };
@@ -504,9 +505,13 @@ export async function resetUserPassword(userId: string, newPassword: string) {
   }
 
   const hashedPassword = await hashPassword(newPassword);
-  await prisma.user.update({
-    where: { id: userId },
-    data: { password: hashedPassword, sessionVersion: { increment: 1 } },
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId, role: 'ADMIN' },
+      // Keep the existing MFA factor. Password recovery cannot bypass it.
+      data: { password: hashedPassword, sessionVersion: { increment: 1 } },
+    });
+    await appendAuditEvent({ actorUserId: session.userId, action: 'ADMIN.PASSWORD_RESET', targetType: 'User', targetId: userId }, tx);
   });
 
   revalidatePath('/admin/users');

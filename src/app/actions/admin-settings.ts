@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { revalidatePath, updateTag } from 'next/cache';
+import { appendAuditEvent } from '@/app/lib/audit';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
@@ -10,6 +11,7 @@ import { checkOperationsBookingReadiness } from '@/app/services/operations-readi
 async function requireAdmin() {
   const session = await verifySession();
   if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  return session;
 }
 
 const urlOrEmpty = z
@@ -59,7 +61,7 @@ export async function updateSiteSettings(
   _prev: SettingsActionState,
   formData: FormData
 ): Promise<SettingsActionState> {
-  await requireAdmin();
+  const session = await requireAdmin();
 
   const parsed = settingsSchema.safeParse({
     ...Object.fromEntries(formData),
@@ -110,6 +112,7 @@ export async function updateSiteSettings(
         update: parsed.data,
         create: { id: 'singleton', ...parsed.data },
       });
+      await appendAuditEvent({ actorUserId: session.userId, action: 'SETTINGS.UPDATE', targetType: 'SiteSettings', targetId: 'singleton', metadata: { bookingEnabled: parsed.data.bookingEnabled } }, tx);
       return [];
     }, { isolationLevel: 'Serializable' });
     if (blockers.length) return { status: 'error', message: `Settings were not saved. ${blockers.join(' ')}` };

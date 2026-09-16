@@ -1,10 +1,13 @@
 import 'server-only';
+import { cache } from 'react';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { encrypt, decrypt, type SessionPayload } from '@/app/lib/jwt';
 import { SESSION_HINT_COOKIE } from '@/app/lib/session-hint';
+import { sessionLifetimeSeconds, KIOSK_SESSION_SECONDS } from '@/app/lib/session-policy';
+import { appendAuditEvent } from '@/app/lib/audit';
 
 function getKey() {
   const secretKey = process.env.SESSION_SECRET;
@@ -12,9 +15,9 @@ function getKey() {
   return new TextEncoder().encode(secretKey);
 }
 
-export async function createSession(userId: string, role: string, sessionVersion: number) {
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-  const session = await encrypt({ userId, role, sessionVersion, expiresAt });
+export async function createSession(userId: string, role: string, sessionVersion: number, adminMfaVerified = false) {
+  const expiresAt = new Date(Date.now() + sessionLifetimeSeconds(role) * 1000);
+  const session = await encrypt({ userId, role, sessionVersion, expiresAt, ...(role === 'ADMIN' ? { adminMfaVerified } : {}) });
 
   const cookieStore = await cookies();
   cookieStore.set('session', session, {
@@ -34,19 +37,9 @@ export async function createSession(userId: string, role: string, sessionVersion
   });
 }
 
-export async function refreshSession() {
-  const cookie = (await cookies()).get('session')?.value;
-  const session = await decrypt(cookie);
-  if (!session?.userId) return;
-
-  // Refresh if less than 7 days remaining
-  const timeLeft = new Date(session.expiresAt).getTime() - Date.now();
-  if (timeLeft < 7 * 24 * 60 * 60 * 1000) {
-    await createSession(session.userId, session.role, session.sessionVersion ?? 0);
-  }
-}
-
-export async function verifySession() {
+// React cache deduplicates only within the current server render/request; role
+// and sessionVersion are re-read on the next request, including Server Actions.
+export const verifySession = cache(async () => {
   const cookie = (await cookies()).get('session')?.value;
   const session = await decrypt(cookie);
 
@@ -55,12 +48,12 @@ export async function verifySession() {
   }
 
   // Re-load the CURRENT role from the database rather than trusting the role
-  // baked into the (up-to-30-day) JWT. This closes the revocation gap: a user
+  // baked into the JWT. A user
   // who was demoted from ADMIN, or deleted, immediately loses access instead of
   // keeping it until their cookie expires. One indexed primary-key lookup.
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { role: true, sessionVersion: true },
+    select: { role: true, sessionVersion: true, mfaEnabledAt: true },
   });
 
   if (!user) {
@@ -75,8 +68,17 @@ export async function verifySession() {
   if (user.sessionVersion !== tokenVersion) {
     redirect('/auth/signin');
   }
+  if (user.role === 'ADMIN' && (!user.mfaEnabledAt || session.adminMfaVerified !== true)) {
+    redirect('/auth/signin?redirect=/admin');
+  }
 
   return { userId: session.userId, role: user.role };
+});
+
+export async function requireAdmin() {
+  const session = await verifySession();
+  if (session.role !== 'ADMIN') redirect('/');
+  return session;
 }
 
 export async function getSession(): Promise<SessionPayload | null> {
@@ -91,14 +93,33 @@ export async function deleteSession() {
   cookieStore.delete(SESSION_HINT_COOKIE);
 }
 
-type KioskPayload = { kiosk: true; expiresAt: Date };
+async function kioskSessionId(): Promise<string | null> {
+  const cookie = (await cookies()).get('kiosk')?.value;
+  if (!cookie) return null;
+  try {
+    const { payload } = await jwtVerify(cookie, getKey(), { algorithms: ['HS256'] });
+    if (payload.kiosk !== true || typeof payload.kioskSessionId !== 'string' || !payload.kioskSessionId) return null;
+    return payload.kioskSessionId;
+  } catch {
+    return null;
+  }
+}
 
-export async function createKioskSession() {
-  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year
-  const token = await new SignJWT({ kiosk: true, expiresAt })
+export async function createKioskSession(adminId: string, deviceName = 'Salon kiosk') {
+  // Re-enabling this browser replaces its previous device credential.
+  await deleteKioskSession(adminId);
+  const expiresAt = new Date(Date.now() + KIOSK_SESSION_SECONDS * 1000);
+  const device = await prisma.$transaction(async (tx) => {
+    const created = await tx.kioskSession.create({
+      data: { deviceName, createdByAdminId: adminId, expiresAt }, select: { id: true },
+    });
+    await appendAuditEvent({ actorUserId: adminId, action: 'KIOSK.ENABLED', targetType: 'KioskSession', targetId: created.id }, tx);
+    return created;
+  });
+  const token = await new SignJWT({ kiosk: true, kioskSessionId: device.id })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('365d')
+    .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
     .sign(getKey());
 
   (await cookies()).set('kiosk', token, {
@@ -111,17 +132,28 @@ export async function createKioskSession() {
 }
 
 export async function getKioskSession(): Promise<boolean> {
-  const cookie = (await cookies()).get('kiosk')?.value;
-  if (!cookie) return false;
+  const id = await kioskSessionId();
+  if (!id) return false;
   try {
-    const { payload } = await jwtVerify(cookie, getKey(), { algorithms: ['HS256'] });
-    return (payload as unknown as KioskPayload).kiosk === true;
+    const device = await prisma.kioskSession.findUnique({
+      where: { id }, select: { revokedAt: true, expiresAt: true },
+    });
+    return Boolean(device && device.revokedAt === null && device.expiresAt.getTime() > Date.now());
   } catch {
+    // A database outage must not turn a revoked device into an accepted one.
     return false;
   }
 }
 
-export async function deleteKioskSession() {
+export async function deleteKioskSession(actorUserId?: string) {
+  const id = await kioskSessionId();
+  if (id) {
+    await prisma.$transaction(async (tx) => {
+      const changed = await tx.kioskSession.updateMany({
+        where: { id, revokedAt: null }, data: { revokedAt: new Date() },
+      });
+      if (changed.count > 0) await appendAuditEvent({ actorUserId, action: 'KIOSK.REVOKED', targetType: 'KioskSession', targetId: id }, tx);
+    });
+  }
   (await cookies()).delete('kiosk');
 }
-

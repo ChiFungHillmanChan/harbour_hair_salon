@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { jwtVerify, SignJWT } from 'jose';
+import { jwtVerify } from 'jose';
 import type { SessionPayload as FullSessionPayload } from '@/app/lib/jwt';
 import { SESSION_HINT_COOKIE } from '@/app/lib/session-hint';
+import { isWithinSessionLifetime } from '@/app/lib/session-policy';
 
 // Resolve the signing key per request rather than once at module load, and warn
 // loudly if it is missing — so an unset SESSION_SECRET surfaces in the logs as a
@@ -27,6 +28,7 @@ async function getSessionFromRequest(request: NextRequest) {
   if (!cookie) return null;
   try {
     const { payload } = await jwtVerify(cookie, key, { algorithms: ['HS256'] });
+    if (!isWithinSessionLifetime(payload.role, payload.iat)) return null;
     return payload as unknown as SessionPayload;
   } catch {
     return null;
@@ -40,7 +42,9 @@ async function hasKioskCookie(request: NextRequest): Promise<boolean> {
   if (!cookie) return false;
   try {
     const { payload } = await jwtVerify(cookie, key, { algorithms: ['HS256'] });
-    return (payload as { kiosk?: boolean }).kiosk === true;
+    // Optimistic only: kiosk data/actions also check the registered device's
+    // expiry/revocation in the database before reading or changing anything.
+    return payload.kiosk === true && typeof payload.kioskSessionId === 'string' && Boolean(payload.kioskSessionId);
   } catch {
     return false;
   }
@@ -57,10 +61,13 @@ export async function middleware(request: NextRequest) {
     if (session.role !== 'ADMIN') {
       return NextResponse.redirect(new URL('/', request.url));
     }
+    if (session.adminMfaVerified !== true) {
+      return NextResponse.redirect(new URL('/auth/signin?redirect=/admin', request.url));
+    }
   }
 
   if (path.startsWith('/kiosk')) {
-    const isAdmin = session?.userId && session.role === 'ADMIN';
+    const isAdmin = session?.userId && session.role === 'ADMIN' && session.adminMfaVerified === true;
     const isKiosk = await hasKioskCookie(request);
     if (!isAdmin && !isKiosk) {
       return NextResponse.redirect(new URL('/auth/signin?redirect=/kiosk', request.url));
@@ -93,39 +100,11 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-pathname', path);
 
-  // Sliding session: refresh token if less than 7 days remaining
+  // Backfill the cosmetic hint only. Navigation never renews a session using
+  // claims that may already have been revoked in the database.
   const response = NextResponse.next({ request: { headers: requestHeaders } });
-  const signingKey = getKey();
-  if (session?.userId && signingKey) {
-    const timeLeft = new Date(session.expiresAt).getTime() - Date.now();
-    if (timeLeft < 7 * 24 * 60 * 60 * 1000 && timeLeft > 0) {
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      const newToken = await new SignJWT({
-        userId: session.userId,
-        role: session.role,
-        sessionVersion: session.sessionVersion ?? 0,
-        expiresAt,
-      })
-        .setProtectedHeader({ alg: 'HS256' })
-        .setIssuedAt()
-        .setExpirationTime('30d')
-        .sign(signingKey);
-
-      response.cookies.set('session', newToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        expires: expiresAt,
-        sameSite: 'lax',
-        path: '/',
-      });
-      response.cookies.set(SESSION_HINT_COOKIE, session.role, {
-        httpOnly: false,
-        secure: process.env.NODE_ENV === 'production',
-        expires: expiresAt,
-        sameSite: 'lax',
-        path: '/',
-      });
-    } else if (request.cookies.get(SESSION_HINT_COOKIE)?.value !== session.role) {
+  if (session?.userId) {
+    if (request.cookies.get(SESSION_HINT_COOKIE)?.value !== session.role) {
       // Back-fill for sessions issued before the hint cookie existed (or after
       // a role change) so the header shows account links without a fetch.
       response.cookies.set(SESSION_HINT_COOKIE, session.role, {

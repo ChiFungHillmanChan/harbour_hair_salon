@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { SiteSettingsForm } from '@/components/admin/SiteSettingsForm';
@@ -5,6 +6,7 @@ import { SiteSettingsForm } from '@/components/admin/SiteSettingsForm';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminSettingsPage() {
+  await requireAdmin();
   const settings = await getSiteSettings();
 
   return (

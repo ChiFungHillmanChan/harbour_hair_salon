@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { OfferForm } from '@/components/admin/OfferForm';
 import { OfferInlineEditor } from '@/components/admin/OfferInlineEditor';
@@ -7,6 +8,7 @@ import { deleteOffer, toggleOfferStatus, updateOffer, type OfferActionState } fr
 export const dynamic = 'force-dynamic';
 
 export default async function AdminOffersPage() {
+  await requireAdmin();
   const offers = await prisma.offer.findMany({
     orderBy: { createdAt: 'desc' },
   });

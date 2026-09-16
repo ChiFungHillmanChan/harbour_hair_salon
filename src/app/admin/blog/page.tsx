@@ -1,7 +1,10 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { getAllPostsForAdmin } from '@/app/services/blog-service';
 import { deleteBlogPost, toggleBlogPostStatus } from '@/app/actions/admin-blog';
 import { RowActionButton } from '@/components/admin/RowActionButton';
+import { Pagination } from '@/components/admin/Pagination';
+import { pageNumber } from '@/app/lib/pagination';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,11 +16,10 @@ function formatDate(date: Date) {
   });
 }
 
-export default async function AdminBlogListPage() {
-  const posts = await getAllPostsForAdmin();
-
-  const publishedCount = posts.filter((p) => p.status === 'PUBLISHED').length;
-  const draftCount = posts.length - publishedCount;
+export default async function AdminBlogListPage({ searchParams }: { searchParams: Promise<{ page?: string | string[] }> }) {
+  await requireAdmin();
+  const page = pageNumber((await searchParams).page);
+  const { posts, hasMore, total, publishedCount, draftCount } = await getAllPostsForAdmin(page);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -43,7 +45,7 @@ export default async function AdminBlogListPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
           <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Total</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{posts.length}</p>
+          <p className="text-3xl font-bold text-zinc-900 mt-1">{total}</p>
         </div>
         <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
           <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">Published</p>
@@ -57,7 +59,7 @@ export default async function AdminBlogListPage() {
 
       {posts.length === 0 ? (
         <div className="bg-white border border-zinc-200 rounded-lg p-12 text-center">
-          <p className="text-zinc-500 mb-6">No posts yet. Write your first one.</p>
+          <p className="text-zinc-500 mb-6">{page > 1 ? 'No posts on this page.' : 'No posts yet. Write your first one.'}</p>
           <Link
             href="/admin/blog/new"
             className="inline-block bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded"
@@ -149,6 +151,7 @@ export default async function AdminBlogListPage() {
           </table>
         </div>
       )}
+      <Pagination path="/admin/blog" page={page} hasMore={hasMore} />
     </div>
   );
 }

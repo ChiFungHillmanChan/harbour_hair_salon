@@ -1,12 +1,18 @@
+import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { deleteShift } from '@/app/actions/shifts';
 import { ShiftForm } from '@/components/admin/ShiftForm';
 import { RowActionButton } from '@/components/admin/RowActionButton';
 import { salonDateKey } from '@/app/services/salon-time';
 
+import { pageNumber } from '@/app/lib/pagination';
+import { Pagination } from '@/components/admin/Pagination';
+
 export const dynamic = 'force-dynamic';
 
-export default async function AdminShiftsPage() {
+export default async function AdminShiftsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  await requireAdmin();
+  const page = pageNumber((await searchParams).page);
   // createShift stores a shift at UTC midnight of its salon calendar date, so
   // today's floor is that same midnight for the salon's current date. Without
   // this filter the "Upcoming shifts" table was the OLDEST 100 rows ever
@@ -14,7 +20,7 @@ export default async function AdminShiftsPage() {
   // 100 historic shifts.
   const todayStart = new Date(`${salonDateKey(new Date())}T00:00:00.000Z`);
 
-  const [employees, shifts] = await Promise.all([
+  const [employees, rows] = await Promise.all([
     prisma.employee.findMany({
       where: { isActive: true },
       orderBy: { name: 'asc' },
@@ -22,11 +28,12 @@ export default async function AdminShiftsPage() {
     }),
     prisma.shift.findMany({
       where: { date: { gte: todayStart } },
-      orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
-      take: 100,
-      include: { employee: { select: { name: true } } },
+      orderBy: [{ date: 'asc' }, { startTime: 'asc' }, { id: 'asc' }],
+      take: 26, skip: (page - 1) * 25,
+      select: { id: true, date: true, startTime: true, endTime: true, employee: { select: { name: true } } },
     }),
   ]);
+  const shifts = rows.slice(0, 25);
 
   return (
     <div className="p-4 sm:p-6 space-y-8">
@@ -82,6 +89,7 @@ export default async function AdminShiftsPage() {
             </tbody>
           </table>
         </div>
+        <Pagination path="/admin/shifts" page={page} hasMore={rows.length > 25} />
       </section>
     </div>
   );

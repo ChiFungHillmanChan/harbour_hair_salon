@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 // src/app/admin/payroll/page.tsx
 import prisma from '@/app/lib/prisma';
 import { toZonedTime } from 'date-fns-tz';
@@ -14,6 +15,7 @@ function inRange(value: number, min: number, max: number): number | null {
 }
 
 export default async function PayrollPage({ searchParams }: { searchParams: Promise<{ year?: string; month?: string }> }) {
+  await requireAdmin();
   const sp = await searchParams;
   const now = toZonedTime(new Date(), SALON_TIMEZONE);
   // Payroll is run for a month that has finished, so default to the previous

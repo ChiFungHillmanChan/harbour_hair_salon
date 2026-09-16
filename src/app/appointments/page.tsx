@@ -2,6 +2,8 @@ import { verifySession } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { AppointmentCard } from '@/components/appointments/AppointmentCard';
 import { isBookingEnabled } from '@/app/lib/booking-maintenance';
+import { pageNumber } from '@/app/lib/pagination';
+import { Pagination } from '@/components/admin/Pagination';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -10,30 +12,34 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function AppointmentsPage() {
+export default async function AppointmentsPage({ searchParams }: { searchParams?: Promise<{ page?: string; upcoming?: string }> }) {
   const session = await verifySession();
-  const bookingEnabled = await isBookingEnabled();
-
-  const appointments = await prisma.appointment.findMany({
-    where: { userId: session.userId },
-    include: {
-      // Only the fields the card renders — never ship the full stylist row
-      // (it carries the secret treatwellIcalUrl) to the client.
-      stylist: { select: { name: true } },
-      service: { select: { name: true, price: true, duration: true } },
-      review: { select: { id: true } },
-    },
-    orderBy: { date: 'desc' },
-  });
-
+  const query = await searchParams;
+  const page = pageNumber(query?.page);
+  const upcomingPage = pageNumber(query?.upcoming);
   const now = new Date();
-  const upcoming = appointments
-    .filter(a => a.date >= now && (a.status === 'CONFIRMED' || a.status === 'PENDING'))
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-  const past = appointments
-    .filter(a => a.date < now || a.status === 'CANCELLED' || a.status === 'COMPLETED');
+  const select = {
+    id: true, date: true, status: true, stylistId: true, serviceId: true,
+    priceAtBooking: true, durationAtBooking: true,
+    stylist: { select: { name: true } },
+    service: { select: { name: true, price: true, duration: true } },
+    review: { select: { id: true } },
+  } as const;
+  const [bookingEnabled, upcomingRows, pastRows] = await Promise.all([
+    isBookingEnabled(),
+    prisma.appointment.findMany({
+      where: { userId: session.userId, date: { gte: now }, status: { in: ['CONFIRMED', 'PENDING'] } },
+      select, orderBy: [{ date: 'asc' }, { id: 'asc' }], take: 26, skip: (upcomingPage - 1) * 25,
+    }),
+    prisma.appointment.findMany({
+      where: { userId: session.userId, OR: [{ date: { lt: now } }, { status: { in: ['CANCELLED', 'COMPLETED'] } }] },
+      select, orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 26, skip: (page - 1) * 25,
+    }),
+  ]);
+  const upcoming = upcomingRows.slice(0, 25);
+  const past = pastRows.slice(0, 25);
 
-  const serialize = (appts: typeof appointments) =>
+  const serialize = (appts: typeof upcomingRows) =>
     appts.map(a => ({
       id: a.id,
       date: a.date.toISOString(),
@@ -65,6 +71,7 @@ export default async function AppointmentsPage() {
               ))}
             </div>
           )}
+          <Pagination path="/appointments" page={upcomingPage} pageKey="upcoming" hasMore={upcomingRows.length > 25} query={{ page: String(page) }} />
         </section>
 
         <section>
@@ -78,6 +85,7 @@ export default async function AppointmentsPage() {
               ))}
             </div>
           )}
+          <Pagination path="/appointments" page={page} hasMore={pastRows.length > 25} query={{ upcoming: String(upcomingPage) }} />
         </section>
       </div>
     </div>

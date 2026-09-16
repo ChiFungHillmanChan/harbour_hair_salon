@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { unstable_rethrow } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
@@ -31,6 +32,7 @@ async function deleteStylistRow(id: string): Promise<RowActionResult> {
 }
 
 export default async function AdminStylistsPage() {
+  await requireAdmin();
   const [stylists, counts] = await Promise.all([
     getAllStylistsWithSlug(),
     prisma.appointment.groupBy({

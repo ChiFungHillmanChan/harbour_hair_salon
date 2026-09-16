@@ -1,7 +1,9 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { resolve } from 'node:path'
+import { assertSafeSeedTarget } from './seed-safety'
 
-const prisma = new PrismaClient()
+let prisma: PrismaClient | undefined
 
 const englishWords = [
   'apple', 'river', 'stone', 'cloud', 'ocean', 'bread', 'house', 'light', 'music', 'dance',
@@ -21,14 +23,17 @@ function generateRandomPassword(): string {
 }
 
 async function main() {
+  const url = assertSafeSeedTarget(process.env, resolve(__dirname, '..'));
+  const db = new PrismaClient({ datasources: { db: { url } } });
+  prisma = db;
   console.log('Start seeding...')
 
   // Clean existing data
-  await prisma.appointment.deleteMany()
-  await prisma.availability.deleteMany()
-  await prisma.stylist.deleteMany()
-  await prisma.service.deleteMany()
-  await prisma.user.deleteMany()
+  await db.appointment.deleteMany()
+  await db.availability.deleteMany()
+  await db.stylist.deleteMany()
+  await db.service.deleteMany()
+  await db.user.deleteMany()
 
   const serviceList = [
     // Haircuts
@@ -99,7 +104,7 @@ async function main() {
 
   // Create Services
   await Promise.all(serviceList.map(service => 
-    prisma.service.create({
+    db.service.create({
       data: {
         ...service,
         imageUrl: null // Or map to default images if needed
@@ -146,7 +151,7 @@ async function main() {
 
   const stylists = await Promise.all(
     stylistSeed.map(stylist =>
-      prisma.stylist.create({
+      db.stylist.create({
         data: {
           name: stylist.name,
           role: stylist.role,
@@ -165,7 +170,7 @@ async function main() {
   const randomPassword = generateRandomPassword();
   const hashedPassword = await bcrypt.hash(randomPassword, 10);
   
-  await prisma.user.create({
+  await db.user.create({
     data: {
       email: adminEmail,
       name: 'Admin User',
@@ -184,10 +189,10 @@ async function main() {
 
 main()
   .then(async () => {
-    await prisma.$disconnect()
+    await prisma?.$disconnect()
   })
   .catch(async (e) => {
     console.error(e)
-    await prisma.$disconnect()
+    await prisma?.$disconnect()
     process.exit(1)
   })

@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { unstable_rethrow } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
@@ -46,6 +47,7 @@ async function getServicesGrouped() {
 }
 
 export default async function AdminServicesPage() {
+  await requireAdmin();
   const { services, grouped } = await getServicesGrouped();
 
   return (

@@ -15,12 +15,13 @@ test('My Bookings sends the frozen price and duration to cards and their resched
     treatwellBookingId: 'provider-private-reference', treatwellSyncError: 'internal diagnostic',
   }));
   const page = loadServerModule<typeof import('./page')>('src/app/appointments/page.tsx', {
-    '@/app/lib/prisma': { appointment: { findMany: async () => appointments } },
+    '@/components/admin/Pagination': { Pagination: () => null },
+    '@/app/lib/prisma': { appointment: { findMany: async ({ where }: { where: { OR?: unknown } }) => where.OR ? [] : appointments } },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1' }) },
     '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
     '@/components/appointments/AppointmentCard': { AppointmentCard: card },
   });
-  const rendered = await page.default();
+  const rendered = await page.default({});
   const cards: { id: string; service: { price: number; duration: number } }[] = [];
   const visit = (node: unknown) => {
     if (Array.isArray(node)) { node.forEach(visit); return; }

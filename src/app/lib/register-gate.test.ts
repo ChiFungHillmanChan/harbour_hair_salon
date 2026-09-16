@@ -33,15 +33,16 @@ test('a password-less account with several linked providers is still not claimab
   });
 });
 
-test('a true guest placeholder (no password, no provider) is claimable', () => {
+test('a guest placeholder requires email recovery proof instead of registration', () => {
   assert.deepEqual(decideRegistration({ hasPassword: false, linkedProviderCount: 0 }), {
-    kind: 'CLAIM_GUEST',
+    kind: 'REJECT',
+    error: ALREADY_REGISTERED_ERROR,
   });
 });
 
 test('a linked provider outranks the guest path even when both look password-less', () => {
   const guest = decideRegistration({ hasPassword: false, linkedProviderCount: 0 });
   const federated = decideRegistration({ hasPassword: false, linkedProviderCount: 1 });
-  assert.equal(guest.kind, 'CLAIM_GUEST');
-  assert.notEqual(federated.kind, 'CLAIM_GUEST');
+  assert.equal(guest.kind, 'REJECT');
+  assert.equal(federated.kind, 'REJECT');
 });

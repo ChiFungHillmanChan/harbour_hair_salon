@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { DiscountForm } from '@/components/admin/DiscountForm';
 import { RowActionButton } from '@/components/admin/RowActionButton';
@@ -5,6 +6,7 @@ import { deleteDiscountCode, toggleDiscountCodeStatus } from '@/app/actions/admi
 import { format } from 'date-fns';
 
 export default async function DiscountsPage() {
+  await requireAdmin();
   const discounts = await prisma.discountCode.findMany({
     orderBy: { createdAt: 'desc' },
   });

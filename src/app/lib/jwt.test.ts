@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 // static import is equivalent here: the env var below is still set before any test
 // body runs and actually calls encrypt/decrypt.
 import { encrypt, decrypt } from './jwt';
+import { decodeJwt, SignJWT } from 'jose';
 
 process.env.SESSION_SECRET = 'test-session-secret-value-32-chars-min';
 
@@ -28,4 +29,18 @@ test('decrypt returns null for a tampered token', async () => {
 test('decrypt returns null for undefined/empty input', async () => {
   assert.equal(await decrypt(undefined), null);
   assert.equal(await decrypt(''), null);
+});
+
+test('JWT expiration matches its bounded session expiry instead of always lasting 30 days', async () => {
+  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const token = await encrypt({ userId: 'admin', role: 'ADMIN', sessionVersion: 0, expiresAt });
+  assert.equal(decodeJwt(token).exp, Math.floor(expiresAt.getTime() / 1000));
+});
+
+test('legacy administrator tokens cannot remain valid beyond eight hours', async () => {
+  const issuedAt = Math.floor(Date.now() / 1000) - 9 * 60 * 60;
+  const token = await new SignJWT({ userId: 'admin', role: 'ADMIN', sessionVersion: 0, expiresAt: new Date(Date.now() + 86_400_000) })
+    .setProtectedHeader({ alg: 'HS256' }).setIssuedAt(issuedAt).setExpirationTime('1d')
+    .sign(new TextEncoder().encode(process.env.SESSION_SECRET));
+  assert.equal(await decrypt(token), null);
 });

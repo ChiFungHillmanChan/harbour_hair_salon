@@ -1,5 +1,7 @@
 import 'server-only';
 import prisma from '@/app/lib/prisma';
+import { cache } from 'react';
+import type { ServiceCategoryContent, Prisma } from '@prisma/client';
 
 export type ProcessStep = { step: string; detail: string };
 export type CategoryFaq = { question: string; answer: string };
@@ -44,25 +46,7 @@ const isFaq = (v: unknown): v is CategoryFaq => {
   return typeof obj.question === 'string' && typeof obj.answer === 'string';
 };
 
-type DbRow = {
-  id: string;
-  slug: string;
-  category: string;
-  title: string;
-  hero: string;
-  metaDescription: string;
-  intro: string;
-  overviewJson: string;
-  includesJson: string;
-  processJson: string;
-  aftercareJson: string;
-  faqsJson: string;
-  relatedSlugs: string;
-  displayOrder: number;
-  updatedAt: Date;
-};
-
-function mapRow(row: DbRow): ServiceCategoryContentRuntime {
+function mapRow(row: ServiceCategoryContent): ServiceCategoryContentRuntime {
   return {
     id: row.id,
     slug: row.slug,
@@ -85,18 +69,32 @@ function mapRow(row: DbRow): ServiceCategoryContentRuntime {
   };
 }
 
-export async function getAllCategoryContent(): Promise<ServiceCategoryContentRuntime[]> {
-  const rows = await prisma.serviceCategoryContent.findMany({
-    orderBy: [{ displayOrder: 'asc' }, { title: 'asc' }],
-  });
-  return rows.map(mapRow);
-}
+const categorySummarySelect = {
+  id: true, slug: true, category: true, title: true, displayOrder: true,
+} satisfies Prisma.ServiceCategoryContentSelect;
 
-export async function getCategoryContentBySlug(
-  slug: string
-): Promise<ServiceCategoryContentRuntime | null> {
+export const getAllCategoryContent = cache(async () => {
+  return prisma.serviceCategoryContent.findMany({
+    select: categorySummarySelect,
+    orderBy: [{ displayOrder: 'asc' }, { title: 'asc' }, { id: 'asc' }],
+  });
+});
+
+export const getCategoryContentBySlug = cache(async (slug: string): Promise<ServiceCategoryContentRuntime | null> => {
   const row = await prisma.serviceCategoryContent.findUnique({ where: { slug } });
   return row ? mapRow(row) : null;
+});
+
+export async function getRelatedCategories(slugs: string[]) {
+  const requested = [...new Set(slugs)].slice(0, 8);
+  if (!requested.length) return [];
+  const rows = await prisma.serviceCategoryContent.findMany({
+    where: { slug: { in: requested } },
+    select: { slug: true, hero: true, intro: true },
+    take: requested.length,
+  });
+  const bySlug = new Map(rows.map((row) => [row.slug, row]));
+  return requested.flatMap((slug) => bySlug.has(slug) ? [bySlug.get(slug)!] : []);
 }
 
 export async function getCategoryContentById(

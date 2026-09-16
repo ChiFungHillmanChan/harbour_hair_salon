@@ -14,8 +14,28 @@ env:
 jobs:
   # 1. Continuous Integration Check
   ci-check:
-    name: CI - Build & Lint
+    name: CI - Backend, migrations, build and security
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: salon_test
+          POSTGRES_PASSWORD: disposable-ci-password
+          POSTGRES_DB: salon_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U salon_test -d salon_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      POSTGRES_URL: postgresql://salon_test:disposable-ci-password@localhost:5432/salon_test
+      POSTGRES_URL_NON_POOLING: postgresql://salon_test:disposable-ci-password@localhost:5432/salon_test
+      SALON_TEST_DATABASE_URL: postgresql://salon_test:disposable-ci-password@localhost:5432/salon_test
+      SESSION_SECRET: disposable-ci-secret-not-for-production-at-least-32-characters
+      NOTIFICATIONS_ENABLED: 'false'
+      CALENDAR_SYNC_ENABLED: 'false'
+      HOUSEKEEPING_ENABLED: 'false'
+      TZ: UTC
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,7 +51,7 @@ jobs:
           version: 10.33.0
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         env:
@@ -46,6 +66,35 @@ jobs:
           DATABASE_URL: "file:./dev.db"
           SESSION_SECRET: ci-test-secret
         run: pnpm test
+
+      - name: Dependency audit
+        run: pnpm audit --audit-level=high
+
+      - name: Replay production migrations
+        run: pnpm db:vercel:deploy
+
+      - name: Check production migration drift
+        run: pnpm exec prisma migrate diff --from-url "$POSTGRES_URL" --to-schema-datamodel prisma/vercel/schema.prisma --exit-code
+
+      - name: Replay SQLite migrations and check drift
+        run: |
+          sqlite_target=$(mktemp --suffix=.db)
+          DATABASE_URL="file:$sqlite_target" pnpm exec prisma migrate deploy --schema prisma/dev/schema.prisma
+          DATABASE_URL="file:$sqlite_target" pnpm exec prisma migrate diff --from-url "file:$sqlite_target" --to-schema-datamodel prisma/dev/schema.prisma --exit-code
+          rm "$sqlite_target"
+
+      - name: Real PostgreSQL concurrency and rollback checks
+        run: pnpm test:integration
+
+      - name: Build against disposable database
+        run: pnpm build
+
+      - name: Production HTTP authorization and pagination checks
+        run: pnpm test:backend-http
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
 
   # 2. Deploy Preview (PRs)
   deploy-preview:

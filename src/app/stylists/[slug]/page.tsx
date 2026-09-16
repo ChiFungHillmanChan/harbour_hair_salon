@@ -2,14 +2,13 @@ import type { Metadata } from 'next';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getAllStylistsWithSlug, getStylistBySlug } from '../slug';
+import { getStylistSlugs, getRelatedStylists, getStylistBySlug } from '../slug';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
 export const revalidate = 3600;
 
 export async function generateStaticParams() {
-  const stylists = await getAllStylistsWithSlug();
-  return stylists.map((s) => ({ slug: s.slug }));
+  return getStylistSlugs();
 }
 
 export async function generateMetadata({
@@ -71,8 +70,7 @@ export default async function StylistDetailPage({
     trainedIn: stylist.trainedIn,
   };
 
-  const allStylists = await getAllStylistsWithSlug();
-  const related = allStylists.filter((s) => s.slug !== slug).slice(0, 3);
+  const related = await getRelatedStylists(stylist.id);
 
   const personSchema: Record<string, unknown> = {
     '@context': 'https://schema.org',

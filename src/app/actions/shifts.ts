@@ -1,6 +1,6 @@
 'use server';
 
-import prisma from '@/app/lib/prisma';
+import { auditedWrite } from '@/app/lib/audited-write';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { isValidSalonDate, isValidSalonTime } from '@/app/services/salon-time';
@@ -22,8 +22,8 @@ const shiftSchema = z
   .refine((d) => d.endTime > d.startTime, { message: 'End time must be after start time', path: ['endTime'] });
 
 export async function createShift(_prevState: unknown, formData: FormData): Promise<{ error: string | null }> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
   const parsed = shiftSchema.safeParse({
     employeeId: formData.get('employeeId'),
     date: formData.get('date'),
@@ -32,24 +32,24 @@ export async function createShift(_prevState: unknown, formData: FormData): Prom
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const d = parsed.data;
-  await prisma.shift.create({
+  await auditedWrite({ actorUserId: session.userId, action: 'SHIFT.CREATE', targetType: 'Shift' }, async (tx) => tx.shift.create({
     data: {
       employeeId: d.employeeId,
       date: new Date(`${d.date}T00:00:00.000Z`),
       startTime: d.startTime,
       endTime: d.endTime,
     },
-  });
+  }));
   revalidatePath('/admin/shifts');
   return { error: null };
 }
 
 export async function deleteShift(id: string): Promise<{ error?: string; success?: boolean }> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
   // deleteMany, not delete: a second submission of the same row (double click,
   // stale tab) would otherwise throw an unhandled P2025 instead of no-opping.
-  await prisma.shift.deleteMany({ where: { id } });
+  await auditedWrite({ actorUserId: session.userId, action: 'SHIFT.DELETE', targetType: 'Shift', targetId: id }, async (tx) => tx.shift.deleteMany({ where: { id } }));
   revalidatePath('/admin/shifts');
   return { success: true };
 }

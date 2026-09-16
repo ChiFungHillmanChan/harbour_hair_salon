@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import { notFound } from 'next/navigation';
 import { StylistForm } from '@/components/admin/StylistForm';
 import { updateStylist } from '@/app/actions/admin-stylists';
@@ -13,6 +14,7 @@ export default async function EditStylistPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ saved?: string }>;
 }) {
+  await requireAdmin();
   const { id } = await params;
   const { saved } = await searchParams;
   const stylist = await getStylistById(id);

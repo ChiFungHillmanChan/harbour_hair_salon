@@ -12,6 +12,7 @@ type Block = { source: string; stylistId: string; externalUid: string; start: Da
 function fakeDb(rows = [connection()]) {
   const blocks: Block[] = [];
   const predicates: Record<string, unknown>[] = [];
+  const writes = { individual: 0, batches: [] as number[], failBatch: false };
   const db = {
     calendarConnection: {
       findMany: async ({ where }: { where: Record<string, unknown> }) => rows.filter((row) => row.inboundEnabled && row.inboundUrl && (!where.id || row.id === where.id) && (!where.provider || typeof where.provider !== 'string' || row.provider === where.provider)).map((row) => ({ ...row })),
@@ -26,22 +27,37 @@ function fakeDb(rows = [connection()]) {
     },
     externalBusyBlock: {
       upsert: async ({ where, create, update }: { where: { source_stylistId_externalUid: Pick<Block, 'source' | 'stylistId' | 'externalUid'> }; create: Block; update: Partial<Block> }) => {
+        writes.individual++;
         const key = where.source_stylistId_externalUid;
         const old = blocks.find((item) => item.source === key.source && item.stylistId === key.stylistId && item.externalUid === key.externalUid);
         if (old) Object.assign(old, update); else blocks.push(create);
       },
-      deleteMany: async ({ where }: { where: { source: string; stylistId: string; externalUid: { notIn: string[] }; start: { lt: Date }; end: { gt: Date } } }) => {
+      createMany: async ({ data }: { data: Block[] }) => {
+        writes.batches.push(data.length);
+        if (writes.failBatch) throw new Error('Synthetic insert failure');
+        blocks.push(...data);
+        return { count: data.length };
+      },
+      deleteMany: async ({ where }: { where: { source: string; stylistId: string; externalUid?: { notIn: string[] }; start?: { lt: Date }; end?: { gt: Date }; OR?: ({ externalUid: { in: string[] } } | { start: { lt: Date }; end: { gt: Date } })[] } }) => {
         let count = 0;
         for (let i = blocks.length - 1; i >= 0; i--) {
           const b = blocks[i];
-          if (b.source === where.source && b.stylistId === where.stylistId && b.start < where.start.lt && b.end > where.end.gt && !where.externalUid.notIn.includes(b.externalUid)) { blocks.splice(i, 1); count++; }
+          const match = where.OR
+            ? where.OR.some((part) => 'externalUid' in part ? part.externalUid.in.includes(b.externalUid) : b.start < part.start.lt && b.end > part.end.gt)
+            : b.start < where.start!.lt && b.end > where.end!.gt && !where.externalUid!.notIn.includes(b.externalUid);
+          if (b.source === where.source && b.stylistId === where.stylistId && match) { blocks.splice(i, 1); count++; }
         }
         return { count };
       },
     },
-    $transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(db),
+    $transaction: async <T>(fn: (tx: unknown) => Promise<T>) => {
+      const savedRows = structuredClone(rows);
+      const savedBlocks = structuredClone(blocks);
+      try { return await fn(db); }
+      catch (error) { rows.splice(0, rows.length, ...savedRows); blocks.splice(0, blocks.length, ...savedBlocks); throw error; }
+    },
   };
-  return { db: db as unknown as PrismaClient, rows, blocks, predicates };
+  return { db: db as unknown as PrismaClient, rows, blocks, predicates, writes };
 }
 test('successful empty feed advances freshness and removes canceled in-progress/future blocks', async () => {
   const state = fakeDb(); state.blocks.push({ source: 'TREATWELL', stylistId: 's1', externalUid: 'old', start: new Date('2026-09-11T11:00:00Z'), end: new Date('2026-09-11T13:00:00Z'), lastSyncAt: now });
@@ -96,4 +112,26 @@ test('new feeds are prioritized before already-attempted feeds in the bounded cr
   const db = { calendarConnection: { findMany: async (args: { orderBy: unknown }) => { orderBy = args.orderBy; return []; } } };
   await syncCalendarFeeds({ db: db as never, now });
   assert.deepEqual(orderBy, { lastAttemptAt: { sort: 'asc', nulls: 'first' } });
+});
+
+test('large valid feeds reconcile with bounded bulk writes rather than individual upserts', async () => {
+  const state = fakeDb();
+  const events = Array.from({ length: 250 }, (_, index) => `BEGIN:VEVENT\r\nUID:event-${index}\r\nDTSTART:20260912T100000Z\r\nDTEND:20260912T110000Z\r\nEND:VEVENT`).join('\r\n');
+  const result = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => `BEGIN:VCALENDAR\r\n${events}\r\nEND:VCALENDAR` });
+  assert.equal(result[0].ok, true);
+  assert.equal(state.blocks.length, 250);
+  assert.equal(state.writes.individual, 0);
+  assert.equal(state.writes.batches.length, 3);
+  assert.ok(state.writes.batches.every((size) => size <= 100));
+});
+
+test('a bulk insert failure rolls back removed blocks and freshness', async () => {
+  const state = fakeDb();
+  state.rows[0].lastSuccessAt = new Date('2026-09-11T11:00:00Z');
+  state.blocks.push({ source: 'TREATWELL', stylistId: 's1', externalUid: 'keep', start: now, end: new Date('2026-09-12T12:00:00Z'), lastSyncAt: now });
+  state.writes.failBatch = true;
+  const result = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => busy });
+  assert.equal(result[0].ok, false);
+  assert.deepEqual(state.blocks.map((block) => block.externalUid), ['keep']);
+  assert.equal(state.rows[0].lastSuccessAt?.toISOString(), '2026-09-11T11:00:00.000Z');
 });

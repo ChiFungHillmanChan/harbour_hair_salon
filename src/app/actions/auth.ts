@@ -10,6 +10,8 @@ import { headers } from 'next/headers';
 import { loginLimiter, registerLimiter } from '@/app/lib/rate-limit';
 import { sanitizeRedirect } from '@/app/lib/redirect';
 import { decideRegistration } from '@/app/lib/register-gate';
+import { beginAdminMfaChallenge } from '@/app/lib/admin-mfa';
+import { appendAuditEvent } from '@/app/lib/audit';
 
 function getClientIp(headersList: Headers): string {
   const forwarded = headersList.get('x-forwarded-for');
@@ -63,14 +65,15 @@ export async function login(prevState: unknown, formData: FormData) {
     return { error: 'Incorrect email or password. Please try again.' };
   }
 
-  await createSession(user.id, user.role, user.sessionVersion);
-
   const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
   if (user.role === 'ADMIN') {
-    redirect('/admin');
-  } else {
-    redirect(redirectTo);
+    await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.FIRST_FACTOR', targetType: 'User', targetId: user.id, metadata: { method: 'password' } });
+    await beginAdminMfaChallenge(user.id, user.sessionVersion);
+    redirect(user.mfaEnabledAt ? '/auth/mfa' : '/auth/mfa/setup');
   }
+  await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.LOGIN', targetType: 'User', targetId: user.id, metadata: { method: 'password' } });
+  await createSession(user.id, user.role, user.sessionVersion);
+  redirect(redirectTo);
 }
 
 export async function register(prevState: unknown, formData: FormData) {
@@ -91,19 +94,13 @@ export async function register(prevState: unknown, formData: FormData) {
 
   const existingUser = await prisma.user.findUnique({
     where: { email },
-    // oauthAccounts decides whether this row is a claimable guest placeholder or
-    // a real account someone already signs in to — see the takeover note below.
-    include: { oauthAccounts: { select: { provider: true } } },
+    select: { password: true, oauthAccounts: { select: { provider: true } } },
   });
 
   const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
 
-  // A NULL password used to be treated on its own as "unclaimed guest row", but
-  // Google sign-in also creates password-less users (see api/auth/google/callback).
-  // Without the linked-provider check inside decideRegistration, anyone who knew
-  // a Google customer's email address could register with it, have their own
-  // password written onto that account, and be logged straight in as them —
-  // full account takeover, including any Google user promoted to ADMIN.
+  // Never merge registration input into an existing user. Legacy guests recover
+  // access through the emailed password-reset proof, just like other accounts.
   const decision = decideRegistration(
     existingUser
       ? {
@@ -115,27 +112,6 @@ export async function register(prevState: unknown, formData: FormData) {
 
   if (decision.kind === 'REJECT') {
     return { error: decision.error };
-  }
-
-  if (existingUser && decision.kind === 'CLAIM_GUEST') {
-    const guestPasswordHash = await hashPassword(password);
-    try {
-      await prisma.user.update({
-        where: { id: existingUser.id },
-        data: {
-          password: guestPasswordHash,
-          name,
-          phone,
-        },
-      });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        return { error: 'This email is already registered. Please sign in instead.' };
-      }
-      throw error;
-    }
-    await createSession(existingUser.id, existingUser.role, existingUser.sessionVersion);
-    redirect(redirectTo);
   }
 
   const hashedPassword = await hashPassword(password);

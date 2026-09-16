@@ -19,21 +19,28 @@ async function renderCalendar(query: Query, rows: Row[] = []) {
   const page = loadServerModule<{ default: (props: { searchParams: Promise<Query> }) => unknown }>('src/app/admin/page.tsx', {
     'next/link': () => null,
     '@/components/admin/ScheduleCalendar': { ScheduleCalendar: Calendar },
-    '@/app/services/integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
-    '@/app/lib/prisma': {
+    '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
+    '@/app/services/admin-calendar-data': loadServerModule('src/app/services/admin-calendar-data.ts', {
+      '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
+    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
+    '@/app/lib/prisma': { __esModule: true, getDatabaseProvider: () => 'postgresql', default: {
       appointment: {
         findMany: async ({ where }: { where: { date?: Record<string, Date>; status?: string } }) => {
           if (where.date) dateQueries.push(where.date);
           return rows.filter((row) => (!where.status || row.status === where.status) &&
             (!where.date?.gte || row.date >= where.date.gte) &&
             (!where.date?.lte || row.date <= where.date.lte) &&
-            (!where.date?.lt || row.date < where.date.lt));
+            (!where.date?.lt || row.date < where.date.lt)).map((row) => ({ ...row, updatedAt: row.date, stylistId: 'stylist', durationAtBooking: 30, priceAtBooking: 50, user: { name: 'Customer', email: 'customer@example.test' }, service: { name: 'Cut', duration: 30, price: 50, calendarColor: null }, stylist: { name: 'Stylist', calendarColor: null } }));
         },
         groupBy: async () => [],
+        count: async () => rows.filter(row => row.status === 'PENDING').length,
       },
+      $queryRaw: async () => [Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`month${i}`, rows.filter(row => row.date.getUTCFullYear() === Number(String(query.date).slice(0, 4)) && row.date.getUTCMonth() === i).length]))],
       stylist: { findMany: async () => [] },
+      service: { findMany: async () => [] },
       externalBusyBlock: { findMany: async () => [] },
-    },
+    } },
+    }),
   });
   const shell = await page.default({ searchParams: Promise.resolve(query) });
   const content = elements(shell).find((element) => typeof element.type === 'function' && element.type.name === 'ScheduleContent');
@@ -56,12 +63,14 @@ test('historical month navigation fetches that month instead of the current mont
   assert.deepEqual((result.props.appointments as Row[]).map((row) => row.id), ['history']);
 });
 
-test('year navigation includes appointments in both January and December', async () => {
+test('year navigation counts bookings in January and December without loading details', async () => {
   const result = await renderCalendar({ date: '2025-09-16', view: 'year' }, [
     { id: 'january', date: new Date('2025-01-15T10:00:00Z'), status: 'COMPLETED' },
     { id: 'december', date: new Date('2025-12-15T10:00:00Z'), status: 'COMPLETED' },
   ]);
-  assert.deepEqual((result.props.appointments as Row[]).map((row) => row.id), ['january', 'december']);
+  assert.deepEqual(result.props.appointments, []);
+  assert.deepEqual(result.props.monthCounts, [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+  assert.deepEqual(result.dateQueries, []);
 });
 
 test('the pending queue includes all outstanding requests regardless of the selected period', async () => {
@@ -90,12 +99,12 @@ test('month queries include the adjacent days drawn in the calendar grid', async
   assert.deepEqual((result.props.appointments as Row[]).map((row) => row.id), ['previous-month', 'next-month']);
 });
 
-test('invalid and duplicate query parameters fall back to a valid salon date and month view', async () => {
+test('invalid and duplicate query parameters fall back to a valid salon date and default day view', async () => {
   for (const query of [{ date: '2026-02-31', view: 'bogus' }, { date: ['2020-01-01', '2020-02-01'], view: ['day', 'year'] }]) {
     const result = await renderCalendar(query);
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     assert.equal(result.props.dateStr, today);
-    assert.equal(result.props.view, 'month');
+    assert.equal(result.props.view, 'day');
   }
 });
 
@@ -106,6 +115,8 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     react: { useEffect: () => undefined, useState: (initial: unknown) => [initial, () => undefined], useTransition: () => [false, (run: () => void) => run()] },
     'next/navigation': { useRouter: () => ({ push: (url: string) => urls.push(url), refresh: () => undefined }) },
     './ScheduleDayGrid': { ScheduleDayGrid: () => null },
+    './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
+    './AppointmentDialog': { AppointmentDialog: () => null },
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': { updateAppointmentStatus: async (id: string, status: string) => { statuses.push([id, status]); return { success: true }; } },
   });
@@ -118,6 +129,26 @@ test('calendar arrows request another server-loaded month via the URL', () => {
   assert.ok(next);
   (next.props.onClick as () => void)();
   assert.deepEqual(urls, ['/admin?date=2027-01-01&view=month']);
+});
+
+test('the week arrows step a whole week, not a day or a month', () => {
+  const { rendered, urls } = renderClient('2026-12-01', 'week');
+  const next = elements(rendered).find((element) => element.props['aria-label'] === 'Next period');
+  assert.ok(next);
+  (next.props.onClick as () => void)();
+  const previous = elements(rendered).find((element) => element.props['aria-label'] === 'Previous period');
+  assert.ok(previous);
+  (previous.props.onClick as () => void)();
+  assert.deepEqual(urls, ['/admin?date=2026-12-08&view=week', '/admin?date=2026-11-24&view=week']);
+});
+
+test('every period is offered in the toolbar, week included', () => {
+  const { rendered } = renderClient('2026-12-01', 'week');
+  const buttons = elements(rendered).filter((element) => element.type === 'button' && typeof element.props.children === 'string');
+  const periods = buttons.map((element) => element.props.children).filter((label) => ['day', 'week', 'month', 'year'].includes(label as string));
+  assert.deepEqual(periods, ['day', 'week', 'month', 'year']);
+  const active = buttons.filter((element) => element.props['aria-pressed'] === true).map((element) => element.props.children);
+  assert.deepEqual(active, ['week'], 'the selected period must be the one the server resolved');
 });
 
 test('day and year arrows preserve their requested view in the server URL', () => {

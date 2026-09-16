@@ -1,11 +1,12 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
-import prisma from '@/app/lib/prisma';
+import { getAdminCalendarData } from '@/app/services/admin-calendar-data';
 import { ScheduleCalendar } from '@/components/admin/ScheduleCalendar';
-import { getTreatwellSyncCoverage } from '@/app/services/integration-readiness';
-import { resolveAdminCalendarRange, type CalendarQuery } from '@/app/services/admin-calendar-range';
+import { type CalendarQuery } from '@/app/services/admin-calendar-range';
 import { Suspense } from 'react';
 
-export default function AdminDashboard({ searchParams }: { searchParams: Promise<CalendarQuery> }) {
+export default async function AdminDashboard({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[] }> }) {
+  await requireAdmin();
   // The static header renders (and paints) immediately; the appointment data
   // and calendar stream in behind Suspense, so LCP no longer waits on Neon.
   return (
@@ -22,53 +23,15 @@ export default function AdminDashboard({ searchParams }: { searchParams: Promise
   );
 }
 
-async function ScheduleContent({ searchParams }: { searchParams: Promise<CalendarQuery> }) {
-  const now = new Date();
-  const { dateStr, view, range } = resolveAdminCalendarRange(await searchParams, now);
-  const todayRange = resolveAdminCalendarRange({ view: 'day' }, now).range;
-  const include = {
-    user: { select: { id: true, name: true, email: true } },
-    stylist: { select: { name: true, calendarColor: true } },
-    service: { select: { name: true, duration: true, price: true, calendarColor: true } },
-  } as const;
-
-  const [appointments, todayStats, syncCoverage, stylists, busyBlocks, pendingAppointments] = await Promise.all([
-    prisma.appointment.findMany({
-      where: { date: range },
-      include,
-      orderBy: { date: 'asc' },
-    }),
-    // Quick stats for today
-    prisma.appointment.groupBy({
-      by: ['status'],
-      where: { date: todayRange },
-      _count: true,
-    }),
-    getTreatwellSyncCoverage(),
-    // Roster for the day grid's columns. Retired stylists are excluded — they
-    // keep their past appointments but must not get a column to drop work into.
-    prisma.stylist.findMany({
-      where: { isActive: true },
-      orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        calendarColor: true,
-        availabilities: { select: { dayOfWeek: true, startTime: true, endTime: true, isOff: true } },
-      },
-    }),
-    prisma.externalBusyBlock.findMany({
-      where: { start: { lt: range.lt }, end: { gt: range.gte } },
-      select: { id: true, stylistId: true, start: true, end: true },
-    }),
-    // Requests must stay actionable even when their date is outside the view.
-    prisma.appointment.findMany({ where: { status: 'PENDING' }, include, orderBy: { date: 'asc' } }),
-  ]);
+async function ScheduleContent({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[] }> }) {
+  const { dateStr, view, appointments, pendingAppointments, pendingCount, pendingNext,
+    pendingHasPrevious, monthCounts, periodCount, todayStats, syncCoverage, stylists, busyBlocks,
+    services } = await getAdminCalendarData(await searchParams);
 
   const todayConfirmed = todayStats.find(s => s.status === 'CONFIRMED')?._count ?? 0;
   const todayCancelled = todayStats.find(s => s.status === 'CANCELLED')?._count ?? 0;
   // Double-confirm flow: booking requests arrive as PENDING and need approval.
-  const pendingCount = pendingAppointments.length;
+
 
   return (
     <>
@@ -105,11 +68,11 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
         </div>
         <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
           <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">This Period</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{appointments.length}</p>
+          <p className="text-3xl font-bold text-zinc-900 mt-1">{periodCount}</p>
         </div>
       </div>
 
-      <ScheduleCalendar dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} stylists={stylists} busyBlocks={busyBlocks} />
+      <ScheduleCalendar dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} stylists={stylists} busyBlocks={busyBlocks} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} />
     </>
   );
 }

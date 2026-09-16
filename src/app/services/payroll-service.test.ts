@@ -39,22 +39,18 @@ function makeFakeDb(opts: {
   };
 
   const db = {
+    auditEvent: { create: async () => ({ id: 'audit' }) },
     payrollPeriod: {
       upsert: async () => ({ id: 'period-1', status: opts.periodStatus ?? 'DRAFT' }),
     },
     timeEntry: {
-      findMany: async (args: { where: Record<string, unknown>; distinct?: string[] }) => {
-        if (args.distinct) {
-          recorded.approvedEntryWheres.push(args.where);
-          return Object.keys(opts.entriesByEmployee ?? {}).map((employeeId) => ({ employeeId }));
-        }
-        recorded.perEmployeeEntryWheres.push(args.where);
-        const employeeId = args.where.employeeId as string;
-        return (opts.entriesByEmployee ?? {})[employeeId] ?? [];
+      findMany: async (args: { where: Record<string, unknown> }) => {
+        recorded.approvedEntryWheres.push(args.where);
+        return Object.entries(opts.entriesByEmployee ?? {}).flatMap(([employeeId, entries]) => entries.map((entry) => ({ employeeId, ...entry })));
       },
     },
     payrollLine: {
-      findMany: async () => [],
+      findMany: async () => Object.entries(opts.existingLines ?? {}).map(([employeeId, line]) => ({ employeeId, ...line })),
       findUnique: async (args: { where: { periodId_employeeId: { employeeId: string } } }) => {
         const line = (opts.existingLines ?? {})[args.where.periodId_employeeId.employeeId];
         return line ? { adjustments: line.adjustments, adjustmentNote: line.adjustmentNote } : null;
@@ -67,7 +63,7 @@ function makeFakeDb(opts: {
     appointment: {
       findMany: async (args: { where: Record<string, unknown> }) => {
         recorded.appointmentWheres.push(args.where);
-        return (opts.appointmentsByStylist ?? {})[args.where.stylistId as string] ?? [];
+        return Object.entries(opts.appointmentsByStylist ?? {}).flatMap(([stylistId, appointments]) => appointments.map((appointment) => ({ stylistId, ...appointment })));
       },
     },
     employee: {
@@ -75,7 +71,7 @@ function makeFakeDb(opts: {
     },
   };
 
-  return { db: db as unknown as PayrollDb, recorded };
+  return { db: { $transaction: async (run: (tx: unknown) => Promise<unknown>) => run(db) } as unknown as PayrollDb, recorded };
 }
 
 // --- monthBounds: salon-timezone (Europe/London) month [start, end) ---
@@ -100,7 +96,7 @@ test('monthBounds: December rolls the end bound into January of the next year', 
 
 // --- query predicates ---
 
-test('runPayrollWith: both time-entry scans require status APPROVED and clockOut not null', async () => {
+test('runPayrollWith: the batched time-entry scan requires status APPROVED and clockOut not null', async () => {
   const { start, end } = monthBounds(2026, 7);
   const { db, recorded } = makeFakeDb({
     employees: [{
@@ -120,12 +116,7 @@ test('runPayrollWith: both time-entry scans require status APPROVED and clockOut
     clockOut: { not: null },
     clockIn: { gte: start, lt: end },
   });
-  assert.deepEqual(recorded.perEmployeeEntryWheres[0], {
-    employeeId: 'e1',
-    status: 'APPROVED',
-    clockIn: { gte: start, lt: end },
-    clockOut: { not: null },
-  });
+  assert.equal(recorded.approvedEntryWheres.length, 1);
 });
 
 test('runPayrollWith: commission query requires status COMPLETED and uses priceAtBooking over service.price', async () => {
@@ -144,7 +135,7 @@ test('runPayrollWith: commission query requires status COMPLETED and uses priceA
   await runPayrollWith(db, 2026, 7);
 
   assert.deepEqual(recorded.appointmentWheres[0], {
-    stylistId: 'stylist-1',
+    stylistId: { in: ['stylist-1'] },
     status: 'COMPLETED',
     date: { gte: start, lt: end },
   });

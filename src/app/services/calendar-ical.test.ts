@@ -21,17 +21,57 @@ test('a recurring event becomes one busy interval per occurrence', () => {
   assert.ok(intervals.every((i) => i.end.getTime() - i.start.getTime() === 3_600_000));
 });
 
-// The clocks go back on 2026-10-25. Replaying the UTC instant would move a
-// 10:00 commitment to 09:00 local and leave its last hour bookable while the
-// stylist is still busy — the one error this parser must never make.
-test('recurring occurrences keep salon-local wall-clock time across the DST change', () => {
+test('UTC recurrence preserves its UTC time across the London DST change', () => {
   const intervals = parseCalendarBusyIntervals(
     ics(event('DTSTART:20261024T100000Z\r\nDTEND:20261024T110000Z\r\nRRULE:FREQ=DAILY;COUNT=3')), { now });
-  const localHour = (d: Date) => d.toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false });
-  assert.deepEqual(intervals.map((i) => localHour(i.start)), ['11', '11', '11']);
-  // 24 Oct is BST (10:00Z = 11:00), 26 Oct is GMT — so the UTC instant must move.
-  assert.equal(intervals[0].start.toISOString(), '2026-10-24T10:00:00.000Z');
-  assert.equal(intervals[2].start.toISOString(), '2026-10-26T11:00:00.000Z');
+  assert.deepEqual(intervals.map((i) => i.start.toISOString()), [
+    '2026-10-24T10:00:00.000Z', '2026-10-25T10:00:00.000Z', '2026-10-26T10:00:00.000Z',
+  ]);
+});
+
+test('TZID recurrence preserves the declared local clock across DST', () => {
+  const intervals = parseCalendarBusyIntervals(ics(event('DTSTART;TZID=Europe/London:20261024T100000\r\nDTEND;TZID=Europe/London:20261024T110000\r\nRRULE:FREQ=DAILY;COUNT=3')), { now });
+  assert.deepEqual(intervals.map((i) => i.start.toISOString()), [
+    '2026-10-24T09:00:00.000Z', '2026-10-25T10:00:00.000Z', '2026-10-26T10:00:00.000Z',
+  ]);
+});
+
+test('hourly occurrences stay distinct and EXDATE excludes only the exact instant', () => {
+  const fields = 'DTSTART:20261024T100000Z\r\nDTEND:20261024T103000Z\r\nRRULE:FREQ=HOURLY;COUNT=3';
+  const all = parseCalendarBusyIntervals(ics(event(fields)), { now });
+  assert.deepEqual(all.map((i) => i.start.toISOString()), ['2026-10-24T10:00:00.000Z', '2026-10-24T11:00:00.000Z', '2026-10-24T12:00:00.000Z']);
+  assert.equal(new Set(all.map((i) => i.uid)).size, 3);
+  const except = parseCalendarBusyIntervals(ics(event(`${fields}\r\nEXDATE:20261024T110000Z`)), { now });
+  assert.deepEqual(except.map((i) => i.start.toISOString()), ['2026-10-24T10:00:00.000Z', '2026-10-24T12:00:00.000Z']);
+  const multiple = parseCalendarBusyIntervals(ics(event(`${fields}\r\nEXDATE:20261024T100000Z,20261024T120000Z`)), { now });
+  assert.deepEqual(multiple.map((i) => i.start.toISOString()), ['2026-10-24T11:00:00.000Z']);
+});
+
+test('all-day recurrence uses calendar-day duration through a 25-hour day', () => {
+  const intervals = parseCalendarBusyIntervals(ics(event('DTSTART;VALUE=DATE:20261024\r\nDTEND;VALUE=DATE:20261025\r\nRRULE:FREQ=DAILY;COUNT=3')), { now });
+  assert.deepEqual(intervals.map((i) => [i.start.toISOString(), i.end.toISOString()]), [
+    ['2026-10-23T23:00:00.000Z', '2026-10-24T23:00:00.000Z'],
+    ['2026-10-24T23:00:00.000Z', '2026-10-26T00:00:00.000Z'],
+    ['2026-10-26T00:00:00.000Z', '2026-10-27T00:00:00.000Z'],
+  ]);
+});
+
+test('all-day exclusions and UNTIL preserve date semantics through the spring DST change', () => {
+  const intervals = parseCalendarBusyIntervals(ics(event('DTSTART;VALUE=DATE:20260328\r\nDTEND;VALUE=DATE:20260329\r\nRRULE:FREQ=DAILY;UNTIL=20260330\r\nEXDATE;VALUE=DATE:20260328')), { now: new Date('2026-03-27T00:00:00Z'), windowEnd: new Date('2026-04-02T00:00:00Z') });
+  assert.deepEqual(intervals.map((i) => [i.start.toISOString(), i.end.toISOString()]), [
+    ['2026-03-29T00:00:00.000Z', '2026-03-29T23:00:00.000Z'],
+    ['2026-03-29T23:00:00.000Z', '2026-03-30T23:00:00.000Z'],
+  ]);
+});
+
+test('date-only recurrences refuse sub-daily rules instead of collapsing their occurrences', () => {
+  assert.throws(() => parseCalendarBusyIntervals(ics(event('DTSTART;VALUE=DATE:20261024\r\nDTEND;VALUE=DATE:20261025\r\nRRULE:FREQ=HOURLY;COUNT=3')), { now }), /date|unsupported/i);
+});
+
+test('malformed EXDATE and mismatched date types fail the entire recurring feed', () => {
+  for (const exclusion of ['EXDATE:broken', 'EXDATE;VALUE=DATE:20261025']) {
+    assert.throws(() => parseCalendarBusyIntervals(ics(event(`DTSTART:20261024T100000Z\r\nDTEND:20261024T110000Z\r\nRRULE:FREQ=DAILY;COUNT=3\r\n${exclusion}`)), { now }), /date/i);
+  }
 });
 
 test('EXDATE removes a cancelled occurrence without dropping the series', () => {

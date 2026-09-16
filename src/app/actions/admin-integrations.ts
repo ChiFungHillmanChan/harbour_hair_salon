@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { appendAuditEvent } from '@/app/lib/audit';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { syncCalendarFeeds } from '@/app/services/calendar-sync-service';
@@ -13,6 +14,7 @@ import { saveCalendarConnectionSettings } from '@/app/services/calendar-connecti
 async function requireAdmin() {
   const session = await verifySession();
   if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  return session;
 }
 function refreshIntegrations() {
   revalidatePath('/admin/integrations');
@@ -21,8 +23,8 @@ function refreshIntegrations() {
 }
 
 export async function saveCalendarConnectionAction(formData: FormData): Promise<void> {
-  await requireAdmin();
-  const result = await saveCalendarConnectionSettings(formData, prisma);
+  const session = await requireAdmin();
+  const result = await saveCalendarConnectionSettings(formData, prisma, session.userId);
   if (!result.ok) redirect(`/admin/integrations?calendarError=${encodeURIComponent(result.error ?? 'Check the calendar settings and try again.')}`);
   refreshIntegrations();
   redirect('/admin/integrations?calendar=saved');
@@ -47,7 +49,7 @@ export async function runTreatwellIcalSyncAction(): Promise<void> {
 }
 
 export async function confirmCalendarOutboundAction(formData: FormData): Promise<void> {
-  await requireAdmin();
+  const session = await requireAdmin();
   const input = z.object({ stylistId: z.string().min(1).max(128), provider: z.enum(CALENDAR_PROVIDERS), token: z.string().min(1).max(128), confirmed: z.literal('on') })
     .parse({ stylistId: formData.get('stylistId'), provider: formData.get('provider'), token: formData.get('token'), confirmed: formData.get('confirmed') });
   await prisma.$transaction(async (tx) => {
@@ -60,17 +62,19 @@ export async function confirmCalendarOutboundAction(formData: FormData): Promise
       create: { stylistId: input.stylistId, provider: input.provider, outboundConfirmedAt: new Date() },
       update: { outboundConfirmedAt: new Date() },
     });
+    await appendAuditEvent({ actorUserId: session.userId, action: 'CALENDAR.OUTBOUND_CONFIRM', targetType: 'Stylist', targetId: input.stylistId, metadata: { provider: input.provider } }, tx);
   });
   refreshIntegrations();
   redirect('/admin/integrations?calendar=confirmed');
 }
 
 export async function generateStylistIcalFeedTokenAction(formData: FormData): Promise<void> {
-  await requireAdmin();
+  const session = await requireAdmin();
   const stylistId = z.string().min(1).max(128).parse(formData.get('stylistId'));
   await prisma.$transaction(async (tx) => {
     await tx.stylist.update({ where: { id: stylistId }, select: { id: true }, data: { icalToken: randomBytes(24).toString('base64url') } });
     await tx.calendarConnection.updateMany({ where: { stylistId }, data: { outboundConfirmedAt: null } });
+    await appendAuditEvent({ actorUserId: session.userId, action: 'CALENDAR.TOKEN_ROTATE', targetType: 'Stylist', targetId: stylistId }, tx);
   });
   refreshIntegrations();
   redirect('/admin/integrations?feedToken=rotated');
@@ -78,7 +82,5 @@ export async function generateStylistIcalFeedTokenAction(formData: FormData): Pr
 
 export async function retryFailedTreatwellBookingsAction(): Promise<void> {
   await requireAdmin();
-  const result = await prisma.appointment.updateMany({ where: { treatwellSyncStatus: 'FAILED' }, data: { treatwellSyncStatus: 'PENDING', treatwellSyncError: null } });
-  refreshIntegrations();
-  redirect(`/admin/integrations?retry=${result.count}`);
+  throw new Error('Outbound API delivery is disabled until a verified provider contract and idempotency tests are configured.');
 }

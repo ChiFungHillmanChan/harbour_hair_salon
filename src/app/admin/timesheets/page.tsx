@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { format } from 'date-fns';
@@ -38,6 +39,7 @@ function inRange(value: number, min: number, max: number): number | null {
 }
 
 export default async function TimesheetsPage({ searchParams }: { searchParams: Promise<{ year?: string; month?: string }> }) {
+  await requireAdmin();
   const sp = await searchParams;
   const now = toZonedTime(new Date(), SALON_TIMEZONE);
   // Timesheets default to the month in progress; out-of-range params fall back

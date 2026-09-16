@@ -61,6 +61,7 @@ function fixture(options: {
     }
   };
   const tx = {
+    auditEvent: { create: async () => { assert.equal(transactionActive, true); return { id: "audit" }; } },
     appointment: {
       findUnique: async () => {
         const result = structuredClone(appointment);

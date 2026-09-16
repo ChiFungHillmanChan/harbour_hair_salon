@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { OpeningHoursForm, type StylistWeek } from '@/components/admin/OpeningHoursForm';
 import { isBookingEnabled } from '@/app/lib/booking-maintenance';
@@ -21,6 +22,7 @@ function toWeek(rows: { dayOfWeek: number; isOff: boolean; startTime: string; en
 }
 
 export default async function OpeningHoursPage() {
+  await requireAdmin();
   const [stylists, bookingEnabled] = await Promise.all([
     prisma.stylist.findMany({
       // Retired stylists are not bookable, so they have no hours to edit.

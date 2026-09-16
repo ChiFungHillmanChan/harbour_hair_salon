@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { verifySession } from '@/app/lib/session';
 import { retryFailedTreatwellBookingsAction } from '@/app/actions/admin-integrations';
@@ -13,6 +14,7 @@ function ConfigRow({ label, ready }: { label: string; ready: boolean }) {
   return <li className="flex items-center justify-between gap-4 border-b border-zinc-100 py-2 last:border-0"><code className="text-xs text-zinc-700">{label}</code><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ready ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{ready ? 'Configured' : 'Missing'}</span></li>;
 }
 export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  await requireAdmin();
   const session = await verifySession();
   if (session.role !== 'ADMIN') throw new Error('Unauthorized');
   const [readiness, stylists, query] = await Promise.all([getIntegrationReadiness(), listCalendarConnectionsForAdmin(SITE_URL), searchParams]);

@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { CategoryContentForm } from '@/components/admin/CategoryContentForm';
 import { createCategoryContent } from '@/app/actions/admin-categories';
@@ -5,6 +6,7 @@ import { createCategoryContent } from '@/app/actions/admin-categories';
 export const dynamic = 'force-dynamic';
 
 export default async function NewCategoryPage() {
+  await requireAdmin();
   const rows = await prisma.service.findMany({
     select: { category: true },
     distinct: ['category'],

@@ -35,30 +35,16 @@ function eventDate(line: string | undefined): Date | undefined {
 const SALON_TIME_ZONE = 'Europe/London';
 export const MAX_OCCURRENCES_PER_EVENT = 400;
 
-/**
- * Expand one recurring VEVENT into concrete busy intervals inside the window.
- *
- * Recurring blocked time is ordinary staff behaviour — "every Saturday
- * afternoon", "the 4th of each month" — and marketplaces export it as a single
- * VEVENT carrying an RRULE. Refusing the whole feed on sight, as this parser
- * used to, meant one stylist's standing commitment failed their sync, which the
- * coverage gate then turned into closed booking for the entire salon.
- *
- * Occurrences are re-anchored to the salon-local wall-clock time of DTSTART
- * rather than replayed at a fixed UTC instant. RFC 5545 says a UTC DTSTART
- * recurs in UTC, but the person who typed "every Saturday, 5pm" into a
- * marketplace UI means 5pm in both BST and GMT. Replaying the instant would
- * shift the block an hour when the clocks change, and the direction of that
- * error matters: it would leave the final hour of an occupied slot bookable.
- * Staying on local time can only ever over-block, which costs a booking rather
- * than double-selling one, and that is the trade this parser has always made.
- */
+/** Preserve the provider's UTC/TZID occurrences; only DATE values use salon days. */
 function expandRecurrence(
   block: string,
-  anchor: { start: Date; end: Date; uid: string },
+  anchor: { start: Date; end: Date; uid: string; allDay: boolean },
   bounds: { now: Date; windowEnd: Date },
 ): CalendarBusyInterval[] {
-  type Recurring = { rrule?: { between(a: Date, b: Date, inc?: boolean): Date[] }; exdate?: Record<string, Date> };
+  type Recurring = { rrule?: { between(a: Date, b: Date, inc?: boolean): Date[] } };
+  if (anchor.allDay && /(?:^|[;:])(?:FREQ=(?:HOURLY|MINUTELY|SECONDLY)(?:;|$)|BY(?:HOUR|MINUTE|SECOND)=)/m.test(block.toUpperCase())) {
+    throw new CalendarFeedError('Sub-daily recurrence rules are unsupported for date-only events.');
+  }
   let event: Recurring | undefined;
   try {
     const parsed = icalSync.parseICS(`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//x//x//EN\r\n${block}\r\nEND:VCALENDAR`);
@@ -67,22 +53,28 @@ function expandRecurrence(
   if (!event?.rrule) throw new CalendarFeedError('Unreadable recurring calendar event.');
 
   const durationMs = anchor.end.getTime() - anchor.start.getTime();
-  const clock = formatInTimeZone(anchor.start, SALON_TIME_ZONE, 'HH:mm:ss');
-  // Reach back one duration so an occurrence already under way still counts.
+  const calendarDays = anchor.allDay
+    ? Math.round((Date.parse(formatInTimeZone(anchor.end, SALON_TIME_ZONE, 'yyyy-MM-dd')) - Date.parse(formatInTimeZone(anchor.start, SALON_TIME_ZONE, 'yyyy-MM-dd'))) / DAY_MS)
+    : 0;
+  // DATE values returned by node-ical use host-local midnight. Pad discovery,
+  // then filter using the converted London instants so host TZ cannot drop a day.
+  const margin = anchor.allDay ? 2 * DAY_MS : 0;
   let dates: Date[];
-  try { dates = event.rrule.between(new Date(bounds.now.getTime() - durationMs), bounds.windowEnd, true); }
+  try { dates = event.rrule.between(new Date(bounds.now.getTime() - durationMs - margin), new Date(bounds.windowEnd.getTime() + margin), true); }
   catch { throw new CalendarFeedError('Unsupported calendar recurrence rule.'); }
   if (dates.length > MAX_OCCURRENCES_PER_EVENT) throw new CalendarFeedError('Calendar has too many recurring occurrences.');
 
-  const excluded = new Set(Object.values(event.exdate ?? {}).map((date) =>
-    formatInTimeZone(date, SALON_TIME_ZONE, 'yyyy-MM-dd')));
+  // Parse the original EXDATE lists: node-ical's date-keyed map can collapse
+  // multiple exclusions within one day. Validate before the permissive parser.
+  const excluded = readExclusions(block.split(/\r?\n/), anchor.allDay);
   const intervals: CalendarBusyInterval[] = [];
   for (const date of dates) {
-    const day = formatInTimeZone(date, SALON_TIME_ZONE, 'yyyy-MM-dd');
-    if (excluded.has(day)) continue;
-    const start = fromZonedTime(`${day}T${clock}`, SALON_TIME_ZONE);
-    if (!Number.isFinite(start.getTime())) continue; // clock-change gap: no such local time
-    const end = new Date(start.getTime() + durationMs);
+    const day = anchor.allDay ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` : '';
+    const start = anchor.allDay ? fromZonedTime(`${day}T00:00:00`, SALON_TIME_ZONE) : date;
+    if (excluded.has(start.getTime())) continue;
+    const end = anchor.allDay
+      ? fromZonedTime(`${new Date(Date.parse(day) + calendarDays * DAY_MS).toISOString().slice(0, 10)}T00:00:00`, SALON_TIME_ZONE)
+      : new Date(start.getTime() + durationMs);
     if (end <= bounds.now || start >= bounds.windowEnd) continue;
     // Each occurrence is upserted separately on (source, stylistId, externalUid),
     // so they cannot share the series UID or they would overwrite each other.
@@ -91,8 +83,19 @@ function expandRecurrence(
   return intervals;
 }
 
+function readExclusions(fields: string[], allDay: boolean): Set<number> {
+  const excluded = new Set<number>();
+  for (const line of fields.filter((field) => /^EXDATE[;:]/.test(field))) {
+    const split = line.indexOf(':');
+    const property = line.slice(0, split).replace(/^EXDATE/, 'DTSTART');
+    if (/;VALUE=DATE(?:;|$)/.test(property) !== allDay) throw new CalendarFeedError('Calendar exclusion date type must match its start.');
+    for (const value of line.slice(split + 1).split(',')) excluded.add(eventDate(`${property}:${value}`)!.getTime());
+  }
+  return excluded;
+}
+
 /**
- * Recurring events are expanded in salon-local time; anything else that could
+ * Recurring events follow their declared timezone; anything else that could
  * silently open an occupied slot is still refused. All-day events use
  * salon-local midnight, including DST. Entire documents fail atomically; an
  * unreadable event is never an empty feed.
@@ -136,7 +139,7 @@ export function parseCalendarBusyIntervals(
       throw new CalendarFeedError('Recurring calendar events are unsupported. Export individual appointments; previous busy times were retained.');
     }
     const recurring = fields.some((line) => /^RRULE[;:]/.test(line));
-    for (const property of ['UID', 'DTSTART', 'DTEND', 'STATUS', 'TRANSP']) {
+    for (const property of ['UID', 'DTSTART', 'DTEND', 'STATUS', 'TRANSP', 'RRULE']) {
       if (fields.filter((line) => line.startsWith(`${property}:`) || line.startsWith(`${property};`)).length > 1) {
         throw new CalendarFeedError('Ambiguous duplicate calendar event properties.');
       }
@@ -145,12 +148,12 @@ export function parseCalendarBusyIntervals(
     if (!uid || uid.length > 1_024 || seen.has(uid)) throw new CalendarFeedError('Invalid or duplicate calendar event identifier.');
     seen.add(uid);
     if (fields.includes('STATUS:CANCELLED') || fields.includes('TRANSP:TRANSPARENT')) continue;
-    // node-ical validates the event envelope; explicit date validation above
-    // avoids its permissive fallback for unknown zones and malformed dates.
-    try { icalSync.parseICS(`BEGIN:VCALENDAR\r\n${block}\r\nEND:VCALENDAR`); }
-    catch { throw new CalendarFeedError('Invalid calendar event.'); }
     const startLine = fields.find((line) => /^DTSTART[;:]/.test(line));
     const endLine = fields.find((line) => /^DTEND[;:]/.test(line));
+    const allDay = Boolean(startLine && /;VALUE=DATE(?:;|:)/.test(startLine));
+    if (endLine && /;VALUE=DATE(?:;|:)/.test(endLine) !== allDay) throw new CalendarFeedError('Calendar start and end date types must match.');
+    if (fields.some((line) => /^DURATION[;:]/.test(line))) throw new CalendarFeedError('Calendar duration format is unsupported. Export an explicit end date.');
+    readExclusions(fields, allDay);
     const start = eventDate(startLine);
     let end = eventDate(endLine);
     if (start && !end && startLine?.startsWith('DTSTART;VALUE=DATE:')) {
@@ -160,12 +163,12 @@ export function parseCalendarBusyIntervals(
       end = fromZonedTime(`${next.toISOString().slice(0, 10)}T00:00:00`, 'Europe/London');
     }
     if (!start || !end || end <= start) throw new CalendarFeedError('Calendar event is missing a valid start or end.');
+    try { icalSync.parseICS(`BEGIN:VCALENDAR\r\n${block}\r\nEND:VCALENDAR`); }
+    catch { throw new CalendarFeedError('Invalid calendar event.'); }
     if (recurring) {
-      result.push(...expandRecurrence(block, { start, end, uid }, { now, windowEnd }));
-      if (result.length > MAX_CALENDAR_EVENTS) throw new CalendarFeedError('Calendar has too many events.');
-      continue;
-    }
-    if (end > now && start < windowEnd) result.push({ uid, start, end });
+      result.push(...expandRecurrence(block, { start, end, uid, allDay }, { now, windowEnd }));
+    } else if (end > now && start < windowEnd) result.push({ uid, start, end });
+    if (result.length > MAX_CALENDAR_EVENTS) throw new CalendarFeedError('Calendar has too many events.');
   }
   return result;
 }

@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/app/lib/prisma';
+import { auditedWrite } from '@/app/lib/audited-write';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { resolveSalonDateTime, isValidSalonDate, isValidSalonTime, SALON_TIMEZONE } from '@/app/services/salon-time';
@@ -44,7 +45,7 @@ export async function updateTimeEntry(id: string, formData: FormData): Promise<A
     return { error: 'Clock-out must be after clock-in' };
   }
 
-  const updated = await prisma.timeEntry.updateMany({
+  const updated = await auditedWrite({ actorUserId: session.userId, action: 'TIME_ENTRY.UPDATE', targetType: 'TimeEntry', targetId: id }, async (tx) => tx.timeEntry.updateMany({
     where: { id },
     data: {
       clockIn,
@@ -54,19 +55,25 @@ export async function updateTimeEntry(id: string, formData: FormData): Promise<A
       status: 'EDITED',
       editedByAdminId: session.userId,
     },
-  });
+  }));
   if (updated.count === 0) return { error: 'That time entry no longer exists.' };
   revalidatePath('/admin/timesheets');
   return { success: true };
 }
 
 export async function approveTimeEntry(id: string): Promise<ActionResult> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
-  const entry = await prisma.timeEntry.findUnique({ where: { id } });
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
+  const entry = await prisma.timeEntry.findUnique({ where: { id }, select: { clockOut: true, updatedAt: true } });
   if (!entry) return { error: 'That time entry no longer exists.' };
   if (!entry.clockOut) return { error: 'Still clocked in — this entry can only be approved once it has a clock-out time.' };
-  await prisma.timeEntry.update({ where: { id }, data: { status: 'APPROVED' } });
+  // Approve only the closed revision we checked, never a concurrent edit or
+  // reopened shift. The audit helper skips recording a failed conditional write.
+  const approved = await auditedWrite({ actorUserId: session.userId, action: 'TIME_ENTRY.APPROVE', targetType: 'TimeEntry', targetId: id }, async (tx) => tx.timeEntry.updateMany({
+    where: { id, updatedAt: entry.updatedAt, clockOut: { not: null } },
+    data: { status: 'APPROVED' },
+  }));
+  if (approved.count !== 1) return { error: 'That time entry changed. Refresh and review it before approving.' };
   revalidatePath('/admin/timesheets');
   return { success: true };
 }
@@ -80,35 +87,35 @@ export async function approveTimeEntry(id: string): Promise<ActionResult> {
 export async function unapproveTimeEntry(id: string): Promise<ActionResult> {
   const { error, session } = await requireAdmin();
   if (error || !session) return { error: error ?? 'Unauthorized' };
-  const res = await prisma.timeEntry.updateMany({
+  const res = await auditedWrite({ actorUserId: session.userId, action: 'TIME_ENTRY.UNAPPROVE', targetType: 'TimeEntry', targetId: id }, async (tx) => tx.timeEntry.updateMany({
     where: { id, status: 'APPROVED' },
     data: { status: 'EDITED', editedByAdminId: session.userId },
-  });
+  }));
   if (res.count === 0) return { error: 'That entry is not approved, so there is nothing to un-approve.' };
   revalidatePath('/admin/timesheets');
   return { success: true };
 }
 
 export async function approveMonth(year: number, month: number): Promise<{ error?: string; count?: number }> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
   if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
     return { error: 'Invalid month.' };
   }
   const start = fromZonedTime(`${year}-${String(month).padStart(2, '0')}-01T00:00:00.000`, SALON_TIMEZONE);
   const end = fromZonedTime(`${month === 12 ? year + 1 : year}-${String(month === 12 ? 1 : month + 1).padStart(2, '0')}-01T00:00:00.000`, SALON_TIMEZONE);
-  const res = await prisma.timeEntry.updateMany({
+  const res = await auditedWrite({ actorUserId: session.userId, action: 'TIME_ENTRY.APPROVE_MONTH', targetType: 'TimeEntry', metadata: { year, month } }, async (tx) => tx.timeEntry.updateMany({
     where: { clockIn: { gte: start, lt: end }, clockOut: { not: null }, status: { in: ['PENDING', 'EDITED'] } },
     data: { status: 'APPROVED' },
-  });
+  }));
   revalidatePath('/admin/timesheets');
   return { count: res.count };
 }
 
 export async function deleteTimeEntry(id: string): Promise<ActionResult> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
-  const res = await prisma.timeEntry.deleteMany({ where: { id } });
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
+  const res = await auditedWrite({ actorUserId: session.userId, action: 'TIME_ENTRY.DELETE', targetType: 'TimeEntry', targetId: id }, async (tx) => tx.timeEntry.deleteMany({ where: { id } }));
   if (res.count === 0) return { error: 'That time entry has already been removed.' };
   revalidatePath('/admin/timesheets');
   return { success: true };

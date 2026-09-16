@@ -1,6 +1,6 @@
 'use server';
 
-import prisma from '@/app/lib/prisma';
+import { auditedWrite } from '@/app/lib/audited-write';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { isValidPin, hashPin } from '@/app/lib/pin';
@@ -50,8 +50,8 @@ function parseEmployeeForm(formData: FormData) {
 }
 
 export async function createEmployee(formData: FormData): Promise<EmployeeActionState> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
 
   const parsed = parseEmployeeForm(formData);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -61,7 +61,7 @@ export async function createEmployee(formData: FormData): Promise<EmployeeAction
 
   const d = parsed.data;
   try {
-    await prisma.employee.create({
+    await auditedWrite({ actorUserId: session.userId, action: 'EMPLOYEE.CREATE', targetType: 'Employee' }, async (tx) => tx.employee.create({
       data: {
         name: d.name,
         title: d.title,
@@ -76,7 +76,7 @@ export async function createEmployee(formData: FormData): Promise<EmployeeAction
         unpaidBreakMinutes: d.unpaidBreakMinutes ?? null,
         stylistId: d.stylistId || null,
       },
-    });
+    }));
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       return { error: STYLIST_TAKEN };
@@ -90,15 +90,15 @@ export async function createEmployee(formData: FormData): Promise<EmployeeAction
 }
 
 export async function updateEmployee(id: string, formData: FormData): Promise<EmployeeActionState> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
 
   const parsed = parseEmployeeForm(formData);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const d = parsed.data;
   try {
-    await prisma.employee.update({
+    await auditedWrite({ actorUserId: session.userId, action: 'EMPLOYEE.UPDATE', targetType: 'Employee', targetId: id }, async (tx) => tx.employee.update({
       where: { id },
       data: {
         name: d.name,
@@ -113,7 +113,7 @@ export async function updateEmployee(id: string, formData: FormData): Promise<Em
         unpaidBreakMinutes: d.unpaidBreakMinutes ?? null,
         stylistId: d.stylistId || null,
       },
-    });
+    }));
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       return { error: STYLIST_TAKEN };
@@ -131,12 +131,12 @@ export async function updateEmployee(id: string, formData: FormData): Promise<Em
 }
 
 export async function setEmployeePin(id: string, pin: string): Promise<EmployeeActionState> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
   if (!isValidPin(pin)) return { error: 'PIN must be 4–6 digits' };
 
   try {
-    await prisma.employee.update({ where: { id }, data: { pinHash: await hashPin(pin) } });
+    await auditedWrite({ actorUserId: session.userId, action: 'EMPLOYEE.PIN_RESET', targetType: 'Employee', targetId: id }, async (tx) => tx.employee.update({ where: { id }, data: { pinHash: await hashPin(pin) } }));
   } catch (err) {
     console.error('setEmployeePin failed:', err);
     return { error: 'Failed to set the PIN. Please try again.' };
@@ -156,11 +156,11 @@ export async function resetEmployeePin(
 }
 
 export async function setEmployeeActive(id: string, isActive: boolean): Promise<EmployeeActionState> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: error ?? 'Unauthorized' };
 
   try {
-    await prisma.employee.update({ where: { id }, data: { isActive } });
+    await auditedWrite({ actorUserId: session.userId, action: 'EMPLOYEE.STATUS', targetType: 'Employee', targetId: id }, async (tx) => tx.employee.update({ where: { id }, data: { isActive } }));
   } catch (err) {
     console.error('setEmployeeActive failed:', err);
     return { error: 'Failed to update status. Please try again.' };

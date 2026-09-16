@@ -8,6 +8,8 @@ Use the [fillable Cantonese PDF](output/pdf/harbour-hair-salon-handover-fillable
 
 The [technical rollout record](readme/production-readiness-rollout-cantonese.md) documents the implementation, verification, outstanding production prerequisites, and rollout sequence. The [function registry](readme/structure.md) describes the source layout. See [AGENTS.md](AGENTS.md) for development commands and repository conventions.
 
+The [backend security operations runbook](readme/backend-security-operations.md) covers administrator bootstrap, mandatory MFA, recovery, signing-key rotation, kiosk revocation and database maintenance. Administrator bootstrap uses secret-manager environment values and an explicit maintenance target; command-line passwords are not accepted.
+
 ## Production behaviour
 
 - Website bookings remain requests pending salon confirmation.

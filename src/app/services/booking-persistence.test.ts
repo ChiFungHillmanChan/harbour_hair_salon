@@ -10,7 +10,7 @@ after(() => mock.timers.reset());
 function bookingFixture(
   discount: { type: string; value: number; maxUses?: number; usedCount?: number },
   globalOffer: { discountType: string; discountValue: number } | null = null,
-  options: { failEnqueueAt?: number; ready?: boolean; hoursEnd?: string } = {},
+  options: { failEnqueueAt?: number; ready?: boolean; hoursEnd?: string; stylistActive?: boolean; activeBookings?: number } = {},
 ) {
   const stored: Record<string, unknown>[] = [];
   type Event = { id: string; eventKey: string; appointmentId: string; kind: string; payloadJson: string; delivered?: boolean };
@@ -20,26 +20,31 @@ function bookingFixture(
   let transactionActive = false;
   let enqueueCalls = 0;
   let dispatches = 0;
+  let conflictReads = 0;
+  let externalReads = 0;
   const code = { id: 'code-1', code: 'SAVE', isActive: true, expiresAt: null, maxUses: null, usedCount: 0, ...discount };
   const liveService = { id: 'service-1', name: 'Cut', price: 100, duration: 60, treatwellExternalId: null, requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false };
   const hours = { startTime: '09:00', endTime: options.hoursEnd ?? '18:00' };
   const tx = {
     service: { findUnique: async () => liveService },
     stylist: {
-      findUnique: async () => ({ id: 'stylist-1', name: 'Stylist', treatwellExternalId: null }),
+      findUnique: async () => ({ id: 'stylist-1', name: 'Stylist', isActive: options.stylistActive !== false, treatwellExternalId: null }),
       findMany: async () => [{ id: 'stylist-1', name: 'Stylist', availabilities: [hours] }],
     },
-    availability: { findFirst: async () => hours },
+    availability: {
+      findFirst: async ({ where }: { where: { stylist?: { isActive?: boolean } } }) => where.stylist?.isActive && options.stylistActive === false ? null : hours,
+      findMany: async ({ where }: { where: { stylist?: { isActive?: boolean } } }) => where.stylist?.isActive && options.stylistActive === false ? [] : [{ ...hours, stylistId: 'stylist-1' }],
+    },
     appointment: {
-      count: async () => stored.length,
-      findMany: async () => [],
+      count: async () => (options.activeBookings ?? 0) + stored.length,
+      findMany: async () => { conflictReads++; return []; },
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const row = { id: `appointment-${stored.length + 1}`, notificationVersion: 0, ...data, user: { name: 'Customer', email: 'customer@example.test', phone: null }, stylist: { name: 'Stylist' }, service: { ...liveService } };
         stored.push(row);
         return row;
       },
     },
-    externalBusyBlock: { findMany: async () => [] },
+    externalBusyBlock: { findMany: async () => { externalReads++; return []; } },
     discountCode: {
       findUnique: async () => ({ ...code }),
       update: async () => { code.usedCount++; return code; },
@@ -113,8 +118,40 @@ function bookingFixture(
     '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true } },
     'next/cache': { revalidatePath: () => undefined },
   });
-  return { service, code, stored, events, delivered, actions, dispatches: () => dispatches };
+  return { service, code, stored, events, delivered, actions, dispatches: () => dispatches, reads: () => ({ conflicts: conflictReads, external: externalReads }) };
 }
+
+for (const anyone of [false, true]) {
+  test(`${anyone ? 'Anyone' : 'named'} transaction rejects a retired stylist with retained hours`, async () => {
+    const f = bookingFixture({ type: 'FIXED', value: 0 }, null, { stylistActive: false });
+    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1' };
+    await assert.rejects(anyone
+      ? f.service.createBookingForFirstAvailable({ ...data, candidateStylistIds: ['stylist-1'] })
+      : f.service.createBooking({ ...data, stylistId: 'stylist-1' }), /available|retired/i);
+    assert.equal(f.stored.length, 0);
+  });
+
+  test(`${anyone ? 'Anyone' : 'named'} creation checks the user's active cap inside persistence`, async () => {
+    const f = bookingFixture({ type: 'FIXED', value: 0 }, null, { activeBookings: 6 });
+    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1' };
+    await assert.rejects(anyone
+      ? f.service.createBookingForFirstAvailable({ ...data, candidateStylistIds: ['stylist-1'] })
+      : f.service.createBooking({ ...data, stylistId: 'stylist-1' }), /maximum.*bookings/i);
+    assert.equal(f.stored.length, 0);
+  });
+}
+
+test('retired stylist hours supply neither named nor Anyone slots', async () => {
+  const f = bookingFixture({ type: 'FIXED', value: 0 }, null, { stylistActive: false });
+  assert.deepEqual(await f.service.getAvailableSlots('stylist-1', '2099-09-14', 60), []);
+  assert.deepEqual(await f.service.getAvailableSlotsUnion('2099-09-14', 60), []);
+});
+
+test('named creation loads appointment and external conflicts once inside its transaction', async () => {
+  const f = bookingFixture({ type: 'FIXED', value: 0 });
+  await f.service.createBooking({ serviceId: 'service-1', stylistId: 'stylist-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1' });
+  assert.deepEqual(f.reads(), { conflicts: 1, external: 1 });
+});
 
 for (const anyone of [false, true]) {
   test(`${anyone ? 'Anyone' : 'named stylist'} booking persists the 20% code price and consumes one use`, async () => {

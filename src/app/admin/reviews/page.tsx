@@ -1,8 +1,12 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { getReviewsForModeration, type ReviewStatus } from '@/app/services/review-service';
 import { moderateReview } from '@/app/actions/reviews';
 import { RowActionButton } from '@/components/admin/RowActionButton';
 import prisma from '@/app/lib/prisma';
+
+import { pageNumber } from '@/app/lib/pagination';
+import { Pagination } from '@/components/admin/Pagination';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,21 +58,24 @@ function Stars({ value }: { value: number }) {
 export default async function AdminReviewsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; page?: string }>;
 }) {
-  const { status: requested } = await searchParams;
+  await requireAdmin();
+  const { status: requested, page: requestedPage } = await searchParams;
+  const page = pageNumber(requestedPage);
   const normalised = (requested ?? '').toUpperCase();
   const activeStatus: ReviewStatus =
     normalised === 'APPROVED' || normalised === 'REJECTED' ? normalised : 'PENDING';
 
-  const [reviews, counts] = await Promise.all([
-    getReviewsForModeration(activeStatus),
+  const [rows, counts] = await Promise.all([
+    getReviewsForModeration(activeStatus, 26, page),
     prisma.review.groupBy({
       by: ['status'],
       _count: { _all: true },
     }),
   ]);
 
+  const reviews = rows.slice(0, 25);
   const statusCount = (status: string) =>
     counts.find((c) => c.status === status)?._count._all ?? 0;
 
@@ -170,6 +177,7 @@ export default async function AdminReviewsPage({
           ))}
         </div>
       )}
+      <Pagination path="/admin/reviews" page={page} hasMore={rows.length > 25} query={{ status: activeStatus.toLowerCase() }} />
     </div>
   );
 }

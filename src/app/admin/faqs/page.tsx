@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { getAllFaqs, getAllFaqKeys } from '@/app/services/faq-service';
 import { deleteFaq, updateFaq, type FaqActionState } from '@/app/actions/admin-faqs';
@@ -40,6 +41,7 @@ export default async function AdminFaqsPage({
 }: {
   searchParams: Promise<{ saved?: string; key?: string }>;
 }) {
+  await requireAdmin();
   const { saved, key: focusKey } = await searchParams;
   const [faqs, keys] = await Promise.all([getAllFaqs(), getAllFaqKeys()]);
 

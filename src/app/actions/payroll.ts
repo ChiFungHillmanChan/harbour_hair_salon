@@ -29,7 +29,8 @@ const adjustmentSchema = z.object({
 });
 
 export async function runPayrollAction(year: number, month: number): Promise<ActionResult> {
-  if (!(await requireAdminSession())) return { error: 'Unauthorized' };
+  const session = await requireAdminSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const parsed = payrollPeriodSchema.safeParse({ year, month });
   if (!parsed.success) {
@@ -37,7 +38,7 @@ export async function runPayrollAction(year: number, month: number): Promise<Act
   }
 
   try {
-    await runPayroll(parsed.data.year, parsed.data.month);
+    await runPayroll(parsed.data.year, parsed.data.month, session.userId);
   } catch (e) {
     // runPayroll throws on a finalized period. Surfacing the message beats an
     // unhandled server-action rejection, which reaches the admin as a blank digest.
@@ -48,14 +49,15 @@ export async function runPayrollAction(year: number, month: number): Promise<Act
 }
 
 export async function updateAdjustmentAction(lineId: string, amount: number, note: string): Promise<ActionResult> {
-  if (!(await requireAdminSession())) return { error: 'Unauthorized' };
+  const session = await requireAdminSession();
+  if (!session) return { error: 'Unauthorized' };
 
   const parsed = adjustmentSchema.safeParse({ lineId, amount, note });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid adjustment.' };
   }
 
-  const result = await updateAdjustment(parsed.data.lineId, parsed.data.amount, parsed.data.note);
+  const result = await updateAdjustment(parsed.data.lineId, parsed.data.amount, parsed.data.note, session.userId);
   if (result.error) return result;
   revalidatePath('/admin/payroll');
   return { success: true };
@@ -71,8 +73,9 @@ export async function finalizePayrollAction(periodId: string): Promise<ActionRes
 }
 
 export async function reopenPayrollAction(periodId: string): Promise<ActionResult> {
-  if (!(await requireAdminSession())) return { error: 'Unauthorized' };
-  const result = await reopenPayroll(periodId);
+  const session = await requireAdminSession();
+  if (!session) return { error: 'Unauthorized' };
+  const result = await reopenPayroll(periodId, session.userId);
   if (result.error) return result;
   revalidatePath('/admin/payroll');
   return { success: true };

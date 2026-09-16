@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { getAllCategoryContent } from '@/app/services/category-content-service';
 import { deleteCategoryContent } from '@/app/actions/admin-categories';
@@ -7,6 +8,7 @@ import prisma from '@/app/lib/prisma';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminCategoriesPage() {
+  await requireAdmin();
   const [contents, serviceCategoriesRaw] = await Promise.all([
     getAllCategoryContent(),
     prisma.service.groupBy({ by: ['category'], _count: { _all: true } }),

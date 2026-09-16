@@ -74,18 +74,24 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
           data: { lastSuccessAt: completed, lastError: null, lockedUntil: null, lockToken: null },
         });
         if (!current.count) throw new CalendarFeedError('Calendar configuration changed or the sync lease expired. Run the test again.');
-        for (const block of blocks) {
-          await tx.externalBusyBlock.upsert({
-            where: { source_stylistId_externalUid: { source: connection.provider, stylistId: connection.stylistId, externalUid: block.uid } },
-            create: { source: connection.provider, stylistId: connection.stylistId, externalUid: block.uid, start: block.start, end: block.end, summary: null, lastSyncAt: completed },
-            update: { start: block.start, end: block.end, summary: null, lastSyncAt: completed },
-          });
-        }
-        // Includes in-progress cancellations; never touches another feed or
-        // blocks outside the successfully parsed reconciliation window.
-        return tx.externalBusyBlock.deleteMany({
-          where: { source: connection.provider, stylistId: connection.stylistId, start: { lt: windowEnd }, end: { gt: completed }, externalUid: { notIn: blocks.map((block) => block.uid) } },
+        const scope = { source: connection.provider, stylistId: connection.stylistId };
+        // Replace this validated window inside the same transaction: readers
+        // never observe an empty intermediate calendar. This avoids thousands
+        // of network round trips and works on PostgreSQL, SQLite and SQL Server.
+        const removed = await tx.externalBusyBlock.deleteMany({
+          where: { ...scope, OR: [{ start: { lt: windowEnd }, end: { gt: completed } }] },
         });
+        for (let offset = 0; offset < blocks.length; offset += 100) {
+          const batch = blocks.slice(offset, offset + 100);
+          // A UID may have moved into the window from an older stored interval.
+          // Small batches also stay below each provider's bind-parameter limit.
+          await tx.externalBusyBlock.deleteMany({ where: { ...scope, OR: [{ externalUid: { in: batch.map((block) => block.uid) } }] } });
+          await tx.externalBusyBlock.createMany({ data: batch.map((block) => ({
+            ...scope, externalUid: block.uid, start: block.start, end: block.end,
+            summary: null, lastSyncAt: completed,
+          })) });
+        }
+        return removed;
       }, { timeout: 15_000, maxWait: 5_000 });
       results.push({ ...base, ok: true, upserted: blocks.length, pruned: pruned.count });
     } catch (error) {

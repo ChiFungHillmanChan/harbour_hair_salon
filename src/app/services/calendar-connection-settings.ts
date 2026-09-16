@@ -1,3 +1,4 @@
+import { appendAuditEvent } from '@/app/lib/audit';
 import { z } from 'zod';
 import type { PrismaClient } from '@prisma/client';
 import { CalendarFeedError } from './calendar-ical';
@@ -22,6 +23,7 @@ export function parseCalendarConnectionSettings(form: FormData, existingUrl: str
 export async function saveCalendarConnectionSettings(
   formData: FormData,
   db: Pick<PrismaClient, '$transaction'>,
+  actorUserId?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const key = z.object({ stylistId: z.string().min(1).max(128), provider: z.enum(CALENDAR_PROVIDERS) })
@@ -35,6 +37,7 @@ export async function saveCalendarConnectionSettings(
         const saved = await tx.calendarConnection.updateMany({ where: { id: existing.id, updatedAt: existing.updatedAt }, data });
         if (!saved.count) throw new CalendarFeedError('Calendar settings changed while saving. Reload and try again.');
       } else await tx.calendarConnection.create({ data });
+      if (actorUserId) await appendAuditEvent({ actorUserId, action: 'CALENDAR.SETTINGS', targetType: 'Stylist', targetId: key.stylistId, metadata: { provider: key.provider, inboundEnabled: input.inboundEnabled, receivesBookings: input.receivesBookings } }, tx);
     });
     return { ok: true };
   } catch (error) {

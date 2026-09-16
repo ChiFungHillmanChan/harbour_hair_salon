@@ -238,6 +238,7 @@ test('changing only the duration sends no email', async () => {
   await actions.moveAppointmentByAdmin(move({ time: '10:00', durationMin: 120 }));
 
   assert.equal(appointment.durationAtBooking, 120);
+  assert.equal(appointment.notificationVersion, 0, 'silent resizing must not invalidate pending confirmation/reminder deliveries');
   assert.deepEqual(enqueued, []);
 });
 
@@ -261,16 +262,16 @@ test('changing the stylist on a confirmed booking sends a reschedule email', asy
   assert.equal(enqueued[0].kind, 'RESCHEDULE');
 });
 
-test('a pending request is moved without emailing anyone', async () => {
-  // Nothing has been promised to the customer yet — they are still waiting on
-  // the salon to confirm.
+test('moving a pending request replaces its stale receipt and salon alert without confirming it', async () => {
   const { actions, enqueued, appointment } = fixture({ status: 'PENDING' });
 
   const result = await actions.moveAppointmentByAdmin(move({ time: '14:00' }));
 
   assert.deepEqual(result, { success: true });
   assert.equal(appointment.date.toISOString(), '2099-09-15T13:00:00.000Z');
-  assert.deepEqual(enqueued, []);
+  assert.deepEqual(enqueued.map((event) => event.kind), ['REQUEST_RECEIVED', 'SALON_ALERT']);
+  assert.equal(appointment.status, 'PENDING');
+  assert.equal(appointment.notificationVersion, 1);
 });
 
 test('a non-admin session is rejected before anything is read', async () => {

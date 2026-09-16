@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/app/lib/prisma';
-import { verifySession, createKioskSession, deleteKioskSession, getKioskSession, deleteSession } from '@/app/lib/session';
+import { verifySession, requireAdmin, createKioskSession, deleteKioskSession, getKioskSession, deleteSession } from '@/app/lib/session';
 import { verifyPin } from '@/app/lib/pin';
 import { nextClockAction } from '@/app/services/kiosk-state';
 import { runSerializableWithRetry } from '@/app/services/booking-service';
@@ -9,6 +9,8 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clockLimiter } from '@/app/lib/rate-limit';
+import { z } from 'zod';
+import { appendAuditEvent } from '@/app/lib/audit';
 
 export async function getKioskRoster() {
   if (!(await getKioskSession())) return [];
@@ -85,10 +87,12 @@ export async function clockToggle(employeeId: string, pin: string) {
   return { ok: true, status: result.status, name: employee.name };
 }
 
-export async function enableKioskMode() {
+export async function enableKioskMode(deviceName = 'Salon kiosk') {
   const session = await verifySession();
   if (session.role !== 'ADMIN') return { error: 'Unauthorized' };
-  await createKioskSession();
+  const name = z.string().trim().min(1).max(80).safeParse(deviceName);
+  if (!name.success) return { error: 'Enter a device name of 1–80 characters.' };
+  await createKioskSession(session.userId, name.data);
   // The shared staff device must keep only its kiosk access after the handoff.
   await deleteSession();
   redirect('/kiosk');
@@ -97,5 +101,42 @@ export async function enableKioskMode() {
 export async function disableKioskMode() {
   const session = await verifySession();
   if (session.role !== 'ADMIN') return;
-  await deleteKioskSession();
+  await deleteKioskSession(session.userId);
+  revalidatePath('/admin/employees');
+}
+
+export async function listKioskSessions() {
+  await requireAdmin();
+  return prisma.kioskSession.findMany({
+    where: { revokedAt: null, expiresAt: { gt: new Date() } },
+    select: { id: true, deviceName: true, createdAt: true, expiresAt: true },
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+    take: 100,
+  });
+}
+
+export async function revokeKioskSession(id: string) {
+  const session = await requireAdmin();
+  const parsed = z.string().min(1).max(128).safeParse(id);
+  if (!parsed.success) return { error: 'Invalid kiosk device.' };
+  await prisma.$transaction(async (tx) => {
+    const changed = await tx.kioskSession.updateMany({
+      where: { id: parsed.data, revokedAt: null }, data: { revokedAt: new Date() },
+    });
+    if (changed.count > 0) await appendAuditEvent({ actorUserId: session.userId, action: 'KIOSK.REVOKED', targetType: 'KioskSession', targetId: parsed.data }, tx);
+  });
+  revalidatePath('/admin/employees');
+  return { success: true };
+}
+
+export async function revokeAllKioskSessions() {
+  const session = await requireAdmin();
+  await prisma.$transaction(async (tx) => {
+    const changed = await tx.kioskSession.updateMany({
+      where: { revokedAt: null }, data: { revokedAt: new Date() },
+    });
+    await appendAuditEvent({ actorUserId: session.userId, action: 'KIOSK.REVOKED_ALL', targetType: 'KioskSession', metadata: { count: changed.count } }, tx);
+  });
+  revalidatePath('/admin/employees');
+  return { success: true };
 }

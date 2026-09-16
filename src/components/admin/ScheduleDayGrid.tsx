@@ -10,9 +10,10 @@ import {
   minutesToOffset,
   type Bounds,
 } from '@/app/lib/calendar-geometry';
-import { formatSalonTime, salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
+import { salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
 import { overlaps } from '@/app/services/scheduling';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
+import { describeClash } from '@/app/lib/describe-clash';
 
 /** 15 minutes = 18px. Tall enough to grab an edge, short enough to fit a day. */
 const PX_PER_MINUTE = 1.2;
@@ -61,6 +62,8 @@ interface ScheduleDayGridProps {
     expectedUpdatedAt: string;
   }) => Promise<MoveResult>;
   onMoved: () => void;
+  onSelect: (appointment: GridAppointment) => void;
+  onCreate: (dateStr: string, time: string, stylistId: string) => void;
 }
 
 type DragMode = 'move' | 'top' | 'bottom';
@@ -68,6 +71,7 @@ type DragMode = 'move' | 'top' | 'bottom';
 type DragState = {
   appointmentId: string;
   mode: DragMode;
+  originX: number;
   originY: number;
   originStylistId: string;
   startMin: number;
@@ -75,6 +79,7 @@ type DragState = {
   currentStartMin: number;
   currentDurationMin: number;
   currentStylistId: string;
+  moved: boolean;
 };
 
 type PendingConfirm = {
@@ -84,30 +89,13 @@ type PendingConfirm = {
 
 const minutesOf = (iso: string) => salonMinutesOfDay(new Date(iso));
 
+/** A pointer that never really travelled is a click, not a drag. */
+const CLICK_SLOP_PX = 4;
+
 function timeLabel(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-/** Describe a clash in the words an admin needs to make the call. */
-function describeClash(clash: MoveClash): string {
-  switch (clash.kind) {
-    case 'OVERLAP':
-      return `Overlaps ${clash.customerName ?? 'another booking'} at ${formatSalonTime(new Date(clash.start))}`;
-    case 'OUTSIDE_HOURS':
-      return clash.availability
-        ? `Outside working hours (${clash.availability.startTime}–${clash.availability.endTime})`
-        : 'This stylist does not work on this day';
-    case 'EXTERNAL_BUSY':
-      return `Clashes with synced busy time at ${formatSalonTime(new Date(clash.start))}`;
-    case 'PATCH_TEST':
-      return clash.reason === 'expired'
-        ? 'The customer’s patch test has expired for this date'
-        : clash.reason === 'too_soon'
-          ? 'The patch test is less than 48 hours before this date'
-          : 'No completed patch test on file for this colour service';
-  }
 }
 
 export function ScheduleDayGrid({
@@ -117,6 +105,8 @@ export function ScheduleDayGrid({
   busyBlocks,
   onMove,
   onMoved,
+  onSelect,
+  onCreate,
 }: ScheduleDayGridProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -214,6 +204,7 @@ export function ScheduleDayGrid({
     setDrag({
       appointmentId: appt.id,
       mode,
+      originX: event.clientX,
       originY: event.clientY,
       originStylistId: appt.stylistId,
       startMin,
@@ -221,11 +212,15 @@ export function ScheduleDayGrid({
       currentStartMin: startMin,
       currentDurationMin: appt.durationMin,
       currentStylistId: appt.stylistId,
+      moved: false,
     });
   };
 
   const onPointerMove = (event: React.PointerEvent) => {
     if (!drag) return;
+    const travelled =
+      Math.abs(event.clientX - drag.originX) > CLICK_SLOP_PX ||
+      Math.abs(event.clientY - drag.originY) > CLICK_SLOP_PX;
     const deltaMinutes = (event.clientY - drag.originY) / PX_PER_MINUTE;
     const base = { startMin: drag.startMin, durationMin: drag.durationMin };
     const next =
@@ -239,6 +234,7 @@ export function ScheduleDayGrid({
     const column = drag.mode === 'move' ? stylistIdAtX(event.clientX) : null;
     setDrag({
       ...drag,
+      moved: drag.moved || travelled,
       currentStartMin: next.startMin,
       currentDurationMin: next.durationMin,
       currentStylistId: column ?? drag.currentStylistId,
@@ -253,7 +249,11 @@ export function ScheduleDayGrid({
       state.currentStartMin === state.startMin &&
       state.currentDurationMin === state.durationMin &&
       state.currentStylistId === state.originStylistId;
-    if (unchanged) return;
+    // A press that changed nothing is how you open a booking, not a failed drag.
+    if (unchanged) {
+      if (!state.moved) onSelect(appt);
+      return;
+    }
 
     const payload = {
       appointmentId: appt.id,
@@ -291,6 +291,18 @@ export function ScheduleDayGrid({
     const state = drag;
     setDrag(null);
     await commit(state);
+  };
+
+  /** Click a gap in a stylist's column to start a booking with them, then. */
+  const createAt = (stylistId: string) => (event: React.MouseEvent<HTMLDivElement>) => {
+    if (drag || saving) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const minutes = bounds.startMin + (event.clientY - rect.top) / PX_PER_MINUTE;
+    const snapped = Math.max(
+      bounds.startMin,
+      Math.min(bounds.endMin - MIN_DURATION_MINUTES, Math.floor(minutes / MIN_DURATION_MINUTES) * MIN_DURATION_MINUTES),
+    );
+    onCreate(dayKey, timeLabel(snapped), stylistId);
   };
 
   if (stylists.length === 0) {
@@ -381,7 +393,8 @@ export function ScheduleDayGrid({
                 if (element) columnRefs.current.set(stylist.id, element);
                 else columnRefs.current.delete(stylist.id);
               }}
-              className={`flex-1 min-w-0 relative border-l border-zinc-200
+              onClick={createAt(stylist.id)}
+              className={`flex-1 min-w-0 relative border-l border-zinc-200 cursor-copy
                 ${drag?.currentStylistId === stylist.id ? 'bg-zinc-50' : ''}`}
             >
               {/* Hour lines */}
@@ -453,6 +466,7 @@ export function ScheduleDayGrid({
                     <div
                       key={appt.id}
                       onPointerDown={beginDrag(appt, 'move')}
+                      onClick={(event) => event.stopPropagation()}
                       style={{
                         top: minutesToOffset(position.startMin, bounds.startMin, PX_PER_MINUTE),
                         height,
@@ -491,8 +505,9 @@ export function ScheduleDayGrid({
       </div>
 
       <div className="px-4 py-2 text-[11px] text-zinc-500 border-t border-zinc-200 bg-zinc-50">
-        Drag a booking to move it, or drag its top/bottom edge to change the length. Drop it on another
-        column to change stylist. Snaps to {MIN_DURATION_MINUTES} minutes.
+        Click a gap to add a booking, or a booking to edit it. Drag a booking to move it, or drag its
+        top/bottom edge to change the length. Drop it on another column to change stylist. Snaps to{' '}
+        {MIN_DURATION_MINUTES} minutes.
         {saving && <span className="ml-2 font-medium text-zinc-700">Saving…</span>}
       </div>
     </div>

@@ -2,6 +2,8 @@ import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/prisma';
 import { createSession } from '@/app/lib/session';
+import { beginAdminMfaChallenge } from '@/app/lib/admin-mfa';
+import { appendAuditEvent } from '@/app/lib/audit';
 import {
   exchangeGoogleCode,
   getGoogleOAuthStateCookieOptions,
@@ -89,8 +91,15 @@ export async function GET(request: NextRequest) {
       return matchedUser;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-    await createSession(user.id, user.role, user.sessionVersion);
-    const destination = user.role === 'ADMIN' ? '/admin' : state.redirectTo;
+    let destination = state.redirectTo;
+    if (user.role === 'ADMIN') {
+      await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.FIRST_FACTOR', targetType: 'User', targetId: user.id, metadata: { method: 'google' } });
+      await beginAdminMfaChallenge(user.id, user.sessionVersion);
+      destination = user.mfaEnabledAt ? '/auth/mfa' : '/auth/mfa/setup';
+    } else {
+      await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.LOGIN', targetType: 'User', targetId: user.id, metadata: { method: 'google' } });
+      await createSession(user.id, user.role, user.sessionVersion);
+    }
     const response = NextResponse.redirect(new URL(destination, request.url));
     response.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, '', {
       ...getGoogleOAuthStateCookieOptions(),

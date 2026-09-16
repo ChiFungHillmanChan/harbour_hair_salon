@@ -126,6 +126,10 @@ function RegisterForm() {
           <Link href="/auth/signin" className="font-semibold text-zinc-900 hover:text-zinc-700">
             Sign in
           </Link>
+          {' · '}
+          <Link href="/auth/forgot-password" className="font-semibold text-zinc-900 hover:text-zinc-700">
+            Recover access by email
+          </Link>
         </div>
       </div>
     </div>

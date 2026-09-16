@@ -1,9 +1,11 @@
+import { requireAdmin } from '@/app/lib/session';
 import { StylistForm } from '@/components/admin/StylistForm';
 import { createStylist } from '@/app/actions/admin-stylists';
 
 export const dynamic = 'force-dynamic';
 
-export default function NewStylistPage() {
+export default async function NewStylistPage() {
+  await requireAdmin();
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-8">

@@ -47,11 +47,26 @@ export async function runSerializableWithRetry<T>(
 
 export type { TimeSlot } from './scheduling';
 
+const slotAppointmentSelect = {
+  stylistId: true, date: true, durationAtBooking: true,
+  service: { select: { duration: true } },
+} satisfies Prisma.AppointmentSelect;
+
+async function assertActiveBookingLimit(tx: Prisma.TransactionClient, userId: string) {
+  // The predicate must be read in the Serializable transaction that inserts the
+  // booking. Concurrent inserts for this user then conflict and retry the count.
+  const count = await tx.appointment.count({
+    where: { userId, status: { in: ['PENDING', 'CONFIRMED'] }, date: { gt: new Date() } },
+  });
+  if (count >= 6) throw new BookingError('You already have the maximum number of upcoming bookings. Please manage your existing appointments first.');
+}
+
 /** Recheck the full reserved duration and current calendar inside a mutation. */
 export async function assertAppointmentSlotAvailable(
   tx: Prisma.TransactionClient,
   appointment: Pick<Appointment, 'id' | 'stylistId' | 'durationAtBooking'> & { service: Pick<Service, 'duration'> },
   date: Date,
+  loadedBlocking?: BookedInterval[],
 ) {
   const duration = appointment.durationAtBooking ?? appointment.service.duration;
   if (!isWithinBookingHorizon(date, duration)) {
@@ -59,30 +74,34 @@ export async function assertAppointmentSlotAvailable(
   }
   const salon = resolveSalonDateTime(salonDateKey(date), formatSalonTime(date));
   const availability = await tx.availability.findFirst({
-    where: { stylistId: appointment.stylistId, dayOfWeek: salon.dayOfWeek, isOff: false },
+    where: { stylistId: appointment.stylistId, dayOfWeek: salon.dayOfWeek, isOff: false, stylist: { isActive: true } },
+    select: { startTime: true, endTime: true },
   });
   if (!availability) throw new BookingError('Stylist is not available on this day');
   if (!fitsWithinAvailability(salon.timeMinutes, duration, availability.startTime, availability.endTime)) {
     throw new BookingError('Selected time is outside business hours');
   }
 
-  const window = salonDayWindow(date);
-  const [existing, external] = await Promise.all([
-    tx.appointment.findMany({
-      where: {
-        stylistId: appointment.stylistId,
-        date: { gte: window.start, lte: window.end },
-        status: { not: 'CANCELLED' },
-        id: { not: appointment.id },
-      },
-      include: { service: { select: { duration: true } } },
-    }),
-    loadExternalBusy(tx, [appointment.stylistId], window),
-  ]);
-  const blocking = [
-    ...existing.map((row) => ({ start: row.date, durationMin: row.durationAtBooking ?? row.service.duration })),
-    ...external.map(toBookedInterval),
-  ];
+  let blocking = loadedBlocking;
+  if (!blocking) {
+    const window = salonDayWindow(date);
+    const [existing, external] = await Promise.all([
+      tx.appointment.findMany({
+        where: {
+          stylistId: appointment.stylistId,
+          date: { gte: window.start, lte: window.end },
+          status: { not: 'CANCELLED' },
+          id: { not: appointment.id },
+        },
+        select: slotAppointmentSelect,
+      }),
+      loadExternalBusy(tx, [appointment.stylistId], window),
+    ]);
+    blocking = [
+      ...existing.map((row) => ({ start: row.date, durationMin: row.durationAtBooking ?? row.service.duration })),
+      ...external.map(toBookedInterval),
+    ];
+  }
   if (hasConflict(date, duration, blocking)) throw new SlotUnavailableError();
 }
 
@@ -135,7 +154,8 @@ export async function getAvailableSlots(
 
   // 1. Get stylist availability for this day
   const availability = await prisma.availability.findFirst({
-    where: { stylistId, dayOfWeek, isOff: false },
+    where: { stylistId, dayOfWeek, isOff: false, stylist: { isActive: true } },
+    select: { startTime: true, endTime: true },
   });
   if (!availability) {
     return [];
@@ -150,7 +170,7 @@ export async function getAvailableSlots(
         date: { gte: window.start, lte: window.end },
         status: { not: 'CANCELLED' },
       },
-      include: { service: { select: { duration: true } } },
+      select: slotAppointmentSelect,
     }),
     loadExternalBusy(prisma, [stylistId], window),
   ]);
@@ -175,8 +195,8 @@ export async function getAvailableSlots(
  * used by the "Anyone / first available" booking path so the customer sees a
  * slot whenever at least one stylist is free.
  *
- * Two batched queries total (availability for the weekday + appointments for all
- * stylists in the day window), independent of stylist count — no per-stylist fan-out.
+ * Three batched reads: working hours, appointments and external busy blocks.
+ * Their number is independent of stylist count — no per-stylist fan-out.
  */
 export async function getAvailableSlotsUnion(
   date: string | Date,
@@ -187,7 +207,7 @@ export async function getAvailableSlotsUnion(
   if (window.start >= bookingCoverageEndsAt(now) || window.end <= now) return [];
 
   const availabilities = await prisma.availability.findMany({
-    where: { dayOfWeek, isOff: false },
+    where: { dayOfWeek, isOff: false, stylist: { isActive: true } },
     select: { stylistId: true, startTime: true, endTime: true },
   });
   if (availabilities.length === 0) return [];
@@ -203,7 +223,7 @@ export async function getAvailableSlotsUnion(
         date: { gte: window.start, lte: window.end },
         status: { not: 'CANCELLED' },
       },
-      include: { service: { select: { duration: true } } },
+      select: slotAppointmentSelect,
     }),
     loadExternalBusy(prisma, stylistIds, window),
   ]);
@@ -276,43 +296,18 @@ export async function createBooking(data: {
   // Use Serializable transaction to prevent double-booking race conditions
   const appointment = await runSerializableWithRetry(async (tx) => {
     const settings = await assertOnlineBookingReady(tx);
+    await assertActiveBookingLimit(tx, data.userId);
     const [service, stylist] = await Promise.all([
-      tx.service.findUnique({ where: { id: data.serviceId } }),
+      tx.service.findUnique({ where: { id: data.serviceId }, select: { duration: true, price: true, treatwellExternalId: true } }),
       tx.stylist.findUnique({
         where: { id: data.stylistId },
-        select: { treatwellExternalId: true },
+        select: { isActive: true, treatwellExternalId: true },
       }),
     ]);
     if (!service) throw new Error('Service not found');
-    if (!stylist) throw new Error('Stylist not found');
+    if (!stylist?.isActive) throw new BookingError('This stylist is no longer available. Please choose another stylist.');
 
-    const { start: dayStart, end: dayEnd } = salonDayWindow(data.date);
-
-    const existingAppointments = await tx.appointment.findMany({
-      where: {
-        stylistId: data.stylistId,
-        date: { gte: dayStart, lte: dayEnd },
-        status: { not: 'CANCELLED' },
-      },
-      include: { service: { select: { duration: true } } },
-    });
-
-    // Treatwell (external) busy blocks count as conflicts too — loaded in-tx.
-    const externalBlocks = await loadExternalBusy(tx, [data.stylistId], { start: dayStart, end: dayEnd });
-    const blocking: BookedInterval[] = [
-      ...existingAppointments.map((appt) => ({
-        start: new Date(appt.date),
-        // Prefer the duration frozen at booking time so editing a service's
-        // duration later cannot retroactively resize (and overlap) existing
-        // bookings. Falls back to the live duration for legacy rows.
-        durationMin: appt.durationAtBooking ?? appt.service.duration,
-      })),
-      ...externalBlocks.map(toBookedInterval),
-    ];
-
-    if (hasConflict(data.date, service.duration, blocking)) {
-      throw new SlotUnavailableError();
-    }
+    await assertAppointmentSlotAvailable(tx, { id: '', stylistId: data.stylistId, durationAtBooking: service.duration, service }, data.date);
 
     // Claim the discount in the same transaction (rolls back if the create fails).
     const discount = data.discountCode ? await claimDiscountInTx(tx, data.discountCode) : null;
@@ -325,7 +320,6 @@ export async function createBooking(data: {
       serviceExternalId: service.treatwellExternalId,
     });
 
-    await assertAppointmentSlotAvailable(tx, { id: '', stylistId: data.stylistId, durationAtBooking: service.duration, service }, data.date);
     const created = await tx.appointment.create({
       data: {
         date: data.date,
@@ -373,7 +367,8 @@ export async function createBookingForFirstAvailable(data: {
   const globalOffer = await getActiveGlobalOffer();
   const appointment = await runSerializableWithRetry(async (tx) => {
     const settings = await assertOnlineBookingReady(tx);
-    const service = await tx.service.findUnique({ where: { id: data.serviceId } });
+    await assertActiveBookingLimit(tx, data.userId);
+    const service = await tx.service.findUnique({ where: { id: data.serviceId }, select: { duration: true, price: true, treatwellExternalId: true } });
     if (!service) throw new Error('Service not found');
 
     const { start: dayStart, end: dayEnd } = salonDayWindow(data.date);
@@ -384,7 +379,7 @@ export async function createBookingForFirstAvailable(data: {
         date: { gte: dayStart, lte: dayEnd },
         status: { not: 'CANCELLED' },
       },
-      include: { service: { select: { duration: true } } },
+      select: slotAppointmentSelect,
     });
 
     const bookedByStylist = new Map<string, BookedInterval[]>();
@@ -416,9 +411,9 @@ export async function createBookingForFirstAvailable(data: {
 
     const stylist = await tx.stylist.findUnique({
       where: { id: stylistId },
-      select: { treatwellExternalId: true },
+      select: { isActive: true, treatwellExternalId: true },
     });
-    if (!stylist) throw new Error('Stylist not found');
+    if (!stylist?.isActive) throw new BookingError('This stylist is no longer available. Please choose another stylist.');
 
     const discount = data.discountCode ? await claimDiscountInTx(tx, data.discountCode) : null;
     const offerPrice = applyOfferToPrice(Number(service.price), globalOffer);
@@ -429,7 +424,7 @@ export async function createBookingForFirstAvailable(data: {
       serviceExternalId: service.treatwellExternalId,
     });
 
-    await assertAppointmentSlotAvailable(tx, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date);
+    await assertAppointmentSlotAvailable(tx, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date, bookedByStylist.get(stylistId) ?? []);
     const created = await tx.appointment.create({
       data: {
         date: data.date,

@@ -5,6 +5,7 @@ import { loadServerModule } from '../../test/load-server-module';
 function fixture(options: { role?: string; calendarReady?: boolean; operationsReady?: boolean; activeChannels?: number; outage?: boolean } = {}) {
   const saved = { bookingEnabled: true, phone: '01234567890' };
   const tx = {
+    auditEvent: { create: async () => ({ id: "audit" }) },
     siteSettings: { upsert: async ({ update }: { update: Record<string, unknown> }) => { Object.assign(saved, update); return saved; } },
     calendarConnection: { count: async () => options.activeChannels ?? 0 },
   };

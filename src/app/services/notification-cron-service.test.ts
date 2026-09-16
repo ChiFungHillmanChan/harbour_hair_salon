@@ -19,6 +19,7 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false) {
   ];
   const jobStates = new Map<string, Record<string, unknown>>();
   const queued: string[] = [];
+  const cleanupCalls: unknown[] = [];
   const matches = (row: Record<string, unknown>, where: Record<string, unknown>): boolean => Object.entries(where).every(([field, value]) => {
     if (field === 'OR') return (value as Record<string, unknown>[]).some((branch) => matches(row, branch));
     if (value && typeof value === 'object' && !(value instanceof Date)) {
@@ -54,7 +55,7 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false) {
         return rows.filter((row) => matches(row, where)).sort((left, right) => left[key] < right[key] ? -1 : left[key] > right[key] ? 1 : 0).slice(0, take);
       },
     },
-    notificationDelivery: { updateMany: async () => ({ count: 0 }) },
+    notificationDelivery: { updateMany: async (args: unknown) => { cleanupCalls.push(args); return { count: 0 }; } },
   };
   const service = loadServerModule<typeof import('./notification-cron-service')>('src/app/services/notification-cron-service.ts', {
     '@/app/lib/prisma': db,
@@ -72,7 +73,7 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false) {
       dispatchPendingNotifications: async (options: { now?: Date }) => ({ sent: advanceOnEnqueue ? createdAt.filter((date) => date <= (options.now ?? new Date())).length : 0, failed: 0, skipped: 0, deferred: 0 }),
     },
   });
-  return { service, queued, jobStates, rows };
+  return { service, queued, jobStates, rows, cleanupCalls };
 }
 
 test('terminal review notices do not keep an upcoming reminder out of the next run', async () => {
@@ -118,4 +119,10 @@ test('notifications created during this cron run are eligible for delivery immed
     const result = await f.service.runNotificationCron('notifications');
     assert.equal('sent' in result ? result.sent : 0, 2, 'do not use the earlier discovery timestamp as the delivery cutoff');
   } finally { mock.timers.setTime(now.getTime()); }
+});
+
+test('delivery cron leaves retention writes to independent bounded housekeeping', async () => {
+  const f = fixture(0);
+  await f.service.runNotificationCron('notifications');
+  assert.equal(f.cleanupCalls.length, 0);
 });

@@ -78,8 +78,6 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
       ...(delivery.failed ? { lastFailedAt: new Date(), lastError: 'Some notifications failed; inspect the notification queue.' } : { lastSucceededAt: new Date(), lastError: null }),
       lastResultJson: JSON.stringify(result),
     } });
-    // Retain delivery metadata for audit; erase unsent personal payloads after 30 days.
-    await prisma.notificationDelivery.updateMany({ where: { status: { in: ['FAILED', 'PENDING', 'SKIPPED'] }, createdAt: { lt: new Date(now.getTime() - 30 * 86400_000) } }, data: { status: 'SKIPPED', payloadJson: '{}', lastError: 'Expired notification; personal payload removed.' } });
     return result;
   } catch {
     await prisma.backgroundJobState.update({ where: { name }, data: { lastFailedAt: new Date(), lastError: 'Notification worker failed. Check database and provider configuration.' } });

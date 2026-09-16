@@ -1,16 +1,21 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import prisma from '@/app/lib/prisma';
 import EmployeeForm, { EmployeePinReset } from '@/components/admin/EmployeeForm';
 import { RowActionButton } from '@/components/admin/RowActionButton';
 import { createEmployee, resetEmployeePin, setEmployeeActive } from '@/app/actions/employees';
+import KioskSessions from '@/components/admin/KioskSessions';
+import { listKioskSessions } from '@/app/actions/kiosk';
 import KioskModeButton from '@/components/admin/KioskModeButton';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminEmployeesPage() {
-  const [employees, stylists] = await Promise.all([
-    prisma.employee.findMany({ orderBy: { name: 'asc' }, include: { stylist: { select: { name: true } } } }),
+  await requireAdmin();
+  const [employees, stylists, kiosks] = await Promise.all([
+    prisma.employee.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, title: true, payType: true, stylistId: true, isActive: true, stylist: { select: { name: true } } } }),
     prisma.stylist.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    listKioskSessions(),
   ]);
 
   const linkedStylistIds = employees
@@ -21,6 +26,7 @@ export default async function AdminEmployeesPage() {
     <div className="p-4 sm:p-6 space-y-8">
       <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">Employees</h1>
       <KioskModeButton />
+      <KioskSessions sessions={kiosks} />
 
       <section>
         <h2 className="text-xl mb-3">Add employee</h2>

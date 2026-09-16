@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import prisma from '@/app/lib/prisma';
+import type { BlogPost, Prisma } from '@prisma/client';
 
 export type BlogSection =
   | { type: 'paragraph'; text: string }
@@ -55,27 +56,7 @@ function splitCsv(value: string): string[] {
     .filter(Boolean);
 }
 
-type DbBlogPost = {
-  id: string;
-  slug: string;
-  title: string;
-  description: string;
-  excerpt: string;
-  author: string;
-  authorRole: string;
-  publishedAt: Date;
-  updatedAt: Date;
-  readingTime: number;
-  tags: string;
-  coverImage: string;
-  coverAlt: string;
-  lede: string;
-  sectionsJson: string;
-  relatedSlugs: string;
-  status: string;
-};
-
-function mapToRuntime(row: DbBlogPost): BlogPostRuntime {
+function mapToRuntime(row: BlogPost): BlogPostRuntime {
   return {
     id: row.id,
     slug: row.slug,
@@ -97,17 +78,41 @@ function mapToRuntime(row: DbBlogPost): BlogPostRuntime {
   };
 }
 
-export async function getPublishedPosts(): Promise<BlogPostRuntime[]> {
+const postCardSelect = {
+  id: true, slug: true, title: true, excerpt: true, author: true,
+  publishedAt: true, readingTime: true, coverImage: true, coverAlt: true,
+} satisfies Prisma.BlogPostSelect;
+
+/** Lists never load article bodies; one extra row determines the next link. */
+export const getPublishedPosts = cache(async (page = 1) => {
+  const size = 12;
   const rows = await prisma.blogPost.findMany({
     where: { status: 'PUBLISHED' },
-    orderBy: { publishedAt: 'desc' },
+    orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+    select: postCardSelect,
+    skip: (Math.max(1, Math.min(9999, Math.floor(page) || 1)) - 1) * size,
+    take: size + 1,
   });
-  return rows.map(mapToRuntime);
+  return { posts: rows.slice(0, size), hasMore: rows.length > size };
+});
+
+export async function getPublishedPostSlugs() {
+  return prisma.blogPost.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true } });
 }
 
-// Wrapped in React cache() so generateMetadata + the page body (and the
-// related-posts lookups) share one query per slug per request instead of
-// each hitting the DB separately.
+export async function getRelatedPublishedPosts(slugs: string[]) {
+  const requested = [...new Set(slugs)].slice(0, 8);
+  if (!requested.length) return [];
+  const rows = await prisma.blogPost.findMany({
+    where: { status: 'PUBLISHED', slug: { in: requested } },
+    select: { slug: true, title: true, excerpt: true },
+    take: requested.length,
+  });
+  const bySlug = new Map(rows.map((row) => [row.slug, row]));
+  return requested.flatMap((slug) => bySlug.has(slug) ? [bySlug.get(slug)!] : []);
+}
+
+// Metadata and the page body share one full article query per request.
 export const getPublishedPostBySlug = cache(async (slug: string): Promise<BlogPostRuntime | null> => {
   const row = await prisma.blogPost.findUnique({ where: { slug } });
   if (!row) return null;
@@ -115,11 +120,23 @@ export const getPublishedPostBySlug = cache(async (slug: string): Promise<BlogPo
   return mapToRuntime(row);
 });
 
-export async function getAllPostsForAdmin(): Promise<BlogPostRuntime[]> {
-  const rows = await prisma.blogPost.findMany({
-    orderBy: [{ status: 'asc' }, { publishedAt: 'desc' }],
-  });
-  return rows.map(mapToRuntime);
+export async function getAllPostsForAdmin(page = 1) {
+  const size = 20;
+  const [rows, counts] = await Promise.all([
+    prisma.blogPost.findMany({
+      orderBy: [{ status: 'asc' }, { publishedAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, slug: true, title: true, publishedAt: true, status: true },
+      skip: (Math.max(1, Math.min(9999, Math.floor(page) || 1)) - 1) * size,
+      take: size + 1,
+    }),
+    prisma.blogPost.groupBy({ by: ['status'], _count: { _all: true } }),
+  ]);
+  return {
+    posts: rows.slice(0, size), hasMore: rows.length > size,
+    total: counts.reduce((sum, row) => sum + row._count._all, 0),
+    publishedCount: counts.find((row) => row.status === 'PUBLISHED')?._count._all ?? 0,
+    draftCount: counts.find((row) => row.status === 'DRAFT')?._count._all ?? 0,
+  };
 }
 
 export async function getPostById(id: string): Promise<BlogPostRuntime | null> {

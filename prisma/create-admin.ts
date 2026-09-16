@@ -1,56 +1,32 @@
+/**
+ * Infrastructure-only bootstrap; inject credentials from the secret manager.
+ * Required env: SALON_AUTH_MAINTENANCE=confirmed,
+ * SALON_AUTH_MAINTENANCE_DATABASE_URL, SALON_MAINTENANCE_OPERATOR_ID,
+ * SALON_BOOTSTRAP_ADMIN_NAME, SALON_BOOTSTRAP_ADMIN_EMAIL,
+ * SALON_BOOTSTRAP_ADMIN_PASSWORD and SALON_BOOTSTRAP_TICKET.
+ * Run: node --conditions=react-server --import tsx prisma/create-admin.ts
+ * No command-line credentials. Existing sessions are revoked and existing MFA
+ * is retained. A new administrator must enroll MFA during their first sign-in.
+ */
 import { PrismaClient } from '@prisma/client';
-import { hashPassword } from '../src/app/lib/password';
-
-const prisma = new PrismaClient();
+import { bootstrapAdminOffline, maintenanceDatabaseUrl } from '../src/app/lib/mfa-maintenance';
 
 async function main() {
-  const args = process.argv.slice(2);
-  
-  if (args.length < 3) {
-    console.error('Usage: npx tsx prisma/create-admin.ts <name> <email> <password>');
-    process.exit(1);
-  }
-
-  const [name, email, password] = args;
-
-  console.log(`Creating admin user: ${name} (${email})...`);
-
+  if (process.argv.length > 2) throw new Error('Command-line credentials are no longer accepted');
+  const db = new PrismaClient({ datasources: { db: { url: maintenanceDatabaseUrl(process.env) } } });
   try {
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    await bootstrapAdminOffline(db, {
+      name: process.env.SALON_BOOTSTRAP_ADMIN_NAME ?? '',
+      email: process.env.SALON_BOOTSTRAP_ADMIN_EMAIL ?? '',
+      password: process.env.SALON_BOOTSTRAP_ADMIN_PASSWORD ?? '',
+      operatorId: process.env.SALON_MAINTENANCE_OPERATOR_ID ?? '',
+      ticket: process.env.SALON_BOOTSTRAP_TICKET ?? '',
     });
-
-    const hashedPassword = await hashPassword(password);
-
-    if (existingUser) {
-      console.log('User already exists. Updating role to ADMIN...');
-      await prisma.user.update({
-        where: { email },
-        data: {
-          role: 'ADMIN',
-          password: hashedPassword, // Update password just in case
-          name: name,
-        },
-      });
-    } else {
-      await prisma.user.create({
-        data: {
-          name,
-          email,
-          password: hashedPassword,
-          role: 'ADMIN',
-        },
-      });
-    }
-
-    console.log('✅ Admin user created/updated successfully.');
-  } catch (error) {
-    console.error('Error creating admin user:', error);
-  } finally {
-    await prisma.$disconnect();
-  }
+    console.log('Administrator bootstrap recorded. Sign-in and MFA verification are required.');
+  } finally { await db.$disconnect(); }
 }
 
-main();
-
+void main().catch(() => {
+  console.error('Administrator bootstrap failed. Use the explicit maintenance target, approved operator/change reference and secret-manager environment values. No credentials were logged.');
+  process.exitCode = 1;
+});

@@ -1,7 +1,8 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
-import { verifySession } from '@/app/lib/session';
+import { pageNumber } from '@/app/lib/pagination';
+import { Pagination } from '@/components/admin/Pagination';
 import { OPERATIONS_READINESS_JOB, parseOperationsChecks } from '@/app/services/operations-readiness';
 import { OperationsControls } from '@/components/admin/OperationsControls';
 
@@ -11,16 +12,18 @@ function date(value: Date | null) {
   return value ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', dateStyle: 'medium', timeStyle: 'short' }).format(value) : 'Never';
 }
 
-export default async function OperationsPage() {
-  const session = await verifySession();
-  if (session.role !== 'ADMIN') redirect('/');
+export default async function OperationsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  await requireAdmin();
+  const page = pageNumber((await searchParams).page);
   // Metadata only: never select recipients, notification payloads or tokens.
-  const [jobs, deliveries] = await Promise.all([
+  const [jobs, deliveries, auditRows] = await Promise.all([
     prisma.backgroundJobState.findMany({ orderBy: { name: 'asc' }, select: {
       name: true, lastStartedAt: true, lastSucceededAt: true, lastFailedAt: true, lastError: true, lastResultJson: true,
     } }),
     prisma.notificationDelivery.findMany({ orderBy: { createdAt: 'desc' }, take: 30,
       select: { id: true, kind: true, status: true, attempts: true, lastError: true } }),
+    prisma.auditEvent.findMany({ orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 26, skip: (page - 1) * 25,
+      select: { id: true, actorUserId: true, action: true, targetType: true, targetId: true, createdAt: true } }),
   ]);
   const report = jobs.find((job) => job.name === OPERATIONS_READINESS_JOB);
   const checks = parseOperationsChecks(report?.lastResultJson).filter((check) => check.id !== 'configuration');
@@ -49,6 +52,14 @@ export default async function OperationsPage() {
       <h2 className="text-lg font-semibold text-zinc-900">Recent notification deliveries</h2>
       <p className="mt-2 text-sm text-zinc-600">For old or uncertain failures, reconcile the delivery with Resend before taking further action. Items outside the automatic retry window are not reset here, to avoid duplicate emails.</p>
       {deliveries.length ? <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-zinc-500"><th className="p-2">Delivery ID</th><th className="p-2">Type</th><th className="p-2">Status</th><th className="p-2">Attempts</th><th className="p-2">Last error</th></tr></thead><tbody>{deliveries.map((delivery) => <tr key={delivery.id} className="border-b border-zinc-100"><td className="p-2 font-mono text-xs">{delivery.id}</td><td className="p-2">{delivery.kind}</td><td className="p-2">{delivery.status}</td><td className="p-2">{delivery.attempts}</td><td className="max-w-sm break-words p-2">{delivery.lastError ?? '—'}</td></tr>)}</tbody></table></div> : <p className="mt-3 text-sm text-zinc-600">No notification deliveries have been queued.</p>}
+    </section>
+    <section className="rounded-xl border border-zinc-200 bg-white p-5">
+      <h2 className="text-lg font-semibold text-zinc-900">Security and administration audit</h2>
+      <p className="mt-2 text-sm text-zinc-600">Account, device, payroll and administrative changes. Credentials and customer message content are excluded.</p>
+      <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b"><th className="p-2">Time</th><th className="p-2">Actor ID</th><th className="p-2">Action</th><th className="p-2">Target</th></tr></thead>
+        <tbody>{auditRows.slice(0, 25).map(event => <tr key={event.id} className="border-b border-zinc-100"><td className="p-2">{date(event.createdAt)}</td><td className="p-2 font-mono text-xs">{event.actorUserId ?? 'System'}</td><td className="p-2">{event.action}</td><td className="p-2 font-mono text-xs">{event.targetType}: {event.targetId ?? '—'}</td></tr>)}</tbody>
+      </table></div>
+      <Pagination path="/admin/operations" page={page} hasMore={auditRows.length > 25} />
     </section>
   </div>;
 }

@@ -6,6 +6,7 @@ import prisma from '@/app/lib/prisma';
 import { hashPassword } from '@/app/lib/password';
 import { passwordResetLimiter } from '@/app/lib/rate-limit';
 import { sendPasswordReset } from '@/app/services/email-service';
+import { appendAuditEvent } from '@/app/lib/audit';
 import {
   generateResetToken,
   hashResetToken,
@@ -158,6 +159,7 @@ export async function resetPassword(
         where: { id: record.userId },
         data: { password: hashedPassword, sessionVersion: { increment: 1 } },
       });
+      await appendAuditEvent({ actorUserId: record.userId, action: 'AUTH.PASSWORD_RESET', targetType: 'User', targetId: record.userId }, tx);
       // Clear any other outstanding links for this account.
       await tx.passwordResetToken.deleteMany({
         where: { userId: record.userId, usedAt: null },

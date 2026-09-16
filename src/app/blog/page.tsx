@@ -3,9 +3,11 @@ import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getPublishedPosts } from '@/app/services/blog-service';
+import { Pagination } from '@/components/admin/Pagination';
+import { pageNumber } from '@/app/lib/pagination';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 
-export const metadata: Metadata = {
+const baseMetadata: Metadata = {
   title: 'The Harbour Journal',
   description:
     'Hair care guides, styling tips and advice from the Hong Kong trained stylists at Harbour Hair Salon, Leeds city centre.',
@@ -27,8 +29,16 @@ function formatDate(date: Date) {
   });
 }
 
-export default async function BlogIndexPage() {
-  const posts = await getPublishedPosts();
+type BlogQuery = { page?: string | string[] };
+
+export async function generateMetadata({ searchParams }: { searchParams: Promise<BlogQuery> }): Promise<Metadata> {
+  const page = pageNumber((await searchParams).page);
+  return { ...baseMetadata, alternates: { canonical: page > 1 ? `/blog?page=${page}` : '/blog' } };
+}
+
+export default async function BlogIndexPage({ searchParams }: { searchParams: Promise<BlogQuery> }) {
+  const page = pageNumber((await searchParams).page);
+  const { posts, hasMore } = await getPublishedPosts(page);
 
   const blogSchema = {
     '@context': 'https://schema.org',
@@ -95,7 +105,7 @@ export default async function BlogIndexPage() {
 
       <div className="container mx-auto px-4 py-20 max-w-5xl">
         {posts.length === 0 ? (
-          <p className="text-center text-zinc-500 py-20">No posts yet. Check back soon.</p>
+          <p className="text-center text-zinc-500 py-20">{page > 1 ? 'No posts on this page.' : 'No posts yet. Check back soon.'}</p>
         ) : (
           <div className="grid md:grid-cols-2 gap-10">
             {posts.map((post) => (
@@ -134,6 +144,7 @@ export default async function BlogIndexPage() {
             ))}
           </div>
         )}
+        <Pagination path="/blog" page={page} hasMore={hasMore} />
       </div>
     </div>
   );

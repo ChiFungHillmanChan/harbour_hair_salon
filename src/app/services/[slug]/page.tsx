@@ -8,6 +8,7 @@ import { publicServiceSelect } from '../public-service-select';
 import {
   getAllCategoryContent,
   getCategoryContentBySlug,
+  getRelatedCategories,
 } from '@/app/services/category-content-service';
 import { Faq } from '@/components/seo/Faq';
 import { getFaqsByKey } from '@/app/services/faq-service';
@@ -81,7 +82,7 @@ export default async function ServiceCategoryPage({
   const [services, activeOffer, relatedResults, keyedFaqs] = await Promise.all([
     getServicesForCategory(cat.category),
     getActiveGlobalOffer(),
-    Promise.all(cat.relatedSlugs.map((s) => getCategoryContentBySlug(s))),
+    getRelatedCategories(cat.relatedSlugs.filter((relatedSlug) => relatedSlug !== slug)),
     getFaqsByKey(`category:${cat.slug}`),
   ]);
   const related = relatedResults.filter((c): c is NonNullable<typeof c> => Boolean(c));

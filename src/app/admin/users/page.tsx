@@ -1,13 +1,19 @@
+import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { AdminUserForm } from '@/components/admin/AdminUserForm';
 import { deleteAdminUser, promoteGoogleUserToAdmin } from '@/app/actions/admin';
-import { verifySession } from '@/app/lib/session';
+import { pageNumber, searchText } from '@/app/lib/pagination';
+import { Pagination } from '@/components/admin/Pagination';
 import { ResetPasswordButton } from '@/components/admin/ResetPasswordButton';
 import { RowActionButton } from '@/components/admin/RowActionButton';
 
-export default async function AdminUsersPage() {
-  const session = await verifySession();
-  const admins = await prisma.user.findMany({
+export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string; admins?: string }> }) {
+  const session = await requireAdmin();
+  const query = await searchParams;
+  const page = pageNumber(query.page);
+  const adminPage = pageNumber(query.admins);
+  const q = searchText(query.q);
+  const [adminRows, customerRows] = await Promise.all([prisma.user.findMany({
     where: { role: 'ADMIN' },
     select: {
       id: true,
@@ -16,16 +22,18 @@ export default async function AdminUsersPage() {
       createdAt: true,
       oauthAccounts: { where: { provider: 'google' }, select: { id: true } },
     },
-    orderBy: { createdAt: 'desc' },
-  });
-  const googleCustomers = await prisma.user.findMany({
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 26, skip: (adminPage - 1) * 25,
+  }), prisma.user.findMany({
     where: {
       role: 'USER',
+      ...(q ? { OR: [{ name: { contains: q } }, { email: { contains: q } }] } : {}),
       oauthAccounts: { some: { provider: 'google' } },
     },
     select: { id: true, name: true, email: true, createdAt: true },
-    orderBy: { createdAt: 'desc' },
-  });
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 26, skip: (page - 1) * 25,
+  })]);
+  const admins = adminRows.slice(0, 25);
+  const googleCustomers = customerRows.slice(0, 25);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -82,6 +90,7 @@ export default async function AdminUsersPage() {
         </table>
       </div>
 
+      <Pagination path="/admin/users" page={adminPage} pageKey="admins" hasMore={adminRows.length > 25} query={{ q, page: String(page) }} />
       <div className="mt-8 rounded-lg border border-zinc-200 bg-white shadow">
         <div className="border-b border-zinc-200 p-6">
           <h2 className="text-lg font-bold text-zinc-900">Google users</h2>
@@ -89,6 +98,10 @@ export default async function AdminUsersPage() {
             Promote a customer who has signed in with Google. They will sign in again to receive admin access.
           </p>
         </div>
+        <form action="/admin/users" className="flex gap-3 p-6">
+          <input name="q" defaultValue={q} maxLength={100} aria-label="Search Google users" placeholder="Name or email" className="rounded border px-3 py-2" />
+          <button type="submit" className="underline">Search</button>
+        </form>
         {googleCustomers.length === 0 ? (
           <p className="p-6 text-sm text-zinc-500">No Google users are waiting to be promoted.</p>
         ) : (
@@ -120,6 +133,7 @@ export default async function AdminUsersPage() {
           </div>
         )}
       </div>
+      <Pagination path="/admin/users" page={page} hasMore={customerRows.length > 25} query={{ q, admins: String(adminPage) }} />
     </div>
   );
 }

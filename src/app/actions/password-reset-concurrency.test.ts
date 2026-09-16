@@ -4,8 +4,10 @@ import { loadServerModule } from '../../test/load-server-module';
 
 function resetFixture(expireDuringHash = false, failPasswordWrite = false) {
   const record = { id: 'token-1', userId: 'user-1', expiresAt: new Date(Date.now() + 60_000), usedAt: null as Date | null };
-  const user = { password: 'original', sessionVersion: 4 };
+  const user = { password: 'original', sessionVersion: 4, mfaSecretEncrypted: 'existing-encrypted-mfa', mfaEnabledAt: new Date() };
+  const events: string[] = [];
   const tx = {
+    auditEvent: { create: async ({ data }: { data: { action: string } }) => { events.push(data.action); return { id: 'audit-1' }; } },
     passwordResetToken: {
       findUnique: async () => ({ ...record }),
       updateMany: async ({ where, data }: { where: { usedAt: null; expiresAt?: { gt: Date } }; data: { usedAt: Date } }) => {
@@ -43,22 +45,26 @@ function resetFixture(expireDuringHash = false, failPasswordWrite = false) {
       return `hash:${password}`;
     } },
     '@/app/services/email-service': {},
+    '@/app/lib/session': { createSession: async () => { assert.fail('Password reset must not issue a full administrator session'); } },
   });
   const redeem = (password: string) => {
     const form = new FormData();
     form.set('token', 'valid-token'); form.set('password', password); form.set('confirmPassword', password);
     return actions.resetPassword({ status: 'idle' }, form);
   };
-  return { redeem, user, record };
+  return { redeem, user, record, events };
 }
 
 test('simultaneous redemption changes the password once and rejects the losing request', async () => {
-  const { redeem, user } = resetFixture();
+  const { redeem, user, events } = resetFixture();
   const results = await Promise.all([redeem('password-one'), redeem('password-two')]);
   assert.equal(results.filter((result) => result.status === 'success').length, 1);
   assert.equal(results.filter((result) => result.status === 'error').length, 1);
   assert.equal(user.sessionVersion, 5);
   assert.equal(user.password, 'hash:password-one');
+  assert.equal(user.mfaSecretEncrypted, 'existing-encrypted-mfa');
+  assert.ok(user.mfaEnabledAt);
+  assert.deepEqual(events, ['AUTH.PASSWORD_RESET']);
 });
 
 test('a token that expires before the claim cannot change the password', async () => {

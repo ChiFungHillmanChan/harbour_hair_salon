@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import Link from 'next/link';
 import { createFaq } from '@/app/actions/admin-faqs';
 import { getAllFaqKeys } from '@/app/services/faq-service';
@@ -10,6 +11,7 @@ export default async function NewFaqPage({
 }: {
   searchParams: Promise<{ key?: string }>;
 }) {
+  await requireAdmin();
   const { key: presetKey } = await searchParams;
   const existingKeys = await getAllFaqKeys();
 

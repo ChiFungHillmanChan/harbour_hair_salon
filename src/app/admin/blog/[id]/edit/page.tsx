@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import { notFound } from 'next/navigation';
 import { BlogPostForm } from '@/components/admin/BlogPostForm';
 import { updateBlogPost } from '@/app/actions/admin-blog';
@@ -12,6 +13,7 @@ export default async function EditBlogPostPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ saved?: string }>;
 }) {
+  await requireAdmin();
   const { id } = await params;
   const { saved } = await searchParams;
   const post = await getPostById(id);

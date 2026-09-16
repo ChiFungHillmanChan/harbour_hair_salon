@@ -1,20 +1,19 @@
 'use client';
 
-import { useEffect, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
-import { Appointment, Service, Stylist } from '@prisma/client';
+import { ScheduleWeekGrid, type WeekStylist } from './ScheduleWeekGrid';
+import { AppointmentDialog, type DialogService, type DialogTarget } from './AppointmentDialog';
+import type { CalendarAppointment, PendingAppointment } from '@/app/services/admin-calendar-data';
 import { ScheduleDayGrid, type GridAppointment, type GridBusyBlock, type GridStylist } from './ScheduleDayGrid';
 import { resolveCalendarColor } from '@/app/lib/calendar-colors';
 import { formatSalonDate, formatSalonTime, resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import type { CalendarView } from '@/app/services/admin-calendar-range';
 import { moveAppointmentByAdmin } from '@/app/actions/admin-schedule';
+import { weekDayKeys } from '@/app/services/admin-calendar-range';
 
-type AppointmentWithDetails = Appointment & {
-  user: { id: string; name: string | null; email: string };
-  service: Pick<Service, 'name' | 'duration' | 'price' | 'calendarColor'>;
-  stylist: Pick<Stylist, 'name' | 'calendarColor'>;
-};
+type AppointmentWithDetails = CalendarAppointment;
 
 type RosterStylist = {
   id: string;
@@ -23,7 +22,7 @@ type RosterStylist = {
   availabilities: { dayOfWeek: number; startTime: string; endTime: string; isOff: boolean }[];
 };
 
-type BusyBlockRow = { id: string; stylistId: string; start: Date; end: Date };
+type BusyBlockRow = { id: string; stylistId: string; start: string; end: string };
 
 const statusChipClass = (status: string) =>
   status === 'CONFIRMED'
@@ -70,18 +69,17 @@ const PendingActions = ({ apptId, onDone }: { apptId: string; onDone: () => void
 interface YearViewProps {
   currentDate: Date;
   onSelectMonth: (date: Date) => void;
-  appointments: AppointmentWithDetails[];
+  monthCounts: number[];
 }
 
-const YearView = ({ currentDate, onSelectMonth, appointments }: YearViewProps) => {
+const YearView = ({ currentDate, onSelectMonth, monthCounts }: YearViewProps) => {
   const yearStart = startOfYear(currentDate);
   const yearEnd = endOfYear(currentDate);
   const months = eachMonthOfInterval({ start: yearStart, end: yearEnd });
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-4">
-      {months.map((month) => {
-          const monthAppointments = appointments.filter(a => salonDateKey(new Date(a.date)).slice(0, 7) === format(month, 'yyyy-MM'));
+      {months.map((month, index) => {
           return (
             <button 
               key={month.toString()} 
@@ -89,7 +87,7 @@ const YearView = ({ currentDate, onSelectMonth, appointments }: YearViewProps) =
               className="bg-white p-4 rounded-lg shadow hover:bg-zinc-50 text-left border border-zinc-200"
             >
               <h3 className="font-bold text-zinc-900">{format(month, 'MMMM')}</h3>
-              <p className="text-sm text-zinc-700">{monthAppointments.length} bookings</p>
+              <p className="text-sm text-zinc-700">{monthCounts[index] ?? 0} bookings</p>
             </button>
           );
       })}
@@ -207,7 +205,7 @@ const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
                           <div className="flex justify-between items-start">
                               <div>
                                   <h4 className="font-semibold text-zinc-900">{appt.user.name}</h4>
-                                  <p className="text-zinc-600 text-sm">{appt.service.name} • {appt.service.duration} mins</p>
+                                  <p className="text-zinc-600 text-sm">{appt.service.name} • {appt.durationAtBooking ?? appt.service.duration} mins</p>
                               </div>
                               <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusChipClass(appt.status)}`}>
                                   {appt.status}
@@ -215,7 +213,7 @@ const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
                           </div>
                           <div className="mt-2 flex items-center gap-4 text-xs text-zinc-500">
                               <span>Stylist: {appt.stylist.name}</span>
-                              <span>£{Number(appt.service.price).toFixed(2)}</span>
+                              <span>£{Number(appt.priceAtBooking ?? appt.service.price).toFixed(2)}</span>
                           </div>
                           {appt.status === 'PENDING' && (
                             <div className="mt-2">
@@ -247,20 +245,30 @@ export function ScheduleCalendar({
   pendingAppointments,
   stylists,
   busyBlocks,
+  services = [],
+  monthCounts = [],
+  pendingNext = null,
+  pendingHasPrevious = false,
 }: {
   dateStr: string;
   view: CalendarView;
   appointments: AppointmentWithDetails[];
-  pendingAppointments: AppointmentWithDetails[];
+  pendingAppointments: PendingAppointment[];
   stylists: RosterStylist[];
   busyBlocks: BusyBlockRow[];
+  services?: DialogService[];
+  monthCounts?: number[];
+  pendingNext?: string | null;
+  pendingHasPrevious?: boolean;
 }) {
   const router = useRouter();
   const [isNavigating, startNavigation] = useTransition();
   // date-fns uses local calendar fields. This noon date is only a display carrier
   // for the requested London calendar day, never an appointment instant.
   const currentDate = new Date(`${dateStr}T12:00:00`);
-  const selectedDate = currentDate;
+  const [localSelection, setLocalSelection] = useState<{ month: string; date: string } | null>(null);
+  const [dialog, setDialog] = useState<DialogTarget | null>(null);
+  const selectedDate = localSelection?.month === dateStr.slice(0, 7) ? new Date(`${localSelection.date}T12:00:00`) : currentDate;
   const viewMode = view;
   const navigate = (date: Date, nextView: CalendarView = viewMode) => {
     const params = new URLSearchParams({ date: format(date, 'yyyy-MM-dd'), view: nextView });
@@ -276,34 +284,41 @@ export function ScheduleCalendar({
     const refreshIfVisible = () => {
       if (document.visibilityState === 'visible') router.refresh();
     };
-    const id = setInterval(refreshIfVisible, 60_000);
+    const id = setInterval(refreshIfVisible, view === 'year' ? 300_000 : view === 'month' ? 120_000 : 60_000);
     document.addEventListener('visibilitychange', refreshIfVisible);
     return () => {
       clearInterval(id);
       document.removeEventListener('visibilitychange', refreshIfVisible);
     };
-  }, [router]);
+  }, [router, view]);
 
   // Navigation Handlers
-  const next = () => {
-    if (viewMode === 'day') navigate(addDays(currentDate, 1));
-    else if (viewMode === 'month') navigate(addMonths(currentDate, 1));
-    else navigate(addMonths(currentDate, 12)); // Year jump
+  const step = (direction: 1 | -1) => {
+    if (viewMode === 'day') navigate(addDays(currentDate, direction));
+    else if (viewMode === 'week') navigate(addDays(currentDate, 7 * direction));
+    else if (viewMode === 'month') navigate(direction === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
+    else navigate(direction === 1 ? addMonths(currentDate, 12) : subMonths(currentDate, 12));
   };
 
-  const prev = () => {
-    if (viewMode === 'day') navigate(addDays(currentDate, -1));
-    else if (viewMode === 'month') navigate(subMonths(currentDate, 1));
-    else navigate(subMonths(currentDate, 12));
-  };
+  const next = () => step(1);
+  const prev = () => step(-1);
 
   const goToToday = () => {
     navigate(new Date(`${salonDateKey(new Date())}T12:00:00`));
   };
 
-  // Filter appointments for the current view
-  const getDayAppointments = (date: Date) => {
-    return appointments.filter(appt => salonDateKey(new Date(appt.date)) === format(date, 'yyyy-MM-dd'));
+  const appointmentsByDay = new Map<string, CalendarAppointment[]>();
+  for (const appointment of appointments) {
+    const key = salonDateKey(new Date(appointment.date));
+    const bucket = appointmentsByDay.get(key) ?? [];
+    bucket.push(appointment);
+    appointmentsByDay.set(key, bucket);
+  }
+  const getDayAppointments = (date: Date) => appointmentsByDay.get(format(date, 'yyyy-MM-dd')) ?? [];
+  const pendingPage = (cursor?: string) => {
+    const params = new URLSearchParams({ date: dateStr, view });
+    if (cursor) params.set('pending', cursor);
+    startNavigation(() => router.push(`/admin?${params}`, { scroll: false }));
   };
 
   // Shapes the grid needs. Working hours are resolved for the day on show, and
@@ -331,6 +346,52 @@ export function ScheduleCalendar({
       serviceColor: appt.service.calendarColor,
       updatedAt: new Date(appt.updatedAt).toISOString(),
     }));
+  const weekKeys = weekDayKeys(dateStr);
+  const weekAppointments: GridAppointment[] = appointments.map((appt) => ({
+    id: appt.id,
+    stylistId: appt.stylistId,
+    date: new Date(appt.date).toISOString(),
+    durationMin: appt.durationAtBooking ?? appt.service.duration,
+    status: appt.status,
+    customerName: appt.user.name,
+    serviceName: appt.service.name,
+    serviceColor: appt.service.calendarColor,
+    updatedAt: new Date(appt.updatedAt).toISOString(),
+  }));
+  const weekStylists: WeekStylist[] = stylists.map((stylist) => ({
+    id: stylist.id,
+    name: stylist.name,
+    calendarColor: stylist.calendarColor,
+    availability: null,
+    availabilityByWeekday: Object.fromEntries(
+      stylist.availabilities
+        .filter((a) => !a.isOff)
+        .map((a) => [a.dayOfWeek, { startTime: a.startTime, endTime: a.endTime }]),
+    ),
+  }));
+
+  // Opening a booking needs the row behind the block, not just its grid shape.
+  const appointmentById = new Map(appointments.map((appt) => [appt.id, appt]));
+  const openEditor = (grid: GridAppointment) => {
+    const appt = appointmentById.get(grid.id);
+    if (!appt) return;
+    setDialog({
+      mode: 'edit',
+      appointmentId: appt.id,
+      dateStr: salonDateKey(new Date(appt.date)),
+      time: formatSalonTime(new Date(appt.date)),
+      stylistId: appt.stylistId,
+      serviceId: appt.serviceId,
+      durationMin: appt.durationAtBooking ?? appt.service.duration,
+      notes: appt.notes ?? '',
+      customerName: appt.user.name ?? 'Customer',
+      status: appt.status,
+      updatedAt: appt.updatedAt,
+    });
+  };
+  const closeDialog = () => setDialog(null);
+  const savedDialog = () => { setDialog(null); router.refresh(); };
+
   const busyStylistIds = new Set([
     ...gridAppointments.map((appt) => appt.stylistId),
     ...gridBusyBlocks.map((block) => block.stylistId),
@@ -349,7 +410,7 @@ export function ScheduleCalendar({
 
   return (
     <div className="space-y-4">
-      {pendingAppointments.length > 0 && (
+      {(pendingAppointments.length > 0 || pendingHasPrevious) && (
         <section aria-label="All pending booking requests" className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <h2 className="font-semibold text-amber-900">Awaiting confirmation · all dates</h2>
           <div className="mt-3 max-h-80 overflow-y-auto divide-y divide-amber-200">
@@ -365,21 +426,29 @@ export function ScheduleCalendar({
               </div>
             ))}
           </div>
+          {(pendingNext || pendingHasPrevious) && <nav aria-label="Pending requests pagination" className="mt-3 flex gap-4 text-sm underline">
+            {pendingHasPrevious && <button type="button" onClick={() => pendingPage()}>First page</button>}
+            {pendingNext && <button type="button" onClick={() => pendingPage(pendingNext)}>Next requests</button>}
+          </nav>}
         </section>
       )}
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-lg shadow border border-zinc-200">
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-md shadow-sm" role="group">
-            <button onClick={() => setViewMode('day')} className={`px-4 py-2 text-sm font-medium border border-gray-200 rounded-l-lg ${viewMode === 'day' ? 'bg-zinc-900 text-white' : 'bg-white text-gray-900 hover:bg-gray-100'}`}>
-              Day
-            </button>
-            <button onClick={() => setViewMode('month')} className={`px-4 py-2 text-sm font-medium border-t border-b border-gray-200 ${viewMode === 'month' ? 'bg-zinc-900 text-white' : 'bg-white text-gray-900 hover:bg-gray-100'}`}>
-              Month
-            </button>
-            <button onClick={() => setViewMode('year')} className={`px-4 py-2 text-sm font-medium border border-gray-200 rounded-r-lg ${viewMode === 'year' ? 'bg-zinc-900 text-white' : 'bg-white text-gray-900 hover:bg-gray-100'}`}>
-              Year
-            </button>
+            {(['day', 'week', 'month', 'year'] as const).map((period, index, all) => (
+              <button
+                key={period}
+                onClick={() => setViewMode(period)}
+                aria-pressed={viewMode === period}
+                className={`px-3 sm:px-4 py-2 text-sm font-medium border-t border-b border-gray-200 capitalize
+                  ${index === 0 ? 'border-l rounded-l-lg' : ''}
+                  ${index === all.length - 1 ? 'border-r rounded-r-lg' : ''}
+                  ${viewMode === period ? 'bg-zinc-900 text-white' : 'bg-white text-gray-900 hover:bg-gray-100'}`}
+              >
+                {period}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -388,16 +457,31 @@ export function ScheduleCalendar({
              ←
           </button>
           <h2 className="text-xl font-bold min-w-[200px] text-center">
-            {viewMode === 'year' ? format(currentDate, 'yyyy') : format(currentDate, viewMode === 'day' ? 'EEEE, d MMMM yyyy' : 'MMMM yyyy')}
+            {viewMode === 'year'
+              ? format(currentDate, 'yyyy')
+              : viewMode === 'week'
+                ? `${format(new Date(`${weekKeys[0]}T12:00:00`), 'd MMM')} – ${format(new Date(`${weekKeys[6]}T12:00:00`), 'd MMM yyyy')}`
+                : format(currentDate, viewMode === 'day' ? 'EEEE, d MMMM yyyy' : 'MMMM yyyy')}
           </h2>
           <button onClick={next} disabled={isNavigating} aria-label="Next period" className="p-2 hover:bg-zinc-100 rounded-full disabled:opacity-50">
              →
           </button>
         </div>
 
-        <button onClick={goToToday} className="text-sm font-medium text-zinc-900 hover:underline">
-          Today
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={goToToday} className="text-sm font-medium text-zinc-900 hover:underline">
+            Today
+          </button>
+          {viewMode !== 'year' && services.length > 0 && stylists.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDialog({ mode: 'create', dateStr, time: formatSalonTime(new Date()) })}
+              className="rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              + New booking
+            </button>
+          )}
+        </div>
       </div>
       {isNavigating && <p role="status" className="text-sm text-zinc-600">Loading calendar…</p>}
 
@@ -407,16 +491,69 @@ export function ScheduleCalendar({
           <YearView 
             currentDate={currentDate}
             onSelectMonth={(month) => navigate(month, 'month')}
-            appointments={appointments}
+            monthCounts={monthCounts}
           />
         )}
         {viewMode === 'month' && (
           <MonthView 
             currentDate={currentDate}
             selectedDate={selectedDate}
-            setSelectedDate={(date) => navigate(date)}
+            setSelectedDate={(date) => {
+              const nextDate = format(date, 'yyyy-MM-dd');
+              if (nextDate.slice(0, 7) !== dateStr.slice(0, 7)) navigate(date);
+              else setLocalSelection({ month: dateStr.slice(0, 7), date: nextDate });
+            }}
             getDayAppointments={getDayAppointments}
           />
+        )}
+        {viewMode === 'week' && (
+          <>
+            {/* Seven columns of draggable blocks need a pointer and a screen;
+                the phone gets the same week as a scrollable agenda instead. */}
+            <div className="hidden md:block">
+              <ScheduleWeekGrid
+                dayKeys={weekKeys}
+                todayKey={salonDateKey(new Date())}
+                stylists={weekStylists}
+                appointments={weekAppointments}
+                busyBlocks={gridBusyBlocks}
+                onMove={moveAppointmentByAdmin}
+                onMoved={() => router.refresh()}
+                onSelect={openEditor}
+                onCreate={(day, time) => setDialog({ mode: 'create', dateStr: day, time })}
+              />
+            </div>
+            <div className="md:hidden space-y-3">
+              {weekKeys.map((key) => {
+                const dayAppts = getDayAppointments(new Date(`${key}T12:00:00`));
+                return (
+                  <div key={key} className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => navigate(new Date(`${key}T12:00:00`), 'day')}
+                      className={`flex w-full items-center justify-between px-4 py-2 text-left ${key === salonDateKey(new Date()) ? 'bg-zinc-900 text-white' : 'bg-zinc-50 text-zinc-900'}`}
+                    >
+                      <span className="font-semibold">{format(new Date(`${key}T12:00:00`), 'EEEE d MMM')}</span>
+                      <span className="text-xs opacity-80">{dayAppts.length} booked</span>
+                    </button>
+                    {dayAppts.length === 0 ? (
+                      <p className="px-4 py-3 text-sm text-zinc-500">Nothing booked.</p>
+                    ) : (
+                      <ul className="divide-y divide-zinc-100">
+                        {dayAppts.map((appt) => (
+                          <li key={appt.id} className="px-4 py-2 text-sm">
+                            <span className="font-medium text-zinc-900">{formatSalonTime(new Date(appt.date))}</span>
+                            <span className="ml-2 text-zinc-700">{appt.user.name}</span>
+                            <span className="block text-xs text-zinc-500">{appt.service.name} with {appt.stylist.name}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
         {viewMode === 'day' && (
           <>
@@ -430,6 +567,8 @@ export function ScheduleCalendar({
                 busyBlocks={gridBusyBlocks}
                 onMove={moveAppointmentByAdmin}
                 onMoved={() => router.refresh()}
+                onSelect={openEditor}
+                onCreate={(day, time, stylistId) => setDialog({ mode: 'create', dateStr: day, time, stylistId })}
               />
             </div>
             <div className="sm:hidden">
@@ -480,6 +619,16 @@ export function ScheduleCalendar({
                  )}
              </div>
          </div>
+      )}
+
+      {dialog && (
+        <AppointmentDialog
+          target={dialog}
+          services={services}
+          stylists={stylists.map(({ id, name }) => ({ id, name }))}
+          onClose={closeDialog}
+          onSaved={savedDialog}
+        />
       )}
     </div>
   );

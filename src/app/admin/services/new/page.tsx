@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { ServiceForm } from '@/components/admin/ServiceForm';
 import { createService } from '@/app/actions/admin-services';
@@ -14,6 +15,7 @@ async function getExistingCategories(): Promise<string[]> {
 }
 
 export default async function NewServicePage() {
+  await requireAdmin();
   const existingCategories = await getExistingCategories();
 
   return (

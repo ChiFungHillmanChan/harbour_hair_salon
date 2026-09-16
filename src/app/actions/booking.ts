@@ -19,8 +19,6 @@ import { isBookingEnabled, assertOnlineBookingReady, BOOKING_MAINTENANCE_MESSAGE
 // back to in-process limiting when Upstash is unconfigured — these two call
 // sites previously skipped limiting entirely in that case.
 
-const MAX_ACTIVE_BOOKINGS = 6;
-
 // serviceDuration is client-supplied. Bound it hard: an unvalidated negative or
 // huge value drives the slot-generation loop in booking-service for millions of
 // iterations (unauthenticated CPU/memory DoS — these slot actions require no session).
@@ -63,7 +61,8 @@ async function checkStylistHours(
   durationMinutes: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const availability = await prisma.availability.findFirst({
-    where: { stylistId, dayOfWeek: salon.dayOfWeek, isOff: false },
+    where: { stylistId, dayOfWeek: salon.dayOfWeek, isOff: false, stylist: { isActive: true } },
+    select: { startTime: true, endTime: true },
   });
   if (!availability) {
     return { ok: false, error: 'Stylist is not available on this day' };
@@ -219,15 +218,6 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   // missing config, rather than failing open.
   if (!(await bookingLimiter.check(`user:${session.userId}`))) {
     return { success: false, error: 'Too many booking attempts. Please try again shortly.' };
-  }
-
-  // Hard cap on outstanding future bookings per user. PENDING requests count
-  // too — otherwise a user could stack unlimited unapproved requests.
-  const activeCount = await prisma.appointment.count({
-    where: { userId: session.userId, status: { in: ['PENDING', 'CONFIRMED'] }, date: { gt: new Date() } },
-  });
-  if (activeCount >= MAX_ACTIVE_BOOKINGS) {
-    return { success: false, error: 'You already have the maximum number of upcoming bookings. Please manage your existing appointments first.' };
   }
 
   // Resolve the salon wall-clock time to the correct absolute UTC instant
