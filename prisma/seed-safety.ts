@@ -1,10 +1,25 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
-function canonicalPath(path: string): string {
+/**
+ * Resolve a path the way the filesystem will, including links that do not point
+ * at anything yet.
+ *
+ * `existsSync` follows a symlink, so a DANGLING one reports false and used to
+ * fall through to the literal path — the guard then judged the link by where it
+ * sits rather than by where SQLite would actually write through it, which is
+ * exactly the escape this function exists to stop. `lstatSync` sees the link
+ * itself, so it is resolved whether or not the target exists yet.
+ */
+function canonicalPath(path: string, depth = 0): string {
+  if (depth > 40) throw new Error('Seed target path resolves through too many symbolic links.');
   if (existsSync(path)) return realpathSync(path);
-  return resolve(canonicalPath(dirname(path)), basename(path));
+  let link: string | null = null;
+  try { if (lstatSync(path).isSymbolicLink()) link = readlinkSync(path); } catch { /* not a link */ }
+  const parent = canonicalPath(dirname(path), depth + 1);
+  if (link !== null) return canonicalPath(isAbsolute(link) ? link : resolve(parent, link), depth + 1);
+  return resolve(parent, basename(path));
 }
 
 function isWithin(path: string, directory: string): boolean {

@@ -32,7 +32,21 @@ test('a local SQLite name cannot escape the disposable directory through a symli
   const root = mkdtempSync(join(tmpdir(), 'seed-guard-fixture-'));
   try {
     mkdirSync(join(root, 'prisma/dev'), { recursive: true });
+    // Outside the repository, /private/tmp and the temp directory alike, on
+    // every platform this runs on.
     symlinkSync('/Users', join(root, 'prisma/dev/escape'));
+    assert.throws(() => assertSafeSeedTarget({ DATABASE_URL: 'file:./escape/dev.db', SALON_ALLOW_DESTRUCTIVE_SEED: 'true' }, root), /disposable/i);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a symlink is followed even when its target does not exist yet', () => {
+  // The dangerous case: SQLite CREATES the file, so the link has nothing to
+  // point at while the guard runs. Judging the link by its own location would
+  // let the write land anywhere the link happens to aim.
+  const root = mkdtempSync(join(tmpdir(), 'seed-guard-dangling-'));
+  try {
+    mkdirSync(join(root, 'prisma/dev'), { recursive: true });
+    symlinkSync('/no-such-root-for-seed-guard', join(root, 'prisma/dev/escape'));
     assert.throws(() => assertSafeSeedTarget({ DATABASE_URL: 'file:./escape/dev.db', SALON_ALLOW_DESTRUCTIVE_SEED: 'true' }, root), /disposable/i);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
