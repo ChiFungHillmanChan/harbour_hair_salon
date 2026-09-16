@@ -32,6 +32,10 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
   const connections = await db.calendarConnection.findMany({
     where: {
       inboundEnabled: true, inboundUrl: { not: null },
+      // A retired stylist's feed is nobody's business to poll: it cannot affect
+      // bookable slots, and a stale marketplace URL left behind would burn Neon
+      // compute every cycle and keep writing lastError.
+      stylist: { isActive: true },
       provider: deps.provider ?? { in: [...CALENDAR_PROVIDERS] },
       ...(deps.connectionId ? { id: deps.connectionId } : {}),
     },

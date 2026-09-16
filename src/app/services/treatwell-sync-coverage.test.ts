@@ -63,3 +63,34 @@ test('the freshness window survives more than one missed calendar-sync run', asy
     `A ${interval}-minute cron needs at least ${interval * 3} minutes of freshness headroom, not ${CALENDAR_FRESHNESS_MINUTES}.`
   );
 });
+
+// `evaluateSyncCoverage` is handed whatever rows the query returns, and it
+// demands a complete valid week plus a covered feed from every one of them. A
+// retired stylist has neither, so if the query ever stopped filtering them out,
+// `safeToEnableOnlineBooking` would be false forever and booking would close
+// for the whole salon — with the same silent "online booking is closed" symptom
+// the freshness window above exists to prevent.
+test('retired stylists are excluded before they can reach the booking gate', async () => {
+  const readiness = await readFile(new URL('./integration-readiness.ts', import.meta.url), 'utf8');
+  const coverageQuery = readiness.slice(readiness.indexOf('export async function getCalendarSyncCoverage'));
+  const body = coverageQuery.slice(0, coverageQuery.indexOf('return evaluateSyncCoverage'));
+  assert.match(body, /where:\s*\{\s*isActive:\s*true\s*\}/,
+    'getCalendarSyncCoverage must load only active stylists.');
+
+  // The same row would otherwise still be sold on the public site.
+  for (const page of ['../page.tsx', '../book/page.tsx']) {
+    const source = await readFile(new URL(page, import.meta.url), 'utf8');
+    const query = source.slice(source.indexOf('stylist.findMany'));
+    assert.match(query.slice(0, 200), /isActive:\s*true/, `${page} must not list retired stylists.`);
+  }
+});
+
+// A retired stylist keeps their rows, so a stale marketplace URL left on one
+// would otherwise be polled every cron cycle: pure Neon compute spend on a feed
+// that cannot affect a single bookable slot.
+test('the calendar-sync cron skips connections belonging to retired stylists', async () => {
+  const source = await readFile(new URL('./calendar-sync-service.ts', import.meta.url), 'utf8');
+  const query = source.slice(source.indexOf('calendarConnection.findMany'));
+  assert.match(query.slice(0, 600), /stylist:\s*\{\s*isActive:\s*true\s*\}/,
+    'syncCalendarFeeds must not poll feeds for retired stylists.');
+});

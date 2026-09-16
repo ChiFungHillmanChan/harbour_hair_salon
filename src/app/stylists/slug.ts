@@ -95,6 +95,7 @@ function mapStylist(row: DbStylist): StylistRuntime {
 
 export async function getAllStylistsWithSlug(): Promise<StylistRuntime[]> {
   const stylists = await prisma.stylist.findMany({
+    where: { isActive: true },
     orderBy: { name: 'asc' },
     select: publicStylistSelect,
   });

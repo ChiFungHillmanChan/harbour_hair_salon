@@ -42,6 +42,7 @@ export type OutboundIcalFeed = {
  */
 export async function listOutboundIcalFeeds(siteUrl: string): Promise<OutboundIcalFeed[]> {
   const stylists = await prisma.stylist.findMany({
+    where: { isActive: true },
     select: { id: true, name: true, icalToken: true },
     orderBy: { name: 'asc' },
   });
@@ -59,6 +60,11 @@ export async function listOutboundIcalFeeds(siteUrl: string): Promise<OutboundIc
  */
 export async function getCalendarSyncCoverage(db: Pick<Prisma.TransactionClient, 'stylist'> = prisma, now = new Date()): Promise<SyncCoverage> {
   const stylists = await db.stylist.findMany({
+    // Retired staff are excluded deliberately. `evaluateSyncCoverage` demands a
+    // complete, valid week and a covered feed from every stylist it is handed,
+    // so leaving a retired one in would make `safeToEnableOnlineBooking` false
+    // forever and close booking for the whole salon.
+    where: { isActive: true },
     select: {
       id: true, name: true, icalToken: true,
       availabilities: { select: { dayOfWeek: true, isOff: true, startTime: true, endTime: true } },
@@ -144,6 +150,7 @@ export async function getIntegrationReadiness(): Promise<IntegrationReadiness> {
 /** Private feed URLs are projected to a boolean before reaching UI components. */
 export async function listCalendarConnectionsForAdmin(siteUrl: string) {
   const stylists = await prisma.stylist.findMany({
+    where: { isActive: true },
     orderBy: { name: 'asc' },
     select: {
       id: true, name: true, icalToken: true,

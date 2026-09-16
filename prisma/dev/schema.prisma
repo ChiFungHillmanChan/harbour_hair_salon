@@ -56,6 +56,12 @@ model Stylist {
   treatwellIcalUrl    String? // Treatwell Connect per-staff iCal feed URL (Phase 1 inbound sync)
   treatwellExternalId String? // Treatwell API staff/resource id (Phase 2 outbound sync)
   icalToken           String? @unique // secret for this stylist's outbound busy-feed URL
+  /// Retired staff stay in the database because their past appointments must
+  /// survive (Appointment.stylist is onDelete: Restrict). Inactive stylists are
+  /// hidden from the public site, the booking flow and the sync-coverage gate —
+  /// otherwise a retired stylist with no opening hours would block booking for
+  /// everyone. Admin screens still list them.
+  isActive            Boolean             @default(true)
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
   appointments        Appointment[]

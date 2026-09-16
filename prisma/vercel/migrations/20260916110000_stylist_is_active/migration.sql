@@ -1,0 +1,11 @@
+-- Retire a stylist without deleting them.
+--
+-- Appointment.stylistId is ON DELETE RESTRICT, so a stylist who has ever taken
+-- a booking can never be removed without destroying that customer's history.
+-- Staff leave, so the site needs a way to stop showing and selling someone
+-- while their past appointments stay intact.
+--
+-- Defaults to TRUE so every existing stylist stays exactly as visible as before
+-- this migration ran. No index: this table holds a handful of rows and every
+-- query that filters on it reads the whole table anyway.
+ALTER TABLE "Stylist" ADD COLUMN "isActive" BOOLEAN NOT NULL DEFAULT true;

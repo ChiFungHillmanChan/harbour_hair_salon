@@ -52,3 +52,6 @@ next-env.d.ts
 
 # Design canvas working files (mockups; the published artifact is the deliverable)
 .design/
+
+# Claude Code local settings
+.claude/settings.local.json
