@@ -39,7 +39,7 @@ test('drops events beyond the window end', () => {
   assert.deepEqual(out, []);
 });
 
-test('refuses recurring events through the legacy parser too', () => {
+test('expands recurring events through the legacy parser too', () => {
   const recurring = ICS(
     [
       'BEGIN:VEVENT',
@@ -52,7 +52,11 @@ test('refuses recurring events through the legacy parser too', () => {
     ].join('\r\n'),
   );
   const out = parseIcalBusyIntervals(recurring, { now: new Date('2026-06-01T00:00:00Z') });
-  assert.equal(out, null);
+  assert.ok(out, 'a recurring series must not fail the whole feed');
+  // COUNT=10 weekly from 01 Jul, but the 90-day window from 01 Jun closes on
+  // 30 Aug — so the 10th occurrence (02 Sep) is correctly clamped out.
+  assert.equal(out.length, 9);
+  assert.equal(new Set(out.map((i) => i.uid)).size, 9);
 });
 
 test('returns [] for a valid but empty calendar (prune is then correct)', () => {

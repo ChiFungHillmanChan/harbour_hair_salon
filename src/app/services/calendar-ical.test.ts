@@ -11,8 +11,48 @@ test('accepts genuinely empty feeds but refuses invalid/truncated documents', ()
     assert.throws(() => parseCalendarBusyIntervals(text, { now }), /invalid/i);
   }
 });
-test('recurrence rules are explicitly refused instead of silently freeing recurring busy time', () => {
-  assert.throws(() => parseCalendarBusyIntervals(ics(event('DTSTART:20261024T100000Z\r\nDTEND:20261024T110000Z\r\nRRULE:FREQ=DAILY')), { now }), /recurr/i);
+test('a recurring event becomes one busy interval per occurrence', () => {
+  const intervals = parseCalendarBusyIntervals(
+    ics(event('DTSTART:20261024T100000Z\r\nDTEND:20261024T110000Z\r\nRRULE:FREQ=DAILY;COUNT=3')), { now });
+  assert.equal(intervals.length, 3);
+  // Each occurrence is upserted on its own externalUid, so sharing the series
+  // UID would make them overwrite each other down to a single busy block.
+  assert.equal(new Set(intervals.map((i) => i.uid)).size, 3);
+  assert.ok(intervals.every((i) => i.end.getTime() - i.start.getTime() === 3_600_000));
+});
+
+// The clocks go back on 2026-10-25. Replaying the UTC instant would move a
+// 10:00 commitment to 09:00 local and leave its last hour bookable while the
+// stylist is still busy — the one error this parser must never make.
+test('recurring occurrences keep salon-local wall-clock time across the DST change', () => {
+  const intervals = parseCalendarBusyIntervals(
+    ics(event('DTSTART:20261024T100000Z\r\nDTEND:20261024T110000Z\r\nRRULE:FREQ=DAILY;COUNT=3')), { now });
+  const localHour = (d: Date) => d.toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false });
+  assert.deepEqual(intervals.map((i) => localHour(i.start)), ['11', '11', '11']);
+  // 24 Oct is BST (10:00Z = 11:00), 26 Oct is GMT — so the UTC instant must move.
+  assert.equal(intervals[0].start.toISOString(), '2026-10-24T10:00:00.000Z');
+  assert.equal(intervals[2].start.toISOString(), '2026-10-26T11:00:00.000Z');
+});
+
+test('EXDATE removes a cancelled occurrence without dropping the series', () => {
+  const intervals = parseCalendarBusyIntervals(
+    ics(event('DTSTART:20261024T100000Z\r\nDTEND:20261024T110000Z\r\nRRULE:FREQ=DAILY;COUNT=3\r\nEXDATE:20261025T100000Z')), { now });
+  assert.equal(intervals.length, 2);
+});
+
+// Honouring these needs the whole series in hand; guessing would move a real
+// appointment, so the feed is still refused outright.
+test('RDATE, EXRULE and RECURRENCE-ID are still refused', () => {
+  for (const extra of ['RDATE:20261101T100000Z', 'EXRULE:FREQ=WEEKLY', 'RECURRENCE-ID:20261024T100000Z']) {
+    assert.throws(() => parseCalendarBusyIntervals(
+      ics(event(`DTSTART:20261024T100000Z\r\nDTEND:20261024T110000Z\r\n${extra}`)), { now }), /recurr/i);
+  }
+});
+
+test('an unbounded recurrence cannot flood the window', () => {
+  // FREQ=HOURLY over 90 days is ~2,160 occurrences.
+  assert.throws(() => parseCalendarBusyIntervals(
+    ics(event('DTSTART:20261024T100000Z\r\nDTEND:20261024T103000Z\r\nRRULE:FREQ=HOURLY')), { now }), /too many/i);
 });
 test('UTC and London timestamps normalize consistently through DST change', () => {
   const intervals = parseCalendarBusyIntervals(ics(event('DTSTART;TZID=Europe/London:20261024T100000\r\nDTEND;TZID=Europe/London:20261024T110000')), { now });
@@ -59,5 +99,9 @@ test('VTIMEZONE daylight rules do not reject discrete IANA-zone appointments', (
   assert.equal(intervals.length, 2);
   assert.equal(intervals[0].start.toISOString(), '2026-10-24T09:00:00.000Z');
   assert.equal(intervals[1].start.toISOString(), '2026-10-26T10:00:00.000Z');
-  assert.throws(() => parseCalendarBusyIntervals(ics([timezone, summer.replace('END:VEVENT', 'RRULE:FREQ=DAILY\r\nEND:VEVENT')].join('\r\n')), { now }), /recurr/i);
+  // The VTIMEZONE block carries its own RRULE lines describing the zone
+  // transitions; they must not be mistaken for the event's recurrence.
+  const series = parseCalendarBusyIntervals(
+    ics([timezone, summer.replace('END:VEVENT', 'RRULE:FREQ=DAILY;COUNT=2\r\nEND:VEVENT')].join('\r\n')), { now });
+  assert.equal(series.length, 2);
 });
