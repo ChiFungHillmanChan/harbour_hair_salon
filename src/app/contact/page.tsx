@@ -10,6 +10,7 @@ import SocialLinks from '@/components/layout/SocialLinks';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { toTelHref } from '@/app/lib/phone';
 import { jsonLdScript } from '@/app/lib/json-ld';
+import { PUBLIC_OPENING_HOURS, formatRange, openingHoursSpecification } from '@/app/lib/opening-hours-public';
 
 export const metadata: Metadata = {
   title: 'Contact & Find Us in Leeds City Centre',
@@ -86,10 +87,7 @@ export default async function ContactPage() {
               latitude: 53.7965911,
               longitude: -1.5416801,
             },
-            openingHoursSpecification: [
-              { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday','Tuesday','Wednesday','Thursday','Friday'], opens: '10:00', closes: '19:30' },
-              { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Saturday','Sunday'], opens: '10:30', closes: '18:00' },
-            ],
+            openingHoursSpecification: openingHoursSpecification(),
           }),
         }}
       />
@@ -130,34 +128,15 @@ export default async function ContactPage() {
             <div>
               <h2 className="text-2xl font-bold text-black mb-6 border-b-2 border-zinc-200 pb-2">Opening Hours</h2>
               <ul className="space-y-2 text-lg text-zinc-600">
-                <li className="flex justify-between border-b border-zinc-100 pb-1">
-                  <span className="font-medium text-zinc-900">Monday</span>
-                  <span>10:00 – 19:30</span>
-                </li>
-                <li className="flex justify-between border-b border-zinc-100 pb-1">
-                  <span className="font-medium text-zinc-900">Tuesday</span>
-                  <span>10:00 – 19:30</span>
-                </li>
-                <li className="flex justify-between border-b border-zinc-100 pb-1">
-                  <span className="font-medium text-zinc-900">Wednesday</span>
-                  <span>10:00 – 19:30</span>
-                </li>
-                <li className="flex justify-between border-b border-zinc-100 pb-1">
-                  <span className="font-medium text-zinc-900">Thursday</span>
-                  <span>10:00 – 19:30</span>
-                </li>
-                <li className="flex justify-between border-b border-zinc-100 pb-1">
-                  <span className="font-medium text-zinc-900">Friday</span>
-                  <span>10:00 – 19:30</span>
-                </li>
-                <li className="flex justify-between border-b border-zinc-100 pb-1">
-                  <span className="font-medium text-zinc-900">Saturday</span>
-                  <span>10:30 – 18:00</span>
-                </li>
-                <li className="flex justify-between">
-                  <span className="font-medium text-zinc-900">Sunday</span>
-                  <span>10:30 – 18:00</span>
-                </li>
+                {PUBLIC_OPENING_HOURS.map(({ day, opens, closes }, index) => (
+                  <li
+                    key={day}
+                    className={`flex justify-between${index < PUBLIC_OPENING_HOURS.length - 1 ? ' border-b border-zinc-100 pb-1' : ''}`}
+                  >
+                    <span className="font-medium text-zinc-900">{day}</span>
+                    <span>{formatRange(opens, closes)}</span>
+                  </li>
+                ))}
               </ul>
             </div>
           </div>

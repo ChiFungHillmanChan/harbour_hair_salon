@@ -17,6 +17,7 @@ import {
 import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL } from '@/app/lib/site-url';
 import VisitFollowBlock from '@/components/home/VisitFollowBlock';
+import { openingHoursSpecification } from '@/app/lib/opening-hours-public';
 
 export const metadata: Metadata = {
   title: 'Expert Hair Styling in Leeds City Centre',
@@ -165,10 +166,7 @@ export default async function Home() {
     paymentAccepted: 'Cash, Credit Card',
     areaServed: { '@type': 'City', name: 'Leeds' },
     sameAs: buildSameAsArray(settings),
-    openingHoursSpecification: [
-      { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday','Tuesday','Wednesday','Thursday','Friday'], opens: '10:00', closes: '19:30' },
-      { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Saturday','Sunday'], opens: '10:30', closes: '18:00' },
-    ],
+    openingHoursSpecification: openingHoursSpecification(),
     knowsLanguage: ['en', 'zh-yue'],
   };
 

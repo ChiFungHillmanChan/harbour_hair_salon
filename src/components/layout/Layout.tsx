@@ -4,6 +4,7 @@ import SocialLinks from '@/components/layout/SocialLinks';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { hasActiveOffers } from '@/app/services/offers-service';
 import { toTelHref } from '@/app/lib/phone';
+import { formatRange, groupedOpeningHours, shortDayRange } from '@/app/lib/opening-hours-public';
 
 export function FooterPromotions() {
   return (
@@ -94,14 +95,12 @@ export async function Footer() {
           <div>
             <h4 className="text-sm uppercase tracking-widest font-bold mb-6 text-zinc-300">Hours</h4>
             <ul className="text-zinc-400 text-sm space-y-2">
-              <li className="flex justify-between">
-                <span>Mon – Fri</span>
-                <span>10:00 – 19:30</span>
-              </li>
-              <li className="flex justify-between">
-                <span>Sat – Sun</span>
-                <span>10:30 – 18:00</span>
-              </li>
+              {groupedOpeningHours().map((group) => (
+                <li key={group.days[0]} className="flex justify-between">
+                  <span>{shortDayRange(group.days)}</span>
+                  <span>{formatRange(group.opens, group.closes)}</span>
+                </li>
+              ))}
             </ul>
 
             {/* Social */}
