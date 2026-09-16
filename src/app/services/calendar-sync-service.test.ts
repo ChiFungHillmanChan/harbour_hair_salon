@@ -73,11 +73,21 @@ test('changed configuration invalidates an in-flight sync without overwriting ne
   const result = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => { state.rows[0].inboundUrl = 'https://example.com/new'; state.rows[0].lockToken = null; return busy; } });
   assert.equal(result[0].ok, false); assert.equal(state.blocks.length, 0); assert.equal(state.rows[0].lastSuccessAt, null);
 });
-test('invalid or recurring feeds are failures and never treated as a successful empty calendar', async () => {
-  for (const text of ['<html>Login</html>', busy.replace('END:VEVENT', 'RRULE:FREQ=DAILY\r\nEND:VEVENT')]) {
+test('unreadable feeds are failures and never treated as a successful empty calendar', async () => {
+  for (const text of ['<html>Login</html>', busy.replace('END:VEVENT', 'RDATE:20260701T090000Z\r\nEND:VEVENT')]) {
     const state = fakeDb(); const result = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => text });
     assert.equal(result[0].ok, false); assert.equal(state.rows[0].lastSuccessAt, null);
   }
+});
+
+// Recurring blocked time is normal staff behaviour. When this failed the whole
+// feed, one stylist's standing commitment closed booking for the entire salon.
+test('a recurring feed syncs instead of failing the connection', async () => {
+  const state = fakeDb();
+  const recurring = busy.replace('END:VEVENT', 'RRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT');
+  const result = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => recurring });
+  assert.equal(result[0].ok, true);
+  assert.ok(result[0].upserted >= 3, `expected each occurrence stored, got ${result[0].upserted}`);
 });
 
 
