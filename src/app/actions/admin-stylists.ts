@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { isCalendarColorKey } from '@/app/lib/calendar-colors';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
@@ -12,7 +13,15 @@ async function requireAdmin() {
   if (session.role !== 'ADMIN') throw new Error('Unauthorized');
 }
 
+const calendarColorField = z
+  .string()
+  .trim()
+  .optional()
+  .refine((v) => !v || isCalendarColorKey(v), 'Unknown calendar colour')
+  .transform((v) => (v ? v : null));
+
 const stylistSchema = z.object({
+  calendarColor: calendarColorField,
   name: z.string().trim().min(2).max(100),
   role: z.string().trim().min(1).max(100),
   slug: z
@@ -109,6 +118,7 @@ export async function createStylist(
       trainedIn: parsed.data.trainedIn,
       extendedBioJson: JSON.stringify(arrays.extendedBio),
       treatwellExternalId: parsed.data.treatwellExternalId,
+      calendarColor: parsed.data.calendarColor,
     },
   });
 
@@ -162,6 +172,7 @@ export async function updateStylist(
       trainedIn: parsed.data.trainedIn,
       extendedBioJson: JSON.stringify(arrays.extendedBio),
       treatwellExternalId: parsed.data.treatwellExternalId,
+      calendarColor: parsed.data.calendarColor,
     },
   });
 

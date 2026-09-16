@@ -1,0 +1,10 @@
+BEGIN TRY
+    BEGIN TRAN;
+    ALTER TABLE [dbo].[Stylist] ADD [calendarColor] NVARCHAR(1000);
+    ALTER TABLE [dbo].[Service] ADD [calendarColor] NVARCHAR(1000);
+    COMMIT TRAN;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    THROW;
+END CATCH

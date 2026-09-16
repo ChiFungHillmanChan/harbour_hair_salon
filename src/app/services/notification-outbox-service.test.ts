@@ -1,17 +1,29 @@
-import { test } from 'node:test';
+import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
 
-function fixture({ obsolete = false, fail = false, changeDuringPreparation = false } = {}) {
+let previousNotificationsEnabled: string | undefined;
+beforeEach(() => {
+  previousNotificationsEnabled = process.env.NOTIFICATIONS_ENABLED;
+  process.env.NOTIFICATIONS_ENABLED = 'true';
+});
+afterEach(() => {
+  if (previousNotificationsEnabled === undefined) delete process.env.NOTIFICATIONS_ENABLED;
+  else process.env.NOTIFICATIONS_ENABLED = previousNotificationsEnabled;
+});
+
+function fixture({ obsolete = false, fail = false, changeDuringPreparation = false, unprepared = false } = {}) {
   const now = new Date('2026-09-11T12:00:00Z');
   const row = { id: 'job-1', eventKey: 'appointment/a/0/CONFIRMATION', kind: 'CONFIRMATION', appointmentId: 'a', status: 'PENDING', attempts: 0, firstAttemptAt: null as Date | null, nextAttemptAt: now, createdAt: now, lockedAt: null as Date | null, lockToken: null as string | null, payloadJson: JSON.stringify({ version: 0, date: '2026-09-12T12:00:00.000Z', email: { from: 'Salon <booking@example.com>', to: 'customer@example.com', subject: 'Confirmed', html: '<p>Confirmed</p>' } }) };
   let sends = 0;
+  let reads = 0;
+  let renders = 0;
   const keys: string[] = [];
   let changed = obsolete;
-  if (changeDuringPreparation) row.payloadJson = JSON.stringify({ version: 0, date: '2026-09-12T12:00:00.000Z', appointment: { id: 'a', date: '2026-09-12T12:00:00.000Z', user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', price: 80, duration: 60 } } });
+  if (changeDuringPreparation || unprepared) row.payloadJson = JSON.stringify({ version: 0, date: '2026-09-12T12:00:00.000Z', appointment: { id: 'a', date: '2026-09-12T12:00:00.000Z', user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', price: 80, duration: 60 } } });
   const db = {
     notificationDelivery: {
-      findMany: async () => [row],
+      findMany: async () => { reads++; return [row]; },
       findUnique: async () => ({ ...row }),
       updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
         if (where.lockToken && where.lockToken !== row.lockToken) return { count: 0 };
@@ -30,12 +42,46 @@ function fixture({ obsolete = false, fail = false, changeDuringPreparation = fal
   const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
     '@/app/lib/prisma': db,
     './email-service': {
-      prepareAppointmentEmail: async () => { if (changeDuringPreparation) changed = true; return { from: 'Salon <booking@example.com>', to: 'customer@example.com', subject: 'Confirmed', html: '<p>Confirmed</p>' }; },
+      prepareAppointmentEmail: async () => { renders++; if (changeDuringPreparation) changed = true; return { from: 'Salon <booking@example.com>', to: 'customer@example.com', subject: 'Confirmed', html: '<p>Confirmed</p>' }; },
       sendPreparedEmail: async (_email: unknown, key: string) => { sends++; keys.push(key); if (fail) throw new Error('Provider refused customer@example.com'); },
     },
   });
-  return { service, db, row, keys, sends: () => sends, now };
+  return { service, db, row, keys, sends: () => sends, sideEffects: () => ({ reads, renders, sends }), now };
 }
+
+for (const flag of [undefined, 'false']) {
+  test(`disabled notifications (${flag ?? 'unset'}) leave immediate and scheduled delivery untouched`, async () => {
+    const f = fixture({ unprepared: true });
+    const originalRow = structuredClone(f.row);
+    if (flag === undefined) delete process.env.NOTIFICATIONS_ENABLED;
+    else process.env.NOTIFICATIONS_ENABLED = flag;
+
+    const scheduled = await f.service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+    const immediate = await f.service.dispatchAppointmentNotifications('a');
+
+    assert.deepEqual(scheduled, { sent: 0, failed: 0, skipped: 0, deferred: 0 });
+    assert.deepEqual(immediate, { sent: 0, failed: 0, skipped: 0, deferred: 0 });
+    assert.deepEqual(f.sideEffects(), { reads: 0, renders: 0, sends: 0 });
+    assert.deepEqual(f.row, originalRow, 'disabled delivery must preserve the queued payload and retry state');
+  });
+}
+
+test('enabling notifications resumes a valid queued email through immediate delivery', async (t) => {
+  const f = fixture({ unprepared: true });
+  t.mock.timers.enable({ apis: ['Date'], now: f.now });
+  process.env.NOTIFICATIONS_ENABLED = 'false';
+  await f.service.dispatchAppointmentNotifications('a');
+  assert.equal(f.row.status, 'PENDING');
+  assert.equal(f.row.attempts, 0);
+
+  process.env.NOTIFICATIONS_ENABLED = 'true';
+  const result = await f.service.dispatchAppointmentNotifications('a');
+  assert.deepEqual(result, { sent: 1, failed: 0, skipped: 0, deferred: 0 });
+  assert.deepEqual(f.sideEffects(), { reads: 1, renders: 1, sends: 1 });
+  assert.equal(f.row.status, 'SENT');
+  assert.equal(f.row.attempts, 1);
+  assert.deepEqual(f.keys, [f.row.eventKey]);
+});
 
 test('concurrent workers claim one notification and deliver using its stable event key', async () => {
   const f = fixture();
@@ -78,7 +124,8 @@ test('an old ambiguous attempt is not retried beyond the provider deduplication 
   assert.equal(f.row.status, 'FAILED');
 });
 
-test('enqueue saves only notification fields and frozen values, without provider calls', async () => {
+test('disabled delivery still enqueues notification fields and frozen values without provider calls', async () => {
+  process.env.NOTIFICATIONS_ENABLED = 'false';
   let payload = '';
   let rendered = false;
   const db = {

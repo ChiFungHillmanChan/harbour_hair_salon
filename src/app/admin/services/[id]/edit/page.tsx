@@ -39,6 +39,7 @@ export default async function EditServicePage({
     requiresConsultation: service.requiresConsultation,
     isConsultation: service.isConsultation,
     treatwellExternalId: service.treatwellExternalId,
+    calendarColor: service.calendarColor,
   };
 
   return (

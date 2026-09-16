@@ -12,15 +12,15 @@ datasource db {
 }
 
 model User {
-  id             String        @id @default(cuid())
-  email          String        @unique
+  id             String               @id @default(cuid())
+  email          String               @unique
   password       String? // Optional for guest users
   name           String?
   phone          String?
-  role           String        @default("USER") // USER, ADMIN
-  sessionVersion Int           @default(0)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  role           String               @default("USER") // USER, ADMIN
+  sessionVersion Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
   appointments   Appointment[]
   reviews        Review[]
   oauthAccounts  OAuthAccount[]
@@ -42,29 +42,30 @@ model OAuthAccount {
 }
 
 model Stylist {
-  id                  String              @id @default(cuid())
+  id                  String               @id @default(cuid())
   name                String
   bio                 String?
   imageUrl            String?
   role                String
-  slug                String?             @unique
+  slug                String?              @unique
   tagline             String?
-  specialtiesJson     String              @default("[]")
-  languagesJson       String              @default("[]")
+  specialtiesJson     String               @default("[]")
+  languagesJson       String               @default("[]")
   yearsExperience     Int?
   trainedIn           String?
-  extendedBioJson     String              @default("[]")
+  extendedBioJson     String               @default("[]")
   treatwellIcalUrl    String? // Treatwell Connect per-staff iCal feed URL (Phase 1 inbound sync)
   treatwellExternalId String? // Treatwell API staff/resource id (Phase 2 outbound sync)
-  icalToken           String? @unique // secret for this stylist's outbound busy-feed URL
+  icalToken           String?              @unique // secret for this stylist's outbound busy-feed URL
   /// Retired staff stay in the database because their past appointments must
   /// survive (Appointment.stylist is onDelete: Restrict). Inactive stylists are
   /// hidden from the public site, the booking flow and the sync-coverage gate —
   /// otherwise a retired stylist with no opening hours would block booking for
   /// everyone. Admin screens still list them.
-  isActive            Boolean             @default(true)
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  isActive            Boolean              @default(true)
+  calendarColor       String? // admin calendar palette key (see lib/calendar-colors.ts); admin-only, never public
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   appointments        Appointment[]
   availabilities      Availability[]
   employee            Employee?
@@ -79,6 +80,7 @@ model Service {
   price                Decimal
   duration             Int // in minutes
   category             String // e.g., Cut, Color, Treatment
+  calendarColor        String? // admin calendar palette key — drives the stripe on a booking block
   requiresPatchTest    Boolean       @default(false)
   isPatchTest          Boolean       @default(false)
   requiresConsultation Boolean       @default(false)
@@ -118,8 +120,8 @@ model Appointment {
   discountCodeId String?
   discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
 
-  notificationVersion Int @default(0)
-  notifications NotificationDelivery[]
+  notificationVersion Int                    @default(0)
+  notifications       NotificationDelivery[]
 
   review Review?
 
@@ -376,7 +378,6 @@ model Shift {
   @@index([date])
 }
 
-
 // Single-use password reset grants. Only the SHA-256 hash of the token is
 // stored, so a database leak cannot be replayed against the reset endpoint.
 model PasswordResetToken {
@@ -399,12 +400,12 @@ model CalendarConnection {
   stylist             Stylist   @relation(fields: [stylistId], references: [id], onDelete: Cascade)
   provider            String
   receivesBookings    Boolean   @default(false)
-  inboundUrl          String? @db.NVarChar(Max)
+  inboundUrl          String?   @db.NVarChar(Max)
   inboundEnabled      Boolean   @default(false)
   outboundConfirmedAt DateTime?
   lastAttemptAt       DateTime?
   lastSuccessAt       DateTime?
-  lastError           String? @db.NVarChar(Max)
+  lastError           String?   @db.NVarChar(Max)
   lockedUntil         DateTime?
   lockToken           String?
   createdAt           DateTime  @default(now())
@@ -415,34 +416,34 @@ model CalendarConnection {
 }
 
 model NotificationDelivery {
-  id            String       @id @default(cuid())
-  eventKey      String       @unique
-  kind          String
-  appointmentId String?
-  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: NoAction)
-  payloadJson   String @db.NVarChar(Max)
-  status        String       @default("PENDING")
-  attempts      Int          @default(0)
+  id             String       @id @default(cuid())
+  eventKey       String       @unique
+  kind           String
+  appointmentId  String?
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id], onDelete: NoAction)
+  payloadJson    String       @db.NVarChar(Max)
+  status         String       @default("PENDING")
+  attempts       Int          @default(0)
   firstAttemptAt DateTime?
-  nextAttemptAt DateTime     @default(now())
-  lockedAt      DateTime?
-  lockToken     String?
-  sentAt        DateTime?
-  lastError     String? @db.NVarChar(Max)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  nextAttemptAt  DateTime     @default(now())
+  lockedAt       DateTime?
+  lockToken      String?
+  sentAt         DateTime?
+  lastError      String?      @db.NVarChar(Max)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([status, nextAttemptAt])
 }
 
 model BackgroundJobState {
-  name            String   @id
+  name            String    @id
   lastStartedAt   DateTime?
   lastSucceededAt DateTime?
   lastFailedAt    DateTime?
-  lastError       String? @db.NVarChar(Max)
-  lastResultJson  String? @db.NVarChar(Max)
+  lastError       String?   @db.NVarChar(Max)
+  lastResultJson  String?   @db.NVarChar(Max)
   lockToken       String?
   lockedUntil     DateTime?
-  updatedAt       DateTime @updatedAt
+  updatedAt       DateTime  @updatedAt
 }

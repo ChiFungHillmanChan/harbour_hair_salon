@@ -1,11 +1,12 @@
 'use server';
 
 import prisma from '@/app/lib/prisma';
-import { verifySession, createKioskSession, deleteKioskSession, getKioskSession } from '@/app/lib/session';
+import { verifySession, createKioskSession, deleteKioskSession, getKioskSession, deleteSession } from '@/app/lib/session';
 import { verifyPin } from '@/app/lib/pin';
 import { nextClockAction } from '@/app/services/kiosk-state';
 import { runSerializableWithRetry } from '@/app/services/booking-service';
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { clockLimiter } from '@/app/lib/rate-limit';
 
@@ -88,6 +89,9 @@ export async function enableKioskMode() {
   const session = await verifySession();
   if (session.role !== 'ADMIN') return { error: 'Unauthorized' };
   await createKioskSession();
+  // The shared staff device must keep only its kiosk access after the handoff.
+  await deleteSession();
+  redirect('/kiosk');
 }
 
 export async function disableKioskMode() {

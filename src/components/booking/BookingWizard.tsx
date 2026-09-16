@@ -3,6 +3,7 @@
 import { Service, Stylist } from '@prisma/client';
 import { format, addDays, startOfToday, isSameDay } from 'date-fns';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { fetchSlots, submitBooking, validateDiscountCode } from '@/app/actions/booking';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
@@ -272,12 +273,12 @@ export function BookingWizard({ services, stylists, activeOffer = null }: Bookin
         <p className="text-zinc-700 mb-8">
           Your request has been sent to the salon. We&apos;ll email you as soon as it&apos;s confirmed.
         </p>
-        <button
-          onClick={() => window.location.href = '/appointments'}
+        <Link
+          href="/appointments"
           className="bg-zinc-900 text-white px-8 py-3 uppercase tracking-widest text-sm hover:bg-black rounded-md transition-colors"
         >
           View My Bookings
-        </button>
+        </Link>
       </div>
     );
   }

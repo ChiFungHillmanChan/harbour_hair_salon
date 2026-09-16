@@ -21,7 +21,7 @@ export default async function EditStylistPage({
   // Keep the private API mapping out of the public-facing StylistRuntime.
   const integration = await prisma.stylist.findUnique({
     where: { id },
-    select: { treatwellExternalId: true },
+    select: { treatwellExternalId: true, calendarColor: true },
   });
 
   return (
@@ -36,6 +36,7 @@ export default async function EditStylistPage({
         stylist={stylist}
         saved={Boolean(saved)}
         treatwellExternalId={integration?.treatwellExternalId ?? null}
+        calendarColor={integration?.calendarColor ?? null}
       />
     </div>
   );

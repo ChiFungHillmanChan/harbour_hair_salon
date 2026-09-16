@@ -67,6 +67,10 @@ async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string
 }
 
 export async function dispatchPendingNotifications(options: { db?: PrismaClient; now?: Date; limit?: number; budgetMs?: number; appointmentId?: string } = {}) {
+  const result = { sent: 0, failed: 0, skipped: 0, deferred: 0 };
+  // Immediate actions and scheduled workers share the same delivery switch.
+  // Preserve queued events while disabled so valid ones can resume later.
+  if (process.env.NOTIFICATIONS_ENABLED !== 'true') return result;
   const db = options.db ?? prisma;
   const now = options.now ?? new Date();
   const started = Date.now();
@@ -76,7 +80,6 @@ export async function dispatchPendingNotifications(options: { db?: PrismaClient;
     OR: [{ status: 'PENDING', nextAttemptAt: { lte: now } }, { status: 'PROCESSING', lockedAt: { lt: new Date(now.getTime() - LEASE_MS) } }],
   };
   const rows = await db.notificationDelivery.findMany({ where: eligible, orderBy: { createdAt: 'asc' }, take: options.limit ?? 20, select: { id: true, firstAttemptAt: true } });
-  const result = { sent: 0, failed: 0, skipped: 0, deferred: 0 };
   for (const candidate of rows) {
     // Reserve a complete HTTP timeout plus persistence time before starting.
     if (Date.now() - started + 12_000 > budgetMs) { result.deferred++; continue; }

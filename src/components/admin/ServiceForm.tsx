@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 import type { ServiceActionState } from '@/app/actions/admin-services';
+import { CalendarColorPicker } from './CalendarColorPicker';
 
 type FormAction = (prev: ServiceActionState, formData: FormData) => Promise<ServiceActionState>;
 
@@ -19,6 +20,7 @@ type ServiceLite = {
   requiresConsultation: boolean;
   isConsultation: boolean;
   treatwellExternalId: string | null;
+  calendarColor: string | null;
 };
 
 interface ServiceFormProps {
@@ -103,11 +105,15 @@ export function ServiceForm({ mode, action, service, saved, existingCategories }
             <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
               Duration (min) *
             </label>
+            {/* min must be a multiple of step: with min=1 the browser's valid
+                values were 1, 6, 11 … 41, 46, so every real duration (15, 30,
+                45, 60, 90) failed HTML5 validation and the form silently
+                refused to submit. */}
             <input
               type="number"
               name="duration"
               required
-              min={1}
+              min={5}
               max={1440}
               step={5}
               defaultValue={service?.duration}
@@ -194,6 +200,16 @@ export function ServiceForm({ mode, action, service, saved, existingCategories }
             <span className="text-sm text-zinc-700">This IS the free general consultation service</span>
           </label>
         </div>
+      </section>
+
+      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+        <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Schedule board</h2>
+        <CalendarColorPicker
+          name="calendarColor"
+          label="Calendar stripe colour"
+          initial={service?.calendarColor}
+          help="Drawn as a stripe on this service's appointments in the admin schedule board, on top of the stylist's colour."
+        />
       </section>
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">

@@ -1,17 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, isToday, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { Appointment, Service, Stylist } from '@prisma/client';
+import { ScheduleDayGrid, type GridAppointment, type GridBusyBlock, type GridStylist } from './ScheduleDayGrid';
+import { resolveCalendarColor } from '@/app/lib/calendar-colors';
+import { formatSalonDate, formatSalonTime, resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
+import type { CalendarView } from '@/app/services/admin-calendar-range';
+import { moveAppointmentByAdmin } from '@/app/actions/admin-schedule';
 
 type AppointmentWithDetails = Appointment & {
   user: { id: string; name: string | null; email: string };
-  service: Pick<Service, 'name' | 'duration' | 'price'>;
-  stylist: Pick<Stylist, 'name'>;
+  service: Pick<Service, 'name' | 'duration' | 'price' | 'calendarColor'>;
+  stylist: Pick<Stylist, 'name' | 'calendarColor'>;
 };
 
-type ViewMode = 'day' | 'month' | 'year';
+type RosterStylist = {
+  id: string;
+  name: string;
+  calendarColor: string | null;
+  availabilities: { dayOfWeek: number; startTime: string; endTime: string; isOff: boolean }[];
+};
+
+type BusyBlockRow = { id: string; stylistId: string; start: Date; end: Date };
 
 const statusChipClass = (status: string) =>
   status === 'CONFIRMED'
@@ -57,12 +69,11 @@ const PendingActions = ({ apptId, onDone }: { apptId: string; onDone: () => void
 
 interface YearViewProps {
   currentDate: Date;
-  setCurrentDate: (date: Date) => void;
-  setViewMode: (mode: ViewMode) => void;
+  onSelectMonth: (date: Date) => void;
   appointments: AppointmentWithDetails[];
 }
 
-const YearView = ({ currentDate, setCurrentDate, setViewMode, appointments }: YearViewProps) => {
+const YearView = ({ currentDate, onSelectMonth, appointments }: YearViewProps) => {
   const yearStart = startOfYear(currentDate);
   const yearEnd = endOfYear(currentDate);
   const months = eachMonthOfInterval({ start: yearStart, end: yearEnd });
@@ -70,14 +81,11 @@ const YearView = ({ currentDate, setCurrentDate, setViewMode, appointments }: Ye
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-4">
       {months.map((month) => {
-          const monthAppointments = appointments.filter(a => isSameMonth(new Date(a.date), month));
+          const monthAppointments = appointments.filter(a => salonDateKey(new Date(a.date)).slice(0, 7) === format(month, 'yyyy-MM'));
           return (
             <button 
               key={month.toString()} 
-              onClick={() => {
-                setCurrentDate(month);
-                setViewMode('month');
-              }}
+              onClick={() => onSelectMonth(month)}
               className="bg-white p-4 rounded-lg shadow hover:bg-zinc-50 text-left border border-zinc-200"
             >
               <h3 className="font-bold text-zinc-900">{format(month, 'MMMM')}</h3>
@@ -119,7 +127,7 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
           const dayAppts = getDayAppointments(day);
           const isCurrentMonth = isSameMonth(day, currentDate);
           const isSelected = isSameDay(day, selectedDate);
-          const isTodayDate = isToday(day);
+          const isTodayDate = format(day, 'yyyy-MM-dd') === salonDateKey(new Date());
 
           return (
             <div 
@@ -148,9 +156,15 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
                 {dayAppts.slice(0, 3).map(appt => (
                   <div
                     key={appt.id}
-                    className={`text-[10px] truncate text-white rounded px-1 py-0.5 ${appt.status === 'PENDING' ? 'bg-amber-600' : 'bg-zinc-800'}`}
+                    // Pending stays amber so an unconfirmed request is never
+                    // disguised as a booked one by a stylist's colour.
+                    className={`text-[10px] truncate rounded px-1 py-0.5 ${
+                      appt.status === 'PENDING'
+                        ? 'bg-amber-600 text-white'
+                        : `${resolveCalendarColor(appt.stylist.calendarColor).fill} ${resolveCalendarColor(appt.stylist.calendarColor).text}`
+                    }`}
                   >
-                    {format(new Date(appt.date), 'HH:mm')} {appt.user.name}
+                    {formatSalonTime(new Date(appt.date))} {appt.user.name}
                   </div>
                 ))}
                 {dayAppts.length > 3 && (
@@ -187,7 +201,7 @@ const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
               dayAppts.map(appt => (
                   <div key={appt.id} className="flex p-4 hover:bg-zinc-50 group">
                       <div className="w-20 flex-shrink-0 text-zinc-700 text-sm pt-1 font-medium">
-                          {format(new Date(appt.date), 'HH:mm')}
+                          {formatSalonTime(new Date(appt.date))}
                       </div>
                       <div className="flex-1 bg-zinc-50 rounded-lg p-3 border border-zinc-200 group-hover:border-zinc-300 transition-colors">
                           <div className="flex justify-between items-start">
@@ -226,17 +240,38 @@ const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
   );
 };
 
-export function ScheduleCalendar({ appointments }: { appointments: AppointmentWithDetails[] }) {
+export function ScheduleCalendar({
+  dateStr,
+  view,
+  appointments,
+  pendingAppointments,
+  stylists,
+  busyBlocks,
+}: {
+  dateStr: string;
+  view: CalendarView;
+  appointments: AppointmentWithDetails[];
+  pendingAppointments: AppointmentWithDetails[];
+  stylists: RosterStylist[];
+  busyBlocks: BusyBlockRow[];
+}) {
   const router = useRouter();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isNavigating, startNavigation] = useTransition();
+  // date-fns uses local calendar fields. This noon date is only a display carrier
+  // for the requested London calendar day, never an appointment instant.
+  const currentDate = new Date(`${dateStr}T12:00:00`);
+  const selectedDate = currentDate;
+  const viewMode = view;
+  const navigate = (date: Date, nextView: CalendarView = viewMode) => {
+    const params = new URLSearchParams({ date: format(date, 'yyyy-MM-dd'), view: nextView });
+    startNavigation(() => router.push(`/admin?${params}`, { scroll: false }));
+  };
+  const setViewMode = (nextView: CalendarView) => navigate(currentDate, nextView);
 
   // The salon leaves this board open on a screen all day. Re-pull server data
   // every minute (and immediately when the tab regains visibility) so new
   // booking requests and Treatwell busy blocks show up without a manual reload.
-  // router.refresh() re-renders the server component only — view mode and the
-  // selected date are client state and survive the refresh.
+  // The URL retains the selected date and view across refreshes and history.
   useEffect(() => {
     const refreshIfVisible = () => {
       if (document.visibilityState === 'visible') router.refresh();
@@ -251,30 +286,87 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
 
   // Navigation Handlers
   const next = () => {
-    if (viewMode === 'day') setCurrentDate(addDays(currentDate, 1));
-    else if (viewMode === 'month') setCurrentDate(addMonths(currentDate, 1));
-    else setCurrentDate(addMonths(currentDate, 12)); // Year jump
+    if (viewMode === 'day') navigate(addDays(currentDate, 1));
+    else if (viewMode === 'month') navigate(addMonths(currentDate, 1));
+    else navigate(addMonths(currentDate, 12)); // Year jump
   };
 
   const prev = () => {
-    if (viewMode === 'day') setCurrentDate(addDays(currentDate, -1));
-    else if (viewMode === 'month') setCurrentDate(subMonths(currentDate, 1));
-    else setCurrentDate(subMonths(currentDate, 12));
+    if (viewMode === 'day') navigate(addDays(currentDate, -1));
+    else if (viewMode === 'month') navigate(subMonths(currentDate, 1));
+    else navigate(subMonths(currentDate, 12));
   };
 
   const goToToday = () => {
-    const now = new Date();
-    setCurrentDate(now);
-    setSelectedDate(now);
+    navigate(new Date(`${salonDateKey(new Date())}T12:00:00`));
   };
 
   // Filter appointments for the current view
   const getDayAppointments = (date: Date) => {
-    return appointments.filter(appt => isSameDay(new Date(appt.date), date));
+    return appointments.filter(appt => salonDateKey(new Date(appt.date)) === format(date, 'yyyy-MM-dd'));
   };
+
+  // Shapes the grid needs. Working hours are resolved for the day on show, and
+  // a stylist only gets a column if they work that day or already have work in
+  // the diary for it — an empty column for someone who is off is just noise.
+  const salonWeekday = new Date(currentDate).getDay();
+  const dayKey = dateStr;
+  const busyForDay: GridBusyBlock[] = busyBlocks.map((block) => ({
+    id: block.id,
+    stylistId: block.stylistId,
+    start: new Date(block.start).toISOString(),
+    end: new Date(block.end).toISOString(),
+  }));
+  const gridBusyBlocks = busyForDay;
+  const gridAppointments: GridAppointment[] = appointments
+    .filter((appt) => salonDateKey(new Date(appt.date)) === dayKey)
+    .map((appt) => ({
+      id: appt.id,
+      stylistId: appt.stylistId,
+      date: new Date(appt.date).toISOString(),
+      durationMin: appt.durationAtBooking ?? appt.service.duration,
+      status: appt.status,
+      customerName: appt.user.name,
+      serviceName: appt.service.name,
+      serviceColor: appt.service.calendarColor,
+      updatedAt: new Date(appt.updatedAt).toISOString(),
+    }));
+  const busyStylistIds = new Set([
+    ...gridAppointments.map((appt) => appt.stylistId),
+    ...gridBusyBlocks.map((block) => block.stylistId),
+  ]);
+  const gridStylists: GridStylist[] = stylists
+    .map((stylist) => {
+      const availability = stylist.availabilities.find((a) => a.dayOfWeek === salonWeekday && !a.isOff);
+      return {
+        id: stylist.id,
+        name: stylist.name,
+        calendarColor: stylist.calendarColor,
+        availability: availability ? { startTime: availability.startTime, endTime: availability.endTime } : null,
+      };
+    })
+    .filter((stylist) => stylist.availability !== null || busyStylistIds.has(stylist.id));
 
   return (
     <div className="space-y-4">
+      {pendingAppointments.length > 0 && (
+        <section aria-label="All pending booking requests" className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <h2 className="font-semibold text-amber-900">Awaiting confirmation · all dates</h2>
+          <div className="mt-3 max-h-80 overflow-y-auto divide-y divide-amber-200">
+            {pendingAppointments.map((appt) => (
+              <div key={appt.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div>
+                  <button type="button" onClick={() => navigate(new Date(`${salonDateKey(new Date(appt.date))}T12:00:00`), 'day')} className="text-left text-sm font-medium text-zinc-900 underline">
+                    {formatSalonDate(new Date(appt.date))} · {formatSalonTime(new Date(appt.date))} · {appt.user.name ?? 'Customer'}
+                  </button>
+                  <p className="text-sm text-zinc-600">{appt.service.name} with {appt.stylist.name}</p>
+                </div>
+                <PendingActions apptId={appt.id} onDone={() => router.refresh()} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-lg shadow border border-zinc-200">
         <div className="flex items-center gap-2">
@@ -292,13 +384,13 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
         </div>
 
         <div className="flex items-center gap-4">
-          <button onClick={prev} className="p-2 hover:bg-zinc-100 rounded-full">
+          <button onClick={prev} disabled={isNavigating} aria-label="Previous period" className="p-2 hover:bg-zinc-100 rounded-full disabled:opacity-50">
              ←
           </button>
           <h2 className="text-xl font-bold min-w-[200px] text-center">
-            {viewMode === 'year' ? format(currentDate, 'yyyy') : format(currentDate, 'MMMM yyyy')}
+            {viewMode === 'year' ? format(currentDate, 'yyyy') : format(currentDate, viewMode === 'day' ? 'EEEE, d MMMM yyyy' : 'MMMM yyyy')}
           </h2>
-          <button onClick={next} className="p-2 hover:bg-zinc-100 rounded-full">
+          <button onClick={next} disabled={isNavigating} aria-label="Next period" className="p-2 hover:bg-zinc-100 rounded-full disabled:opacity-50">
              →
           </button>
         </div>
@@ -307,14 +399,14 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
           Today
         </button>
       </div>
+      {isNavigating && <p role="status" className="text-sm text-zinc-600">Loading calendar…</p>}
 
       {/* Content */}
       <div>
         {viewMode === 'year' && (
           <YearView 
             currentDate={currentDate}
-            setCurrentDate={setCurrentDate}
-            setViewMode={setViewMode}
+            onSelectMonth={(month) => navigate(month, 'month')}
             appointments={appointments}
           />
         )}
@@ -322,16 +414,32 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
           <MonthView 
             currentDate={currentDate}
             selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
+            setSelectedDate={(date) => navigate(date)}
             getDayAppointments={getDayAppointments}
           />
         )}
         {viewMode === 'day' && (
-          <DayView
-            currentDate={currentDate}
-            dayAppts={getDayAppointments(currentDate)}
-            onRefresh={() => router.refresh()}
-          />
+          <>
+            {/* Dragging inside a multi-column time grid is unusable on a phone,
+                so the grid is sm:+ only and the list remains the mobile view. */}
+            <div className="hidden sm:block">
+              <ScheduleDayGrid
+                day={resolveSalonDateTime(dateStr, '12:00').utc}
+                stylists={gridStylists}
+                appointments={gridAppointments}
+                busyBlocks={gridBusyBlocks}
+                onMove={moveAppointmentByAdmin}
+                onMoved={() => router.refresh()}
+              />
+            </div>
+            <div className="sm:hidden">
+              <DayView
+                currentDate={currentDate}
+                dayAppts={getDayAppointments(currentDate)}
+                onRefresh={() => router.refresh()}
+              />
+            </div>
+          </>
         )}
       </div>
       
@@ -344,7 +452,7 @@ export function ScheduleCalendar({ appointments }: { appointments: AppointmentWi
                          {getDayAppointments(selectedDate).map(appt => (
                              <div key={appt.id} className="flex justify-between items-center border-b border-zinc-100 last:border-0 pb-2 last:pb-0">
                                  <div>
-                                     <p className="font-medium text-zinc-900">{format(new Date(appt.date), 'HH:mm')} - {appt.user.name}</p>
+                                     <p className="font-medium text-zinc-900">{formatSalonTime(new Date(appt.date))} - {appt.user.name}</p>
                                      <p className="text-sm text-zinc-500">{appt.service.name} with {appt.stylist.name}</p>
                                  </div>
                                  <div className="flex items-center gap-2">
