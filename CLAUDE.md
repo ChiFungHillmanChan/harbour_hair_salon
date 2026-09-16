@@ -45,7 +45,7 @@ npx vercel --prod     # Deploy to Vercel production
 - **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`. Session helpers in `src/app/lib/session.ts`. Route protection in `middleware.ts`.
 - **Email**: Resend SDK with React Email templates. Service in `src/app/services/email-service.ts`, templates in `src/components/emails/`.
 - **Validation**: Zod
-- **Deployment**: Vercel (Pro plan) with Neon Postgres. Cron: appointment reminders daily at 8am UTC — **that is the only cron**. See "Neon compute budget" below before adding another.
+- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC), notifications and calendar-sync (both every 30 min) and housekeeping (daily 03:15 UTC). See "Neon compute budget" below before adding another.
 
 ### Environment Variables
 
@@ -88,6 +88,17 @@ Rules that follow from this:
 - **`/api/health` runs `SELECT 1` and is `force-dynamic`.** Never point a
   frequent uptime monitor at it — that alone would pin the compute awake 24/7,
   independent of any cron.
+- **A public endpoint that something external polls is a cron you do not
+  control.** These rules used to police `vercel.json` only, and that is how the
+  August 2026 failure came back in September: Fresha and Treatwell both
+  subscribe to `/api/ical/[stylistId]`, which was `force-dynamic` + `no-store`,
+  so three stylist feeds were fetched twice each every five minutes — twelve
+  queries per five minutes, forever, pinning the compute exactly as the old
+  cron had. It is now served from the Data Cache (`stylist-ical-cache.ts`) and
+  invalidated by `invalidateStylistIcalFeed()` on every appointment mutation.
+  Before shipping any public route that touches the database, ask who polls it
+  and how often, and check the runtime logs for the real cadence — not just
+  `vercel.json`.
 - `infra/aws/treatwell-sync/` is a **dormant** EventBridge→Lambda fallback for
   the same endpoint. Do not deploy it; see its README.
 
