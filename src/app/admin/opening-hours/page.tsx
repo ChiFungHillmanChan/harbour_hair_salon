@@ -23,6 +23,8 @@ function toWeek(rows: { dayOfWeek: number; isOff: boolean; startTime: string; en
 export default async function OpeningHoursPage() {
   const [stylists, bookingEnabled] = await Promise.all([
     prisma.stylist.findMany({
+      // Retired stylists are not bookable, so they have no hours to edit.
+      where: { isActive: true },
       orderBy: { name: 'asc' },
       // Explicit select: the full Stylist row carries the secret
       // treatwellIcalUrl / icalToken, which must not reach a client component.

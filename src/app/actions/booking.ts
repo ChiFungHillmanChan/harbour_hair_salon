@@ -146,7 +146,7 @@ export async function fetchSlots(
 // candidate pool for resolving an "Anyone / first available" booking.
 async function eligibleStylistIds(salon: SalonDateTime, durationMinutes: number): Promise<string[]> {
   const stylists = await prisma.stylist.findMany({
-    where: { availabilities: { some: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
+    where: { isActive: true, availabilities: { some: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
     orderBy: { name: 'asc' },
     select: {
       id: true,
