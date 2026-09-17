@@ -32,9 +32,19 @@ function mailbox(value: string | undefined, allowName = false): string | null {
   return address && z.email().safeParse(address).success ? address.toLowerCase() : null;
 }
 
+// Every key here invalidates the stored diagnostics report, so each one must
+// describe the CONFIGURATION being attested to — not which build is serving it.
+// `VERCEL_DEPLOYMENT_ID` used to be in this list and is deliberately not: Vercel
+// gives it a new value on every deployment and exposes it at runtime, so it made
+// a passing report expire on every deploy. Because the comparison below runs on
+// the live booking path, that silently closed online booking after each release
+// — with no alert, no UI surfacing the blocker, and `SiteSettings.bookingEnabled`
+// still reading `true` in the admin panel. It also contradicted the contract
+// stated on `checkOperationsRuntimeReadiness` below: ongoing operation is not
+// supposed to expire on a timer.
 function configurationFingerprint(env: Env): string {
   const keys = ['EMAIL_FROM', 'EMAIL_REPLY_TO', 'SALON_NOTIFY_EMAIL', 'RESEND_API_KEY', 'CRON_SECRET',
-    'NOTIFICATIONS_ENABLED', 'POSTGRES_URL', 'DATABASE_URL', 'VERCEL_DEPLOYMENT_ID'];
+    'NOTIFICATIONS_ENABLED', 'POSTGRES_URL', 'DATABASE_URL'];
   const redis = resolveRedisCredentials(env);
   return createHash('sha256').update(JSON.stringify([keys.map((key) => env[key]?.trim() ?? ''), redis])).digest('hex');
 }

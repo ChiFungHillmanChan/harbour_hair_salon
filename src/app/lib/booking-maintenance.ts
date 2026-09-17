@@ -1,4 +1,5 @@
 import 'server-only';
+import { unstable_cache } from 'next/cache';
 import type { Prisma } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
@@ -50,8 +51,41 @@ export async function assertOnlineBookingReady(db: Prisma.TransactionClient) {
   return settings;
 }
 
+/**
+ * Cheap, cached answer to "is booking open?", for rendering decisions only.
+ *
+ * `assertOnlineBookingReady` is deliberately uncached — it reads SiteSettings
+ * directly, then the calendar coverage (a `stylist.findMany` with two nested
+ * relations) and the operations report. That is the right cost to pay when a
+ * booking is actually being written, but it is the wrong cost to pay to decide
+ * what a PAGE should look like.
+ *
+ * /book is `force-dynamic` (it has to be — whether booking is open is per-request
+ * state), it is linked from every page's footer and the sticky mobile bar, and
+ * `robots.txt` stops only well-behaved crawlers. Uncached, every one of those
+ * hits was three or four queries against Neon — and once booking opens, an
+ * ANONYMOUS visitor pays all of them before being redirected to sign in, because
+ * the gate has to run first to know whether to show the sign-in redirect or the
+ * marketplace/phone page. Neon bills compute time and suspends after five idle
+ * minutes, so a steady trickle of /book hits is exactly the "public endpoint
+ * something external polls" cost vector CLAUDE.md warns about.
+ *
+ * Sixty seconds, tagged `site-settings` so Admin -> Settings invalidates it the
+ * instant the salon flips the switch. The staleness is bounded and safe: the
+ * authoritative check still runs uncached inside the booking transaction, so a
+ * booking can never be WRITTEN against a stale reading — at worst a customer
+ * sees the form for up to a minute after booking closed and is refused on submit.
+ */
+const readBookingOpen = unstable_cache(
+  async (): Promise<boolean> => {
+    try { await assertOnlineBookingReady(prisma); return true; }
+    catch { return false; }
+  },
+  ['booking-open'],
+  { revalidate: 60, tags: ['site-settings'] },
+);
+
 /** Configuration failures close the public booking flow; cancellation remains available. */
 export async function isBookingEnabled(): Promise<boolean> {
-  try { await assertOnlineBookingReady(prisma); return true; }
-  catch { return false; }
+  return readBookingOpen();
 }

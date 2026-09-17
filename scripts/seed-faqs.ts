@@ -1,7 +1,21 @@
 #!/usr/bin/env node
-// Seeds the Faq table with the current hardcoded FAQs on home + contact pages.
+// Seeds the Faq table with the FAQs shown on the home, contact and services pages.
+//
+// Run with tsx (not node) so this can import the opening-hours module directly:
+//   npx tsx scripts/seed-faqs.ts
+//
+// This file used to be `.mjs` and carried its OWN copy of the opening hours,
+// a stale set that closed at 19:30 on weekdays and 18:00 at weekends, long
+// after the salon settled on one set of published hours. It also claimed
+// haircuts "start from £8" when the cheapest haircut on the menu is £19 — and
+// that answer ships inside FAQPage JSON-LD, so Google could publish the wrong
+// price. Neither was reachable by the drift guard in
+// `opening-hours-public.test.ts`, because that test only read `src/`. Both are
+// fixed: the hours now come from `openingHoursSentence()` so they can never
+// disagree again, and this file is in the guard's page list.
 
 import { PrismaClient } from '@prisma/client';
+import { openingHoursSentence } from '../src/app/lib/opening-hours-public';
 
 const prisma = new PrismaClient();
 
@@ -13,8 +27,7 @@ const HOME = [
   },
   {
     question: 'What are your opening hours?',
-    answer:
-      'We are open Monday to Friday from 10:00 to 19:30, and on Saturday and Sunday from 10:30 to 18:00.',
+    answer: openingHoursSentence(),
   },
   {
     question: 'Do I need to book in advance or can I walk in?',
@@ -70,7 +83,7 @@ const SERVICES_MASTER = [
   {
     question: 'How much does a haircut cost at Harbour Hair Salon?',
     answer:
-      'Haircuts at Harbour Hair Salon start from £8. Pricing depends on hair length and the service chosen — full prices are listed above and at the salon.',
+      'Haircuts at Harbour Hair Salon start from £19. Pricing depends on hair length and the service chosen — full prices are listed above and at the salon.',
   },
   {
     question: 'Do you offer hair colouring and balayage?',
@@ -99,7 +112,7 @@ const SERVICES_MASTER = [
   },
 ];
 
-async function seedKey(key, items) {
+async function seedKey(key: string, items: { question: string; answer: string }[]) {
   const existing = await prisma.faq.count({ where: { key } });
   if (existing > 0) {
     console.log(`  skip ${key} (${existing} rows already exist)`);

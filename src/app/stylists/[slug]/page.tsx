@@ -170,7 +170,10 @@ export default async function StylistDetailPage({
               )}
 
               <div className="grid grid-cols-2 gap-6 mb-10">
-                {profile.yearsExperience && (
+                {/* `!!` matters: `yearsExperience` is 0 for stylists whose
+                    experience has not been filled in, and `0 && …` evaluates to
+                    0, which React renders as a literal "0" on the page. */}
+                {!!profile.yearsExperience && (
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Experience</p>
                     <p className="text-2xl font-serif">{profile.yearsExperience}+ years</p>
