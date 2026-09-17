@@ -71,13 +71,16 @@ test('no page reintroduces its own copy of the opening hours', () => {
     'src/app/page.tsx',
     'src/app/contact/page.tsx',
     'src/components/layout/Layout.tsx',
+    // Seed scripts count too: this one shipped a fourth, stale copy of the
+    // hours for months precisely because the guard below only read `src/`.
+    'scripts/seed-faqs.ts',
   ];
   for (const page of pages) {
     const source = readFileSync(join(process.cwd(), page), 'utf8');
     assert.doesNotMatch(
       source,
       /\b([01]\d|2[0-3]):[0-5]\d\s*(–|-|to)\s*([01]\d|2[0-3]):[0-5]\d/,
-      `${page} must render hours from opening-hours-public, not inline literals`,
+      `${page} must take hours from opening-hours-public, not inline literals`,
     );
     assert.doesNotMatch(
       source,
