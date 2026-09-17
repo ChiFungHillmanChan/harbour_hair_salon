@@ -99,3 +99,25 @@ test('unchanged passing runtime evidence remains usable after 24 hours, but chan
   assert.equal((await checkOperationsRuntimeReadiness(f.db as never, later, { ...env, EMAIL_FROM: 'bookings@unverified.example' })).ready, false);
   assert.equal((await checkOperationsRuntimeReadiness(f.db as never, later, { ...env, CRON_SECRET: '' })).ready, false);
 });
+
+test('a redeploy does not expire a passing report, but the database it attests to still does', async () => {
+  // `VERCEL_DEPLOYMENT_ID` changes on every Vercel deployment and is readable at
+  // runtime, so including it in the configuration fingerprint made a passing
+  // Operations report expire on every release. Because that comparison runs on
+  // the live booking path via `assertOnlineBookingReady`, it silently closed
+  // online booking after each deploy until an admin re-ran diagnostics by hand.
+  const f = fixture();
+  await runOperationsDiagnostics({ db: f.db as never, env: { ...env, VERCEL_DEPLOYMENT_ID: 'dpl_before' }, now, fetchImpl: f.fetchImpl });
+  for (const deployment of ['dpl_after', '', undefined]) {
+    assert.equal(
+      (await checkOperationsRuntimeReadiness(f.db as never, now, { ...env, VERCEL_DEPLOYMENT_ID: deployment })).ready,
+      true,
+      `deployment id ${String(deployment)} must not invalidate the report`,
+    );
+  }
+  // The fingerprint must still react to configuration that genuinely changes
+  // what was attested to — otherwise this test would pass on a no-op check.
+  for (const override of [{ POSTGRES_URL: 'postgres://elsewhere/db' }, { DATABASE_URL: 'postgres://elsewhere/db' }]) {
+    assert.equal((await checkOperationsRuntimeReadiness(f.db as never, now, { ...env, ...override })).ready, false);
+  }
+});
