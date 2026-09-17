@@ -25,8 +25,18 @@ export const metadata = {
 
 // Whether booking is open now lives in the database and the signed-in check
 // moved here from middleware, so this route reads per-request state and cannot
-// be ISR-cached. /book is robots-disallowed and low traffic, so the extra reads
-// are negligible; SiteSettings itself is still cached (unstable_cache, 1h).
+// be ISR-cached.
+//
+// The cost of that is NOT negligible, and an earlier version of this comment
+// claimed it was on the grounds that "SiteSettings is still cached" — which is
+// wrong, because `isBookingEnabled()` on the very next line routes to
+// `assertOnlineBookingReady`, which bypasses that cache by design. Every hit
+// here used to be three or four uncached Neon queries, on a route linked from
+// every page's footer and the sticky mobile bar. `isBookingEnabled()` is now
+// cached for 60s and invalidated by the admin toggle; see booking-maintenance.ts
+// for why that is safe. Keep it that way — and note the gate MUST stay above the
+// session check below, because a signed-out visitor is supposed to see the
+// marketplace/phone page when booking is closed, not a sign-in redirect.
 export const dynamic = 'force-dynamic';
 
 async function getServices() {
