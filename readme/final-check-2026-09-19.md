@@ -2,6 +2,14 @@
 
 > 呢份係 commit／部署前嘅驗收快照。你之後已授權 commit、push 同正式部署；最新 CI、部署網址同部署後實查結果會喺交付訊息記錄。下面「未部署」描述係呢份快照當刻嘅狀態，唔代表其後部署失敗。
 
+### 部署後補充
+
+首輪程式修正已以 `cf38823` 推送；正式 Vercel Git 部署確認係同一 SHA、Node 24、London `lhr1`。本機重新跑 603 項測試、Lint、TypeScript 通過，GitHub 首輪 backend／migration／build／HTTP CI 亦通過。正式首頁瀏覽器冇 hydration error，後台新提示已出現；390px 後台冇橫向溢出，14 項細節可正常展開。
+
+正式 HTTP 驗收發現染髮頁獨立 FAQ 仍有另一句「免費 patch test」，來自分類 `faqsJson`／`category:colouring` FAQ，並且出現喺 FAQPage JSON-LD。新增 `20260919183000_colouring_faq_copy` 精準 migration，保留先前已部署 migration 不變。新修正已用真實 PostgreSQL 18 臨時表同 SQLite 驗證：只改完全匹配答案、自訂答案／其他分類不變、再次執行改動零行；三種 provider 都有對應 migration，SQL Server 仍只作語法檢查。最終正式頁及第二輪 CI 結果以交付訊息為準。
+
+同輪亦修正登入／註冊頁主標題由 h2 改為 h1，保留原有外觀。呢兩頁表單透過 client Suspense 顯示，標題同表單應以實際瀏覽器載入後驗證，唔應只依賴原始 HTML 嘅 h1 計數。
+
 ## 結論
 
 **程式修正已喺本機完成同驗證；可以準備預覽／有限公開測試，但未可以當成已完成雙向同步、可正式接單嘅系統。**
