@@ -14,6 +14,7 @@ import { salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
 import { describeClash } from '@/app/lib/describe-clash';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
 import type { GridAppointment, GridBusyBlock, GridStylist, MoveResult } from './ScheduleDayGrid';
+import { calendarBusyForDay, calendarBusyLabel } from '@/app/lib/calendar-busy-display';
 
 /**
  * The week board.
@@ -135,12 +136,7 @@ export function ScheduleWeekGrid({
   }, [weekAppointments, dayKeys]);
 
   const busyByDay = useMemo(() => {
-    const map = new Map<string, GridBusyBlock[]>();
-    for (const key of dayKeys) map.set(key, []);
-    for (const block of busyBlocks) {
-      map.get(salonDateKey(new Date(block.start)))?.push(block);
-    }
-    return map;
+    return new Map(dayKeys.map((key) => [key, calendarBusyForDay(busyBlocks, key)]));
   }, [busyBlocks, dayKeys]);
 
   // One shared vertical extent for all seven columns — staggered day grids read
@@ -164,12 +160,12 @@ export function ScheduleWeekGrid({
       start = Math.min(start, s);
       end = Math.max(end, s + appt.durationMin);
     }
-    for (const block of busyBlocks) {
-      start = Math.min(start, minutesOf(block.start));
-      end = Math.max(end, minutesOf(block.end));
+    for (const block of [...busyByDay.values()].flat()) {
+      start = Math.min(start, block.startMin);
+      end = Math.max(end, block.endMin);
     }
     return { startMin: Math.floor(start / 60) * 60, endMin: Math.ceil(end / 60) * 60 };
-  }, [stylists, weekAppointments, busyBlocks]);
+  }, [stylists, weekAppointments, busyByDay]);
 
   const hours = useMemo(() => {
     const list: number[] = [];
@@ -197,16 +193,18 @@ export function ScheduleWeekGrid({
    * working at 10:00 are not a clash, so they must not be drawn on top of each
    * other — the week column shows both, narrowed.
    */
-  const lanesFor = (dayAppointments: GridAppointment[]) => {
-    const sorted = [...dayAppointments].sort((a, b) => minutesOf(a.date) - minutesOf(b.date));
+  const lanesFor = (dayAppointments: GridAppointment[], dayBusy: ReturnType<typeof calendarBusyForDay>) => {
+    const sorted = [
+      ...dayAppointments.map((appt) => ({ id: appt.id, ...position(appt) })),
+      ...dayBusy.map((block) => ({ id: `busy-${block.id}`, startMin: block.startMin, durationMin: block.endMin - block.startMin })),
+    ].sort((a, b) => a.startMin - b.startMin);
     const laneEnds: number[] = [];
     const lane = new Map<string, number>();
-    for (const appt of sorted) {
-      const place = position(appt);
+    for (const place of sorted) {
       const index = laneEnds.findIndex((end) => end <= place.startMin);
       const slot = index === -1 ? laneEnds.length : index;
       laneEnds[slot] = place.startMin + place.durationMin;
-      lane.set(appt.id, slot);
+      lane.set(place.id, slot);
     }
     return { lane, laneCount: Math.max(1, laneEnds.length) };
   };
@@ -390,7 +388,8 @@ export function ScheduleWeekGrid({
         {dayKeys.map((key) => {
           const weekday = new Date(`${key}T12:00:00Z`).getUTCDay();
           const dayAppointments = byDay.get(key) ?? [];
-          const { lane, laneCount } = lanesFor(dayAppointments);
+          const dayBusy = busyByDay.get(key) ?? [];
+          const { lane, laneCount } = lanesFor(dayAppointments, dayBusy);
           // The salon is closed for the slice of the grid no stylist covers.
           const open = stylists.reduce<{ from: number; to: number } | null>((span, stylist) => {
             const availability = stylist.availabilityByWeekday[weekday];
@@ -434,19 +433,28 @@ export function ScheduleWeekGrid({
               )}
 
               {/* Synced busy time — visible, never draggable */}
-              {(busyByDay.get(key) ?? []).map((block) => {
-                const startMin = minutesOf(block.start);
-                const endMin = minutesOf(block.end);
+              {dayBusy.map((block) => {
+                const { startMin, endMin } = block;
+                const label = calendarBusyLabel(block, stylistById.get(block.stylistId)?.name ?? 'Stylist', startMin, endMin);
                 return (
                   <div
                     key={block.id}
-                    title="Synced busy time (external calendar)"
-                    className="absolute left-0.5 right-0.5 rounded border border-zinc-300 bg-[repeating-linear-gradient(45deg,#e4e4e7_0,#e4e4e7_6px,#fafafa_6px,#fafafa_12px)]"
+                    role="note"
+                    tabIndex={0}
+                    aria-label={label.detail}
+                    title={label.detail}
+                    onClick={(event) => event.stopPropagation()}
+                    className="absolute overflow-hidden rounded border border-zinc-300 border-l-2 border-l-zinc-500 bg-zinc-100 px-0.5 text-[9px] leading-3 text-zinc-700 focus-visible:outline-2 focus-visible:outline-[#174F7F]"
                     style={{
                       top: minutesToOffset(startMin, bounds.startMin, PX_PER_MINUTE),
-                      height: Math.max(6, (endMin - startMin) * PX_PER_MINUTE),
+                      height: Math.max(14, (endMin - startMin) * PX_PER_MINUTE),
+                      left: `${(lane.get(`busy-${block.id}`) ?? 0) * 100 / laneCount}%`,
+                      width: `${100 / laneCount}%`,
                     }}
-                  />
+                  >
+                    <span className="mr-1 font-semibold">{label.provider}</span>
+                    <span className="whitespace-nowrap tabular-nums">{label.range}</span>
+                  </div>
                 );
               })}
 

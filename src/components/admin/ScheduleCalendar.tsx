@@ -12,6 +12,7 @@ import { formatSalonDate, formatSalonTime, resolveSalonDateTime, salonDateKey } 
 import type { CalendarView } from '@/app/services/admin-calendar-range';
 import { moveAppointmentByAdmin } from '@/app/actions/admin-schedule';
 import { weekDayKeys } from '@/app/services/admin-calendar-range';
+import { calendarBusyForDay, calendarBusyLabel } from '@/app/lib/calendar-busy-display';
 
 type AppointmentWithDetails = CalendarAppointment;
 
@@ -22,7 +23,7 @@ type RosterStylist = {
   availabilities: { dayOfWeek: number; startTime: string; endTime: string; isOff: boolean }[];
 };
 
-type BusyBlockRow = { id: string; stylistId: string; start: string; end: string };
+type BusyBlockRow = GridBusyBlock;
 
 const statusChipClass = (status: string) =>
   status === 'CONFIRMED'
@@ -182,18 +183,34 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
 interface DayViewProps {
   currentDate: Date;
   dayAppts: AppointmentWithDetails[];
+  busyBlocks: ReturnType<typeof calendarBusyForDay>;
+  stylists: RosterStylist[];
   onRefresh: () => void;
 }
 
-const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
+function BusyAgenda({ blocks, stylists }: { blocks: ReturnType<typeof calendarBusyForDay>; stylists: RosterStylist[] }) {
+  return <ul className="divide-y divide-zinc-100">
+    {blocks.map((block) => {
+      const stylist = stylists.find((entry) => entry.id === block.stylistId)?.name ?? 'Stylist';
+      const label = calendarBusyLabel(block, stylist, block.startMin, block.endMin);
+      return <li key={block.id} role="note" aria-label={label.detail} className="border-l-4 border-l-zinc-400 bg-zinc-50 px-4 py-3 text-sm">
+        <div className="flex flex-wrap justify-between gap-2 font-semibold text-zinc-800"><span>{label.provider}</span><span className="tabular-nums">{label.range}</span></div>
+        <p className="mt-1 text-zinc-600">{stylist} · Imported busy time</p>
+        <p className="mt-1 text-xs text-zinc-500">Last imported {label.synced} · London time</p>
+      </li>;
+    })}
+  </ul>;
+}
+
+const DayView = ({ currentDate, dayAppts, busyBlocks, stylists, onRefresh }: DayViewProps) => {
   return (
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden flex flex-col">
       <div className="p-4 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center">
           <h3 className="font-bold text-lg">{format(currentDate, 'EEEE, MMMM d')}</h3>
-          <span className="text-sm text-zinc-500">{dayAppts.length} appointments</span>
+          <span className="text-sm text-zinc-500">{dayAppts.length} appointments{busyBlocks.length > 0 && ` · ${busyBlocks.length} imported`}</span>
       </div>
       <div className="divide-y divide-zinc-100 overflow-y-auto max-h-[600px]">
-          {dayAppts.length === 0 ? (
+          {dayAppts.length === 0 && busyBlocks.length === 0 ? (
               <div className="p-12 text-center text-zinc-500">No appointments for this day.</div>
           ) : (
               dayAppts.map(appt => (
@@ -233,6 +250,7 @@ const DayView = ({ currentDate, dayAppts, onRefresh }: DayViewProps) => {
                   </div>
               ))
           )}
+          <BusyAgenda blocks={busyBlocks} stylists={stylists} />
       </div>
     </div>
   );
@@ -327,6 +345,7 @@ export function ScheduleCalendar({
   const salonWeekday = new Date(currentDate).getDay();
   const dayKey = dateStr;
   const busyForDay: GridBusyBlock[] = busyBlocks.map((block) => ({
+    ...block,
     id: block.id,
     stylistId: block.stylistId,
     start: new Date(block.start).toISOString(),
@@ -526,6 +545,7 @@ export function ScheduleCalendar({
             <div className="md:hidden space-y-3">
               {weekKeys.map((key) => {
                 const dayAppts = getDayAppointments(new Date(`${key}T12:00:00`));
+                const dayBusy = calendarBusyForDay(gridBusyBlocks, key);
                 return (
                   <div key={key} className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden">
                     <button
@@ -534,9 +554,9 @@ export function ScheduleCalendar({
                       className={`flex w-full items-center justify-between px-4 py-2 text-left ${key === salonDateKey(new Date()) ? 'bg-zinc-900 text-white' : 'bg-zinc-50 text-zinc-900'}`}
                     >
                       <span className="font-semibold">{format(new Date(`${key}T12:00:00`), 'EEEE d MMM')}</span>
-                      <span className="text-xs opacity-80">{dayAppts.length} booked</span>
+                      <span className="text-xs opacity-80">{dayAppts.length} booked{dayBusy.length > 0 && ` · ${dayBusy.length} imported`}</span>
                     </button>
-                    {dayAppts.length === 0 ? (
+                    {dayAppts.length === 0 && dayBusy.length === 0 ? (
                       <p className="px-4 py-3 text-sm text-zinc-500">Nothing booked.</p>
                     ) : (
                       <ul className="divide-y divide-zinc-100">
@@ -549,6 +569,7 @@ export function ScheduleCalendar({
                         ))}
                       </ul>
                     )}
+                    <BusyAgenda blocks={dayBusy} stylists={stylists} />
                   </div>
                 );
               })}
@@ -575,6 +596,8 @@ export function ScheduleCalendar({
               <DayView
                 currentDate={currentDate}
                 dayAppts={getDayAppointments(currentDate)}
+                busyBlocks={calendarBusyForDay(gridBusyBlocks, dateStr)}
+                stylists={stylists}
                 onRefresh={() => router.refresh()}
               />
             </div>

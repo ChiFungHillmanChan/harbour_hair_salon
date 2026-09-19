@@ -189,6 +189,8 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `scripts/verify-production-readiness.ts` — PostgreSQL concurrency/rollback/calendar integration checks, restricted to a disposable localhost database named `salon_test`.
 - `scripts/verify-booking-lifecycle.ts` — disposable PostgreSQL create/confirm/reschedule/cancel, ownership and 24-hour guards, competing bookings, notification snapshots, private ICS output, Fresha import reconciliation and failure preservation; provider transport and framework boundaries are synthetic.
 - `src/components/admin/CalendarSetupNotice.tsx` — compact schedule setup status with grouped, expandable blockers; distinguishes incomplete calendar evidence from detected appointment conflicts.
+- `src/app/lib/calendar-busy-display.ts` — London-day clipping and provider/time/import-status labels for external busy periods; day/week grids retain overnight and all-day blocks, and week lanes include overlapping imported periods.
+- `src/components/admin/ScheduleCalendar.tsx` — `BusyAgenda` includes provider busy periods in the mobile day/week lists, with stylist, London times and the last import timestamp.
 - `readme/salon-visit-handover-cantonese.md` — owner access and business-data collection checklist.
 - `readme/production-readiness-rollout-cantonese.md` — verified implementation, remaining external requirements and deployment acceptance sequence.
 

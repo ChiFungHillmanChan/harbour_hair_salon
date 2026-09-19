@@ -79,7 +79,7 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     }),
     view !== 'day' && view !== 'week' ? Promise.resolve([]) : prisma.externalBusyBlock.findMany({
       where: { start: { lt: range.lt }, end: { gt: range.gte } },
-      select: { id: true, stylistId: true, start: true, end: true },
+      select: { id: true, stylistId: true, source: true, start: true, end: true, lastSyncAt: true },
     }),
     prisma.appointment.findMany({
       where: { status: 'PENDING', ...(cursor ? { OR: [{ date: { gt: cursor.date } }, { date: cursor.date, id: { gt: cursor.id } }] } : {}) },
@@ -100,7 +100,7 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     services: services.map((row) => ({ ...row, price: Number(row.price) })),
     periodCount: view === 'year' ? monthCounts.reduce((sum, count) => sum + count, 0) : appointments.length,
     appointments: appointments.map((row) => serializeCalendarAppointment(row, view === 'day')),
-    busyBlocks: busyBlocks.map((row) => ({ ...row, start: row.start.toISOString(), end: row.end.toISOString() })),
+    busyBlocks: busyBlocks.map((row) => ({ ...row, start: row.start.toISOString(), end: row.end.toISOString(), lastSyncAt: row.lastSyncAt.toISOString() })),
     pendingAppointments: page.map((row) => ({ ...row, date: row.date.toISOString() })),
     pendingNext: pendingRows.length > 25 ? encodeDateCursor(page[page.length - 1]) : null,
     pendingHasPrevious: Boolean(cursor),

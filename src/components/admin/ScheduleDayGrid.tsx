@@ -14,6 +14,7 @@ import { salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
 import { overlaps } from '@/app/services/scheduling';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
 import { describeClash } from '@/app/lib/describe-clash';
+import { calendarBusyForDay, calendarBusyLabel, type CalendarBusyBlock } from '@/app/lib/calendar-busy-display';
 
 /** 15 minutes = 18px. Tall enough to grab an edge, short enough to fit a day. */
 const PX_PER_MINUTE = 1.2;
@@ -40,7 +41,7 @@ export type GridAppointment = {
   updatedAt: string;
 };
 
-export type GridBusyBlock = { id: string; stylistId: string; start: string; end: string };
+export type GridBusyBlock = CalendarBusyBlock;
 
 export type MoveResult =
   | { success: true }
@@ -121,7 +122,7 @@ export function ScheduleDayGrid({
     [appointments, dayKey],
   );
   const dayBusy = useMemo(
-    () => busyBlocks.filter((b) => salonDateKey(new Date(b.start)) === dayKey),
+    () => calendarBusyForDay(busyBlocks, dayKey),
     [busyBlocks, dayKey],
   );
 
@@ -145,8 +146,8 @@ export function ScheduleDayGrid({
       end = Math.max(end, s + appt.durationMin);
     }
     for (const block of dayBusy) {
-      start = Math.min(start, minutesOf(block.start));
-      end = Math.max(end, minutesOf(block.end));
+      start = Math.min(start, block.startMin);
+      end = Math.max(end, block.endMin);
     }
     // Round out to whole hours so the time gutter reads cleanly.
     return { startMin: Math.floor(start / 60) * 60, endMin: Math.ceil(end / 60) * 60 };
@@ -437,18 +438,25 @@ export function ScheduleDayGrid({
               {dayBusy
                 .filter((block) => block.stylistId === stylist.id)
                 .map((block) => {
-                  const startMin = minutesOf(block.start);
-                  const endMin = minutesOf(block.end);
+                  const { startMin, endMin } = block;
+                  const label = calendarBusyLabel(block, stylist.name, startMin, endMin);
                   return (
                     <div
                       key={block.id}
-                      title="Synced busy time (external calendar)"
-                      className="absolute left-1 right-1 rounded border border-zinc-300 bg-[repeating-linear-gradient(45deg,#e4e4e7_0,#e4e4e7_6px,#fafafa_6px,#fafafa_12px)]"
+                      role="note"
+                      tabIndex={0}
+                      aria-label={label.detail}
+                      title={label.detail}
+                      onClick={(event) => event.stopPropagation()}
+                      className="absolute left-1 right-1 overflow-hidden rounded border border-zinc-300 border-l-4 border-l-zinc-500 bg-zinc-100 px-1 text-[10px] leading-4 text-zinc-700 focus-visible:outline-2 focus-visible:outline-[#174F7F]"
                       style={{
                         top: minutesToOffset(startMin, bounds.startMin, PX_PER_MINUTE),
-                        height: Math.max(8, (endMin - startMin) * PX_PER_MINUTE),
+                        height: Math.max(18, (endMin - startMin) * PX_PER_MINUTE),
                       }}
-                    />
+                    >
+                      <span className="mr-1 font-semibold">{label.provider}</span>
+                      <span className="whitespace-nowrap tabular-nums">{label.range}</span>
+                    </div>
                   );
                 })}
 
