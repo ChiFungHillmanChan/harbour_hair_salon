@@ -5,6 +5,7 @@ import prisma from '@/app/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath, updateTag } from 'next/cache';
+import { after } from 'next/server';
 import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import { hashPassword } from '@/app/lib/password';
 import { z } from 'zod';
@@ -473,12 +474,12 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       return { appointment: updated, changed: true };
     });
 
-    if (changed) await dispatchAppointmentNotifications(appointment.id);
+    // Finish the action's cache invalidation before external email delivery.
+    invalidateStylistIcalFeed();
+    if (changed) after(() => dispatchAppointmentNotifications(appointment.id));
   } catch (error) {
     return { success: false, error: error instanceof BookingError ? error.message : 'Could not update the appointment. Please try again.' };
   }
-  // Confirming or declining changes whether the slot blocks the chair.
-  invalidateStylistIcalFeed();
   revalidatePath('/admin');
   revalidatePath('/appointments');
   revalidatePath('/book');

@@ -3,6 +3,59 @@ import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
 import { BookingError } from '@/app/services/booking-errors';
 
+test('disabled notifications close both readiness paths without reading the database or cache', async () => {
+  const previous = process.env.NOTIFICATIONS_ENABLED;
+  let databaseReads = 0;
+  let cacheReads = 0;
+  const db = { siteSettings: { findUnique: async () => {
+    databaseReads++;
+    return { bookingEnabled: true, phone: '01234' };
+  } } };
+  const maintenance = loadServerModule<typeof import('./booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
+    '@/app/lib/prisma': db,
+    '@/app/services/integration-readiness': { checkCalendarBookingReadiness: async () => { assert.fail('calendar readiness must not query while disabled'); } },
+    '@/app/services/operations-readiness': { checkOperationsRuntimeReadiness: async () => { assert.fail('operations readiness must not query while disabled'); } },
+    'next/cache': { unstable_cache: (callback: () => Promise<boolean>) => async () => { cacheReads++; return callback(); } },
+  });
+  try {
+    for (const flag of [undefined, 'false', 'TRUE']) {
+      if (flag === undefined) delete process.env.NOTIFICATIONS_ENABLED;
+      else process.env.NOTIFICATIONS_ENABLED = flag;
+      await assert.rejects(maintenance.assertOnlineBookingReady(db as never), (error: unknown) =>
+        error instanceof BookingError && error.message === maintenance.BOOKING_MAINTENANCE_MESSAGE);
+      assert.equal(await maintenance.isBookingEnabled(), false);
+      assert.equal(databaseReads, 0, 'the runtime switch must precede every readiness query');
+      assert.equal(cacheReads, 0, 'disabled page checks must not enter the database-backed cache');
+    }
+  } finally {
+    if (previous === undefined) delete process.env.NOTIFICATIONS_ENABLED;
+    else process.env.NOTIFICATIONS_ENABLED = previous;
+  }
+});
+
+test('disabling notifications overrides a previously cached open booking page immediately', async () => {
+  const previous = process.env.NOTIFICATIONS_ENABLED;
+  let cacheReads = 0;
+  const maintenance = loadServerModule<typeof import('./booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
+    '@/app/lib/prisma': {},
+    '@/app/services/integration-readiness': {},
+    '@/app/services/operations-readiness': {},
+    // Model a warm shared cache left by an enabled deployment. Its callback
+    // would not run on a hit, so the runtime switch has to be outside the cache.
+    'next/cache': { unstable_cache: () => async () => { cacheReads++; return true; } },
+  });
+  try {
+    process.env.NOTIFICATIONS_ENABLED = 'true';
+    assert.equal(await maintenance.isBookingEnabled(), true);
+    process.env.NOTIFICATIONS_ENABLED = 'false';
+    assert.equal(await maintenance.isBookingEnabled(), false);
+    assert.equal(cacheReads, 1, 'the disabled runtime must not reuse the old true result');
+  } finally {
+    if (previous === undefined) delete process.env.NOTIFICATIONS_ENABLED;
+    else process.env.NOTIFICATIONS_ENABLED = previous;
+  }
+});
+
 test('public booking checks current operational readiness and active calendar scheduling', async () => {
   const previous = { notifications: process.env.NOTIFICATIONS_ENABLED, calendar: process.env.CALENDAR_SYNC_ENABLED };
   try {

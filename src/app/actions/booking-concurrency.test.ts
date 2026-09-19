@@ -1,6 +1,7 @@
 import { test, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { assertFeedInvalidatesBeforeDelivery, type NotificationTimingHooks } from '../../test/stalled-notification';
 import { BookingError } from '../services/booking-errors';
 
 before(() => mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') }));
@@ -33,7 +34,7 @@ function fixture(options: {
   failEnqueue?: boolean;
   onlineReady?: boolean;
   calendarReady?: boolean;
-} = {}) {
+} & NotificationTimingHooks = {}) {
   const originalDate = options.currentDate ?? new Date('2099-09-14T12:00:00Z');
   const appointment = {
     id: 'appointment-1', userId: 'user-1', stylistId: 'stylist-1', serviceId: 'service-1',
@@ -131,6 +132,7 @@ function fixture(options: {
     dispatchAppointmentNotifications: async (appointmentId: string) => {
       assert.equal(transactionActive, false, 'delivery must start after commit');
       dispatches++;
+      await options.onDispatch?.();
       for (const event of events.filter((event) => event.appointmentId === appointmentId && !event.delivered)) {
         const payload = JSON.parse(event.payloadJson);
         messages.push({ kind: event.kind.toLowerCase(), appointment: payload.appointment });
@@ -166,12 +168,30 @@ function fixture(options: {
         return { ready: options.calendarReady !== false, blockers: [] };
       },
     },
-    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
+    '@/app/services/stylist-ical-cache': {
+      invalidateStylistIcalFeed: () => {
+        assert.equal(transactionActive, false, 'feed invalidation must follow commit');
+        options.onFeedInvalidated?.();
+      },
+      invalidateStylistIcalToken: () => undefined,
+    },
     'next/cache': { revalidatePath: () => undefined, updateTag: () => undefined },
+    'next/server': { after: (callback: () => unknown) => options.scheduleAfterResponse ? options.scheduleAfterResponse(callback) : callback() },
   };
   const actions = loadServerModule<typeof import('./booking')>('src/app/actions/booking.ts', dependencies);
   const admin = loadServerModule<typeof import('./admin')>('src/app/actions/admin.ts', dependencies);
   return { appointment, originalDate, messages, events, dispatches: () => dispatches, actions, admin };
+}
+
+for (const operation of ['cancel', 'reschedule', 'approve', 'decline'] as const) {
+  test(`${operation} updates the busy feed before waiting for email delivery`, async () => {
+    await assertFeedInvalidatesBeforeDelivery((hooks) => {
+      const f = fixture({ ...hooks, status: operation === 'approve' || operation === 'decline' ? 'PENDING' : 'CONFIRMED' });
+      if (operation === 'cancel') return f.actions.cancelAppointment(f.appointment.id);
+      if (operation === 'reschedule') return f.actions.rescheduleAppointment(f.appointment.id, '2099-09-15', '10:00');
+      return f.admin.updateAppointmentStatus(f.appointment.id, operation === 'approve' ? 'CONFIRMED' : 'CANCELLED');
+    });
+  });
 }
 
 test('rescheduling a frozen 60-minute booking cannot overlap a booking 45 minutes later', async () => {

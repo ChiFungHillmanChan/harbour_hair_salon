@@ -88,6 +88,7 @@ function fixture(options: { hours?: Hours; existing?: { date: Date; durationMin:
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
     '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true } },
     '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
+    'next/server': { after: (callback: () => unknown) => callback() },
     'next/cache': { revalidatePath: () => undefined },
   });
   return { actions, service, stored };

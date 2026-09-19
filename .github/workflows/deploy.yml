@@ -86,6 +86,9 @@ jobs:
       - name: Real PostgreSQL concurrency and rollback checks
         run: pnpm test:integration
 
+      - name: Booking lifecycle and calendar reconciliation checks
+        run: pnpm test:booking-lifecycle
+
       - name: Build against disposable database
         run: pnpm build
 

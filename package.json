@@ -33,6 +33,7 @@
     "db:backfill:patch-test": "tsx prisma/backfill-patch-test-flags.ts",
     "db:backfill:consultation": "tsx prisma/backfill-consultation-flags.ts",
     "test:integration": "node --conditions=react-server --import tsx scripts/verify-production-readiness.ts",
+    "test:booking-lifecycle": "node --conditions=react-server --import tsx scripts/verify-booking-lifecycle.ts",
     "test:backend-http": "node --conditions=react-server --import tsx scripts/verify-backend-http.ts"
   },
   "pnpm": {

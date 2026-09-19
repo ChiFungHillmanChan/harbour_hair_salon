@@ -18,6 +18,7 @@ import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL } from '@/app/lib/site-url';
 import VisitFollowBlock from '@/components/home/VisitFollowBlock';
 import { openingHoursSpecification } from '@/app/lib/opening-hours-public';
+import { FooterPromotions } from '@/components/layout/Layout';
 
 export const metadata: Metadata = {
   title: 'Expert Hair Styling in Leeds City Centre',
@@ -209,6 +210,7 @@ export default async function Home() {
         />
       )}
       <VisitFollowBlock />
+      <FooterPromotions />
     </div>
   );
 }

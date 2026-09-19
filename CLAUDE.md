@@ -76,8 +76,9 @@ Rules that follow from this:
   business-hours window where possible. Vercel cron schedules are **UTC**; the
   salon runs on Europe/London, so a year-round window must cover both GMT and
   BST — `*/30 9-19 * * *` covers Mon–Fri 10:00–19:30 and Sat–Sun 10:30–18:00
-  local in either season. `*/10` is *not* a meaningful reduction from `*/5`; the
-  endpoint still never suspends.
+  local in either season. Short `*/10` runs can allow suspension, but consume
+  roughly 90 CU-hours per 30-day month at 0.25 CU with a five-minute idle tail;
+  aligned `*/30` runs start around 30 CU-hours before execution time and traffic.
 - **Put cost kill-switches above the first DB call**, never below. Entering a
   function that opens with a query already wakes the compute, so an early return
   that sits after the query has bought nothing. `treatwell-sync/route.ts` has a

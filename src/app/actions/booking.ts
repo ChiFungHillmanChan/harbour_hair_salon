@@ -8,6 +8,7 @@ import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
@@ -322,11 +323,12 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
           notes,
         });
 
-    await dispatchAppointmentNotifications(appointment.id);
-
     // The marketplaces poll a cached feed; drop it so the new busy period is
     // visible on their next poll rather than whenever the window expires.
     invalidateStylistIcalFeed();
+    // Next flushes cache invalidation when the action finishes. Keep delivery
+    // after the response so slow email cannot hold the busy feed stale.
+    after(() => dispatchAppointmentNotifications(appointment.id));
     revalidatePath('/book');
     revalidatePath('/appointments');
     revalidatePath('/admin');
@@ -386,12 +388,12 @@ export async function cancelAppointment(appointmentId: string) {
       if (!cancelled) throw new BookingError('Appointment not found');
       await enqueueAppointmentNotification(tx, 'CANCELLATION', cancelled);
     });
-    await dispatchAppointmentNotifications(appointmentId);
+    invalidateStylistIcalFeed();
+    after(() => dispatchAppointmentNotifications(appointmentId));
   } catch (error) {
     return { success: false, error: error instanceof BookingError ? error.message : 'Could not cancel the appointment. Please try again.' };
   }
 
-  invalidateStylistIcalFeed();
   revalidatePath('/appointments');
   revalidatePath('/admin');
   revalidatePath('/book');
@@ -527,9 +529,8 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
       return rescheduled;
     });
 
-    await dispatchAppointmentNotifications(updated.id);
-
     invalidateStylistIcalFeed();
+    after(() => dispatchAppointmentNotifications(updated.id));
     revalidatePath('/appointments');
     revalidatePath('/admin');
     revalidatePath('/book');

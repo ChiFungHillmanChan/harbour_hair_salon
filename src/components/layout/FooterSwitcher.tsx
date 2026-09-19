@@ -3,8 +3,7 @@
 import { usePathname } from 'next/navigation';
 
 /**
- * Shows the booking promotion strip only on the homepage and hides all
- * footer chrome on auth pages, per route, on the client — so soft navigation
+ * Hides footer chrome on auth pages, per route, on the client — so soft navigation
  * swaps the chrome correctly. The server root layout renders the chrome once
  * and passes it down; App Router
  * layouts don't re-render on soft navigation, so a server-side x-pathname
@@ -12,11 +11,9 @@ import { usePathname } from 'next/navigation';
  * auth page. Auth pages get no footer at all (owner request 2026-07-07).
  */
 export function FooterSwitcher({
-  homePromotions,
   footer,
   mobileBookBar,
 }: {
-  homePromotions: React.ReactNode;
   footer: React.ReactNode;
   mobileBookBar: React.ReactNode;
 }) {
@@ -27,7 +24,6 @@ export function FooterSwitcher({
 
   return (
     <>
-      {pathname === '/' && homePromotions}
       {footer}
       {mobileBookBar}
     </>

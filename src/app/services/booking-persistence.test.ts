@@ -1,6 +1,7 @@
 import { test, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { assertFeedInvalidatesBeforeDelivery, type NotificationTimingHooks } from '../../test/stalled-notification';
 import { BookingError } from './booking-errors';
 import { ANY_STYLIST_ID } from '../lib/booking-constants';
 
@@ -10,7 +11,7 @@ after(() => mock.timers.reset());
 function bookingFixture(
   discount: { type: string; value: number; maxUses?: number; usedCount?: number },
   globalOffer: { discountType: string; discountValue: number } | null = null,
-  options: { failEnqueueAt?: number; ready?: boolean; hoursEnd?: string; stylistActive?: boolean; activeBookings?: number } = {},
+  options: { failEnqueueAt?: number; ready?: boolean; hoursEnd?: string; stylistActive?: boolean; activeBookings?: number } & NotificationTimingHooks = {},
 ) {
   const stored: Record<string, unknown>[] = [];
   type Event = { id: string; eventKey: string; appointmentId: string; kind: string; payloadJson: string; delivered?: boolean };
@@ -89,6 +90,7 @@ function bookingFixture(
     dispatchAppointmentNotifications: async (appointmentId: string) => {
       assert.equal(transactionActive, false, 'delivery must begin after the booking commits');
       dispatches++;
+      await options.onDispatch?.();
       for (const event of events.filter((event) => event.appointmentId === appointmentId && !event.delivered)) {
         delivered.push(event);
         event.delivered = true;
@@ -116,8 +118,15 @@ function bookingFixture(
     '@/app/services/notification-outbox-service': queue,
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
     '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true } },
-    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
+    '@/app/services/stylist-ical-cache': {
+      invalidateStylistIcalFeed: () => {
+        assert.equal(transactionActive, false, 'feed invalidation must follow commit');
+        options.onFeedInvalidated?.();
+      },
+      invalidateStylistIcalToken: () => undefined,
+    },
     'next/cache': { revalidatePath: () => undefined },
+    'next/server': { after: (callback: () => unknown) => options.scheduleAfterResponse ? options.scheduleAfterResponse(callback) : callback() },
   });
   return { service, code, stored, events, delivered, actions, dispatches: () => dispatches, reads: () => ({ conflicts: conflictReads, external: externalReads }) };
 }
@@ -186,6 +195,13 @@ test('an exhausted discount rejects the whole booking without consuming another 
 for (const anyone of [false, true]) {
   const label = anyone ? 'Anyone' : 'named stylist';
   const input = { stylistId: anyone ? ANY_STYLIST_ID : 'stylist-1', serviceId: 'service-1', date: '2099-09-14', time: '11:00', discountCode: 'SAVE' };
+
+  test(`${label} submit publishes its busy period before waiting for email delivery`, async () => {
+    await assertFeedInvalidatesBeforeDelivery((hooks) => {
+      const f = bookingFixture({ type: 'PERCENTAGE', value: 20 }, null, hooks);
+      return f.actions.submitBooking(input);
+    });
+  });
 
   test(`${label} submit atomically records both request notices and dispatches only after commit`, async () => {
     const f = bookingFixture({ type: 'PERCENTAGE', value: 20 });

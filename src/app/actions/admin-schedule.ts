@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import type { Prisma } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
@@ -214,11 +215,10 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
     if (outcome.kind === 'clashes') {
       return { success: false, clashes: outcome.clashes };
     }
-    if (outcome.notify) {
-      await dispatchAppointmentNotifications(appointmentId);
-    }
-
     revalidateSchedule();
+    if (outcome.notify) {
+      after(() => dispatchAppointmentNotifications(appointmentId));
+    }
     return { success: true };
   } catch (error) {
     if (error instanceof BookingError) return { success: false, error: error.message };
@@ -358,11 +358,10 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
     if (outcome.kind === 'clashes') {
       return { success: false, clashes: outcome.clashes };
     }
-    if (outcome.notify) {
-      await dispatchAppointmentNotifications(outcome.appointmentId);
-    }
-
     revalidateSchedule();
+    if (outcome.notify) {
+      after(() => dispatchAppointmentNotifications(outcome.appointmentId));
+    }
     return { success: true, appointmentId: outcome.appointmentId };
   } catch (error) {
     if (error instanceof BookingError) return { success: false, error: error.message };

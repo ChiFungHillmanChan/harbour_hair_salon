@@ -17,7 +17,8 @@ async function renderCalendar(query: Query, rows: Row[] = []) {
   const dateQueries: Record<string, Date>[] = [];
   const Calendar = () => null;
   const page = loadServerModule<{ default: (props: { searchParams: Promise<Query> }) => unknown }>('src/app/admin/page.tsx', {
-    'next/link': () => null,
+    '@/components/admin/CalendarSetupNotice': { CalendarSetupNotice: () => null },
+    '@/app/services/site-settings-service': { getSiteSettings: async () => ({ bookingEnabled: false }) },
     '@/components/admin/ScheduleCalendar': { ScheduleCalendar: Calendar },
     '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
     '@/app/services/admin-calendar-data': loadServerModule('src/app/services/admin-calendar-data.ts', {

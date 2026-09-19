@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/app/lib/session';
-import Link from 'next/link';
 import { getAdminCalendarData } from '@/app/services/admin-calendar-data';
+import { getSiteSettings } from '@/app/services/site-settings-service';
+import { CalendarSetupNotice } from '@/components/admin/CalendarSetupNotice';
 import { ScheduleCalendar } from '@/components/admin/ScheduleCalendar';
 import { type CalendarQuery } from '@/app/services/admin-calendar-range';
 import { Suspense } from 'react';
@@ -24,9 +25,13 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
 }
 
 async function ScheduleContent({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[] }> }) {
+  const [calendar, settings] = await Promise.all([
+    getAdminCalendarData(await searchParams),
+    getSiteSettings(),
+  ]);
   const { dateStr, view, appointments, pendingAppointments, pendingCount, pendingNext,
     pendingHasPrevious, monthCounts, periodCount, todayStats, syncCoverage, stylists, busyBlocks,
-    services } = await getAdminCalendarData(await searchParams);
+    services } = calendar;
 
   const todayConfirmed = todayStats.find(s => s.status === 'CONFIRMED')?._count ?? 0;
   const todayCancelled = todayStats.find(s => s.status === 'CANCELLED')?._count ?? 0;
@@ -37,20 +42,11 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
     <>
       {/* Surfaced here (not only on /admin/integrations) because this is the
           page the salon actually opens every day. */}
-      {syncCoverage.warning && (
-        <div
-          role="alert"
-          className="mb-6 rounded-lg border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-900"
-        >
-          <p className="font-semibold uppercase tracking-wide text-xs text-red-700">
-            Double-booking risk
-          </p>
-          <p className="mt-2 leading-6">{syncCoverage.warning}</p>
-          <Link href="/admin/integrations" className="mt-2 inline-block font-semibold underline">
-            Fix in Integrations →
-          </Link>
-        </div>
-      )}
+      <CalendarSetupNotice
+        coverage={syncCoverage}
+        bookingEnabled={settings.bookingEnabled}
+        scheduledSyncEnabled={process.env.CALENDAR_SYNC_ENABLED === 'true'}
+      />
 
       {/* Quick stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

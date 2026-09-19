@@ -77,10 +77,14 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
                 <div className="p-8 text-center">
                   <h3 className="text-xl font-serif font-medium mb-1 text-white group-hover:text-zinc-300 transition-colors">{stylist.name}</h3>
                   <p className="text-zinc-400 text-sm uppercase tracking-wider mb-4">{stylist.role}</p>
-                  <div className="w-8 h-[1px] bg-zinc-700 mx-auto mb-4" />
-                  <p className="text-zinc-400 text-sm italic font-light leading-relaxed mb-6">
-                    &ldquo;{stylist.bio}&rdquo;
-                  </p>
+                  {stylist.bio?.trim() && (
+                    <>
+                      <div className="w-8 h-[1px] bg-zinc-700 mx-auto mb-4" />
+                      <p className="text-zinc-400 text-sm italic font-light leading-relaxed mb-6">
+                        &ldquo;{stylist.bio.trim()}&rdquo;
+                      </p>
+                    </>
+                  )}
                   <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-bold text-zinc-300">
                     View profile
                     <svg className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

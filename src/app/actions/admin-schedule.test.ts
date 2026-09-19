@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { assertFeedInvalidatesBeforeDelivery, type NotificationTimingHooks } from '../../test/stalled-notification';
 
 // The appointment under test sits at 10:00 salon-local on 2099-09-15 (BST).
 const ORIGINAL_START = new Date('2099-09-15T09:00:00Z');
@@ -29,7 +30,7 @@ function fixture(options: {
   status?: string;
   conflicting?: boolean;
   requiresPatchTest?: boolean;
-} = {}) {
+} & NotificationTimingHooks = {}) {
   const appointment = {
     id: 'appt-1',
     userId: 'user-1',
@@ -107,6 +108,7 @@ function fixture(options: {
     dispatchAppointmentNotifications: async () => {
       assert.equal(transactionActive, false, 'delivery must start after commit');
       dispatches++;
+      await options.onDispatch?.();
     },
   };
 
@@ -129,8 +131,15 @@ function fixture(options: {
       getTreatwellApiConfiguration: () => ({ enabled: false, configured: false }),
       changedTreatwellSyncStatus: () => 'NOT_REQUIRED',
     },
-    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
+    '@/app/services/stylist-ical-cache': {
+      invalidateStylistIcalFeed: () => {
+        assert.equal(transactionActive, false, 'feed invalidation must follow commit');
+        options.onFeedInvalidated?.();
+      },
+      invalidateStylistIcalToken: () => undefined,
+    },
     'next/cache': { revalidatePath: () => undefined },
+    'next/server': { after: (callback: () => unknown) => options.scheduleAfterResponse ? options.scheduleAfterResponse(callback) : callback() },
   });
 
   return { appointment, actions, writes, enqueued, clashChecksInTransaction, dispatches: () => dispatches };
@@ -145,6 +154,10 @@ const move = (overrides: Partial<Parameters<typeof import('./admin-schedule').mo
   overrideClashes: false,
   expectedUpdatedAt: ORIGINAL_UPDATED_AT.toISOString(),
   ...overrides,
+});
+
+test('an admin move updates the busy feed before waiting for reschedule delivery', async () => {
+  await assertFeedInvalidatesBeforeDelivery((hooks) => fixture(hooks).actions.moveAppointmentByAdmin(move()));
 });
 
 test('a clean move writes the new start, duration and stylist', async () => {

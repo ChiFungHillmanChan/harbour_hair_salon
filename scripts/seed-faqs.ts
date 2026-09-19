@@ -103,7 +103,7 @@ const SERVICES_MASTER = [
   {
     question: 'Do I need a patch test before colouring?',
     answer:
-      'A patch test checks for allergic reactions to colour products and is required at least 48 hours before your colour appointment. You can book a free patch test through our booking page.',
+      'A patch test checks for allergic reactions to colour products and is required at least 48 hours before your colour appointment. You can book Consultation & Patch Test through our booking page. The current price is listed in our service menu.',
   },
   {
     question: 'What treatments do you offer for damaged hair?',

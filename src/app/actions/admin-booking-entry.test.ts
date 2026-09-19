@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { assertFeedInvalidatesBeforeDelivery, type NotificationTimingHooks } from '../../test/stalled-notification';
 import { isPlaceholderEmail, placeholderEmailFor, displayableEmail } from '../lib/walk-in-customer';
 
 // The salon takes bookings by phone and WhatsApp all day. These cover the entry
@@ -11,7 +12,7 @@ const UPDATED_AT = new Date('2099-09-01T00:00:00Z');
 
 type Row = Record<string, unknown>;
 
-function fixture(options: { role?: string; conflicting?: boolean; existingUser?: Row | null } = {}) {
+function fixture(options: { role?: string; conflicting?: boolean; existingUser?: Row | null } & NotificationTimingHooks = {}) {
   const users: Row[] = options.existingUser ? [options.existingUser] : [];
   const created: Row[] = [];
   const updates: Row[] = [];
@@ -92,7 +93,7 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
       enqueued.push(kind);
       return { id: `event-${enqueued.length}` };
     },
-    dispatchAppointmentNotifications: async () => { dispatches++; },
+    dispatchAppointmentNotifications: async () => { dispatches++; await options.onDispatch?.(); },
   };
 
   const bookingService = loadServerModule<typeof import('../services/booking-service')>(
@@ -116,8 +117,15 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
       changedTreatwellSyncStatus: () => 'NOT_REQUIRED',
       initialTreatwellSyncStatus: () => 'NOT_REQUIRED',
     },
-    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
+    '@/app/services/stylist-ical-cache': {
+      invalidateStylistIcalFeed: () => {
+        assert.equal(transactionActive, false, 'feed invalidation must follow commit');
+        options.onFeedInvalidated?.();
+      },
+      invalidateStylistIcalToken: () => undefined,
+    },
     'next/cache': { revalidatePath: () => undefined },
+    'next/server': { after: (callback: () => unknown) => options.scheduleAfterResponse ? options.scheduleAfterResponse(callback) : callback() },
   });
 
   return { actions, created, updates, users, enqueued, appointment, dispatches: () => dispatches };
@@ -134,6 +142,12 @@ const newBooking = (overrides: Row = {}) => ({
   notifyCustomer: true,
   overrideClashes: false,
   ...overrides,
+});
+
+test('an admin booking publishes its busy period before waiting for confirmation delivery', async () => {
+  await assertFeedInvalidatesBeforeDelivery((hooks) => fixture(hooks).actions.createAppointmentByAdmin(newBooking({
+    customer: { kind: 'new', name: 'Ada', email: 'ada@example.test', phone: '' },
+  })));
 });
 
 test('a phone booking for someone with no email is saved and mails nobody', async () => {

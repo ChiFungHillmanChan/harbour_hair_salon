@@ -63,10 +63,10 @@ appointments page, email snapshots).
 - `prisma/{dev,prod,vercel}/migrations/20260916153000_calendar_colours/migration.sql` — nullable service/stylist palette columns, preserving existing rows and default colours.
 
 ### Marketplace channels
-Which third-party booking sites are live is derived from the URLs set in Admin → Site Settings — there is no separate flag, and nothing is hardcoded.
+Public booking buttons come from the URLs in Admin → Site Settings. Calendar readiness is configured separately per stylist/provider in Admin → Integrations.
 - `src/app/services/marketplace-channels.ts` — pure `activeMarketplaces(settings)` → `{name, url}[]` for any non-empty `freshaUrl` / `treatwellUrl` / `booksyUrl`. Unit-tested.
-- Consumers: `/book` renders one CTA per active marketplace while booking is closed; `evaluateSyncCoverage` treats an empty list as "nothing to reconcile" and stays silent. So **clearing a marketplace's URL removes its dead button AND clears its double-booking warning** — one lever, no deploy.
-- `evaluateSyncCoverage` only has a sync implementation for Treatwell; any other live marketplace is always reported as unsynced, because none exists (Fresha has no API — see the Fresha migration spec).
+- `/book` renders one CTA per configured public marketplace while booking is closed. Clearing a public URL removes its button; it does not change a calendar connection's `receivesBookings` flag or remove readiness requirements.
+- `evaluateSyncCoverage` checks Fresha and Treatwell ICS connections for every stylist/provider marked `receivesBookings`: valid weekly hours, a successful inbound attempt within 90 minutes with no latest error, and confirmed subscription to the matching website Busy feed. ICS polling reduces conflicts but cannot guarantee an atomic cross-platform reservation.
 - `booking-maintenance.ts` deliberately contains **no** marketplace name or URL; `booking-maintenance-copy.test.ts` locks that, because the old hardcoded `TREATWELL_BOOKING_URL` fallback made the Treatwell button impossible to switch off from the admin panel.
 
 ## Services
@@ -186,6 +186,8 @@ Which third-party booking sites are live is derived from the URLs set in Admin �
 - `BackgroundJobState` — safe diagnostics and scheduler progress/lease records.
 - `src/test/load-server-module.ts` — test-only source loader replacing explicit I/O dependencies.
 - `scripts/verify-production-readiness.ts` — PostgreSQL concurrency/rollback/calendar integration checks, restricted to a disposable localhost database named `salon_test`.
+- `scripts/verify-booking-lifecycle.ts` — disposable PostgreSQL create/confirm/reschedule/cancel, ownership and 24-hour guards, competing bookings, notification snapshots, private ICS output, Fresha import reconciliation and failure preservation; provider transport and framework boundaries are synthetic.
+- `src/components/admin/CalendarSetupNotice.tsx` — compact schedule setup status with grouped, expandable blockers; distinguishes incomplete calendar evidence from detected appointment conflicts.
 - `readme/salon-visit-handover-cantonese.md` — owner access and business-data collection checklist.
 - `readme/production-readiness-rollout-cantonese.md` — verified implementation, remaining external requirements and deployment acceptance sequence.
 
