@@ -2,6 +2,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { Appointment, Prisma, PrismaClient, Service, Stylist, User } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
+import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
 import { prepareAppointmentEmail, sendPreparedEmail, type AppointmentEmailKind, type AppointmentEmailOptions, type PreparedEmail } from './email-service';
 
 type QueueDb = Pick<Prisma.TransactionClient, 'notificationDelivery' | 'appointment'>;
@@ -28,6 +29,8 @@ export async function enqueueAppointmentNotification(
   appointment: NotificationAppointment,
   options: AppointmentEmailOptions = {},
 ) {
+  // Phone bookings have an unroutable identity, but may still alert the salon.
+  if (kind !== 'SALON_ALERT' && isPlaceholderEmail(appointment.user.email)) return null;
   const eventKey = `appointment/${appointment.id}/${appointment.notificationVersion}/${kind}`;
   // Fast path avoids regenerating a date-relative subject for an existing event.
   const existing = await db.notificationDelivery.findUnique({ where: { eventKey }, select: { id: true } });
@@ -97,7 +100,10 @@ export async function dispatchPendingNotifications(options: { db?: PrismaClient;
         continue;
       }
       const payload = JSON.parse(row.payloadJson) as NotificationPayload;
-      if (!Number.isInteger(payload.version) || !(await isCurrent(db, row.appointmentId, row.kind, payload, now))) {
+      const placeholderRecipient = payload.email
+        ? isPlaceholderEmail(payload.email.to)
+        : row.kind !== 'SALON_ALERT' && isPlaceholderEmail(payload.appointment?.user.email);
+      if (placeholderRecipient || !Number.isInteger(payload.version) || !(await isCurrent(db, row.appointmentId, row.kind, payload, now))) {
         await finish({ status: 'SKIPPED', lastError: null, payloadJson: '{}' });
         result.skipped++;
         continue;

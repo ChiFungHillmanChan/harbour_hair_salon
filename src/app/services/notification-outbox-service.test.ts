@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { placeholderEmailFor } from '../lib/walk-in-customer';
 
 let previousNotificationsEnabled: string | undefined;
 beforeEach(() => {
@@ -151,4 +152,53 @@ test('disabled delivery still enqueues notification fields and frozen values wit
   assert.equal(saved.appointment.service.price, 80);
   assert.equal(saved.appointment.service.duration, 60);
   assert.equal(saved.version, 2);
+});
+
+test('walk-in customer notifications are not queued, while the salon alert is preserved', async () => {
+  const queued: string[] = [];
+  const db = { notificationDelivery: {
+    findUnique: async () => null,
+    upsert: async ({ create }: { create: { kind: string } }) => { queued.push(create.kind); return { id: 'queued' }; },
+  } };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': db, './email-service': {},
+  });
+  const appointment = {
+    id: 'a', date: new Date('2026-09-12T12:00:00Z'), notificationVersion: 0, notes: null,
+    priceAtBooking: 80, durationAtBooking: 60,
+    user: { name: 'Walk-in', email: placeholderEmailFor('phone-booking') },
+    stylist: { name: 'Stylist' }, service: { name: 'Cut', price: 80, duration: 60 },
+  };
+  for (const kind of ['CONFIRMATION', 'CANCELLATION', 'RESCHEDULE', 'REMINDER', 'REVIEW_REQUEST', 'REQUEST_RECEIVED', 'SALON_ALERT'] as const) {
+    await service.enqueueAppointmentNotification(db as never, kind, appointment as never);
+  }
+  assert.deepEqual(queued, ['SALON_ALERT']);
+});
+
+for (const prepared of [false, true]) {
+  test(`existing ${prepared ? 'prepared' : 'unprepared'} walk-in mail is skipped without sending or retrying`, async () => {
+    const f = fixture({ unprepared: !prepared });
+    const payload = JSON.parse(f.row.payloadJson);
+    if (prepared) payload.email.to = placeholderEmailFor('old-booking');
+    else payload.appointment.user.email = placeholderEmailFor('old-booking');
+    f.row.payloadJson = JSON.stringify(payload);
+    const result = await f.service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+    assert.deepEqual(result, { sent: 0, failed: 0, skipped: 1, deferred: 0 });
+    assert.equal(f.row.status, 'SKIPPED');
+    assert.equal(f.row.payloadJson, '{}');
+    assert.equal(f.sideEffects().renders, 0);
+    assert.equal(f.sends(), 0);
+  });
+}
+
+test('a queued salon alert for a walk-in still reaches the salon', async () => {
+  const f = fixture({ unprepared: true });
+  f.row.kind = 'SALON_ALERT';
+  f.db.appointment.findUnique = async () => ({ id: 'a', status: 'PENDING', date: new Date('2026-09-12T12:00:00Z'), notificationVersion: 0, review: null });
+  const payload = JSON.parse(f.row.payloadJson);
+  payload.appointment.user.email = placeholderEmailFor('walk-in');
+  f.row.payloadJson = JSON.stringify(payload);
+  const result = await f.service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+  assert.equal(result.sent, 1);
+  assert.equal(f.row.status, 'SENT');
 });
