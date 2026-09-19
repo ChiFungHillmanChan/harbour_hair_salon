@@ -171,6 +171,23 @@ export function AppointmentDialog({
     }
   };
 
+  const cancelBooking = async () => {
+    if (target.mode !== 'edit' || saving) return;
+    if (!window.confirm(`Cancel ${target.customerName}’s booking? This releases the appointment time.`)) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { updateAppointmentStatus } = await import('@/app/actions/admin');
+      const result = await updateAppointmentStatus(target.appointmentId, 'CANCELLED');
+      if (result.success) return onSaved();
+      setError(result.error ?? 'Could not cancel the booking. Please try again.');
+    } catch {
+      setError('Could not cancel the booking. Refresh to check its status before retrying.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-zinc-900/50 p-0 sm:p-4"
@@ -325,9 +342,14 @@ export function AppointmentDialog({
           )}
         </div>
 
-        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-zinc-200 bg-white px-5 py-3">
-          <button type="button" onClick={onClose} className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-            Cancel
+        <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-zinc-200 bg-white px-5 py-3">
+          {isEdit && (target.status === 'PENDING' || target.status === 'CONFIRMED') && (
+            <button type="button" disabled={saving} onClick={cancelBooking} className="mr-auto rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
+              Cancel booking
+            </button>
+          )}
+          <button type="button" disabled={saving} onClick={onClose} className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50">
+            {isEdit ? 'Close' : 'Cancel'}
           </button>
           <button
             type="button"

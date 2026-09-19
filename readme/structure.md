@@ -36,6 +36,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `src/components/booking/BookingWizard.tsx` — Shows a blocking gate panel + "book Consultation & Patch Test first" CTA at the CONFIRM step; disables submit when ineligible.
 - `src/app/actions/admin.ts` — `updateAppointmentStatus(appointmentId, status)` (admin-only) marks appointments COMPLETED — the signal that unlocks colour booking.
 - `src/components/admin/ScheduleCalendar.tsx` — "Mark completed" control on CONFIRMED appointments.
+- `src/components/admin/AppointmentDialog.tsx` — create/edit bookings; an explicit, confirmed "Cancel booking" action releases pending/confirmed bookings through the existing authenticated status action, audit trail, notification outbox and feed invalidation.
 - `src/components/admin/ServiceForm.tsx` + `src/app/actions/admin-services.ts` — manage `requiresPatchTest`/`isPatchTest` per service.
 
 ### Opening Hours (Admin → Opening Hours)
