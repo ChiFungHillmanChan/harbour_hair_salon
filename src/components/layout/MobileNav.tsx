@@ -18,27 +18,39 @@ export function MobileNav({ role, onSignOut, hasOffers = false }: MobileNavProps
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
+    if (!isOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = previousOverflow;
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    // Match the header's xl breakpoint, including browser zoom and rotation.
+    const desktop = window.matchMedia('(min-width: 80rem)');
+    const closeOnDesktop = () => {
+      if (desktop.matches) setIsOpen(false);
+    };
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
 
   const openMenu = () => setIsOpen(true);
   const closeMenu = () => setIsOpen(false);
 
   return (
-    <div className="md:hidden flex items-center">
+    <div className="xl:hidden flex items-center">
       {/* Trigger Button (Hamburger) - Visible when closed */}
       <button
         onClick={openMenu}
-        className="text-white p-2 focus:outline-none z-50 relative hover:bg-zinc-800 rounded-md transition-colors"
+        type="button"
+        className="text-white min-h-11 min-w-11 inline-flex items-center justify-center p-2 z-50 relative hover:bg-zinc-800 rounded-md transition-colors"
         aria-label="Open menu"
         aria-expanded={isOpen}
+        aria-controls="mobile-navigation"
+        aria-haspopup="dialog"
       >
         <svg
           className="w-6 h-6"
@@ -46,6 +58,7 @@ export function MobileNav({ role, onSignOut, hasOffers = false }: MobileNavProps
           stroke="currentColor"
           viewBox="0 0 24 24"
           xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
         >
           <path
             strokeLinecap="round"

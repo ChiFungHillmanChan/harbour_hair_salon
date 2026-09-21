@@ -164,6 +164,7 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - Public pages export route revalidation intervals and are delivered through Vercel ISR. Homepage output is static with a one-hour revalidation interval; Admin and API routes remain dynamic.
 
 ## Components (responsive shell)
+- `src/components/layout/HeaderClient.tsx`, `MobileNav.tsx`, `MobileMenuOverlay.tsx` — public header uses compact navigation below `xl` (1280px), with a direct booking button from `sm`; the native modal menu scrolls on short screens, supports Escape and keyboard focus isolation, and closes on navigation or resizing to desktop.
 - `src/components/admin/AdminSidebar.tsx` — admin nav shell: hamburger top bar + slide-in drawer < lg, sticky sidebar ≥ lg; closes on backdrop/✕/Escape/route change
 - `src/components/layout/FooterSwitcher.tsx` — client-side gate (usePathname) that hides the marketing footer+book bar on /auth pages (which get no footer at all), so soft navigation swaps chrome correctly
 

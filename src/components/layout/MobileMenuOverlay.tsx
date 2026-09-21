@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 interface MobileMenuOverlayProps {
@@ -13,23 +14,37 @@ interface MobileMenuOverlayProps {
 }
 
 export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, hasOffers = false }: MobileMenuOverlayProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    // Native modal behavior contains keyboard focus and restores it on close.
+    if (isOpen && !dialog.open) dialog.showModal();
+    else if (!isOpen && dialog.open) dialog.close();
+  }, [isOpen]);
+
   // No need for mounted state check since this component is dynamically imported with { ssr: false }
   // It will only ever render on the client where document.body is available
   
   return createPortal(
-    <div 
-      className={`fixed inset-0 z-[100] bg-black flex flex-col transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-        isOpen 
-          ? 'opacity-100 translate-y-0 visible' 
-          : 'opacity-0 -translate-y-full invisible'
-      }`}
-      aria-hidden={!isOpen}
+    <dialog
+      ref={dialogRef}
+      id="mobile-navigation"
+      aria-label="Main menu"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      className="fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none border-0 bg-black text-white p-0 open:flex open:flex-col [&_a:focus-visible]:outline-2 [&_a:focus-visible]:outline-offset-4 [&_a:focus-visible]:outline-white [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-4 [&_button:focus-visible]:outline-white"
     >
       {/* Close Button inside Overlay */}
-      <div className="flex justify-end p-4">
+      <div className="flex shrink-0 justify-end px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
          <button
+          type="button"
           onClick={onClose}
-          className="text-white p-2 focus:outline-none hover:bg-zinc-800 rounded-md transition-colors"
+          className="text-white min-h-11 min-w-11 inline-flex items-center justify-center p-2 hover:bg-zinc-800 rounded-md transition-colors"
           aria-label="Close menu"
         >
           <svg
@@ -38,6 +53,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
             stroke="currentColor"
             viewBox="0 0 24 24"
             xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
@@ -49,8 +65,8 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
         </button>
       </div>
 
-      <div className="px-6 pb-6 flex flex-col space-y-6 overflow-y-auto h-full">
-        <nav className="flex flex-col space-y-6 mt-8">
+      <div className="min-h-0 flex-1 px-6 sm:px-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col gap-6 overflow-y-auto overscroll-contain">
+        <nav aria-label="Main navigation" className="flex flex-col gap-3 sm:gap-4 mt-2 sm:mt-6 [&>a]:flex [&>a]:items-center [&>a]:min-h-11 [&>button]:min-h-11">
           <Link
             href="/services"
             className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
@@ -134,7 +150,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
           )}
         </nav>
         
-        <div className="mt-auto pb-8">
+        <div className="mt-auto shrink-0 pt-2">
           <Link
             href="/book"
             className="block w-full bg-white text-zinc-900 py-4 text-center text-lg uppercase tracking-widest font-bold hover:bg-zinc-200 transition-colors rounded-sm"
@@ -144,7 +160,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
           </Link>
         </div>
       </div>
-    </div>,
+    </dialog>,
     document.body
   );
 }

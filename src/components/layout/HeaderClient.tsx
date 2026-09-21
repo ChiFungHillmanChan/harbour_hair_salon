@@ -63,15 +63,16 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
   if (pathname?.startsWith('/admin') || pathname?.startsWith('/kiosk')) return null;
 
   return (
-    <header className="bg-black text-white sticky top-0 z-50">
-      <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-        <Link href="/" className="group flex items-center gap-3">
-          <span className="text-2xl font-serif tracking-wider font-bold">
+    <header className="bg-black text-white sticky top-0 z-50 [&_a:focus-visible]:outline-2 [&_a:focus-visible]:outline-offset-4 [&_a:focus-visible]:outline-white [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-4 [&_button:focus-visible]:outline-white">
+      <div className="mx-auto max-w-[1536px] min-h-18 sm:min-h-20 px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center gap-4 xl:gap-6">
+        <Link href="/" className="group flex shrink-0 items-center min-h-11" aria-label="Harbour Hair home">
+          <span className="whitespace-nowrap text-xl sm:text-2xl font-serif tracking-wider font-bold">
             HARBOUR <span className="text-zinc-400">HAIR</span>
           </span>
         </Link>
 
-        <nav className="hidden md:flex space-x-8 text-sm uppercase tracking-widest items-center">
+        {/* The full signed-in navigation needs more room than the tablet breakpoint. */}
+        <nav aria-label="Main navigation" className="hidden xl:flex shrink-0 gap-5 2xl:gap-8 whitespace-nowrap text-sm uppercase tracking-widest items-center [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center">
           <Link href="/services" className="hover:text-zinc-300 transition-colors duration-300">Services</Link>
           {hasOffers && <Link href="/offers" className="hover:text-zinc-300 transition-colors duration-300">Offers</Link>}
           <Link href="/#team" className="hover:text-zinc-300 transition-colors duration-300">Team</Link>
@@ -92,7 +93,7 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
               <button
                 onClick={handleSignOut}
                 disabled={isSigningOut}
-                className="hover:text-zinc-300 transition-colors duration-300 uppercase disabled:opacity-50"
+                className="min-h-11 hover:text-zinc-300 transition-colors duration-300 uppercase disabled:opacity-50"
               >
                 Sign Out
               </button>
@@ -102,11 +103,11 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
           )}
         </nav>
 
-        <div className="flex items-center gap-4">
-          <Link href="/book" className="hidden md:block bg-white text-zinc-900 px-6 py-2 text-sm uppercase tracking-widest font-semibold hover:bg-zinc-200 transition-colors duration-300">
+        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+          <Link href="/book" className="hidden sm:inline-flex min-h-11 items-center justify-center whitespace-nowrap bg-white text-zinc-900 px-5 2xl:px-6 py-2 text-sm uppercase tracking-widest font-semibold hover:bg-zinc-200 transition-colors duration-300">
             Book Now
           </Link>
-          <MobileNav role={role ?? null} onSignOut={handleSignOut} hasOffers={hasOffers} />
+          <MobileNav key={pathname} role={role ?? null} onSignOut={handleSignOut} hasOffers={hasOffers} />
         </div>
       </div>
     </header>
