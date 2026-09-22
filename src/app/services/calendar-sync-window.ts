@@ -37,3 +37,19 @@ export function shouldRefreshCalendar(hours: readonly SyncHours[], now: Date, la
   const importTick = Math.floor((now.getTime() - 90_000) / interval) * interval;
   return visible && lastLoaded.getTime() < importTick + 90_000 && isCalendarSyncWindow(hours, new Date(importTick));
 }
+
+/**
+ * Browser time at which a server payload (identified by its `loadedAt`) first
+ * reached this tab. Next restores Back/Forward navigations from its router
+ * cache without refetching, so a restored payload keeps its ORIGINAL arrival
+ * time and is refreshed after the next import, while a fresh one gets `now`.
+ * Both sides of the refresh comparison therefore stay on the browser clock.
+ */
+export function payloadArrival(seen: Map<string, number>, loadedAt: string | undefined, now: number): number {
+  if (!loadedAt) return now;
+  const first = seen.get(loadedAt);
+  if (first !== undefined) return first;
+  seen.set(loadedAt, now);
+  if (seen.size > 100) seen.delete(seen.keys().next().value as string);
+  return now;
+}

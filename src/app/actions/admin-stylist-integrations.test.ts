@@ -25,3 +25,27 @@ for (const legacyInput of [undefined, 'https://old-editor.example.test/calendar.
     assert.equal(stylist.treatwellIcalUrl, 'https://migration-source.example.test/private.ics');
   });
 }
+
+test('deleting a stylist retires their outbound feed token immediately', async () => {
+  // The token cache has no short timer, so without this the deleted stylist's
+  // feed URL keeps answering until the week-long safety net expires.
+  const calls: string[] = [];
+  const actions = loadServerModule<typeof import('./admin-stylists')>('src/app/actions/admin-stylists.ts', {
+    '@/app/lib/prisma': {
+      stylist: { findUnique: async () => ({ slug: 'gone' }), delete: async () => { calls.push('delete'); return { id: 'stylist-1' }; } },
+      appointment: { count: async () => 0 },
+    },
+    '@/app/lib/session': { verifySession: async () => ({ role: 'ADMIN' }) },
+    '@/app/stylists/slug': { slugify: () => 'gone' },
+    '@/app/services/stylist-ical-cache': {
+      invalidateStylistIcalFeed: () => undefined,
+      invalidateStylistIcalToken: () => { calls.push('token'); },
+    },
+    'next/cache': { revalidatePath: () => undefined, updateTag: () => undefined },
+    'next/navigation': {},
+  });
+  const form = new FormData();
+  form.set('id', 'stylist-1');
+  await actions.deleteStylist(form);
+  assert.deepEqual(calls, ['delete', 'token']);
+});

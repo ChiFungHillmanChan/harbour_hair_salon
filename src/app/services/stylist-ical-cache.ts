@@ -52,11 +52,12 @@ const TOKEN_TAG = 'stylist-ical-token';
 /** Safety net only; every appointment mutation invalidates this immediately. */
 export const EVENTS_REVALIDATE_SECONDS = 24 * 60 * 60;
 /**
- * Tokens change only in `generateStylistIcalFeedTokenAction`, which invalidates
- * the tag, so there is no timed expiry: a separate token TTL would drift out of
- * step with the events entry and add its own daily wake per stylist.
+ * Tokens change only in `generateStylistIcalFeedTokenAction` (Admin →
+ * Integrations → rotate), which invalidates the tag immediately; deleting a
+ * stylist does too. The week-long timer is only so that an unsupported direct
+ * SQL edit of `icalToken` still heals — at most one wake per stylist a week.
  */
-export const TOKEN_REVALIDATE_SECONDS = false;
+export const TOKEN_REVALIDATE_SECONDS = 7 * 24 * 60 * 60;
 
 const readToken = unstable_cache(
   async (stylistId: string): Promise<string | null> => loadStylistToken(stylistId),

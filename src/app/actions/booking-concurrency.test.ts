@@ -35,6 +35,7 @@ function fixture(options: {
   onlineReady?: boolean;
   calendarReady?: boolean;
   onFeedRefresh?: () => void;
+  trace?: string[];
 } & NotificationTimingHooks = {}) {
   const originalDate = options.currentDate ?? new Date('2099-09-14T12:00:00Z');
   const appointment = {
@@ -166,12 +167,14 @@ function fixture(options: {
     '@/app/services/integration-readiness': {
       checkCalendarBookingReadiness: async (database: unknown) => {
         assert.equal(database, tx, 'approval readiness must use the transaction client');
+        options.trace?.push('readiness');
         return { ready: options.calendarReady !== false, blockers: [] };
       },
     },
     '@/app/services/calendar-sync-service': {
       refreshStaleCalendarFeeds: async () => {
         assert.equal(transactionActive, false, 'marketplace feeds must not be fetched inside the transaction');
+        options.trace?.push('refresh');
         options.onFeedRefresh?.();
         return [];
       },
@@ -312,6 +315,13 @@ test('admin approval refreshes stale marketplace feeds first; other status chang
   const cancel = fixture({ status: 'PENDING', onFeedRefresh: () => calls.push('cancel') });
   assert.equal((await cancel.admin.updateAppointmentStatus(cancel.appointment.id, 'CANCELLED')).success, true);
   assert.deepEqual(calls, ['approve']);
+});
+
+test('the feed refresh runs BEFORE the approval readiness check, or evening approvals fail again', async () => {
+  const trace: string[] = [];
+  const f = fixture({ status: 'PENDING', trace });
+  assert.equal((await f.admin.updateAppointmentStatus(f.appointment.id, 'CONFIRMED')).success, true);
+  assert.deepEqual(trace, ['refresh', 'readiness']);
 });
 
 // Date is mocked (2099-09-01T12:00Z), so the boundary is exact, not flaky.
