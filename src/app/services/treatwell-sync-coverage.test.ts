@@ -2,6 +2,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { evaluateSyncCoverage, CALENDAR_FRESHNESS_MINUTES, type CoverageStylist } from './treatwell-sync-coverage';
+import { CALENDAR_POLL_MINUTES } from './calendar-sync-window';
 const now = new Date('2026-09-11T12:00:00Z');
 function stylist(): CoverageStylist {
   return { id: 's1', name: 'Stylist one', icalToken: 'secret', availabilities: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, isOff: dayOfWeek === 0, startTime: '09:00', endTime: '17:00' })), calendarConnections: [{ provider: 'TREATWELL', receivesBookings: true, inboundUrl: 'https://example.com/private', inboundEnabled: true, outboundConfirmedAt: now, lastSuccessAt: now, lastError: null }] };
@@ -56,8 +57,11 @@ test('the freshness window survives more than one missed calendar-sync run', asy
   const everyNMinutes = /^\*\/(\d+) \* \* \* \*$/.exec(sync.schedule);
   assert.ok(everyNMinutes, `Expected a fixed minute interval running every hour, got "${sync.schedule}".`);
   const interval = Number(everyNMinutes[1]);
-  // Also guards the reverse mistake: restricting this cron to business hours
-  // would let the feed go stale overnight and close booking until morning.
+  // The route itself skips ticks outside saved staff hours (deliberately, to
+  // save Neon compute; online booking pauses overnight). The cron expression
+  // stays hourly-uniform so that in-hours window is the only gate — and the
+  // dashboard's refresh cadence must match the real import cadence.
+  assert.equal(interval, CALENDAR_POLL_MINUTES, 'vercel.json and CALENDAR_POLL_MINUTES must agree.');
   assert.ok(
     CALENDAR_FRESHNESS_MINUTES >= interval * 3,
     `A ${interval}-minute cron needs at least ${interval * 3} minutes of freshness headroom, not ${CALENDAR_FRESHNESS_MINUTES}.`

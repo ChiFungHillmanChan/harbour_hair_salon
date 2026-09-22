@@ -61,8 +61,9 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
         if (Date.now() - started > phaseBudget) break;
         const eventKey = `appointment/${appointment.id}/${appointment.notificationVersion}/${kind}`;
         if (!appointment.notifications.some((notification) => notification.eventKey === eventKey)) {
-          await enqueueAppointmentNotification(prisma, kind, appointment);
-          queued++;
+          // Walk-in placeholder addresses queue nothing (and are rescanned
+          // every run), so count only rows that were actually written.
+          if (await enqueueAppointmentNotification(prisma, kind, appointment)) queued++;
         }
         enqueueCursors[kind] = appointment.id;
         processed++;

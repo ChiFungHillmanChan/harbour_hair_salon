@@ -21,7 +21,10 @@ import { openingHoursSpecification } from '@/app/lib/opening-hours-public';
 import { FooterPromotions } from '@/components/layout/Layout';
 
 export const metadata: Metadata = {
-  title: 'Expert Hair Styling in Leeds City Centre',
+  // `absolute`: the root layout's "%s | Harbour Hair Salon Leeds" template does
+  // not apply to a page in the layout's own segment, so without it the home
+  // page was the only title on the site that did not name the salon.
+  title: { absolute: 'Harbour Hair Salon Leeds | Expert Hair Styling in Leeds City Centre' },
   description: 'Book your appointment at Harbour Hair Salon, Central Arcade, Leeds. Expert cuts, colours, perms and grooming by Hong Kong trained stylists.',
   alternates: { canonical: '/' },
   openGraph: {

@@ -126,6 +126,9 @@ export async function exchangeGoogleCode(
       code_verifier: codeVerifier,
     }),
     cache: 'no-store',
+    // A stalled Google endpoint must fail into the normal sign-in error page,
+    // not hold the callback until the function's 300-second limit (a 504).
+    signal: AbortSignal.timeout(10_000),
   });
 
   const tokens = await response.json() as { id_token?: string; error?: string };

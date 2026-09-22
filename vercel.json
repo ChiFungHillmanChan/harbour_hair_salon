@@ -1,4 +1,7 @@
 {
+  "git": {
+    "deploymentEnabled": false
+  },
   "regions": [
     "lhr1"
   ],
@@ -9,11 +12,11 @@
     },
     {
       "path": "/api/cron/notifications",
-      "schedule": "*/30 * * * *"
+      "schedule": "*/30 8-19 * * *"
     },
     {
       "path": "/api/cron/calendar-sync",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/housekeeping",

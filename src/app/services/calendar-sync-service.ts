@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { CalendarFeedError, CALENDAR_WINDOW_DAYS, parseCalendarBusyIntervals } from './calendar-ical';
 import { fetchCalendarFeed, MAX_CALENDAR_FEED_BYTES, validateCalendarFeedUrl } from './calendar-feed-url';
 import { CALENDAR_PROVIDERS, type CalendarProvider } from './treatwell-sync-coverage';
+import { CALENDAR_POLL_MINUTES } from './calendar-sync-window';
 
 export type CalendarSyncResult = {
   connectionId: string; stylistId: string; provider: string;
@@ -17,6 +18,8 @@ export type CalendarSyncDependencies = {
   fetchFeed?: (url: string) => Promise<string>;
   connectionId?: string;
   provider?: CalendarProvider;
+  /** Only connections that have not succeeded since this instant (or whose last attempt failed). */
+  staleBefore?: Date;
 };
 
 /**
@@ -38,6 +41,7 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
       stylist: { isActive: true },
       provider: deps.provider ?? { in: [...CALENDAR_PROVIDERS] },
       ...(deps.connectionId ? { id: deps.connectionId } : {}),
+      ...(deps.staleBefore ? { OR: [{ lastSuccessAt: null }, { lastSuccessAt: { lt: deps.staleBefore } }, { lastError: { not: null } }] } : {}),
     },
     orderBy: { lastAttemptAt: { sort: 'asc', nulls: 'first' } },
     take: 20,
@@ -105,4 +109,23 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
     }
   }
   return results;
+}
+
+/**
+ * Admin-initiated refresh before a check that needs fresh marketplace data
+ * (confirming a request). The scheduled import deliberately pauses outside
+ * staff hours to save Neon compute, so an evening confirmation would otherwise
+ * fail the 90-minute freshness gate until the next morning. The admin's own
+ * request is already waking the database, so this adds no separate wake.
+ * Respects the CALENDAR_SYNC_ENABLED kill-switch and never throws: a failed
+ * import is reported by the readiness check that follows.
+ */
+export async function refreshStaleCalendarFeeds(deps: Omit<CalendarSyncDependencies, 'staleBefore'> = {}): Promise<CalendarSyncResult[]> {
+  if (process.env.CALENDAR_SYNC_ENABLED !== 'true') return [];
+  const now = deps.now ?? new Date();
+  try {
+    return await syncCalendarFeeds({ ...deps, staleBefore: new Date(now.getTime() - CALENDAR_POLL_MINUTES * 60_000) });
+  } catch {
+    return [];
+  }
 }

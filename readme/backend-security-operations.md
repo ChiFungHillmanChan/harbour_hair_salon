@@ -40,7 +40,7 @@
 
 ## Calendar／通知日常檢查
 
-`CALENDAR_SYNC_ENABLED=true` 開共用 Fresha／Treatwell ICS job，每 15 分鐘 tick；只喺已儲存嘅啟用髮型師營業時間前後各 15 分鐘內匯入（Europe/London，自動處理夏令時間）；唔好另外新增 legacy Treatwell cron。檢查每個 connection 最後成功時間同 error；解析失敗會保留上次 busy times，唔好手動清空佢哋解決紅燈。UTC／TZID／全日 recurrence 同精確 EXDATE 有 regression tests；仍拒絕 floating times、`RDATE`、`EXRULE`、`RECURRENCE-ID` 等未支援格式。失敗 feed 要修正來源或用相容 feed 再測。
+`CALENDAR_SYNC_ENABLED=true` 開共用 Fresha／Treatwell ICS job，每 30 分鐘 tick（2026-09-22 起，為咗 Neon 免費額度由 15 分鐘改做 30 分鐘）；只喺已儲存嘅啟用髮型師營業時間前後各 15 分鐘內匯入（Europe/London，自動處理夏令時間）；唔好另外新增 legacy Treatwell cron。檢查每個 connection 最後成功時間同 error；解析失敗會保留上次 busy times，唔好手動清空佢哋解決紅燈。UTC／TZID／全日 recurrence 同精確 EXDATE 有 regression tests；仍拒絕 floating times、`RDATE`、`EXRULE`、`RECURRENCE-ID` 等未支援格式。失敗 feed 要修正來源或用相容 feed 再測。
 
 每次最多 20 connections；每份 feed 最多 2 MiB，未來窗口 90 日，最多 2,000 events／輸出 intervals、每個 recurring event 最多 400 occurrences。Validated busy window 喺同一 transaction 以每批 100 rows 替換；失敗會 rollback。現時 `pruned` 係窗口內被替換而刪除嘅實體 rows 數，唔等於取消預約數。輪詢有延遲，唔提供跨平台即時鎖位；確認 PENDING 預約前仍要核對平台狀態。未啟用嘅 [Treatwell API worker](../src/app/services/treatwell-api-worker.ts) 會直接拒絕執行，未有已驗證正式 adapter／冪等協議，唔可以當成 API 雙向同步功能。
 

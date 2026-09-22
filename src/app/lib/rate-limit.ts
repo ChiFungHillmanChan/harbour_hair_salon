@@ -60,16 +60,31 @@ function getRedis(): Redis | null {
  * Build a limiter for one policy. Cheap to call at module scope in a server
  * action file: the Redis client and window are created lazily on first check.
  */
-export function createRateLimiter(policy: RateLimitPolicy): RateLimiter {
+/**
+ * Upstash's `limit()` never rejects when Redis is slow: after `timeout` it
+ * RESOLVES `{ success: true, reason: 'timeout' }`. Trusting that verdict made
+ * every limiter (including the only brute-force control on admin sign-in) fail
+ * open whenever Redis hung. Keep the wait short and treat a timeout exactly like
+ * an outage: answer from the in-memory window instead.
+ */
+export const REDIS_TIMEOUT_MS = 1_500;
+
+type RedisLimiter = { limit(key: string): Promise<{ success: boolean; reason?: string }> };
+
+export function createRateLimiter(
+  policy: RateLimitPolicy,
+  /** Test seam: supply the Redis-backed limiter (or null) instead of building one from env. */
+  deps: { redisLimiter?: RedisLimiter | null } = {},
+): RateLimiter {
   const fallback = new SlidingWindow({
     limit: policy.limit,
     windowMs: policy.windowSeconds * 1000,
   });
 
-  let redisLimiter: Ratelimit | null | undefined;
+  let redisLimiter: RedisLimiter | null | undefined = deps.redisLimiter;
   let lastBackend: 'redis' | 'memory' = 'memory';
 
-  function getRedisLimiter(): Ratelimit | null {
+  function getRedisLimiter(): RedisLimiter | null {
     if (redisLimiter !== undefined) return redisLimiter;
     const redis = getRedis();
     redisLimiter = redis
@@ -77,6 +92,7 @@ export function createRateLimiter(policy: RateLimitPolicy): RateLimiter {
           redis,
           limiter: Ratelimit.slidingWindow(policy.limit, `${policy.windowSeconds} s`),
           prefix: policy.prefix,
+          timeout: REDIS_TIMEOUT_MS,
         })
       : null;
     return redisLimiter;
@@ -88,9 +104,12 @@ export function createRateLimiter(policy: RateLimitPolicy): RateLimiter {
       const limiter = getRedisLimiter();
       if (limiter) {
         try {
-          const { success } = await limiter.limit(key);
-          lastBackend = 'redis';
-          return success;
+          const { success, reason } = await limiter.limit(key);
+          if (reason !== 'timeout') {
+            lastBackend = 'redis';
+            return success;
+          }
+          console.error(`[rate-limit] ${policy.prefix} Redis timed out after ${REDIS_TIMEOUT_MS} ms, using in-memory fallback`);
         } catch (err) {
           // Redis outage: fall through to the in-memory window rather than
           // failing fully open, so an outage cannot be used as a bypass.

@@ -34,6 +34,7 @@ function fixture(options: {
   failEnqueue?: boolean;
   onlineReady?: boolean;
   calendarReady?: boolean;
+  onFeedRefresh?: () => void;
 } & NotificationTimingHooks = {}) {
   const originalDate = options.currentDate ?? new Date('2099-09-14T12:00:00Z');
   const appointment = {
@@ -168,6 +169,13 @@ function fixture(options: {
         return { ready: options.calendarReady !== false, blockers: [] };
       },
     },
+    '@/app/services/calendar-sync-service': {
+      refreshStaleCalendarFeeds: async () => {
+        assert.equal(transactionActive, false, 'marketplace feeds must not be fetched inside the transaction');
+        options.onFeedRefresh?.();
+        return [];
+      },
+    },
     '@/app/services/stylist-ical-cache': {
       invalidateStylistIcalFeed: () => {
         assert.equal(transactionActive, false, 'feed invalidation must follow commit');
@@ -296,6 +304,33 @@ test('rescheduling cannot overlap an imported external booking', async () => {
   assert.equal((await actions.rescheduleAppointment(appointment.id, '2099-09-14', '13:00')).success, false);
   assert.equal(messages.length, 0);
 });
+
+test('admin approval refreshes stale marketplace feeds first; other status changes do not', async () => {
+  const calls: string[] = [];
+  const approve = fixture({ status: 'PENDING', onFeedRefresh: () => calls.push('approve') });
+  assert.equal((await approve.admin.updateAppointmentStatus(approve.appointment.id, 'CONFIRMED')).success, true);
+  const cancel = fixture({ status: 'PENDING', onFeedRefresh: () => calls.push('cancel') });
+  assert.equal((await cancel.admin.updateAppointmentStatus(cancel.appointment.id, 'CANCELLED')).success, true);
+  assert.deepEqual(calls, ['approve']);
+});
+
+// Date is mocked (2099-09-01T12:00Z), so the boundary is exact, not flaky.
+for (const [label, offsetMinutes, allowed] of [
+  ['exactly 24 hours', 24 * 60, true],
+  ['24 hours minus one minute', 24 * 60 - 1, false],
+] as const) {
+  test(`a confirmed booking ${label} away ${allowed ? 'can' : 'cannot'} be cancelled or rescheduled`, async () => {
+    const currentDate = new Date(Date.now() + offsetMinutes * 60_000);
+    const cancel = fixture({ currentDate });
+    const cancelled = await cancel.actions.cancelAppointment(cancel.appointment.id);
+    assert.equal(cancelled.success, allowed, JSON.stringify(cancelled));
+    if (!allowed) assert.match(String(cancelled.error), /24 hours/);
+    const move = fixture({ currentDate });
+    const moved = await move.actions.rescheduleAppointment(move.appointment.id, '2099-09-15', '10:00');
+    assert.equal(moved.success, allowed, JSON.stringify(moved));
+    if (!allowed) assert.match(String(moved.error), /24 hours/);
+  });
+}
 
 test('confirmed appointments retain the 24-hour change restriction while pending requests can be withdrawn', async () => {
   const currentDate = new Date(Date.now() + 60 * 60_000);

@@ -300,8 +300,11 @@ export function ScheduleCalendar({
   const setViewMode = (nextView: CalendarView) => navigate(currentDate, nextView);
 
   // Local timer only; hidden or overnight boards must not hold Neon awake.
+  // `lastLoaded` uses the BROWSER clock, like `now` below: `loadedAt` is server
+  // time, and comparing it with a fast device clock refreshed every minute.
+  // The effect re-runs whenever a refresh delivers a new `loadedAt`.
   useEffect(() => {
-    let lastLoaded = loadedAt ? new Date(loadedAt) : new Date();
+    let lastLoaded = new Date();
     const hours = stylists.flatMap(stylist => stylist.availabilities);
     const refreshIfVisible = () => {
       const now = new Date();
@@ -440,7 +443,7 @@ export function ScheduleCalendar({
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-600">
         <p>
           {loadedAt && <>Calendar loaded {formatSalonDate(new Date(loadedAt))} at {formatSalonTime(new Date(loadedAt))} (UK). </>}
-          {view === 'year' ? 'Year totals refresh on demand.' : 'Auto-refresh follows each 15-minute scheduled import while this tab is visible. Imports run during opening hours, including a 15-minute buffer.'}
+          {view === 'year' ? 'Year totals refresh on demand.' : 'Auto-refresh follows each 30-minute scheduled import while this tab is visible. Imports run during opening hours, including a 15-minute buffer.'}
           {' '}Refreshing shows saved data; platform imports run separately and may be delayed.
         </p>
         <button type="button" onClick={() => startNavigation(() => router.refresh())} disabled={isNavigating} className="shrink-0 rounded border border-zinc-300 px-3 py-2 font-semibold text-[#174F7F] disabled:opacity-50">Refresh now</button>

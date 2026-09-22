@@ -6,7 +6,7 @@ const now = new Date('2026-09-11T12:00:00Z');
 before(() => mock.timers.enable({ apis: ['Date'], now }));
 after(() => mock.timers.reset());
 
-function fixture(prefixSize = 100, advanceOnEnqueue = false) {
+function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: string[] = []) {
   const createdAt: Date[] = [];
   const existing = Array.from({ length: prefixSize }, (_, index) => {
     const id = `review-${String(index).padStart(5, '0')}`;
@@ -61,6 +61,8 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false) {
     '@/app/lib/prisma': db,
     './notification-outbox-service': {
       enqueueAppointmentNotification: async (_db: unknown, kind: string, row: (typeof rows)[number]) => {
+        // The real outbox writes nothing (returns null) for walk-in placeholder addresses.
+        if (placeholderIds.includes(row.id)) return null;
         const eventKey = `appointment/${row.id}/${row.notificationVersion}/${kind}`;
         if (!row.notifications.some((event) => event.eventKey === eventKey)) {
           if (advanceOnEnqueue) mock.timers.tick(5);
@@ -125,4 +127,12 @@ test('delivery cron leaves retention writes to independent bounded housekeeping'
   const f = fixture(0);
   await f.service.runNotificationCron('notifications');
   assert.equal(f.cleanupCalls.length, 0);
+});
+
+test('walk-in placeholder bookings are not counted as queued on every run', async () => {
+  const f = fixture(0, false, ['reminder-target']);
+  for (let run = 0; run < 3; run++) {
+    const result = await f.service.runNotificationCron('notifications');
+    assert.equal('queued' in result ? result.queued : undefined, run === 0 ? 1 : 0, `run ${run}`);
+  }
 });

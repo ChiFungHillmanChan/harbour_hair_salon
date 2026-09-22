@@ -13,6 +13,7 @@ import { revalidateCategoryPages } from '@/app/actions/admin-services';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
+import { refreshStaleCalendarFeeds } from '@/app/services/calendar-sync-service';
 import { assertAppointmentSlotAvailable, runSerializableWithRetry } from '@/app/services/booking-service';
 import { BookingError } from '@/app/services/booking-errors';
 
@@ -424,6 +425,10 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
     return { success: false, error: 'Invalid status' };
   }
   try {
+    // Network I/O stays outside the serializable transaction below. Outside
+    // staff hours the scheduled import pauses, so without this an evening
+    // confirmation fails the calendar-freshness check until the next morning.
+    if (status === 'CONFIRMED') await refreshStaleCalendarFeeds();
     const { appointment, changed } = await runSerializableWithRetry(async (tx) => {
       const include = {
         user: { select: { email: true, name: true } },
