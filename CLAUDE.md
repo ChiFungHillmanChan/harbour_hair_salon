@@ -29,8 +29,10 @@ pnpm db:vercel:generate # Regenerate Prisma client for Vercel
 pnpm db:prod:migrate  # Create prod migrations
 pnpm db:prod:deploy   # Deploy prod migrations
 
-# Deployment
-npx vercel --prod     # Deploy to Vercel production
+# Deployment — production is deployed ONLY by GitHub Actions after CI passes
+git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, then deploys
+# `vercel --prod` locally is refused by scripts/production-build-guard.mjs, and
+# Vercel's own git builds are off (`git.deploymentEnabled: false` in vercel.json).
 ```
 
 ## Architecture
@@ -45,7 +47,7 @@ npx vercel --prod     # Deploy to Vercel production
 - **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`. Session helpers in `src/app/lib/session.ts`. Route protection in `middleware.ts`.
 - **Email**: Resend SDK with React Email templates. Service in `src/app/services/email-service.ts`, templates in `src/components/emails/`.
 - **Validation**: Zod
-- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC), notifications and calendar-sync (both every 30 min) and housekeeping (daily 03:15 UTC). See "Neon compute budget" below before adding another.
+- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC), notifications (`*/30 8-19` UTC, daytime only), calendar-sync (`*/30`, but the route skips ticks outside saved staff hours ±15 min before touching the DB) and housekeeping (daily 03:15 UTC). See "Neon compute budget" below before adding another; `neon-compute-budget.test.ts` pins these.
 
 ### Environment Variables
 
@@ -97,6 +99,12 @@ Rules that follow from this:
   queries per five minutes, forever, pinning the compute exactly as the old
   cron had. It is now served from the Data Cache (`stylist-ical-cache.ts`) and
   invalidated by `invalidateStylistIcalFeed()` on every appointment mutation.
+  **A cache's timed expiry is itself a poll.** Its 30-minute safety net was
+  still the largest Neon cost in September 2026 (~45 wakes, ~1.7 CU-h a day —
+  about half the free plan), because every expiry turned the next marketplace
+  poll into a wake. When mutations already invalidate a tag, keep the timed
+  expiry to a day or more. Measure with Neon's operations log
+  (`start_compute`/`suspend_compute`), not guesses.
   Before shipping any public route that touches the database, ask who polls it
   and how often, and check the runtime logs for the real cadence — not just
   `vercel.json`.

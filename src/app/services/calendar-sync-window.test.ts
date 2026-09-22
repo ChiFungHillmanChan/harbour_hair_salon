@@ -29,18 +29,23 @@ test('any active staff window opens sync, including buffers crossing midnight', 
   assert.equal(isCalendarSyncWindow(windows, new Date('2026-09-21T22:49:59Z')), false);
   assert.equal(isCalendarSyncWindow([{ dayOfWeek: 1, startTime: '20:00', endTime: '23:55', isOff: false }], new Date('2026-09-21T23:10:00Z')), true);
 });
-test('dashboard refresh follows each quarter-hour import with time for it to finish', () => {
-  const now = new Date('2026-09-21T11:16:30Z');
-  const last = new Date('2026-09-21T11:16:29Z');
+test('dashboard refresh follows each half-hour import with time for it to finish', () => {
+  const now = new Date('2026-09-21T11:01:30Z');
+  const last = new Date('2026-09-21T11:01:29Z');
   assert.equal(shouldRefreshCalendar(hours, now, last, true), true);
   assert.equal(shouldRefreshCalendar(hours, now, new Date(last.getTime() + 1000), true), false);
-  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T11:16:29Z'), new Date('2026-09-21T11:01:30Z'), true), false);
+  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T11:01:29Z'), new Date('2026-09-21T10:31:30Z'), true), false);
   assert.equal(shouldRefreshCalendar(hours, now, new Date('2026-09-21T11:00:00Z'), true), true);
   assert.equal(shouldRefreshCalendar(hours, now, last, false), false);
   assert.equal(shouldRefreshCalendar([], now, last, true), false);
 });
 
-test('the final buffered import still reaches the screen after the sync window closes', () => {
-  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T18:17:00Z'), new Date('2026-09-21T18:02:00Z'), true), true);
-  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T18:32:00Z'), new Date('2026-09-21T18:17:00Z'), true), false);
+test('there is no quarter-hour refresh between half-hour imports', () => {
+  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T11:16:30Z'), new Date('2026-09-21T11:01:30Z'), true), false);
+  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T11:29:59Z'), new Date('2026-09-21T11:01:30Z'), true), false);
+});
+
+test('the final in-window import still reaches the screen after the sync window closes', () => {
+  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T18:02:00Z'), new Date('2026-09-21T17:31:30Z'), true), true);
+  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T18:32:00Z'), new Date('2026-09-21T18:02:00Z'), true), false);
 });

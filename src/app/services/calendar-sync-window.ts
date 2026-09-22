@@ -2,7 +2,10 @@ import type { Availability } from '@prisma/client';
 import { isValidSalonTime, resolveSalonDateTime, salonDateKey } from './salon-time';
 
 export type SyncHours = Pick<Availability, 'dayOfWeek' | 'startTime' | 'endTime' | 'isOff'>;
-export const CALENDAR_POLL_MINUTES = 15;
+// Must equal the calendar-sync interval in vercel.json (a test enforces it).
+// 30, not 15: each tick is a separate Neon wake with a 5-minute idle tail, and
+// :00/:30 ticks share their wake with the notifications job.
+export const CALENDAR_POLL_MINUTES = 30;
 const BUFFER_MS = 15 * 60_000;
 
 /** London opening hours at cron-minute precision, including adjacent-date buffers. */
@@ -28,8 +31,8 @@ export function isCalendarSyncWindow(hours: readonly SyncHours[], now = new Date
 
 /** A local timer may tick frequently; only this decision causes a server read. */
 export function shouldRefreshCalendar(hours: readonly SyncHours[], now: Date, lastLoaded: Date, visible: boolean): boolean {
-  // Follow cron's quarter-hour boundaries, allowing its 90-second runtime.
-  // Independent 15-minute timers could otherwise add another full poll delay.
+  // Follow the cron's import boundaries, allowing its 90-second runtime.
+  // An independent timer could otherwise add another full poll delay.
   const interval = CALENDAR_POLL_MINUTES * 60_000;
   const importTick = Math.floor((now.getTime() - 90_000) / interval) * interval;
   return visible && lastLoaded.getTime() < importTick + 90_000 && isCalendarSyncWindow(hours, new Date(importTick));

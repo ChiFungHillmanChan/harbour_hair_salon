@@ -2,11 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
 
-function fixture(options: { role?: string; calendarReady?: boolean; operationsReady?: boolean; activeChannels?: number; outage?: boolean } = {}) {
-  const saved = { bookingEnabled: true, phone: '01234567890' };
+function fixture(options: { role?: string; calendarReady?: boolean; operationsReady?: boolean; activeChannels?: number; outage?: boolean; currentlyEnabled?: boolean } = {}) {
+  const saved = { bookingEnabled: options.currentlyEnabled ?? false, phone: '01234567890' };
+  const readinessCalls = { calendar: 0, operations: 0 };
   const tx = {
     auditEvent: { create: async () => ({ id: "audit" }) },
-    siteSettings: { upsert: async ({ update }: { update: Record<string, unknown> }) => { Object.assign(saved, update); return saved; } },
+    siteSettings: {
+      findUnique: async () => ({ bookingEnabled: saved.bookingEnabled }),
+      upsert: async ({ update }: { update: Record<string, unknown> }) => { Object.assign(saved, update); return saved; },
+    },
     calendarConnection: { count: async () => options.activeChannels ?? 0 },
   };
   const actions = loadServerModule<typeof import('./admin-settings')>('src/app/actions/admin-settings.ts', {
@@ -17,11 +21,13 @@ function fixture(options: { role?: string; calendarReady?: boolean; operationsRe
     '@/app/lib/session': { verifySession: async () => ({ role: options.role ?? 'ADMIN' }) },
     '@/app/services/integration-readiness': { checkCalendarBookingReadiness: async (client: unknown) => {
       assert.equal(client, tx);
+      readinessCalls.calendar++;
       if (options.outage) throw new Error('Provider unavailable');
       return { ready: options.calendarReady !== false, blockers: options.calendarReady === false ? ['Calendar coverage missing.'] : [] };
     } },
     '@/app/services/operations-readiness': { checkOperationsBookingReadiness: async (client: unknown) => {
       assert.equal(client, tx);
+      readinessCalls.operations++;
       if (options.outage) throw new Error('Provider unavailable');
       return { ready: options.operationsReady !== false, blockers: options.operationsReady === false ? ['Operational checks have not passed.'] : [] };
     } },
@@ -30,7 +36,7 @@ function fixture(options: { role?: string; calendarReady?: boolean; operationsRe
   });
   const form = new FormData();
   form.set('phone', '09876543210');
-  return { actions, form, saved };
+  return { actions, form, saved, readinessCalls };
 }
 
 test('closing booking remains possible when readiness providers are unavailable', async () => {
@@ -74,4 +80,23 @@ test('a customer cannot change booking settings', async () => {
   const f = fixture({ role: 'USER' });
   await assert.rejects(f.actions.updateSiteSettings({ status: 'idle' }, f.form), /Unauthorized/);
   assert.equal(f.saved.phone, '01234567890');
+});
+
+test('editing settings while booking is already open does not re-run the launch checks', async () => {
+  // Marketplace imports pause outside staff hours, so an evening phone-number
+  // edit used to fail the calendar-freshness gate with "Settings were not saved".
+  const f = fixture({ currentlyEnabled: true, calendarReady: false, operationsReady: false });
+  f.form.set('bookingEnabled', 'on');
+  assert.equal((await f.actions.updateSiteSettings({ status: 'idle' }, f.form)).status, 'success');
+  assert.equal(f.saved.phone, '09876543210');
+  assert.equal(f.saved.bookingEnabled, true);
+  assert.deepEqual(f.readinessCalls, { calendar: 0, operations: 0 });
+});
+
+test('turning booking on still requires the launch checks', async () => {
+  const f = fixture({ currentlyEnabled: false, calendarReady: false });
+  f.form.set('bookingEnabled', 'on');
+  assert.equal((await f.actions.updateSiteSettings({ status: 'idle' }, f.form)).status, 'error');
+  assert.equal(f.saved.bookingEnabled, false);
+  assert.equal(f.readinessCalls.calendar, 1);
 });

@@ -29,8 +29,10 @@ pnpm db:vercel:generate # Regenerate Prisma client for Vercel
 pnpm db:prod:migrate  # Create prod migrations
 pnpm db:prod:deploy   # Deploy prod migrations
 
-# Deployment
-npx vercel --prod     # Deploy to Vercel production
+# Deployment — production is deployed ONLY by GitHub Actions after CI passes
+git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, then deploys
+# `vercel --prod` locally is refused by scripts/production-build-guard.mjs, and
+# Vercel's own git builds are off (`git.deploymentEnabled: false` in vercel.json).
 ```
 
 ## Architecture
@@ -45,7 +47,7 @@ npx vercel --prod     # Deploy to Vercel production
 - **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`. Session helpers in `src/app/lib/session.ts`. Route protection in `middleware.ts`.
 - **Email**: Resend SDK with React Email templates. Service in `src/app/services/email-service.ts`, templates in `src/components/emails/`.
 - **Validation**: Zod
-- **Deployment**: Vercel (Pro plan) with Neon Postgres. Cron: appointment reminders daily at 8am UTC, notification delivery every 30 minutes and calendar sync every 15 minutes during saved active-staff opening hours, with a 15-minute buffer before/after (Europe/London). These sub-daily schedules require Pro. Notification and calendar jobs return before accessing the database unless their runtime flags are enabled.
+- **Deployment**: Vercel (Pro plan) with Neon Postgres. Cron: appointment reminders daily at 8am UTC, notification delivery every 30 minutes during daytime UTC hours (`*/30 8-19`), and calendar sync every 30 minutes during saved active-staff opening hours, with a 15-minute buffer before/after (Europe/London). Production deploys only from GitHub Actions after CI; see scripts/production-build-guard.mjs. These sub-daily schedules require Pro. Notification and calendar jobs return before accessing the database unless their runtime flags are enabled.
 
 ### Environment Variables
 

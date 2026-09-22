@@ -94,8 +94,13 @@ export async function updateSiteSettings(
 
   try {
     const blockers = await prisma.$transaction(async (tx) => {
-      // Closing booking must remain possible during any provider outage.
-      if (parsed.data.bookingEnabled) {
+      // Closing booking must remain possible during any provider outage, and
+      // only turning booking ON needs launch evidence. While it is already on,
+      // every booking attempt re-checks readiness (assertOnlineBookingReady), so
+      // editing the phone number or hero text must not fail just because
+      // marketplace imports pause outside staff hours.
+      const current = await tx.siteSettings.findUnique({ where: { id: 'singleton' }, select: { bookingEnabled: true } });
+      if (parsed.data.bookingEnabled && !current?.bookingEnabled) {
         const calendar = await checkCalendarBookingReadiness(tx);
         const operations = await checkOperationsBookingReadiness(tx);
         const reasons = [...calendar.blockers, ...operations.blockers];

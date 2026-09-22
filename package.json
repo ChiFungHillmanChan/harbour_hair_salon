@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
-    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma migrate deploy --schema prisma/vercel/schema.prisma; else echo \"Skipping migrations (VERCEL_ENV=$VERCEL_ENV) \u2014 only production may mutate the schema\"; fi && next build --webpack",
+    "vercel-build": "node scripts/production-build-guard.mjs && if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma migrate deploy --schema prisma/vercel/schema.prisma; else echo \"Skipping migrations (VERCEL_ENV=$VERCEL_ENV) \u2014 only production may mutate the schema\"; fi && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "node --conditions=react-server --import tsx --test $(find src -name '*.test.ts')",

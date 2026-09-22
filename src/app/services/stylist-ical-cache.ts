@@ -30,7 +30,15 @@ import {
  * many times the feed is fetched, and `invalidateStylistIcalFeed()` drops the
  * entry the moment an appointment actually changes. Freshness therefore comes
  * from invalidation, not from polling; the window below is only a safety net
- * for a mutation path that forgets to call it.
+ * for a mutation path that forgets to call it (or a direct SQL edit).
+ *
+ * Keep that safety net LONG. Neon's operations log for 2026-09-18..21 showed
+ * the old 30-minute window was the single largest Neon cost: with polls every
+ * 5-15 minutes around the clock, every expiry turned the next poll into a
+ * database wake — ~45 wakes and ~1.7 CU-hours a day, about half the free
+ * plan's 100 CU-hours a month, while the feed itself changed a few times a day.
+ * `renderIcalFeed` drops ended events on every request and `loadBusyEvents`
+ * has no forward limit, so a day-old entry is still correct.
  *
  * The token and the appointments are cached SEPARATELY on purpose. A caller
  * with a wrong token is answered from the token cache alone and never reaches
@@ -42,9 +50,13 @@ const EVENTS_TAG = 'stylist-ical-feed';
 const TOKEN_TAG = 'stylist-ical-token';
 
 /** Safety net only; every appointment mutation invalidates this immediately. */
-const EVENTS_REVALIDATE_SECONDS = 30 * 60;
-/** Tokens change only when an admin regenerates one, which invalidates the tag. */
-const TOKEN_REVALIDATE_SECONDS = 60 * 60;
+export const EVENTS_REVALIDATE_SECONDS = 24 * 60 * 60;
+/**
+ * Tokens change only in `generateStylistIcalFeedTokenAction`, which invalidates
+ * the tag, so there is no timed expiry: a separate token TTL would drift out of
+ * step with the events entry and add its own daily wake per stylist.
+ */
+export const TOKEN_REVALIDATE_SECONDS = false;
 
 const readToken = unstable_cache(
   async (stylistId: string): Promise<string | null> => loadStylistToken(stylistId),
@@ -54,9 +66,9 @@ const readToken = unstable_cache(
 
 const readBusyEvents = unstable_cache(
   // `now` is deliberately NOT a parameter: it would make every request a unique
-  // cache key and defeat the whole point. The lookback window is 24 hours and
-  // the entry lives for 30 minutes, so the drift is immaterial — and
-  // `renderIcalFeed` re-applies the exact "already ended" cut per request.
+  // cache key and defeat the whole point. The lookback only widens while an
+  // entry lives (never narrows), and `renderIcalFeed` re-applies the exact
+  // "already ended" cut per request, so the drift is immaterial.
   async (stylistId: string): Promise<BusyEvent[]> => loadBusyEvents(stylistId, new Date()),
   ['stylist-ical-events'],
   { revalidate: EVENTS_REVALIDATE_SECONDS, tags: [EVENTS_TAG] },
@@ -76,7 +88,7 @@ export async function buildCachedStylistIcalFeed(
 /**
  * Drop the cached busy feeds. Call from a server action AFTER the transaction
  * that changed an appointment has committed, so the marketplaces see the new
- * busy period on their next poll instead of up to 30 minutes later.
+ * busy period on their next poll instead of up to a day later.
  */
 export function invalidateStylistIcalFeed(): void {
   // `updateTag`, not `revalidateTag`: in Next 16 the latter takes a cacheLife

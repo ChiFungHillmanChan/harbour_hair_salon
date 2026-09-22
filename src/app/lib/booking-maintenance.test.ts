@@ -85,3 +85,28 @@ test('public booking checks current operational readiness and active calendar sc
     if (previous.calendar === undefined) delete process.env.CALENDAR_SYNC_ENABLED; else process.env.CALENDAR_SYNC_ENABLED = previous.calendar;
   }
 });
+
+test('the admin booking switch closes booking even when every other gate passes', async () => {
+  // Admin -> Settings "booking off" must close online booking on its own; the
+  // calendar and operational gates below it must not be what decides.
+  const previous = { notifications: process.env.NOTIFICATIONS_ENABLED, calendar: process.env.CALENDAR_SYNC_ENABLED };
+  try {
+    process.env.NOTIFICATIONS_ENABLED = 'true';
+    process.env.CALENDAR_SYNC_ENABLED = 'true';
+    for (const settings of [{ bookingEnabled: false, phone: '01234' }, null]) {
+      const db = { siteSettings: { findUnique: async () => settings }, calendarConnection: { count: async () => 0 } };
+      const maintenance = loadServerModule<typeof import('./booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
+        '@/app/lib/prisma': db,
+        '@/app/services/integration-readiness': { checkCalendarBookingReadiness: async () => ({ ready: true, blockers: [] }) },
+        '@/app/services/operations-readiness': { checkOperationsRuntimeReadiness: async () => ({ ready: true, blockers: [] }) },
+        'next/cache': { unstable_cache: (callback: () => Promise<boolean>) => callback },
+      });
+      await assert.rejects(maintenance.assertOnlineBookingReady(db as never), (error: unknown) =>
+        error instanceof BookingError && error.message === maintenance.BOOKING_MAINTENANCE_MESSAGE, JSON.stringify(settings));
+      assert.equal(await maintenance.isBookingEnabled(), false, JSON.stringify(settings));
+    }
+  } finally {
+    if (previous.notifications === undefined) delete process.env.NOTIFICATIONS_ENABLED; else process.env.NOTIFICATIONS_ENABLED = previous.notifications;
+    if (previous.calendar === undefined) delete process.env.CALENDAR_SYNC_ENABLED; else process.env.CALENDAR_SYNC_ENABLED = previous.calendar;
+  }
+});
