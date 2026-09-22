@@ -13,7 +13,10 @@ import type { CalendarView } from '@/app/services/admin-calendar-range';
 import { moveAppointmentByAdmin } from '@/app/actions/admin-schedule';
 import { weekDayKeys } from '@/app/services/admin-calendar-range';
 import { calendarBusyForDay, calendarBusyLabel } from '@/app/lib/calendar-busy-display';
-import { shouldRefreshCalendar } from '@/app/services/calendar-sync-window';
+import { payloadArrival, shouldRefreshCalendar } from '@/app/services/calendar-sync-window';
+
+// Browser arrival time of each server payload this tab has shown; see payloadArrival.
+const payloadFirstSeen = new Map<string, number>();
 
 type AppointmentWithDetails = CalendarAppointment;
 
@@ -44,29 +47,38 @@ async function setAppointmentStatus(
 }
 
 // Approve / decline buttons for a PENDING booking request (double-confirm flow:
-// customers submit requests, the salon confirms them here).
-const PendingActions = ({ apptId, onDone }: { apptId: string; onDone: () => void }) => (
-  <div className="flex gap-2">
-    <button
-      type="button"
-      onClick={() => setAppointmentStatus(apptId, 'CONFIRMED', onDone)}
-      className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
-    >
-      Confirm booking
-    </button>
-    <button
-      type="button"
-      onClick={() => {
-        if (window.confirm('Decline this booking request? The customer will need to book again.')) {
-          setAppointmentStatus(apptId, 'CANCELLED', onDone);
-        }
-      }}
-      className="rounded border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
-    >
-      Decline
-    </button>
-  </div>
-);
+// customers submit requests, the salon confirms them here). Confirming can take
+// a few seconds because out-of-date marketplace feeds are re-imported first, so
+// both buttons show progress and cannot be pressed twice.
+function PendingActions({ apptId, onDone }: { apptId: string; onDone: () => void }) {
+  const [pending, startTransition] = useTransition();
+  const run = (status: 'CONFIRMED' | 'CANCELLED') =>
+    startTransition(async () => { await setAppointmentStatus(apptId, status, onDone); });
+  return (
+    <div className="flex gap-2" aria-busy={pending}>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => run('CONFIRMED')}
+        className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
+      >
+        {pending ? 'Checking calendars…' : 'Confirm booking'}
+      </button>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          if (window.confirm('Decline this booking request? The customer will need to book again.')) {
+            run('CANCELLED');
+          }
+        }}
+        className="rounded border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+      >
+        Decline
+      </button>
+    </div>
+  );
+}
 
 interface YearViewProps {
   currentDate: Date;
@@ -301,10 +313,11 @@ export function ScheduleCalendar({
 
   // Local timer only; hidden or overnight boards must not hold Neon awake.
   // `lastLoaded` uses the BROWSER clock, like `now` below: `loadedAt` is server
-  // time, and comparing it with a fast device clock refreshed every minute.
-  // The effect re-runs whenever a refresh delivers a new `loadedAt`.
+  // time, and comparing it with a fast device clock refreshed every minute. A
+  // payload restored by Back/Forward keeps its first arrival time, so it still
+  // refreshes after the next import. The effect re-runs on every new `loadedAt`.
   useEffect(() => {
-    let lastLoaded = new Date();
+    let lastLoaded = new Date(payloadArrival(payloadFirstSeen, loadedAt, Date.now()));
     const hours = stylists.flatMap(stylist => stylist.availabilities);
     const refreshIfVisible = () => {
       const now = new Date();

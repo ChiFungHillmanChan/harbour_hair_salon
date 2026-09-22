@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { slugify } from '@/app/stylists/slug';
+import { invalidateStylistIcalToken } from '@/app/services/stylist-ical-cache';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -206,6 +207,9 @@ export async function deleteStylist(formData: FormData): Promise<void> {
 
   await prisma.stylist.delete({ where: { id }, select: { id: true } });
   updateTag('calendar-sync-hours');
+  // The token cache has no short timer, so a deleted stylist's feed URL would
+  // otherwise keep answering until the week-long safety net expired.
+  invalidateStylistIcalToken();
 
   revalidatePath('/stylists');
   if (existing.slug) revalidatePath(`/stylists/${existing.slug}`);

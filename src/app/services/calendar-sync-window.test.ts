@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isCalendarSyncWindow, shouldRefreshCalendar } from './calendar-sync-window';
+import { isCalendarSyncWindow, payloadArrival, shouldRefreshCalendar } from './calendar-sync-window';
 
 const hours = [{ dayOfWeek: 1, startTime: '10:00', endTime: '19:00', isOff: false }];
 test('sync includes the buffered closing cron minute despite scheduling delay in BST', () => {
@@ -46,6 +46,26 @@ test('there is no quarter-hour refresh between half-hour imports', () => {
 });
 
 test('the final in-window import still reaches the screen after the sync window closes', () => {
+  // The buffered window ends 18:15:59Z; the last import ran at 18:00Z.
   assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T18:02:00Z'), new Date('2026-09-21T17:31:30Z'), true), true);
+  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T18:20:00Z'), new Date('2026-09-21T17:50:00Z'), true), true,
+    'a tab reopened after the window closed must still show the final import');
   assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T18:32:00Z'), new Date('2026-09-21T18:02:00Z'), true), false);
+});
+
+test('no refresh is scheduled before the first import of the day has run', () => {
+  // The window opens 08:45Z but the first half-hourly import is 09:00Z.
+  assert.equal(shouldRefreshCalendar(hours, new Date('2026-09-21T08:50:00Z'), new Date('2026-09-21T08:00:00Z'), true), false);
+});
+
+test('a payload restored by Back/Forward keeps its first arrival time; a fresh one arrives now', () => {
+  const seen = new Map<string, number>();
+  const first = Date.parse('2026-09-21T10:01:40Z');
+  assert.equal(payloadArrival(seen, '2026-09-21T10:01:39Z', first), first);
+  const back = Date.parse('2026-09-21T10:31:35Z');
+  assert.equal(payloadArrival(seen, '2026-09-21T10:01:39Z', back), first, 'restored payload must not look fresh');
+  assert.equal(shouldRefreshCalendar(hours, new Date(back + 60_000), new Date(first), true), true,
+    'so the next check after the 10:30 import refreshes it');
+  assert.equal(payloadArrival(seen, '2026-09-21T10:31:40Z', back), back);
+  assert.equal(payloadArrival(seen, undefined, back), back);
 });

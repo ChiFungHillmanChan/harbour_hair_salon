@@ -1,11 +1,17 @@
 # Launch checklist — Harbour Hair Salon
 
-Last verified against production: **2026-09-17** (commit `4b9b50f`, `www.harbourhair.co.uk`).
+Last verified against production: **2026-09-22** (commit `e785e03`, deployment
+`dpl_5EMtoxaQ4zb2oxvpijGy2esqqJMT`, `www.harbourhair.co.uk`).
 
-> **Status:** all four §1 code fixes and the §2 price fix are **done** and pending
-> deploy. Gate after the changes: **588/588 tests, `tsc` clean, lint clean, full
-> `next build` succeeds.** What remains is §2 content, §3 (opening booking), and
-> §4 (owner decisions).
+> **Status:** all code fixes are **done and live**. Gate: **651/651 tests, `tsc`
+> clean, lint clean**, CI green (PostgreSQL 18 integration, booking lifecycle,
+> build). What remains is §2 content, §3 (opening booking — config + owner steps)
+> and §4 (owner decisions). **Nothing left in §3/§4 needs a code change**, except
+> the Treatwell→Fresha page copy if the owner picks Fresha (§4).
+>
+> **Deploys:** push or merge to `main`; GitHub Actions tests and deploys. Local
+> `vercel --prod` is refused by `scripts/production-build-guard.mjs` and Vercel's
+> own git builds are off (`vercel.json`).
 
 The site is **already live and serving customers**. What is still closed is
 **online booking**, and it is closed by configuration, not by code. This file is
@@ -20,17 +26,20 @@ other, and doing them out of order leaves booking silently shut.
 
 | Area | State |
 |---|---|
-| Tests / `tsc` / lint | 588/588 pass, clean, clean (plus a full `next build`) |
+| Tests / `tsc` / lint | 651/651 pass, clean, clean; CI also runs PostgreSQL 18 integration, booking-lifecycle and `next build` |
 | `pnpm audit --prod` | No known vulnerabilities |
-| CI | Green on all recent `main` pushes |
-| Migrations | 16 applied, **0 unfinished** |
+| CI / deploy | Green; production deploys **only** from the GitHub Actions job after CI (2026-09-22) |
+| Neon compute | Free plan, 100 CU-h/month. Was ~3 CU-h/day (~90/mo) until 2026-09-22; PR #45 targets ~40-45/mo — **re-measure 2026-09-23** |
+| Crons (UTC) | reminders `0 8`, notifications `*/30 8-19`, calendar-sync `*/30` (imports only during staff hours ±15 min), housekeeping `15 3` |
+| Runtime errors | None in the 24 h to 2026-09-22 19:20 UTC |
+| Migrations | 18 applied, none pending (checked by the 2026-09-22 deploy) |
 | Database | Neon `eu-west-2`, PostgreSQL 18.6, co-located with functions (`lhr1`) and Redis (`global-euw2`) |
 | Security headers | CSP, HSTS, X-Frame-Options, nosniff — all live |
 | Cron endpoints | All 5 return **401** without `CRON_SECRET` |
 | iCal feed without token | **404**, no leak |
 | Public pages | ISR, `X-Vercel-Cache: HIT`, 76–360 ms from the UK |
 | Email | `harbourhair.co.uk` verified in Resend; SPF + DKIM + DMARC all resolve |
-| **Online booking** | **CLOSED** — 5 gates, all unmet (see §3) |
+| **Online booking** | **CLOSED** — see §3 for exactly which gates remain |
 
 ---
 
@@ -102,7 +111,12 @@ other, and doing them out of order leaves booking silently shut.
       the CDN for up to an hour — **it refreshes immediately on the next deploy.**
       Re-check after deploying §1: `curl -s https://www.harbourhair.co.uk/services | grep -o 'start from £[0-9]*'`
 
-- [ ] **Add stylist bios, taglines and photos.** All four active stylists have
+- [x] **Correct the "£8" on `/services/haircuts`.** *(done 2026-09-22)* A second
+      copy lived in `ServiceCategoryContent` (haircuts `metaDescription` + FAQ).
+      Now: children's cuts from £19; wash, cut & blow dry from £37 (£33 Student &
+      NHS). Verified live incl. the FAQPage JSON-LD.
+
+- [ ] **Add stylist bios, taglines and photos.** *(still empty 2026-09-22)* All four active stylists have
       `bio`, `tagline` and `imageUrl` **null**, so the home page renders an empty
       pair of quote marks and the four `/stylists/<slug>` pages (all in the
       sitemap) are thin content.
@@ -119,10 +133,14 @@ other, and doing them out of order leaves booking silently shut.
 ## 3. Opening online booking — the order matters
 
 `assertOnlineBookingReady` (`src/app/lib/booking-maintenance.ts`) fails closed and
-needs **all five** conditions. Verified against production 2026-09-17: all five
-currently fail.
+needs **all five** conditions. Re-verified against production **2026-09-22**
+(status in bold on each step).
 
-- [ ] **3.1 — Clear the Treatwell "takes bookings" ticks.**
+- [ ] **3.1 — Clear the Treatwell "takes bookings" ticks.** **Still open: Funky,
+      Ivan, Lox (+ inactive Chan).** Owner decision first — see §4: if the salon
+      keeps taking Treatwell bookings, the website cannot see them (Treatwell has
+      no export feed), so keeping Treatwell live means accepting double-booking
+      risk or keeping website booking closed.
       Admin → Integrations. Four `TREATWELL` connections have
       `receivesBookings = true` with no inbound URL: **Lox, Funky, Ivan, and
       inactive Chan**. Treatwell has no export feed, so that inbound URL can
@@ -130,24 +148,32 @@ currently fail.
       ⚠️ The gate-5 count does **not** filter on `isActive`, so **Chan's row
       blocks even though Chan is retired**. The count must reach **0** (currently 8).
 
-- [ ] **3.2 — Subscribe Shania's outbound feed in Fresha.**
+- [x] **3.2 — Subscribe Shania's outbound feed in Fresha.** **Done:** her feed is
+      being fetched every ~15 min (runtime logs 2026-09-22).
       Funky, Ivan and Lox are already being polled (visible in the runtime logs);
       Shania's is not.
 
-- [ ] **3.3 — Set the environment flags, then redeploy.**
+- [ ] **3.3 — Set the environment flags, then redeploy.** **Half done:**
+      `CALENDAR_SYNC_ENABLED` is on (imports succeed); `NOTIFICATIONS_ENABLED` is
+      still off (the notifications worker has never run). Turning it on sends real
+      customer emails.
       `NOTIFICATIONS_ENABLED=true` and `CALENDAR_SYNC_ENABLED=true`.
       **Env changes only reach the runtime after a redeploy.**
 
-- [ ] **3.4 — Wait for `calendar-sync` to run at least once** (every 30 min).
+- [x] **3.4 — Wait for `calendar-sync` to run at least once** (every 30 min). **Done:**
+      all four Fresha feeds last succeeded 2026-09-22 18:30 UTC. Note imports pause
+      outside staff hours by design, so online booking pauses overnight too.
       The gate demands `lastSuccessAt` **within 90 minutes**. While
       `CALENDAR_SYNC_ENABLED` was `false` the cron returned before touching the
       DB, so the last success is stale — it cannot go fresh until 3.3 is live.
 
-- [ ] **3.5 — Tick the outbound confirmations.**
+- [ ] **3.5 — Tick the outbound confirmations.** **Half done:** Funky and Ivan
+      confirmed; **Lox and Shania** still need "confirmed in Fresha" ticked.
       Admin → Integrations. `outboundConfirmedAt` is `NULL` on all four `FRESHA`
       connections.
 
-- [ ] **3.6 — Run Admin → Operations diagnostics, and run it LAST.**
+- [ ] **3.6 — Run Admin → Operations diagnostics, and run it LAST.** **Last run
+      2026-09-20 failed** (notifications off) — expected until 3.3 is done.
       It currently sits at 6/7 (only `notifications` fails, deliberately). The
       report is invalidated by any change to `EMAIL_FROM`, `EMAIL_REPLY_TO`,
       `SALON_NOTIFY_EMAIL`, `RESEND_API_KEY`, `CRON_SECRET`,
@@ -155,7 +181,7 @@ currently fail.
       fixed, by every deployment.** So this must be the last step after the final
       deploy.
 
-- [ ] **3.7 — Turn booking on via Admin → Settings.**
+- [ ] **3.7 — Turn booking on via Admin → Settings.** **Off.**
       **Do not write `bookingEnabled` straight into the database.**
       `getSiteSettings` is an `unstable_cache` with a 1-hour TTL; only the admin
       action invalidates the `site-settings` tag. A direct DB write leaves
@@ -166,9 +192,9 @@ currently fail.
 ## 4. Business decisions — owner input needed
 
 - [ ] **Which marketplace is the live channel — Treatwell or Fresha?**
-      The site currently sends every customer to **Treatwell** (`treatwellUrl` set,
-      `freshaUrl` empty), while the calendar sync runs on **Fresha**. The Treatwell
-      listing is still live.
+      **Still open 2026-09-22.** Both URLs are now set, but the home page, contact
+      page, footer and FAQ still say "Book on Treatwell" everywhere, while the
+      calendar sync runs on **Fresha**. The Treatwell listing is still live.
 
 - [ ] **If the answer is Fresha, three pages need code changes first.**
       `freshaUrl` is read **nowhere** except the admin form and
@@ -178,7 +204,7 @@ currently fail.
       Simply swapping the URLs in Admin would **remove the booking link from the
       home page and footer entirely** and leave that sentence contradicting itself.
 
-- [ ] **Add a second admin account.** Production has exactly **one** admin,
+- [ ] **Add a second admin account.** *(still one admin, 2026-09-22)* Production has exactly **one** admin,
       `info@harbourhair.co.uk`. The seeded placeholder did not survive the London
       database move, so there is no backup login. Sign-in lowercases the submitted
       email but nothing normalises on write — **always insert lowercase**, or the
@@ -196,8 +222,10 @@ currently fail.
   - [ ] it appears in the stylist's Fresha calendar within ~10 minutes;
   - [ ] cancelling it frees the slot again.
 - [ ] Re-check `/api/health` returns `database: up`.
-- [ ] Watch Neon CU-hours for 48 h. Budget is 100/month; September was tracking
-      at ~22. See `readme/` and the cost notes for the polling rules.
+- [ ] Watch Neon CU-hours for 48 h. Budget is 100/month (free plan; overrun
+      suspends the database). Measured ~3 CU-h/day before PR #45, target ~1.3-1.5
+      after launch. Measure from Neon's operations log (`start_compute` /
+      `suspend_compute`) — see the "Neon compute budget" section in CLAUDE.md.
 
 **Rollback:** Admin → Settings, switch `bookingEnabled` off. It fails closed, so
 booking shuts immediately; cancellation deliberately stays available to customers.

@@ -40,7 +40,7 @@ function fixture(options: { role?: string; calendarReady?: boolean; operationsRe
 }
 
 test('closing booking remains possible when readiness providers are unavailable', async () => {
-  const f = fixture({ outage: true });
+  const f = fixture({ outage: true, currentlyEnabled: true });
   assert.equal((await f.actions.updateSiteSettings({ status: 'idle' }, f.form)).status, 'success');
   assert.equal(f.saved.bookingEnabled, false);
 });
@@ -99,4 +99,11 @@ test('turning booking on still requires the launch checks', async () => {
   assert.equal((await f.actions.updateSiteSettings({ status: 'idle' }, f.form)).status, 'error');
   assert.equal(f.saved.bookingEnabled, false);
   assert.equal(f.readinessCalls.calendar, 1);
+});
+
+test('closing booking works even while every readiness check is failing', async () => {
+  const f = fixture({ currentlyEnabled: true, calendarReady: false, operationsReady: false });
+  assert.equal((await f.actions.updateSiteSettings({ status: 'idle' }, f.form)).status, 'success');
+  assert.equal(f.saved.bookingEnabled, false);
+  assert.equal(f.saved.phone, '09876543210');
 });
