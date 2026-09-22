@@ -211,3 +211,9 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `scripts/verify-production-readiness.ts` — disposable PostgreSQL booking caps/concurrency, payroll transaction/snapshot rollback, calendar aggregation/reconciliation and notification invariants.
 - `scripts/verify-backend-http.ts` — starts a production server against disposable synthetic data; checks admin authorization, data minimization, pagination/canonical URLs and actual MFA form submissions.
 - `readme/backend-security-operations.md`, `readme/backend-remediation-2026-09-16-cantonese.md` — rollout, retention, recovery, verification and remaining SOC2 operational evidence.
+
+### Opening-hours calendar sync (2026-09-20)
+- `src/app/services/calendar-sync-window.ts` — shared London-time window check using active staff hours plus 15 minutes before/after; handles adjacent-day buffers. Also schedules visible admin refreshes after each quarter-hour import, allowing its 90-second runtime.
+- `src/app/services/calendar-sync-schedule.ts` — caches active-staff opening hours without timer expiry so closed-hours cron checks do not normally wake Neon. Admin hours edits and stylist deletion invalidate `calendar-sync-hours`. Direct database changes to hours/active staff must invalidate this tag too; a redeploy alone may retain the Data Cache.
+- `/api/cron/calendar-sync` — authenticated, runtime-flagged 15-minute ticks on Vercel Pro. Closed ticks skip import and job-state writes. Cold/evicted hours cache needs one database read. Manual integration tests remain available outside hours.
+- `ScheduleCalendar` — quarter-hour refreshes follow imports while visible; year totals refresh on demand. Displays the server-load timestamp and provides Refresh now. Mutation refreshes stay immediate.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { syncCalendarFeeds } from '@/app/services/calendar-sync-service';
+import { isScheduledCalendarSyncOpen } from '@/app/services/calendar-sync-schedule';
 
 export const maxDuration = 90;
 
@@ -15,6 +16,14 @@ export async function GET(request: NextRequest) {
   // Above the lazy service's very first DB call: a disabled cron cannot wake Neon.
   if (process.env.CALENDAR_SYNC_ENABLED !== 'true') {
     return NextResponse.json({ ok: true, skipped: 'disabled', results: [] });
+  }
+  // Cache-backed hours check BEFORE job-state writes or feed reads.
+  try {
+    if (!await isScheduledCalendarSyncOpen()) {
+      return NextResponse.json({ ok: true, skipped: 'outside-opening-hours', results: [] });
+    }
+  } catch {
+    return NextResponse.json({ ok: false, error: 'Calendar opening hours could not be checked.' }, { status: 503 });
   }
   const db = (await import('@/app/lib/prisma')).default;
   const name = 'calendar-sync';

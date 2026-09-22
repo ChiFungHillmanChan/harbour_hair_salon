@@ -96,7 +96,7 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
   ]);
   const page = pendingRows.slice(0, 25);
   return {
-    dateStr, view, todayStats, syncCoverage, stylists, pendingCount, monthCounts,
+    dateStr, view, todayStats, syncCoverage, stylists, pendingCount, monthCounts, loadedAt: new Date().toISOString(),
     services: services.map((row) => ({ ...row, price: Number(row.price) })),
     periodCount: view === 'year' ? monthCounts.reduce((sum, count) => sum + count, 0) : appointments.length,
     appointments: appointments.map((row) => serializeCalendarAppointment(row, view === 'day')),

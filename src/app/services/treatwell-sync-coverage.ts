@@ -7,12 +7,14 @@ import { validateWeek } from './opening-hours';
  * booking attempt, how long online booking survives without one.
  *
  * This MUST stay a comfortable multiple of the `/api/cron/calendar-sync`
- * schedule in `vercel.json` (currently every 30 minutes). At the original 45
+ * schedule in `vercel.json` (every 15 minutes during buffered opening hours). At the original 45
  * minutes a single skipped run closed public booking for everyone until the
  * next success, and Vercel cron is explicitly best-effort: no exactly-once
  * guarantee and no automatic catch-up. Marketplace iCal endpoints are also slow
  * and occasionally rate-limited, so one late run is routine rather than
- * exceptional. 90 minutes keeps three cron cycles of headroom.
+ * exceptional. Keep the existing 90-minute ceiling (six scheduled ticks).
+ * Closed-hours imports deliberately pause; do not exempt overnight data from
+ * freshness checks, since marketplaces can still accept bookings overnight.
  *
  * The cost of widening it is the window in which a marketplace booking is not
  * yet visible to the site. That window was never really 45 minutes anyway —

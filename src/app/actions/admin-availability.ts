@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { validateWeek, type DayInput } from '@/app/services/opening-hours';
@@ -72,6 +72,9 @@ export async function updateStylistAvailability(
 
   // /book reads availability per request, but the admin screen and the booking
   // page both need to reflect the new week immediately.
+  updateTag('calendar-sync-hours');
+  updateTag('site-settings');
+  revalidatePath('/admin');
   revalidatePath('/admin/opening-hours');
   revalidatePath('/book');
 

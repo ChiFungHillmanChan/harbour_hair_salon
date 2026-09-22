@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { isCalendarColorKey } from '@/app/lib/calendar-colors';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
@@ -205,6 +205,7 @@ export async function deleteStylist(formData: FormData): Promise<void> {
   }
 
   await prisma.stylist.delete({ where: { id }, select: { id: true } });
+  updateTag('calendar-sync-hours');
 
   revalidatePath('/stylists');
   if (existing.slug) revalidatePath(`/stylists/${existing.slug}`);

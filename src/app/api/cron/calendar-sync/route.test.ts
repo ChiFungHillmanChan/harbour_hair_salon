@@ -67,6 +67,7 @@ test('an enabled failed sync persists a safe failure status for the operations p
   const { loadServerModule } = await import('../../../../test/load-server-module');
   const writes: Record<string, unknown>[] = [];
   const route = loadServerModule<{ GET: typeof GET }>('src/app/api/cron/calendar-sync/route.ts', {
+    '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => true },
     '@/app/lib/prisma': { backgroundJobState: { upsert: async () => ({}), update: async ({ data }: { data: Record<string, unknown> }) => { writes.push(data); } } },
     '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => [{ ok: false, error: 'Calendar could not be reached.' }] },
   });
@@ -75,5 +76,23 @@ test('an enabled failed sync persists a safe failure status for the operations p
     assert.ok(writes[0].lastFailedAt instanceof Date);
     assert.ok(String(writes[0].lastError).includes('previous busy periods were retained'));
     assert.equal(JSON.parse(String(writes[0].lastResultJson)).failed, 1);
+  });
+});
+
+test('closed-hours ticks do not access job state or run a feed import', async () => {
+  const { loadServerModule } = await import('../../../../test/load-server-module');
+  let queries = 0;
+  let imports = 0;
+  const route = loadServerModule<{ GET: typeof GET }>('src/app/api/cron/calendar-sync/route.ts', {
+    '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => false },
+    '@/app/lib/prisma': { backgroundJobState: { upsert: async () => { queries++; }, update: async () => { queries++; } } },
+    '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => { imports++; return []; } },
+  });
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
+    const response = await route.GET(authedRequest());
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).skipped, 'outside-opening-hours');
+    assert.equal(queries, 0);
+    assert.equal(imports, 0);
   });
 });

@@ -90,3 +90,41 @@ for (const view of ['day', 'week']) {
     assert.match(String(notes[0].props['aria-label']), /Treatwell · Funky · 14:00–15:00/);
   });
 }
+
+for (const view of ['day', 'week', 'month']) {
+  test(`${view} agenda opens the existing booking editor without changing the appointment`, () => {
+    const updates: unknown[] = [];
+    const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
+      'src/components/admin/ScheduleCalendar.tsx', {
+        react: { ...hooks, useState: (value: unknown) => [value, (next: unknown) => updates.push(next)], useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+        'next/navigation': { useRouter: () => ({ push: () => undefined, refresh: () => undefined }) },
+        './ScheduleDayGrid': { ScheduleDayGrid: () => null },
+        './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
+        './AppointmentDialog': { AppointmentDialog: () => null },
+        '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
+      },
+    );
+    const rendered = calendar.ScheduleCalendar({
+      dateStr: '2026-10-23', view, pendingAppointments: [], busyBlocks: [],
+      stylists: [{ id: 's1', name: 'Funky', calendarColor: null, availabilities: [] }],
+      appointments: [{ id: 'owned-booking', date: '2026-10-23T10:30:00Z', updatedAt: '2026-09-20T18:00:00Z',
+        status: 'CANCELLED', stylistId: 's1', serviceId: 'service1', durationAtBooking: 15, priceAtBooking: 0,
+        notes: 'test note', user: { name: 'Test Customer' }, stylist: { name: 'Funky', calendarColor: null },
+        service: { name: 'Consultation', duration: 30, price: 10, calendarColor: null } }],
+    });
+    function expand(node: unknown): Element[] {
+      if (Array.isArray(node)) return node.flatMap(expand);
+      if (!node || typeof node !== 'object' || !('props' in node)) return [];
+      const element = node as Element;
+      if (typeof element.type === 'function') return expand(element.type(element.props));
+      return [element, ...expand(element.props.children)];
+    }
+    assert.ok(expand(rendered).some(node => node.props.children === 'CANCELLED'), 'cancelled bookings must be visibly identified');
+    const edit = expand(rendered).find(node => node.type === 'button' && node.props.children === 'Edit booking');
+    assert.ok(edit, 'agenda must expose an accessible edit action');
+    (edit.props.onClick as () => void)();
+    assert.deepEqual(updates.at(-1), { mode: 'edit', appointmentId: 'owned-booking', dateStr: '2026-10-23',
+      time: '11:30', stylistId: 's1', serviceId: 'service1', durationMin: 15, notes: 'test note',
+      customerName: 'Test Customer', status: 'CANCELLED', updatedAt: '2026-09-20T18:00:00Z' });
+  });
+}

@@ -68,7 +68,7 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
         </div>
       </div>
 
-      <ScheduleCalendar dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} stylists={stylists} busyBlocks={busyBlocks} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} />
+      <ScheduleCalendar loadedAt={calendar.loadedAt} dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} stylists={stylists} busyBlocks={busyBlocks} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} />
     </>
   );
 }

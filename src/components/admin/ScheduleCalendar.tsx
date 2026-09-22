@@ -13,6 +13,7 @@ import type { CalendarView } from '@/app/services/admin-calendar-range';
 import { moveAppointmentByAdmin } from '@/app/actions/admin-schedule';
 import { weekDayKeys } from '@/app/services/admin-calendar-range';
 import { calendarBusyForDay, calendarBusyLabel } from '@/app/lib/calendar-busy-display';
+import { shouldRefreshCalendar } from '@/app/services/calendar-sync-window';
 
 type AppointmentWithDetails = CalendarAppointment;
 
@@ -186,6 +187,7 @@ interface DayViewProps {
   busyBlocks: ReturnType<typeof calendarBusyForDay>;
   stylists: RosterStylist[];
   onRefresh: () => void;
+  onEdit: (appointment: AppointmentWithDetails) => void;
 }
 
 function BusyAgenda({ blocks, stylists }: { blocks: ReturnType<typeof calendarBusyForDay>; stylists: RosterStylist[] }) {
@@ -202,7 +204,7 @@ function BusyAgenda({ blocks, stylists }: { blocks: ReturnType<typeof calendarBu
   </ul>;
 }
 
-const DayView = ({ currentDate, dayAppts, busyBlocks, stylists, onRefresh }: DayViewProps) => {
+const DayView = ({ currentDate, dayAppts, busyBlocks, stylists, onRefresh, onEdit }: DayViewProps) => {
   return (
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden flex flex-col">
       <div className="p-4 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center">
@@ -232,6 +234,7 @@ const DayView = ({ currentDate, dayAppts, busyBlocks, stylists, onRefresh }: Day
                               <span>Stylist: {appt.stylist.name}</span>
                               <span>£{Number(appt.priceAtBooking ?? appt.service.price).toFixed(2)}</span>
                           </div>
+                          <button type="button" onClick={() => onEdit(appt)} className="mt-2 mr-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-white">Edit booking</button>
                           {appt.status === 'PENDING' && (
                             <div className="mt-2">
                               <PendingActions apptId={appt.id} onDone={onRefresh} />
@@ -267,6 +270,7 @@ export function ScheduleCalendar({
   monthCounts = [],
   pendingNext = null,
   pendingHasPrevious = false,
+  loadedAt,
 }: {
   dateStr: string;
   view: CalendarView;
@@ -278,6 +282,7 @@ export function ScheduleCalendar({
   monthCounts?: number[];
   pendingNext?: string | null;
   pendingHasPrevious?: boolean;
+  loadedAt?: string;
 }) {
   const router = useRouter();
   const [isNavigating, startNavigation] = useTransition();
@@ -294,21 +299,24 @@ export function ScheduleCalendar({
   };
   const setViewMode = (nextView: CalendarView) => navigate(currentDate, nextView);
 
-  // The salon leaves this board open on a screen all day. Re-pull server data
-  // every minute (and immediately when the tab regains visibility) so new
-  // booking requests and Treatwell busy blocks show up without a manual reload.
-  // The URL retains the selected date and view across refreshes and history.
+  // Local timer only; hidden or overnight boards must not hold Neon awake.
   useEffect(() => {
+    let lastLoaded = loadedAt ? new Date(loadedAt) : new Date();
+    const hours = stylists.flatMap(stylist => stylist.availabilities);
     const refreshIfVisible = () => {
-      if (document.visibilityState === 'visible') router.refresh();
+      const now = new Date();
+      if (shouldRefreshCalendar(hours, now, lastLoaded, document.visibilityState === 'visible')) {
+        lastLoaded = now;
+        router.refresh();
+      }
     };
-    const id = setInterval(refreshIfVisible, view === 'year' ? 300_000 : view === 'month' ? 120_000 : 60_000);
+    const id = setInterval(refreshIfVisible, 60_000);
     document.addEventListener('visibilitychange', refreshIfVisible);
     return () => {
       clearInterval(id);
       document.removeEventListener('visibilitychange', refreshIfVisible);
     };
-  }, [router, view]);
+  }, [router, stylists, loadedAt]);
 
   // Navigation Handlers
   const step = (direction: 1 | -1) => {
@@ -391,7 +399,7 @@ export function ScheduleCalendar({
 
   // Opening a booking needs the row behind the block, not just its grid shape.
   const appointmentById = new Map(appointments.map((appt) => [appt.id, appt]));
-  const openEditor = (grid: GridAppointment) => {
+  const openEditor = (grid: Pick<GridAppointment, 'id'>) => {
     const appt = appointmentById.get(grid.id);
     if (!appt) return;
     setDialog({
@@ -429,6 +437,14 @@ export function ScheduleCalendar({
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-600">
+        <p>
+          {loadedAt && <>Calendar loaded {formatSalonDate(new Date(loadedAt))} at {formatSalonTime(new Date(loadedAt))} (UK). </>}
+          {view === 'year' ? 'Year totals refresh on demand.' : 'Auto-refresh follows each 15-minute scheduled import while this tab is visible. Imports run during opening hours, including a 15-minute buffer.'}
+          {' '}Refreshing shows saved data; platform imports run separately and may be delayed.
+        </p>
+        <button type="button" onClick={() => startNavigation(() => router.refresh())} disabled={isNavigating} className="shrink-0 rounded border border-zinc-300 px-3 py-2 font-semibold text-[#174F7F] disabled:opacity-50">Refresh now</button>
+      </div>
       {(pendingAppointments.length > 0 || pendingHasPrevious) && (
         <section aria-label="All pending booking requests" className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <h2 className="font-semibold text-amber-900">Awaiting confirmation · all dates</h2>
@@ -554,7 +570,7 @@ export function ScheduleCalendar({
                       className={`flex w-full items-center justify-between px-4 py-2 text-left ${key === salonDateKey(new Date()) ? 'bg-zinc-900 text-white' : 'bg-zinc-50 text-zinc-900'}`}
                     >
                       <span className="font-semibold">{format(new Date(`${key}T12:00:00`), 'EEEE d MMM')}</span>
-                      <span className="text-xs opacity-80">{dayAppts.length} booked{dayBusy.length > 0 && ` · ${dayBusy.length} imported`}</span>
+                      <span className="text-xs opacity-80">{dayAppts.length} appointments{dayBusy.length > 0 && ` · ${dayBusy.length} imported`}</span>
                     </button>
                     {dayAppts.length === 0 && dayBusy.length === 0 ? (
                       <p className="px-4 py-3 text-sm text-zinc-500">Nothing booked.</p>
@@ -564,7 +580,9 @@ export function ScheduleCalendar({
                           <li key={appt.id} className="px-4 py-2 text-sm">
                             <span className="font-medium text-zinc-900">{formatSalonTime(new Date(appt.date))}</span>
                             <span className="ml-2 text-zinc-700">{appt.user.name}</span>
+                            <span className={`ml-2 inline-block rounded px-2 py-1 text-xs font-medium ${statusChipClass(appt.status)}`}>{appt.status}</span>
                             <span className="block text-xs text-zinc-500">{appt.service.name} with {appt.stylist.name}</span>
+                            <button type="button" onClick={() => openEditor(appt)} className="mt-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-zinc-50">Edit booking</button>
                           </li>
                         ))}
                       </ul>
@@ -599,6 +617,7 @@ export function ScheduleCalendar({
                 busyBlocks={calendarBusyForDay(gridBusyBlocks, dateStr)}
                 stylists={stylists}
                 onRefresh={() => router.refresh()}
+                onEdit={openEditor}
               />
             </div>
           </>
@@ -617,7 +636,8 @@ export function ScheduleCalendar({
                                      <p className="font-medium text-zinc-900">{formatSalonTime(new Date(appt.date))} - {appt.user.name}</p>
                                      <p className="text-sm text-zinc-500">{appt.service.name} with {appt.stylist.name}</p>
                                  </div>
-                                 <div className="flex items-center gap-2">
+                                 <div className="flex flex-wrap items-center gap-2">
+                                     <button type="button" onClick={() => openEditor(appt)} className="rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-zinc-50">Edit booking</button>
                                      <div className={`text-xs px-2 py-1 rounded font-medium ${statusChipClass(appt.status)}`}>
                                          {appt.status}
                                      </div>
