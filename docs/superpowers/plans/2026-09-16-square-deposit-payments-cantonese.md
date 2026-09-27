@@ -1,5 +1,7 @@
 # Square 按金付款整合 Implementation Plan
 
+> **Historical plan — reviewed 26 September 2026:** The current authorized scope is a disabled, tested payment foundation and setup documentation only. Read [the current Square setup guide](../../square-payments-setup.md) before implementing this plan. It supersedes the scope and outdated assumptions below, including the separate `verifyBuyer()` flow, and identifies the durable payment/reconciliation work still required before collecting deposits.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 喺 booking / consultation 流程加入 Square 按金付款 — 落單嗰陣只 hold（授權）唔扣錢，admin 批核先 capture，拒絕就 void。

@@ -71,6 +71,8 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `booking-maintenance.ts` deliberately contains **no** marketplace name or URL; `booking-maintenance-copy.test.ts` locks that, because the old hardcoded `TREATWELL_BOOKING_URL` fallback made the Treatwell button impossible to switch off from the admin panel.
 
 ## Services
+- `deposit-policy.ts` — pure GBP/pence deposit calculation from explicit server-owned policy and net price; no deposit terms are enabled automatically.
+- `square-gateway.ts` — disabled-by-default, server-only Square REST adapter for authorization, capture, cancellation, retrieval and refunds. No booking flow is connected yet; see `docs/square-payments-setup.md` and `pnpm test:square`.
 - `booking-service.ts` — slot availability, booking creation, patch-test eligibility query
 - `opening-hours.ts` — pure opening-hours validation and slot counting (see Opening Hours above)
 - `marketplace-channels.ts` — pure `activeMarketplaces(settings)` (see Marketplace channels above)
@@ -100,6 +102,8 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `src/app/api/ical/[stylistId]/route.ts` — outbound busy feed (`?token=` secret) that Treatwell Connect subscribes to per employee; thin adapter over `stylist-ical-feed.ts`.
 
 ## Lib
+- `square-config.ts` — runtime-only Square configuration with explicit enablement, environment validation and secret-safe errors.
+- `square-webhook.ts` — constant-time HMAC verification using the exact registered URL and raw body; foundation helper only, no webhook route yet.
 - `pin.ts` — `isValidPin`, `hashPin`, `verifyPin` (bcryptjs); unit-tested
 - `session.ts` — existing JWT session helpers + `createKioskSession`/`getKioskSession`/`deleteKioskSession` for PIN-authenticated kiosk sessions
 - `phone.ts` — `toTelHref(phone)`: pure, prisma-free — normalizes an admin-editable `SiteSettings.phone` value (strips spaces, leading `0` → `+44`) into a `tel:` URI; used by the Footer and contact page so the displayed/dialable number follows Settings instead of being hardcoded; unit-tested

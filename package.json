@@ -13,6 +13,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --conditions=react-server --import tsx --test $(find src -name '*.test.ts')",
+    "test:square": "node --conditions=react-server --import tsx --test src/app/lib/square-config.test.ts src/app/lib/square-webhook.test.ts src/app/services/deposit-policy.test.ts src/app/services/square-gateway.test.ts",
     "db:switch:dev": "prisma generate --schema prisma/dev/schema.prisma",
     "db:switch:prod": "prisma generate --schema prisma/prod/schema.prisma",
     "db:dev:migrate": "prisma migrate dev --schema prisma/dev/schema.prisma",
