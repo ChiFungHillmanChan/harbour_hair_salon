@@ -11,9 +11,24 @@ export type DayInput = {
   endTime: string;
 };
 
+/**
+ * Why a week was refused, as a stable code the save action translates into the
+ * admin's language. `error` stays the English sentence for logs and callers
+ * that have no language (calendar readiness checks).
+ */
+export type WeekValidationCode = 'NOT_A_DAY' | 'DUPLICATE_DAY' | 'INCOMPLETE_WEEK' | 'TIME_FORMAT' | 'CLOSE_BEFORE_OPEN';
+
 export type WeekValidation =
   | { ok: true; days: DayInput[] }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      code: WeekValidationCode;
+      /** The offending day (0-6, or the raw value for NOT_A_DAY). */
+      dayOfWeek?: number;
+      /** INCOMPLETE_WEEK: the days that were not submitted. */
+      missing?: number[];
+    };
 
 /** Index is dayOfWeek, so DAY_NAMES[0] is Sunday — matches the column. */
 export const DAY_NAMES = [
@@ -37,16 +52,17 @@ export function validateWeek(days: DayInput[]): WeekValidation {
   const seen = new Set<number>();
   for (const day of days) {
     if (!Number.isInteger(day.dayOfWeek) || day.dayOfWeek < 0 || day.dayOfWeek > 6) {
-      return { ok: false, error: `${day.dayOfWeek} is not a day of the week.` };
+      return { ok: false, error: `${day.dayOfWeek} is not a day of the week.`, code: 'NOT_A_DAY', dayOfWeek: day.dayOfWeek };
     }
     if (seen.has(day.dayOfWeek)) {
-      return { ok: false, error: `${DAY_NAMES[day.dayOfWeek]} was submitted twice.` };
+      return { ok: false, error: `${DAY_NAMES[day.dayOfWeek]} was submitted twice.`, code: 'DUPLICATE_DAY', dayOfWeek: day.dayOfWeek };
     }
     seen.add(day.dayOfWeek);
   }
   if (seen.size !== 7) {
     const missing = DAY_NAMES.filter((_, i) => !seen.has(i));
-    return { ok: false, error: `The week is incomplete — ${missing.join(', ')} missing.` };
+    const missingDays = DAY_NAMES.flatMap((_, i) => (seen.has(i) ? [] : [i]));
+    return { ok: false, error: `The week is incomplete — ${missing.join(', ')} missing.`, code: 'INCOMPLETE_WEEK', missing: missingDays };
   }
 
   const normalised: DayInput[] = [];
@@ -67,10 +83,10 @@ export function validateWeek(days: DayInput[]): WeekValidation {
     const name = DAY_NAMES[day.dayOfWeek] ?? `Day ${day.dayOfWeek}`;
 
     if (!HH_MM.test(day.startTime) || !HH_MM.test(day.endTime)) {
-      return { ok: false, error: `${name}: opening hours must be times like 09:30.` };
+      return { ok: false, error: `${name}: opening hours must be times like 09:30.`, code: 'TIME_FORMAT', dayOfWeek: day.dayOfWeek };
     }
     if (toMinutes(day.startTime) >= toMinutes(day.endTime)) {
-      return { ok: false, error: `${name}: the closing time must be after the opening time.` };
+      return { ok: false, error: `${name}: the closing time must be after the opening time.`, code: 'CLOSE_BEFORE_OPEN', dayOfWeek: day.dayOfWeek };
     }
     normalised.push(day);
   }

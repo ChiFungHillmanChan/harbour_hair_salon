@@ -22,6 +22,15 @@
   --font-serif-stack: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
 }
 
+/* Traditional Chinese (Hong Kong): Latin glyphs keep the same fonts, and Han
+   characters fall back to the HK/TC system fonts already on the device. No
+   web font is downloaded, so switching language cannot shift the layout
+   while a large CJK font loads. */
+html:lang(zh-HK) {
+  --font-sans-stack: "Avenir Next", "Segoe UI", "Helvetica Neue", Helvetica, Arial, "PingFang HK", "PingFang TC", "Noto Sans HK", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  --font-serif-stack: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Songti TC", "Noto Serif HK", "Noto Serif TC", "PMingLiU", serif;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -81,18 +90,16 @@ body {
   100% { background-position: 200% 0; }
 }
 
-/* Apple-style hero intro: each layer uses the same long ease-out curve,
-   with staggered delays via utility classes below. */
+/* Keep the hero intro on opacity and transform so it can be composited
+   without repainting blurred text on every frame. */
 @keyframes hero-rise {
   from {
     opacity: 0;
     transform: translateY(28px);
-    filter: blur(6px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
-    filter: blur(0);
   }
 }
 

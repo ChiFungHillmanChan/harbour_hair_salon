@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { loadServerModule } from '../../test/load-server-module';
+import { translator } from '../../i18n/messages';
+import type { Namespace } from '../../i18n/messages';
 
 type Element = { type: unknown; props: Record<string, unknown> };
 function elements(node: unknown): Element[] {
@@ -14,9 +16,15 @@ const hooks = {
   useState: (value: unknown) => [value, () => undefined],
   useRef: (value: unknown) => ({ current: value }),
 };
+// The real i18n client hooks need a browser React; English text is asserted.
+const i18nClient = { useT: (namespace: Namespace) => translator('en-GB', namespace), useLocale: () => 'en-GB' };
+const draftStore = (useState: (value: unknown) => unknown) => ({
+  useDraftState: (_key: string, initial: unknown) => useState(typeof initial === 'function' ? (initial as () => unknown)() : initial),
+});
+const navigation = { useLocalizedRouter: () => ({ push: () => undefined, refresh: () => undefined }) };
 function render(view: 'Day' | 'Week', source: string, start: string, end: string, dayKey = '2026-10-23', duplicate = false) {
   const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(
-    `src/components/admin/Schedule${view}Grid.tsx`, { react: hooks },
+    `src/components/admin/Schedule${view}Grid.tsx`, { react: hooks, '@/i18n/client': i18nClient },
   );
   return elements(grid[`Schedule${view}Grid`]({
     day: new Date(`${dayKey}T12:00:00Z`), dayKeys: [dayKey], todayKey: dayKey,
@@ -63,7 +71,9 @@ for (const view of ['day', 'week']) {
     const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
       'src/components/admin/ScheduleCalendar.tsx', {
         react: { ...hooks, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
-        'next/navigation': { useRouter: () => ({ push: () => undefined, refresh: () => undefined }) },
+        '@/i18n/navigation': navigation,
+        '@/i18n/client': i18nClient,
+        '@/i18n/draft-store': draftStore(hooks.useState),
         './ScheduleDayGrid': { ScheduleDayGrid: () => null },
         './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
         './AppointmentDialog': { AppointmentDialog: () => null },
@@ -94,10 +104,13 @@ for (const view of ['day', 'week']) {
 for (const view of ['day', 'week', 'month']) {
   test(`${view} agenda opens the existing booking editor without changing the appointment`, () => {
     const updates: unknown[] = [];
+    const useState = (value: unknown) => [value, (next: unknown) => updates.push(next)];
     const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
       'src/components/admin/ScheduleCalendar.tsx', {
-        react: { ...hooks, useState: (value: unknown) => [value, (next: unknown) => updates.push(next)], useEffect: () => undefined, useTransition: () => [false, () => undefined] },
-        'next/navigation': { useRouter: () => ({ push: () => undefined, refresh: () => undefined }) },
+        react: { ...hooks, useState, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+        '@/i18n/navigation': navigation,
+        '@/i18n/client': i18nClient,
+        '@/i18n/draft-store': draftStore(useState),
         './ScheduleDayGrid': { ScheduleDayGrid: () => null },
         './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
         './AppointmentDialog': { AppointmentDialog: () => null },
@@ -108,9 +121,10 @@ for (const view of ['day', 'week', 'month']) {
       dateStr: '2026-10-23', view, pendingAppointments: [], busyBlocks: [],
       stylists: [{ id: 's1', name: 'Funky', calendarColor: null, availabilities: [] }],
       appointments: [{ id: 'owned-booking', date: '2026-10-23T10:30:00Z', updatedAt: '2026-09-20T18:00:00Z',
-        status: 'CANCELLED', stylistId: 's1', serviceId: 'service1', durationAtBooking: 15, priceAtBooking: 0,
+        status: 'CANCELLED', stylistId: 's1', serviceId: 'service1', durationAtBooking: 15,
+        price: { known: true, amountPence: 0, priceType: null, vatDisplay: null, priceNature: null },
         notes: 'test note', user: { name: 'Test Customer' }, stylist: { name: 'Funky', calendarColor: null },
-        service: { name: 'Consultation', duration: 30, price: 10, calendarColor: null } }],
+        service: { name: 'Consultation', duration: 30, calendarColor: null } }],
     });
     function expand(node: unknown): Element[] {
       if (Array.isArray(node)) return node.flatMap(expand);
@@ -125,6 +139,47 @@ for (const view of ['day', 'week', 'month']) {
     (edit.props.onClick as () => void)();
     assert.deepEqual(updates.at(-1), { mode: 'edit', appointmentId: 'owned-booking', dateStr: '2026-10-23',
       time: '11:30', stylistId: 's1', serviceId: 'service1', durationMin: 15, notes: 'test note',
-      customerName: 'Test Customer', status: 'CANCELLED', updatedAt: '2026-09-20T18:00:00Z' });
+      customerName: 'Test Customer', status: 'CANCELLED', updatedAt: '2026-09-20T18:00:00Z',
+      price: { known: true, amountPence: 0, priceType: null, vatDisplay: null, priceNature: null } });
   });
 }
+
+test('an appointment whose price was never recorded says so instead of showing today\'s service price', () => {
+  const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
+    'src/components/admin/ScheduleCalendar.tsx', {
+      react: { ...hooks, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+      '@/i18n/navigation': navigation,
+      '@/i18n/client': i18nClient,
+      '@/i18n/draft-store': draftStore(hooks.useState),
+      './ScheduleDayGrid': { ScheduleDayGrid: () => null },
+      './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
+      './AppointmentDialog': { AppointmentDialog: () => null },
+      '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
+    },
+  );
+  const appointment = (id: string, price: Record<string, unknown>) => ({
+    id, date: '2026-10-23T10:30:00Z', updatedAt: '2026-09-20T18:00:00Z', status: 'CONFIRMED', stylistId: 's1',
+    serviceId: 'service1', durationAtBooking: 45, price, notes: null, user: { name: `Customer ${id}` },
+    stylist: { name: 'Funky', calendarColor: null }, service: { name: 'Blow Dry', duration: 45, calendarColor: null },
+  });
+  const rendered = calendar.ScheduleCalendar({
+    dateStr: '2026-10-23', view: 'day', pendingAppointments: [], busyBlocks: [],
+    stylists: [{ id: 's1', name: 'Funky', calendarColor: null, availabilities: [] }],
+    appointments: [
+      appointment('legacy', { known: false }),
+      appointment('quoted', { known: true, amountPence: 14200, priceType: 'NHS', vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION' }),
+    ],
+  });
+  function expand(node: unknown): Element[] {
+    if (Array.isArray(node)) return node.flatMap(expand);
+    if (!node || typeof node !== 'object' || !('props' in node)) return [];
+    const element = node as Element;
+    if (typeof element.type === 'function') return expand(element.type(element.props));
+    return [element, ...expand(element.props.children)];
+  }
+  const texts = expand(rendered).flatMap((node) => [node.props.children].flat().filter((child) => typeof child === 'string'));
+  assert.ok(texts.includes('Price not recorded'), 'an unknown amount is shown as unknown');
+  assert.ok(texts.includes('£142.00'), 'a recorded amount is shown as recorded');
+  assert.ok(texts.some((text) => /NHS price applied · VAT excluded · May be adjusted after consultation/.test(text)));
+  assert.ok(!texts.some((text) => /£0\.00/.test(text)), 'an unknown amount is never shown as zero');
+});

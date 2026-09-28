@@ -149,9 +149,76 @@ test('disabled delivery still enqueues notification fields and frozen values wit
   assert.equal(rendered, false);
   assert.ok(!payload.includes('secret-'));
   const saved = JSON.parse(payload);
-  assert.equal(saved.appointment.service.price, 80);
+  // Schema 2: the frozen booking amount (never the live service price) with
+  // no NHS/VAT claim the booking itself did not record.
+  assert.deepEqual(saved.appointment.price, { known: true, amountPence: 8000, priceType: null, vatDisplay: null, priceNature: null });
   assert.equal(saved.appointment.service.duration, 60);
   assert.equal(saved.version, 2);
+  assert.equal(saved.locale, 'en-GB', 'a booking with no recorded language is mailed in English');
+});
+
+test('customer mail keeps the booking language; the salon alert uses the salon setting', async () => {
+  const payloads: Record<string, { locale: string; appointment: { service: { name: string }; price: unknown } }> = {};
+  const db = {
+    notificationDelivery: {
+      findUnique: async () => null,
+      upsert: async ({ create }: { create: { kind: string; payloadJson: string } }) => { payloads[create.kind] = JSON.parse(create.payloadJson); return { id: create.kind }; },
+    },
+    siteSettings: { findUnique: async () => ({ salonNotificationLocale: 'zh-HK' }) },
+    contentTranslation: {
+      findUnique: async ({ where }: { where: { entityType_entityId_locale: { locale: string } } }) =>
+        where.entityType_entityId_locale.locale === 'zh-HK' ? { fieldsJson: JSON.stringify({ name: '長髮洗剪吹' }) } : null,
+    },
+  };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': db, './email-service': {},
+  });
+  const booked = {
+    id: 'a', serviceId: 'svc', date: new Date('2099-09-12T12:00:00Z'), notificationVersion: 1, notes: null,
+    priceAtBooking: null, durationAtBooking: 60, quoteJson: null,
+    // Booked on /zh-hk. An English-speaking admin confirming it later changes nothing.
+    notificationLocale: 'zh-HK',
+    user: { name: '陳小姐', email: 'chan@example.com' }, stylist: { name: 'Ivan' }, service: { name: 'Long Hair - Wash, Haircut & Blow Dry', duration: 60 },
+  };
+  await service.enqueueAppointmentNotification(db as never, 'CONFIRMATION', booked as never);
+  await service.enqueueAppointmentNotification(db as never, 'SALON_ALERT', { ...booked, notificationLocale: 'en-GB' } as never);
+  assert.equal(payloads.CONFIRMATION.locale, 'zh-HK');
+  assert.equal(payloads.CONFIRMATION.appointment.service.name, '長髮洗剪吹');
+  // A booking made before prices were recorded is never mailed with an invented amount.
+  assert.deepEqual(payloads.CONFIRMATION.appointment.price, { known: false });
+  assert.equal(payloads.SALON_ALERT.locale, 'zh-HK', 'the salon alert follows the salon setting, not the customer');
+});
+
+test('an event queued before languages existed is prepared in English and its frozen body is reused on retry', async () => {
+  process.env.NOTIFICATIONS_ENABLED = 'true';
+  const locales: string[] = [];
+  const row = {
+    id: 'n1', eventKey: 'appointment/a/0/CONFIRMATION', kind: 'CONFIRMATION', appointmentId: 'a', status: 'PENDING', attempts: 0, firstAttemptAt: null, lockToken: null as string | null,
+    payloadJson: JSON.stringify({ version: 0, date: '2099-09-12T12:00:00.000Z', appointment: { id: 'a', date: '2099-09-12T12:00:00.000Z', user: { email: 'c@example.com', name: 'C' }, stylist: { name: 'S' }, service: { name: 'Cut', price: 80, duration: 60 } } }),
+  };
+  const db = {
+    notificationDelivery: {
+      findMany: async () => [{ id: row.id, firstAttemptAt: null }],
+      updateMany: async ({ data }: { data: Record<string, unknown> }) => { Object.assign(row, data); return { count: 1 }; },
+      findUnique: async () => ({ ...row }),
+    },
+    appointment: { findUnique: async () => ({ date: new Date('2099-09-12T12:00:00.000Z'), status: 'CONFIRMED', notificationVersion: 0, review: null }), updateMany: async () => ({ count: 1 }) },
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+  };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': db,
+    './email-service': {
+      prepareAppointmentEmail: async (_kind: string, _appointment: unknown, _options: unknown, locale: string) => { locales.push(locale); return { from: 'f', to: 'c@example.com', subject: 's', html: 'h' }; },
+      sendPreparedEmail: async () => { throw new Error('provider down'); },
+    },
+  });
+  await service.dispatchPendingNotifications({ db: db as never, now: new Date('2099-09-01T00:00:00Z') });
+  assert.deepEqual(locales, ['en-GB']);
+  assert.ok(JSON.parse(row.payloadJson).email, 'the prepared request is frozen before sending');
+  row.status = 'PENDING';
+  await service.dispatchPendingNotifications({ db: db as never, now: new Date('2099-09-01T01:00:00Z') });
+  assert.deepEqual(locales, ['en-GB'], 'a retry resends the frozen body; it is never re-rendered in a newer template');
+  process.env.NOTIFICATIONS_ENABLED = 'false';
 });
 
 test('walk-in customer notifications are not queued, while the salon alert is preserved', async () => {

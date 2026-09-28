@@ -1,27 +1,64 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
+import Link from '@/i18n/link';
 import {
   updateSiteSettings,
   type SettingsActionState,
 } from '@/app/actions/admin-settings';
 import type { SiteSettings } from '@/app/services/site-settings-service';
+import { LOCALES } from '@/i18n/config';
+import { useT } from '@/i18n/client';
+import { rich } from '@/i18n/rich';
+import { clearDraft, usePreservedForm } from '@/i18n/draft-store';
+
+/** Everything except the homepage hero text, which has its own bilingual editor. */
+type OperationalSettings = Omit<SiteSettings, 'heroEyebrow' | 'heroTitleLine1' | 'heroTitleLine2' | 'heroSubtitle'>;
 
 interface SiteSettingsFormProps {
-  settings: SiteSettings;
+  settings: OperationalSettings;
 }
 
+const DRAFT_KEY = 'site-settings-form';
+const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
+const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2';
+
 export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
+  const t = useT('adminContent');
+  const tc = useT('common');
+  const formRef = usePreservedForm(DRAFT_KEY);
   const [state, formAction, pending] = useActionState<SettingsActionState, FormData>(
     updateSiteSettings,
     { status: 'idle' }
   );
 
+  useEffect(() => {
+    if (state.status === 'success') clearDraft(DRAFT_KEY);
+  }, [state.status]);
+
+  const urlField = (name: 'instagramUrl' | 'googleBusinessUrl' | 'facebookUrl' | 'treatwellUrl' | 'freshaUrl' | 'booksyUrl', placeholder: string, hint?: string) => (
+    <div>
+      <label htmlFor={`settings-${name}`} className={labelClass}>
+        {t.dynamic(`settings.fields.${name}`)}
+        {hint && <> <span className="text-zinc-400 normal-case tracking-normal">{hint}</span></>}
+      </label>
+      <input
+        id={`settings-${name}`}
+        type="url"
+        name={name}
+        maxLength={500}
+        defaultValue={settings[name]}
+        placeholder={placeholder}
+        className={`${fieldClass} font-mono`}
+      />
+    </div>
+  );
+
   return (
-    <form action={formAction} className="space-y-6">
+    <form ref={formRef} action={formAction} className="space-y-6">
       {state.status === 'success' && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded text-sm">
-          ✓ Settings saved.
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded text-sm" role="status">
+          ✓ {t('settings.saved')}
         </div>
       )}
       {state.status === 'error' && (
@@ -32,11 +69,8 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
         <div>
-          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Online booking</h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            The master switch for booking on this website. Takes effect as soon as you save —
-            no redeploy needed.
-          </p>
+          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.booking.title')}</h2>
+          <p className="text-xs text-zinc-500 mt-1">{t('settings.booking.help')}</p>
         </div>
 
         <label className="flex items-start gap-3 cursor-pointer">
@@ -48,251 +82,130 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           />
           <span>
             <span className="block text-sm font-medium text-zinc-900">
-              Accept bookings on the website
+              {t('settings.booking.label')}
             </span>
             <span className="block text-xs text-zinc-500 mt-1">
-              When off, <code className="text-[11px]">/book</code> shows the maintenance notice
-              with your phone number and a link to each marketplace you have a URL for below,
-              new bookings and reschedules are refused server-side, and the Reschedule button
-              is disabled. Customers can still cancel existing appointments either way.
+              {rich(t('settings.booking.explain'), {
+                code: (text) => <code className="text-[11px]">{text}</code>,
+              })}
             </span>
           </span>
         </label>
 
         {!settings.bookingEnabled && (
           <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
-            <strong>Booking is currently OFF.</strong> Before switching it on, set your{' '}
-            <a href="/admin/opening-hours" className="underline font-semibold">
-              opening hours
-            </a>{' '}
-            — and if any marketplace below is still selling the same chairs, check{' '}
-            <a href="/admin/integrations" className="underline font-semibold">
-              Integrations
-            </a>{' '}
-            first: without two-way calendar sync the same slot can be sold twice.
+            {rich(t('settings.booking.offWarning'), {
+              strong: (text) => <strong>{text}</strong>,
+              hours: (text) => (
+                <Link href="/admin/opening-hours" className="underline font-semibold">
+                  {text}
+                </Link>
+              ),
+              integrations: (text) => (
+                <Link href="/admin/integrations" className="underline font-semibold">
+                  {text}
+                </Link>
+              ),
+            })}
           </div>
         )}
       </section>
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
-        <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Contact</h2>
+        <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.contact.title')}</h2>
 
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Phone number *
+          <label htmlFor="settings-phone" className={labelClass}>
+            {t('settings.fields.phone')} *
           </label>
           <input
+            id="settings-phone"
             type="text"
             name="phone"
             required
             maxLength={40}
             defaultValue={settings.phone}
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+            className={fieldClass}
           />
         </div>
       </section>
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
         <div>
-          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Home hero</h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            The copy shown over the homepage hero image.
-          </p>
+          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.notifications.title')}</h2>
+          <p className="text-xs text-zinc-500 mt-1">{t('settings.notifications.help')}</p>
         </div>
 
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Eyebrow text *
+          <label htmlFor="settings-salon-locale" className={labelClass}>
+            {t('settings.fields.salonNotificationLocale')}
           </label>
-          <input
-            type="text"
-            name="heroEyebrow"
-            required
-            maxLength={80}
-            defaultValue={settings.heroEyebrow}
-            placeholder="Leeds City Centre"
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Title line 1 *
-          </label>
-          <input
-            type="text"
-            name="heroTitleLine1"
-            required
-            maxLength={60}
-            defaultValue={settings.heroTitleLine1}
-            placeholder="Expert Hair"
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Title line 2 *
-          </label>
-          <input
-            type="text"
-            name="heroTitleLine2"
-            required
-            maxLength={60}
-            defaultValue={settings.heroTitleLine2}
-            placeholder="Styling"
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Subtitle *
-          </label>
-          <textarea
-            name="heroSubtitle"
-            required
-            rows={3}
-            maxLength={400}
-            defaultValue={settings.heroSubtitle}
-            placeholder="Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment."
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
+          <select
+            id="settings-salon-locale"
+            name="salonNotificationLocale"
+            defaultValue={settings.salonNotificationLocale}
+            className={`${fieldClass} md:max-w-sm`}
+          >
+            {LOCALES.map((locale) => (
+              <option key={locale} value={locale}>
+                {t.dynamic(`settings.notifications.options.${locale}`)}
+              </option>
+            ))}
+          </select>
         </div>
       </section>
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
         <div>
-          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">Social links</h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            These feed into the HairSalon schema sameAs array. Add the ones you have; leave the rest blank.
-          </p>
+          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.social.title')}</h2>
+          <p className="text-xs text-zinc-500 mt-1">{t('settings.social.help')}</p>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Instagram URL
-          </label>
-          <input
-            type="url"
-            name="instagramUrl"
-            maxLength={500}
-            defaultValue={settings.instagramUrl}
-            placeholder="https://www.instagram.com/harbourhair_leeds/"
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Google Business Profile URL <span className="text-zinc-400 normal-case tracking-normal">(biggest local SEO lever)</span>
-          </label>
-          <input
-            type="url"
-            name="googleBusinessUrl"
-            maxLength={500}
-            defaultValue={settings.googleBusinessUrl}
-            placeholder="https://maps.google.com/?cid=..."
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Facebook URL
-          </label>
-          <input
-            type="url"
-            name="facebookUrl"
-            maxLength={500}
-            defaultValue={settings.facebookUrl}
-            placeholder="https://www.facebook.com/harbourhairleeds"
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Treatwell URL
-          </label>
-          <input
-            type="url"
-            name="treatwellUrl"
-            maxLength={500}
-            defaultValue={settings.treatwellUrl}
-            placeholder="https://www.treatwell.co.uk/place/..."
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Fresha URL
-          </label>
-          <input
-            type="url"
-            name="freshaUrl"
-            maxLength={500}
-            defaultValue={settings.freshaUrl}
-            placeholder="https://www.fresha.com/..."
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Booksy URL
-          </label>
-          <input
-            type="url"
-            name="booksyUrl"
-            maxLength={500}
-            defaultValue={settings.booksyUrl}
-            placeholder="https://booksy.com/..."
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
-          />
-        </div>
+        {urlField('instagramUrl', 'https://www.instagram.com/harbourhair_leeds/')}
+        {urlField('googleBusinessUrl', 'https://maps.google.com/?cid=...', t('settings.social.googleHint'))}
+        {urlField('facebookUrl', 'https://www.facebook.com/harbourhairleeds')}
+        {urlField('treatwellUrl', 'https://www.treatwell.co.uk/place/...')}
+        {urlField('freshaUrl', 'https://www.fresha.com/...')}
+        {urlField('booksyUrl', 'https://booksy.com/...')}
       </section>
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">
-            Search & social cards
+            {t('settings.search.title')}
           </h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            Verification codes and handles for Twitter/X cards.
-          </p>
+          <p className="text-xs text-zinc-500 mt-1">{t('settings.search.help')}</p>
         </div>
 
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Twitter / X handle <span className="text-zinc-400 normal-case tracking-normal">(with or without @)</span>
+          <label htmlFor="settings-twitter" className={labelClass}>
+            {t('settings.fields.twitterHandle')} <span className="text-zinc-400 normal-case tracking-normal">{t('settings.search.twitterHint')}</span>
           </label>
           <input
+            id="settings-twitter"
             type="text"
             name="twitterHandle"
             maxLength={40}
             defaultValue={settings.twitterHandle}
             placeholder="@harbourhair_leeds"
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+            className={`${fieldClass} font-mono`}
           />
         </div>
 
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
-            Google Search Console verification code
+          <label htmlFor="settings-gsc" className={labelClass}>
+            {t('settings.fields.gscVerification')}
           </label>
           <input
+            id="settings-gsc"
             type="text"
             name="gscVerification"
             maxLength={200}
             defaultValue={settings.gscVerification}
             placeholder="google-site-verification=..."
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+            className={`${fieldClass} font-mono`}
           />
-          <p className="text-xs text-zinc-500 mt-1">
-            Paste the content value from the meta tag (not the full HTML tag).
-          </p>
+          <p className="text-xs text-zinc-500 mt-1">{t('settings.search.gscHelp')}</p>
         </div>
       </section>
 
@@ -302,7 +215,7 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           disabled={pending}
           className="bg-zinc-900 hover:bg-zinc-800 text-white px-8 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {pending ? 'Saving…' : 'Save settings'}
+          {pending ? tc('actions.saving') : t('settings.save')}
         </button>
       </div>
     </form>

@@ -2,6 +2,8 @@ import type { MetadataRoute } from 'next';
 import prisma from '@/app/lib/prisma';
 import { slugify } from '@/app/stylists/slug';
 import { SITE_URL } from '@/app/lib/site-url';
+import { HTML_LANG, LOCALES } from '@/i18n/config';
+import { localizeHref } from '@/i18n/paths';
 
 export const revalidate = 3600;
 
@@ -34,7 +36,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const blogMod = latestDate(...blogPosts.map((row) => latestDate(row.updatedAt, row.publishedAt)));
   const homeMod = latestDate(servicesMod, offersMod, stylistsMod, reviews._max.updatedAt, settings?.updatedAt, faqDates.get('home'));
 
-  return [
+  const entries: MetadataRoute.Sitemap = [
     { url: SITE_URL, lastModified: homeMod, changeFrequency: 'weekly', priority: 1 },
     { url: `${SITE_URL}/services`, lastModified: servicesMod, changeFrequency: 'weekly', priority: 0.9 },
     ...categoryContents.map((category) => ({
@@ -63,4 +65,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.6,
     })),
   ];
+
+  // Every public page exists in English (unprefixed) and Traditional Chinese
+  // (/zh-hk). List both, each with hreflang alternates pointing at the other,
+  // so each language is indexed as its own canonical page. Only published
+  // records are read above, so no draft or unpublished translation can appear.
+  return entries.flatMap((entry) => {
+    const path = entry.url.slice(SITE_URL.length) || '/';
+    const languages = Object.fromEntries(LOCALES.map((locale) => [HTML_LANG[locale], absolute(localizeHref(locale, path))]));
+    return LOCALES.map((locale) => ({
+      ...entry,
+      url: absolute(localizeHref(locale, path)),
+      alternates: { languages },
+    }));
+  });
+}
+
+function absolute(path: string): string {
+  return path === '/' ? SITE_URL : `${SITE_URL}${path}`;
 }

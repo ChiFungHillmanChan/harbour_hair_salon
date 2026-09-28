@@ -36,7 +36,11 @@ function fixture(options: { hours?: Hours; existing?: { date: Date; durationMin:
     stylist: { name: 'Stylist', treatwellExternalId: null },
     service: { id: 'service-1', name: 'Cut', price: 100, duration: 60, requiresPatchTest: false, treatwellExternalId: null },
   };
-  const liveService = { id: 'service-1', name: 'Cut', price: 100, duration: 60, treatwellExternalId: null, requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false };
+  const liveService = {
+    id: 'service-1', name: 'Cut', price: '100.00', duration: 60, treatwellExternalId: null, requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false,
+    offeringId: null, hairLength: null, priceType: 'STANDARD', priceVersion: 1, vatDisplay: 'UNSPECIFIED', priceNature: 'LISTED',
+    durationConfirmed: true, surchargeBaseServiceId: null, surchargeAmount: null, priceSource: null, isPublic: true, isBookable: true,
+  };
 
   const tx = {
     service: { findUnique: async () => liveService },
@@ -96,6 +100,7 @@ function fixture(options: { hours?: Hours; existing?: { date: Date; durationMin:
 
 const booking = (time: string, stylistId = 'stylist-1') => ({
   stylistId, serviceId: 'service-1', date: DATE_STR, time,
+  expectedQuote: { serviceId: 'service-1', priceVersion: 1, amountPence: 10000 },
 });
 
 test('a customer cannot book on a day the salon is closed', async () => {
@@ -174,7 +179,7 @@ test('calling the service directly cannot bypass the hours check either', async 
   const { service } = fixture({ hours: { startTime: '10:00', endTime: '18:00' } });
 
   await assert.rejects(
-    service.createBooking({ stylistId: 'stylist-1', serviceId: 'service-1', date: new Date('2099-09-14T20:00:00Z'), userId: 'user-1' }),
+    service.createBooking({ stylistId: 'stylist-1', serviceId: 'service-1', date: new Date('2099-09-14T20:00:00Z'), userId: 'user-1', expectedQuote: { serviceId: 'service-1', priceVersion: 1, amountPence: 10000 } }),
     (error: unknown) => error instanceof BookingError && /outside business hours/.test(error.message),
   );
 });

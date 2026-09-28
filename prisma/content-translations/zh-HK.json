@@ -1,0 +1,2859 @@
+{
+  "version": 1,
+  "locale": "zh-HK",
+  "note": "Source English captured read-only from production on 2026-09-28 plus the 2026-09-28 price catalogue. `fields` holds the reviewed Traditional Chinese (Hong Kong) translation of `source`. The import tool refuses an entry whose current English no longer equals `source`.",
+  "entries": [
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "wash-cut-blow-dry"
+      },
+      "source": {
+        "name": "Wash, Haircut & Blow Dry",
+        "description": ""
+      },
+      "fields": {
+        "name": "洗剪吹",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "children-haircut"
+      },
+      "source": {
+        "name": "Children's Wash, Haircut & Blow Dry (12 and under)",
+        "description": ""
+      },
+      "fields": {
+        "name": "兒童洗剪吹（12 歲或以下）",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "full-head-colour"
+      },
+      "source": {
+        "name": "Full Head Colour & Blow Dry",
+        "description": ""
+      },
+      "fields": {
+        "name": "全頭染髮連吹髮造型",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "half-head-highlights"
+      },
+      "source": {
+        "name": "Half Head Highlights & Blow Dry",
+        "description": ""
+      },
+      "fields": {
+        "name": "半頭挑染連吹髮造型",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "full-head-highlights"
+      },
+      "source": {
+        "name": "Full Head Highlights & Blow Dry",
+        "description": ""
+      },
+      "fields": {
+        "name": "全頭挑染連吹髮造型",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "partial-highlights"
+      },
+      "source": {
+        "name": "Partial Highlights & Blow Dry",
+        "description": ""
+      },
+      "fields": {
+        "name": "局部挑染連吹髮造型",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "balayage"
+      },
+      "source": {
+        "name": "Balayage, Haircut & Blow Dry",
+        "description": ""
+      },
+      "fields": {
+        "name": "Balayage 挑染連剪髮及吹髮造型",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "cold-perm-half-head"
+      },
+      "source": {
+        "name": "Cold Perm – Half Head",
+        "description": ""
+      },
+      "fields": {
+        "name": "半頭冷燙",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "cold-perm-full-head"
+      },
+      "source": {
+        "name": "Cold Perm – Full Head",
+        "description": ""
+      },
+      "fields": {
+        "name": "全頭冷燙",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "hair-correction"
+      },
+      "source": {
+        "name": "Hair Correction",
+        "description": ""
+      },
+      "fields": {
+        "name": "Hair Correction",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "keratin-treatment"
+      },
+      "source": {
+        "name": "Keratin Treatment",
+        "description": ""
+      },
+      "fields": {
+        "name": "Keratin 護理",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "paimore-hot-perm"
+      },
+      "source": {
+        "name": "Paimore Hot Perm",
+        "description": ""
+      },
+      "fields": {
+        "name": "Paimore 熱燙",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "inkarami-treatment"
+      },
+      "source": {
+        "name": "Dr.Jr. TOKIO Inkarami System Treatment",
+        "description": ""
+      },
+      "fields": {
+        "name": "Dr.Jr. TOKIO Inkarami System 護理",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE_OFFERING",
+      "match": {
+        "by": "offeringKey",
+        "key": "shampoo-blow-dry"
+      },
+      "source": {
+        "name": "Shampoo & Blow Dry",
+        "description": ""
+      },
+      "fields": {
+        "name": "洗頭吹髮",
+        "description": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "wash-cut-blow-dry",
+        "hairLength": "SHORT",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Short Over Ears - Wash, Haircut & Blow Dry",
+        "description": "Wash, haircut and blow dry for short hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮洗剪吹",
+        "description": "短髮適用的洗頭、剪髮及吹髮服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "wash-cut-blow-dry",
+        "hairLength": "SHORT",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Short Over Ears - Wash, Haircut & Blow Dry (Student & NHS)",
+        "description": "Wash, haircut and blow dry for short hair (Student & NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮洗剪吹（NHS 價）",
+        "description": "短髮適用的洗頭、剪髮及吹髮服務（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "wash-cut-blow-dry",
+        "hairLength": "LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Long Hair - Wash, Haircut & Blow Dry",
+        "description": "Wash, haircut and blow dry for long hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮洗剪吹",
+        "description": "長髮適用的洗頭、剪髮及吹髮服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "wash-cut-blow-dry",
+        "hairLength": "LONG",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Long Hair - Wash, Haircut & Blow Dry (Student & NHS)",
+        "description": "Wash, haircut and blow dry for long hair (Student & NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮洗剪吹（NHS 價）",
+        "description": "長髮適用的洗頭、剪髮及吹髮服務（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "wash-cut-blow-dry",
+        "hairLength": "EXTRA_LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Extra Long Hair - Wash, Haircut & Blow Dry",
+        "description": "Wash, haircut and blow dry for extra long hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "特長髮洗剪吹",
+        "description": "特長髮適用的洗頭、剪髮及吹髮服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "wash-cut-blow-dry",
+        "hairLength": "EXTRA_LONG",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Extra Long Hair - Wash, Haircut & Blow Dry (NHS)",
+        "description": "Wash, haircut and blow dry for extra long hair (NHS price).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "特長髮洗剪吹（NHS 價）",
+        "description": "特長髮適用的洗頭、剪髮及吹髮服務（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "children-haircut",
+        "hairLength": "SHORT",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Children (Up to 12Yr) - Short Over Ears",
+        "description": "Wash, haircut and blow dry for children under 12 with short hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "兒童（12 歲或以下）短髮",
+        "description": "12 歲以下短髮兒童的洗頭、剪髮及吹髮服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "children-haircut",
+        "hairLength": "LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Children (Up to 12Yr) - Long Hair",
+        "description": "Wash, haircut and blow dry for children under 12 with long hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "兒童（12 歲或以下）長髮",
+        "description": "12 歲以下長髮兒童的洗頭、剪髮及吹髮服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "children-haircut",
+        "hairLength": "EXTRA_LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Children (Up to 12Yr) - Extra Long Hair",
+        "description": "Wash, haircut and blow dry for children under 12 with extra long hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "兒童（12 歲或以下）特長髮",
+        "description": "12 歲以下特長髮兒童的洗頭、剪髮及吹髮服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-colour",
+        "hairLength": "SHORT",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Full Head Colour & Blow Dry - Short Hair",
+        "description": "Full head colour application including blow dry for short hair.",
+        "priceNote": "The price may be adjusted after your consultation."
+      },
+      "fields": {
+        "name": "短髮全頭染髮連吹髮造型",
+        "description": "短髮全頭染髮，包括吹髮造型。",
+        "priceNote": "價錢或會於諮詢後調整。"
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-colour",
+        "hairLength": "SHORT",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Full Head Colour & Blow Dry - Short Hair (NHS)",
+        "description": "Full head colour application including blow dry for short hair (NHS rate).",
+        "priceNote": "The price may be adjusted after your consultation."
+      },
+      "fields": {
+        "name": "短髮全頭染髮連吹髮造型（NHS 價）",
+        "description": "短髮全頭染髮，包括吹髮造型（NHS 價）。",
+        "priceNote": "價錢或會於諮詢後調整。"
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-colour",
+        "hairLength": "MEDIUM",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Full Head Colour & Blow Dry - Medium Hair",
+        "description": "Full head colour application including blow dry for medium length hair.",
+        "priceNote": "The price may be adjusted after your consultation."
+      },
+      "fields": {
+        "name": "中髮全頭染髮連吹髮造型",
+        "description": "中髮全頭染髮，包括吹髮造型。",
+        "priceNote": "價錢或會於諮詢後調整。"
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-colour",
+        "hairLength": "MEDIUM",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Full Head Colour & Blow Dry - Medium Hair (NHS)",
+        "description": "Full head colour application including blow dry for medium length hair (NHS rate).",
+        "priceNote": "The price may be adjusted after your consultation."
+      },
+      "fields": {
+        "name": "中髮全頭染髮連吹髮造型（NHS 價）",
+        "description": "中髮全頭染髮，包括吹髮造型（NHS 價）。",
+        "priceNote": "價錢或會於諮詢後調整。"
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-colour",
+        "hairLength": "LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Full Head Colour & Blow Dry - Long Hair",
+        "description": "Full head colour application including blow dry for long hair.",
+        "priceNote": "The price may be adjusted after your consultation."
+      },
+      "fields": {
+        "name": "長髮全頭染髮連吹髮造型",
+        "description": "長髮全頭染髮，包括吹髮造型。",
+        "priceNote": "價錢或會於諮詢後調整。"
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-colour",
+        "hairLength": "LONG",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Full Head Colour & Blow Dry - Long Hair (NHS)",
+        "description": "Full head colour application including blow dry for long hair (NHS rate).",
+        "priceNote": "The price may be adjusted after your consultation."
+      },
+      "fields": {
+        "name": "長髮全頭染髮連吹髮造型（NHS 價）",
+        "description": "長髮全頭染髮，包括吹髮造型（NHS 價）。",
+        "priceNote": "價錢或會於諮詢後調整。"
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-colour",
+        "hairLength": "EXTRA_LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Full Head Colour & Blow Dry - Extra Long Hair",
+        "description": "Full head colour application including blow dry for extra long hair (long-hair price plus the extra-long charge).",
+        "priceNote": "The price may be adjusted after your consultation."
+      },
+      "fields": {
+        "name": "特長髮全頭染髮連吹髮造型",
+        "description": "特長髮全頭染髮，包括吹髮造型（長髮價錢另加特長髮附加費）。",
+        "priceNote": "價錢或會於諮詢後調整。"
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-colour",
+        "hairLength": "EXTRA_LONG",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Full Head Colour & Blow Dry - Extra Long Hair (NHS)",
+        "description": "Full head colour application including blow dry for extra long hair (NHS long-hair price plus the extra-long charge).",
+        "priceNote": "The price may be adjusted after your consultation."
+      },
+      "fields": {
+        "name": "特長髮全頭染髮連吹髮造型（NHS 價）",
+        "description": "特長髮全頭染髮，包括吹髮造型（NHS 長髮價錢另加特長髮附加費）。",
+        "priceNote": "價錢或會於諮詢後調整。"
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "half-head-highlights",
+        "hairLength": "SHORT",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Half Head Highlights & Blow Dry - Short Hair",
+        "description": "Half head highlights including blow dry for short hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮半頭挑染連吹髮造型",
+        "description": "短髮半頭挑染，包括吹髮造型。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "half-head-highlights",
+        "hairLength": "SHORT",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Half Head Highlights & Blow Dry - Short Hair (NHS)",
+        "description": "Half head highlights including blow dry for short hair (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮半頭挑染連吹髮造型（NHS 價）",
+        "description": "短髮半頭挑染，包括吹髮造型（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "half-head-highlights",
+        "hairLength": "LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Half Head Highlights & Blow Dry - Long Hair",
+        "description": "Half head highlights including blow dry for long hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮半頭挑染連吹髮造型",
+        "description": "長髮半頭挑染，包括吹髮造型。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "half-head-highlights",
+        "hairLength": "LONG",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Half Head Highlights & Blow Dry - Long Hair (NHS)",
+        "description": "Half head highlights including blow dry for long hair (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮半頭挑染連吹髮造型（NHS 價）",
+        "description": "長髮半頭挑染，包括吹髮造型（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-highlights",
+        "hairLength": "SHORT",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Full Head Highlights & Blow Dry - Short Hair",
+        "description": "Full head highlights including blow dry for short hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮全頭挑染連吹髮造型",
+        "description": "短髮全頭挑染，包括吹髮造型。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-highlights",
+        "hairLength": "SHORT",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Full Head Highlights & Blow Dry - Short Hair (NHS)",
+        "description": "Full head highlights including blow dry for short hair (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮全頭挑染連吹髮造型（NHS 價）",
+        "description": "短髮全頭挑染，包括吹髮造型（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-highlights",
+        "hairLength": "LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Full Head Highlights & Blow Dry - Long Hair",
+        "description": "Full head highlights including blow dry for long hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮全頭挑染連吹髮造型",
+        "description": "長髮全頭挑染，包括吹髮造型。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "full-head-highlights",
+        "hairLength": "LONG",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Full Head Highlights & Blow Dry - Long Hair (NHS)",
+        "description": "Full head highlights including blow dry for long hair (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮全頭挑染連吹髮造型（NHS 價）",
+        "description": "長髮全頭挑染，包括吹髮造型（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "partial-highlights",
+        "hairLength": "SHORT",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Partial Highlights & Blow Dry - Short Hair",
+        "description": "Partial highlights including blow dry for short hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮局部挑染連吹髮造型",
+        "description": "短髮局部挑染，包括吹髮造型。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "partial-highlights",
+        "hairLength": "SHORT",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Partial Highlights & Blow Dry - Short Hair (NHS)",
+        "description": "Partial highlights including blow dry for short hair (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮局部挑染連吹髮造型（NHS 價）",
+        "description": "短髮局部挑染，包括吹髮造型（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "partial-highlights",
+        "hairLength": "LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Partial Highlights & Blow Dry - Long Hair",
+        "description": "Partial highlights including blow dry for long hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮局部挑染連吹髮造型",
+        "description": "長髮局部挑染，包括吹髮造型。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "partial-highlights",
+        "hairLength": "LONG",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Partial Highlights & Blow Dry - Long Hair (NHS)",
+        "description": "Partial highlights including blow dry for long hair (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮局部挑染連吹髮造型（NHS 價）",
+        "description": "長髮局部挑染，包括吹髮造型（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "balayage",
+        "hairLength": null,
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Balayage, Haircut & Blow Dry (Adult)",
+        "description": "Balayage with haircut and blow dry.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Balayage 挑染連剪髮及吹髮造型（成人）",
+        "description": "Balayage 挑染，連剪髮及吹髮造型。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "balayage",
+        "hairLength": null,
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Balayage, Haircut & Blow Dry (NHS)",
+        "description": "Balayage with haircut and blow dry (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Balayage 挑染連剪髮及吹髮造型（NHS 價）",
+        "description": "Balayage 挑染，連剪髮及吹髮造型（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "cold-perm-half-head",
+        "hairLength": null,
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Cold Perm Half Head",
+        "description": "Cold perm for half head.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "半頭冷燙",
+        "description": "半頭冷燙服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "cold-perm-full-head",
+        "hairLength": null,
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Cold Perm Full Head",
+        "description": "Cold perm for full head.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "全頭冷燙",
+        "description": "全頭冷燙服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "hair-correction",
+        "hairLength": null,
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Hair Correction",
+        "description": "Hair correction service.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Hair Correction",
+        "description": "Hair Correction 服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "keratin-treatment",
+        "hairLength": null,
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Keratin Treatment",
+        "description": "Keratin smoothing treatment.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Keratin 護理",
+        "description": "Keratin 角蛋白柔順護理。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "paimore-hot-perm",
+        "hairLength": null,
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Paimore Hot Perm",
+        "description": "Paimore digital/hot perm.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Paimore 熱燙",
+        "description": "Paimore 數碼曲髮／熱燙。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "inkarami-treatment",
+        "hairLength": null,
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Dr.Jr. TOKIO Inkarami System Treatment",
+        "description": "Dr.Jr. TOKIO Inkarami System treatment.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Dr.Jr. TOKIO Inkarami System 護理",
+        "description": "Dr.Jr. TOKIO Inkarami System 護理療程。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "inkarami-treatment",
+        "hairLength": null,
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Dr.Jr. TOKIO Inkarami System Treatment (NHS)",
+        "description": "Dr.Jr. TOKIO Inkarami System treatment (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Dr.Jr. TOKIO Inkarami System 護理（NHS 價）",
+        "description": "Dr.Jr. TOKIO Inkarami System 護理療程（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "shampoo-blow-dry",
+        "hairLength": "SHORT",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Shampoo & Blow Dry - Short Over Ears",
+        "description": "Shampoo and blow dry for short hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮洗頭吹髮",
+        "description": "短髮適用的洗頭及吹髮服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "shampoo-blow-dry",
+        "hairLength": "SHORT",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Shampoo & Blow Dry - Short Over Ears (Student & NHS)",
+        "description": "Shampoo and blow dry for short hair (Student & NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "短髮洗頭吹髮（NHS 價）",
+        "description": "短髮適用的洗頭及吹髮服務（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "shampoo-blow-dry",
+        "hairLength": "LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Shampoo & Blow Dry - Long Over Ears",
+        "description": "Shampoo and blow dry for long hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮洗頭吹髮",
+        "description": "長髮適用的洗頭及吹髮服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "shampoo-blow-dry",
+        "hairLength": "LONG",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Shampoo & Blow Dry - Long Over Ears (Student & NHS)",
+        "description": "Shampoo and blow dry for long hair (Student & NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "長髮洗頭吹髮（NHS 價）",
+        "description": "長髮適用的洗頭及吹髮服務（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "shampoo-blow-dry",
+        "hairLength": "EXTRA_LONG",
+        "priceType": "STANDARD"
+      },
+      "source": {
+        "name": "Shampoo & Blow Dry - Extra Long Hair",
+        "description": "Shampoo and blow dry for extra long hair.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "特長髮洗頭吹髮",
+        "description": "特長髮適用的洗頭及吹髮服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "catalogOption",
+        "offering": "shampoo-blow-dry",
+        "hairLength": "EXTRA_LONG",
+        "priceType": "NHS"
+      },
+      "source": {
+        "name": "Shampoo & Blow Dry - Extra Long Hair (NHS)",
+        "description": "Shampoo and blow dry for extra long hair (NHS price).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "特長髮洗頭吹髮（NHS 價）",
+        "description": "特長髮適用的洗頭及吹髮服務（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "serviceName",
+        "name": "Consultation & Patch Test"
+      },
+      "source": {
+        "name": "Consultation & Patch Test",
+        "description": "Required consultation and allergy patch test before any colour service (book at least 48h ahead).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "諮詢及皮膚敏感測試",
+        "description": "任何染髮服務前必須進行的諮詢及皮膚敏感測試（請最少提前 48 小時預約）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "serviceName",
+        "name": "Consultation"
+      },
+      "source": {
+        "name": "Consultation",
+        "description": "Free consultation to discuss your service before booking.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "諮詢",
+        "description": "預約前的免費諮詢，與你商討所需服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "serviceName",
+        "name": "Cold Perm Full Head (NHS)"
+      },
+      "source": {
+        "name": "Cold Perm Full Head (NHS)",
+        "description": "Cold perm for full head (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "全頭冷燙（NHS 價）",
+        "description": "全頭冷燙服務（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "serviceName",
+        "name": "Cold Perm Half Head (NHS)"
+      },
+      "source": {
+        "name": "Cold Perm Half Head (NHS)",
+        "description": "Cold perm for half head (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "半頭冷燙（NHS 價）",
+        "description": "半頭冷燙服務（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "serviceName",
+        "name": "Hair Correction (NHS)"
+      },
+      "source": {
+        "name": "Hair Correction (NHS)",
+        "description": "Hair correction service (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Hair Correction（NHS 價）",
+        "description": "Hair Correction 服務（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "serviceName",
+        "name": "Keratin Treatment (NHS)"
+      },
+      "source": {
+        "name": "Keratin Treatment (NHS)",
+        "description": "Keratin smoothing treatment (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Keratin 護理（NHS 價）",
+        "description": "Keratin 角蛋白柔順護理（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "serviceName",
+        "name": "Paimore Hot Perm (NHS)"
+      },
+      "source": {
+        "name": "Paimore Hot Perm (NHS)",
+        "description": "Paimore digital/hot perm (NHS rate).",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "Paimore 熱燙（NHS 價）",
+        "description": "Paimore 數碼曲髮／熱燙（NHS 價）。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "serviceName",
+        "name": "Perm Under Shoulder Add-on"
+      },
+      "source": {
+        "name": "Perm Under Shoulder Add-on",
+        "description": "Additional charge for under shoulder length perm.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "過肩電髮附加項目",
+        "description": "過肩長度電髮的附加收費。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "SERVICE",
+      "match": {
+        "by": "serviceName",
+        "name": "Heat Set Add-on"
+      },
+      "source": {
+        "name": "Heat Set Add-on",
+        "description": "Additional heat styling service.",
+        "priceNote": ""
+      },
+      "fields": {
+        "name": "熱力定型附加項目",
+        "description": "額外熱力造型服務。",
+        "priceNote": ""
+      }
+    },
+    {
+      "entityType": "CATEGORY_CONTENT",
+      "match": {
+        "by": "slug",
+        "slug": "haircuts"
+      },
+      "source": {
+        "title": "Haircuts in Leeds City Centre",
+        "hero": "Precision Haircuts",
+        "metaDescription": "Expert haircuts in Leeds city centre by Hong Kong trained stylists. Children's cuts from £19; wash, cut and blow dry from £37 (£33 Student & NHS). Book online.",
+        "intro": "From sharp classic cuts to soft contemporary shapes, every haircut at Harbour Hair Salon starts with a consultation so your stylist understands your hair type, lifestyle and the finish you want to leave with.",
+        "overview": [
+          "Our senior stylists are Hong Kong trained in precision cutting techniques that prioritise face shape, hair density and how the cut grows out over the following weeks. That means you leave with a haircut that still looks intentional four, six, even eight weeks later — not one that falls out of shape within days.",
+          "We cut men’s, women’s and children’s hair at every length. Whether you’re maintaining an established look, trying a new shape for the first time, or coming in for your child’s first proper cut, the process is calm, unhurried and tailored to you.",
+          "Pricing is fully transparent — no upsells, no surprise add-ons. Discounted rates are available on selected wash, cut and blow-dry services for students and NHS staff with valid ID."
+        ],
+        "includes": [
+          "A one-to-one consultation before scissors touch your hair",
+          "A warm wash with a shampoo chosen for your hair type",
+          "Precision cut tailored to face shape and growth pattern",
+          "Blow dry and finish so you see exactly how it will look",
+          "Honest advice on styling, products and when to come back"
+        ],
+        "process": [
+          {
+            "step": "Consultation",
+            "detail": "Your stylist listens to what you want, checks how your hair behaves, and agrees the shape with you before cutting."
+          },
+          {
+            "step": "Wash",
+            "detail": "A relaxing wash at the basin with products matched to your hair’s condition."
+          },
+          {
+            "step": "Cut",
+            "detail": "Precision cutting using section-by-section technique for a balanced, grown-in-friendly shape."
+          },
+          {
+            "step": "Finish",
+            "detail": "Blow dry and styling so you walk out ready — and know exactly how to recreate it at home."
+          }
+        ],
+        "aftercare": [
+          "Wait 24 hours before the first wash to let the cut settle.",
+          "Use a wide-tooth comb on wet hair to avoid breakage around the fresh shape.",
+          "For most cuts, book your next appointment in 6–8 weeks to keep the shape sharp.",
+          "If anything feels off in the first week, call us — small tweaks are always on the house."
+        ],
+        "faqs": [
+          {
+            "question": "How much does a haircut cost at Harbour Hair Salon?",
+            "answer": "Haircuts at Harbour Hair Salon start from £19 for children (up to 12), and an adult wash, cut and blow dry is from £37 (£33 with Student & NHS pricing). The final price depends on hair length and the service chosen. Full pricing is listed above."
+          },
+          {
+            "question": "Do you offer student and NHS discounts on haircuts?",
+            "answer": "Yes. Discounted rates apply to selected wash, cut and blow-dry services for students and NHS staff. Please bring valid ID to your appointment."
+          },
+          {
+            "question": "How long does a haircut appointment take?",
+            "answer": "A wash, cut and blow dry typically takes 45 minutes to an hour. We never rush — your stylist will always build in time for proper consultation and finish."
+          },
+          {
+            "question": "Do you cut children’s hair?",
+            "answer": "Yes. We offer dedicated children’s haircuts for ages up to 12 — both short over ears and long hair — with a calm, patient approach."
+          }
+        ]
+      },
+      "fields": {
+        "title": "列斯市中心剪髮服務",
+        "hero": "精準剪髮",
+        "metaDescription": "列斯市中心專業剪髮，由香港培訓髮型師主理。兒童剪髮 £19 起；洗剪吹 £37 起（學生及 NHS 價 £33）。立即網上預約。",
+        "intro": "由俐落的經典剪裁到柔和的時尚髮型，Harbour Hair Salon 每次剪髮都由諮詢開始，讓髮型師了解你的髮質、生活習慣，以及你希望離開時呈現的效果。",
+        "overview": [
+          "我們的資深髮型師在香港接受精準剪髮訓練，剪髮時優先考慮臉型、髮量，以及髮型在之後數星期長出來的變化。因此，你的髮型在四星期、六星期，甚至八星期後依然保持應有的設計感，而不會幾天內便走樣。",
+          "我們為男士、女士及兒童修剪各種長度的頭髮。無論你是想維持現有造型、第一次嘗試新髮型，還是帶孩子來剪第一個正式髮型，整個過程都從容不迫，並為你度身訂造。",
+          "價錢完全透明——不會硬銷，也沒有意料之外的附加收費。持有效證件的學生及 NHS 員工，可以優惠價享用指定洗剪吹服務。"
+        ],
+        "includes": [
+          "落剪前的一對一諮詢",
+          "以配合你髮質的洗頭水溫水洗頭",
+          "按臉型及頭髮生長方向度身精準剪裁",
+          "吹髮及造型，讓你清楚看到最終效果",
+          "就造型、產品及下次修剪時間提供坦誠建議"
+        ],
+        "process": [
+          {
+            "step": "諮詢",
+            "detail": "髮型師會聆聽你的要求，了解你頭髮的特性，並在落剪前與你確定髮型。"
+          },
+          {
+            "step": "洗頭",
+            "detail": "在洗頭盆以配合你頭髮狀況的產品洗頭，讓你放鬆身心。"
+          },
+          {
+            "step": "剪髮",
+            "detail": "以逐區分段技術精準剪裁，打造平衡、長出來後依然好看的髮型。"
+          },
+          {
+            "step": "完成造型",
+            "detail": "吹髮及造型，讓你離開時已整理妥當——並清楚知道在家如何重現同樣效果。"
+          }
+        ],
+        "aftercare": [
+          "剪髮後請等 24 小時才首次洗頭，讓髮型定形。",
+          "頭髮濕時請用闊齒梳，避免新剪髮型周圍的頭髮斷裂。",
+          "大部分髮型建議在 6–8 星期後預約下次修剪，保持髮型俐落。",
+          "如第一星期內覺得有任何不妥，請致電我們——小修改一律免費。"
+        ],
+        "faqs": [
+          {
+            "question": "Harbour Hair Salon 剪髮收費多少？",
+            "answer": "Harbour Hair Salon 兒童（12 歲或以下）剪髮 £19 起，成人洗剪吹 £37 起（學生及 NHS 價 £33）。最終價錢視乎頭髮長度及所選服務而定。完整價目已列於上方。"
+          },
+          {
+            "question": "剪髮有沒有學生及 NHS 優惠？",
+            "answer": "有。學生及 NHS 員工可以優惠價享用指定洗剪吹服務。預約當日請帶備有效證件。"
+          },
+          {
+            "question": "剪髮需時多久？",
+            "answer": "洗剪吹一般需時 45 分鐘至一小時。我們從不趕急——髮型師一定會預留足夠時間，好好進行諮詢及完成造型。"
+          },
+          {
+            "question": "你們有沒有兒童剪髮服務？",
+            "answer": "有。我們為 12 歲或以下兒童提供專屬剪髮服務——短髮及長髮均可——並以平和、耐心的方式進行。"
+          }
+        ]
+      }
+    },
+    {
+      "entityType": "CATEGORY_CONTENT",
+      "match": {
+        "by": "slug",
+        "slug": "colouring"
+      },
+      "source": {
+        "title": "Hair Colouring in Leeds City Centre",
+        "hero": "Hair Colouring",
+        "metaDescription": "Expert hair colouring in Leeds — balayage, highlights, full colour, root touch-ups and fashion shades. A patch test is required before every colour service. Book online.",
+        "intro": "Whether you want a natural root touch-up, sun-kissed balayage, full-head highlights or a bold fashion shade, our colourists will take you there safely and with a tone that actually suits your skin.",
+        "overview": [
+          "Hair colouring is the service where technique matters most. Our senior colourists work in thin, mapped sections, lift gradually to protect the hair’s integrity, and finish with a toner and gloss so the result looks dimensional rather than flat.",
+          "Every colour service at Harbour starts with an in-person consultation. We look at your natural base, the history of any previous colour, your skin tone and the finish you’re aiming for. If an appointment needs to be split across two sessions to keep the hair healthy, we’ll tell you honestly before booking.",
+          "A patch test is required at least 48 hours before any colour appointment. You can book Consultation & Patch Test via our booking page."
+        ],
+        "includes": [
+          "In-person colour consultation and strand assessment",
+          "Bespoke colour formulation matched to your base and skin tone",
+          "Sectioned application using foils or freehand balayage technique",
+          "Toning and glossing for a dimensional, professional finish",
+          "Blow dry and styling so you leave seeing the final look"
+        ],
+        "process": [
+          {
+            "step": "Patch test",
+            "detail": "Required at least 48 hours before any colour appointment."
+          },
+          {
+            "step": "Consultation",
+            "detail": "Your colourist looks at your base, previous colour history and desired finish before mixing anything."
+          },
+          {
+            "step": "Formulation",
+            "detail": "Bespoke colour mix tailored to your hair — never a one-size-fits-all tube."
+          },
+          {
+            "step": "Application",
+            "detail": "Mapped sectioning, foils or freehand balayage depending on the result you want."
+          },
+          {
+            "step": "Toning & finish",
+            "detail": "Toner and gloss to perfect the shade, followed by a blow dry and finishing advice."
+          }
+        ],
+        "aftercare": [
+          "Wait 48 hours before the first wash to let the colour lock in.",
+          "Use sulphate-free shampoo and a colour-safe conditioner.",
+          "Rinse with cool water where possible — hot water fades colour faster.",
+          "UV and chlorine are colour’s worst enemies; use heat and sun protection.",
+          "Book a toner refresh every 4–6 weeks to keep the tone true."
+        ],
+        "faqs": [
+          {
+            "question": "Why do I need a patch test before colouring?",
+            "answer": "A patch test checks for allergic reactions to colour products and is required at least 48 hours before any colour appointment. You can book Consultation & Patch Test via our booking page. The current price is listed in our service menu."
+          },
+          {
+            "question": "Do you offer balayage and highlights?",
+            "answer": "Yes. We offer a full range including full head colour, root touch-up, partial and full highlights, balayage, babylights and fashion colours."
+          },
+          {
+            "question": "How long does a colour appointment take?",
+            "answer": "Most colour services take between 1.5 and 3 hours depending on length, density and the technique used. Your colourist will give you an exact estimate at consultation."
+          },
+          {
+            "question": "Can you correct a colour done somewhere else?",
+            "answer": "In most cases, yes — but colour correction often needs to be split across two sessions to keep your hair healthy. Book a consultation first and we’ll give you an honest plan."
+          }
+        ]
+      },
+      "fields": {
+        "title": "列斯市中心染髮服務",
+        "hero": "染髮",
+        "metaDescription": "列斯專業染髮——Balayage、挑染、全頭染髮、補染髮根及潮流髮色。每次染髮服務前均須進行皮膚敏感測試。立即網上預約。",
+        "intro": "無論你想自然地補染髮根、做出陽光感的 Balayage、全頭挑染，還是大膽的潮流髮色，我們的染髮師都會安全地為你達成，並選出真正襯你膚色的色調。",
+        "overview": [
+          "染髮是最講究技術的服務。我們的資深染髮師會把頭髮分成細薄而有規劃的區塊，逐步提亮以保護髮質，最後以調色及光澤處理收尾，令效果富層次感而不平板。",
+          "Harbour 的每項染髮服務都由面對面諮詢開始。我們會了解你的天然底色、過往染髮紀錄、膚色及你想要的效果。如為保持頭髮健康而需要分兩次進行，我們會在預約前坦白告訴你。",
+          "任何染髮預約前最少 48 小時必須先進行皮膚敏感測試。你可以透過我們的預約頁面預約「諮詢及皮膚敏感測試」。"
+        ],
+        "includes": [
+          "面對面染髮諮詢及髮絲評估",
+          "按你的底色及膚色度身調配染髮配方",
+          "以錫紙或徒手 Balayage 技術分區上色",
+          "調色及光澤處理，效果專業而富層次感",
+          "吹髮及造型，讓你離開前看到最終效果"
+        ],
+        "process": [
+          {
+            "step": "皮膚敏感測試",
+            "detail": "任何染髮預約前最少 48 小時必須進行。"
+          },
+          {
+            "step": "諮詢",
+            "detail": "染髮師會先了解你的底色、過往染髮紀錄及想要的效果，才開始調色。"
+          },
+          {
+            "step": "調配",
+            "detail": "為你的頭髮度身調配顏色——絕不是千篇一律的現成染膏。"
+          },
+          {
+            "step": "上色",
+            "detail": "按你想要的效果，以規劃分區、錫紙或徒手 Balayage 上色。"
+          },
+          {
+            "step": "調色及完成造型",
+            "detail": "以調色及光澤處理完善色調，再吹髮並提供造型建議。"
+          }
+        ],
+        "aftercare": [
+          "染髮後請等 48 小時才首次洗頭，讓顏色鎖定。",
+          "使用無硫酸鹽洗頭水及護色護髮素。",
+          "盡可能用涼水沖洗——熱水會令顏色更快褪色。",
+          "紫外線和氯是髮色的頭號敵人；請做好防熱及防曬保護。",
+          "每 4–6 星期預約一次調色補色，保持色調準確。"
+        ],
+        "faqs": [
+          {
+            "question": "為甚麼染髮前需要做皮膚敏感測試？",
+            "answer": "皮膚敏感測試用以檢查你會否對染髮產品出現過敏反應，任何染髮預約前最少 48 小時必須進行。你可以透過我們的預約頁面預約「諮詢及皮膚敏感測試」。現行價錢已列於我們的服務價目表。"
+          },
+          {
+            "question": "你們有沒有 Balayage 及挑染服務？",
+            "answer": "有。我們提供全面的染髮服務，包括全頭染髮、補染髮根、局部及全頭挑染、Balayage、Babylights 微挑染及潮流髮色。"
+          },
+          {
+            "question": "染髮需時多久？",
+            "answer": "大部分染髮服務需時 1.5 至 3 小時，視乎頭髮長度、髮量及所用技術而定。染髮師會在諮詢時給你準確的預計時間。"
+          },
+          {
+            "question": "可以修正在其他地方染的髮色嗎？",
+            "answer": "大多數情況下可以——但為保持頭髮健康，修正髮色往往需要分兩次進行。請先預約諮詢，我們會給你一個坦誠的方案。"
+          }
+        ]
+      }
+    },
+    {
+      "entityType": "CATEGORY_CONTENT",
+      "match": {
+        "by": "slug",
+        "slug": "perms"
+      },
+      "source": {
+        "title": "Perms in Leeds City Centre",
+        "hero": "Perms",
+        "metaDescription": "Modern perms in Leeds — soft waves, digital perms and traditional curls by Hong Kong trained specialists. Shape assessment and consultation included. Book online.",
+        "intro": "Modern perms are nothing like the tight curls of the 80s. At Harbour, we use updated techniques — including digital perms — to create soft waves, bouncy curls and movement that actually suits your hair.",
+        "overview": [
+          "Our perm specialists are Hong Kong trained in techniques that give you movement without the damage or frizz older perms were famous for. We assess hair strength, porosity and length before choosing the right formula and rod size for your desired finish.",
+          "A great perm is only half the product — the other half is how you handle it at home. Every perm appointment includes styling guidance and product recommendations so you can recreate the result in your own bathroom.",
+          "Because perms permanently change the hair structure, we always recommend an in-person consultation before booking. It takes 10 minutes and makes sure you walk out with the exact movement you wanted."
+        ],
+        "includes": [
+          "Hair-strength and porosity assessment before booking",
+          "Choice of traditional or digital perm technique",
+          "Rod size and formula tailored to the wave pattern you want",
+          "Neutralising and conditioning to lock the shape in gently",
+          "Styling guidance and product advice for home care"
+        ],
+        "process": [
+          {
+            "step": "Consultation",
+            "detail": "We check hair condition, length and previous chemical history to make sure a perm is right for you."
+          },
+          {
+            "step": "Rod setting",
+            "detail": "Your stylist wraps the hair on rods sized to the wave pattern you want."
+          },
+          {
+            "step": "Perming",
+            "detail": "The perm solution is applied and timed carefully — longer sessions aren’t better, they’re riskier."
+          },
+          {
+            "step": "Neutralising",
+            "detail": "A neutraliser sets the new shape into the hair structure."
+          },
+          {
+            "step": "Cut & style",
+            "detail": "We often finish with a light cut to balance the new movement, then style so you see the final look."
+          }
+        ],
+        "aftercare": [
+          "Do not wash your hair for 48 hours after a perm — it needs time to set.",
+          "Avoid tying your hair up tightly for the first week to let the curls settle.",
+          "Use a curl-friendly shampoo and a weekly conditioning mask.",
+          "Air dry or diffuse on low heat to preserve definition.",
+          "A perm typically lasts 3–6 months depending on hair type and care."
+        ],
+        "faqs": [
+          {
+            "question": "How long does a perm take?",
+            "answer": "Most perms take between 2 and 3 hours, depending on hair length and the technique used. Your stylist will give you an exact estimate during consultation."
+          },
+          {
+            "question": "Will a perm damage my hair?",
+            "answer": "Modern perm formulas are much gentler than older versions. We assess hair strength before booking, and won’t perm hair we don’t think can handle it — that honesty protects your hair long term."
+          },
+          {
+            "question": "What’s a digital perm?",
+            "answer": "A digital perm uses heated rods and a controlled temperature to create soft, bouncy waves that show up clearly when the hair is dry. It’s especially popular for Asian hair types."
+          },
+          {
+            "question": "How long does a perm last?",
+            "answer": "Most perms last between 3 and 6 months. Longer hair tends to hold the shape longer, and good aftercare makes a noticeable difference."
+          }
+        ]
+      },
+      "fields": {
+        "title": "列斯市中心電髮服務",
+        "hero": "電髮",
+        "metaDescription": "列斯時尚電髮——柔和波浪、數碼曲髮及傳統捲髮，由香港培訓的電髮專家主理。包括髮型評估及諮詢。立即網上預約。",
+        "intro": "現代電髮與 80 年代的緊密捲髮截然不同。在 Harbour，我們採用新式技術——包括數碼曲髮——打造柔和波浪、富彈性的捲髮，以及真正適合你頭髮的動感。",
+        "overview": [
+          "我們的電髮專家在香港接受培訓，掌握既能帶來動感、又不會像舊式電髮般損傷頭髮或令頭髮毛躁的技術。我們會先評估髮質強度、多孔性及長度，再為你想要的效果選擇合適的藥水配方及捲棒尺寸。",
+          "出色的電髮只完成了一半——另一半在於你在家如何打理。每次電髮預約都包括造型指導及產品建議，讓你在自家浴室也能重現效果。",
+          "由於電髮會永久改變頭髮結構，我們一定建議你在預約前先進行面對面諮詢。只需 10 分鐘，確保你離開時得到想要的捲度與動感。"
+        ],
+        "includes": [
+          "預約前評估髮質強度及多孔性",
+          "可選傳統電髮或數碼曲髮技術",
+          "按你想要的波浪紋理度身選擇捲棒尺寸及藥水配方",
+          "中和定型及護理，溫和地鎖住捲度",
+          "家居護理的造型指導及產品建議"
+        ],
+        "process": [
+          {
+            "step": "諮詢",
+            "detail": "我們會檢查髮質狀況、長度及過往化學處理紀錄，確保電髮適合你。"
+          },
+          {
+            "step": "上捲",
+            "detail": "髮型師會按你想要的波浪紋理，把頭髮捲上合適尺寸的捲棒。"
+          },
+          {
+            "step": "電髮",
+            "detail": "塗上電髮藥水並仔細控制時間——時間愈長不代表愈好，只會愈有風險。"
+          },
+          {
+            "step": "中和定型",
+            "detail": "以中和劑把新捲度固定在頭髮結構中。"
+          },
+          {
+            "step": "修剪及造型",
+            "detail": "我們通常會輕輕修剪以平衡新的動感，再造型讓你看到最終效果。"
+          }
+        ],
+        "aftercare": [
+          "電髮後 48 小時內請勿洗頭——頭髮需要時間定型。",
+          "第一星期避免把頭髮紮得太緊，讓捲度穩定下來。",
+          "使用適合捲髮的洗頭水，並每星期用一次護理髮膜。",
+          "自然風乾，或以低溫配合擴散風罩吹乾，保持捲度分明。",
+          "電髮一般可維持 3–6 個月，視乎髮質及護理而定。"
+        ],
+        "faqs": [
+          {
+            "question": "電髮需時多久？",
+            "answer": "大部分電髮需時 2 至 3 小時，視乎頭髮長度及所用技術而定。髮型師會在諮詢時給你準確的預計時間。"
+          },
+          {
+            "question": "電髮會損傷頭髮嗎？",
+            "answer": "現代電髮藥水比舊式溫和得多。我們會在預約前評估髮質強度，如認為頭髮承受不了，便不會為你電髮——這份坦誠能長遠保護你的頭髮。"
+          },
+          {
+            "question": "甚麼是數碼曲髮？",
+            "answer": "數碼曲髮利用加熱捲棒及受控溫度，打造柔和而富彈性的波浪，頭髮乾透時捲度依然清晰。數碼曲髮尤其受亞洲髮質的客人歡迎。"
+          },
+          {
+            "question": "電髮可維持多久？",
+            "answer": "大部分電髮可維持 3 至 6 個月。較長的頭髮通常能更持久地保持捲度，而良好的護理亦會帶來明顯分別。"
+          }
+        ]
+      }
+    },
+    {
+      "entityType": "CATEGORY_CONTENT",
+      "match": {
+        "by": "slug",
+        "slug": "treatments"
+      },
+      "source": {
+        "title": "Hair Treatments in Leeds City Centre",
+        "hero": "Hair Treatments",
+        "metaDescription": "Restorative hair treatments in Leeds for dry, damaged or coloured hair. Deep conditioning, repair and smoothing treatments tailored to your hair. Book online.",
+        "intro": "Sometimes your hair just needs a proper reset. Our treatment menu is built for real problems — dryness, breakage, faded colour, frizz — not vague \"pampering\".",
+        "overview": [
+          "Treatments at Harbour are diagnostic, not decorative. We look at what’s actually going wrong with your hair before recommending a protein repair, a moisture mask, a smoothing treatment or a combination. The goal is always measurable change, not a relaxing hour that fades by tomorrow.",
+          "Every treatment is applied with the same care we give a full colour service: sectioning, correct product amount, proper processing time and a rinse-out technique that doesn’t strip the benefits.",
+          "Treatments pair well with a haircut or colour appointment. If you’re booking a colour service that might be demanding on the hair, add a treatment — it’s the cheapest insurance policy you can buy for your hair."
+        ],
+        "includes": [
+          "Honest assessment of what your hair actually needs",
+          "Choice of protein, moisture, smoothing or bond-repair treatment",
+          "Sectioned application and correct processing time",
+          "Rinse-out and finish so you feel the difference before you leave",
+          "At-home recommendations to extend the result"
+        ],
+        "process": [
+          {
+            "step": "Assessment",
+            "detail": "Your stylist checks hair strength, elasticity and porosity to pick the right treatment."
+          },
+          {
+            "step": "Application",
+            "detail": "Sectioned application ensures every strand is coated evenly."
+          },
+          {
+            "step": "Processing",
+            "detail": "Treatments need the right amount of time — too short and they don’t work, too long and they can over-condition."
+          },
+          {
+            "step": "Finish",
+            "detail": "A careful rinse and blow dry so you see the result and know how to care for it at home."
+          }
+        ],
+        "aftercare": [
+          "Avoid heat styling for 24 hours to let the treatment settle into the hair.",
+          "Use a sulphate-free shampoo to preserve the benefit for longer.",
+          "Most treatments last 4–6 weeks before they should be repeated.",
+          "Pair with a weekly at-home mask for noticeably better results."
+        ],
+        "faqs": [
+          {
+            "question": "What treatments do you offer for damaged hair?",
+            "answer": "We offer protein repair, deep moisture masks, smoothing treatments and bond-repair services. Your stylist will recommend the right one after checking your hair’s condition."
+          },
+          {
+            "question": "Can I add a treatment to a colour appointment?",
+            "answer": "Yes — and we highly recommend it. Treatments pair especially well with bleach or high-lift colour to keep hair strong through the process."
+          },
+          {
+            "question": "How often should I have a hair treatment?",
+            "answer": "Most clients benefit from a treatment every 4–6 weeks. Coloured, permed or heat-styled hair may need them more regularly."
+          },
+          {
+            "question": "Will one treatment fix years of damage?",
+            "answer": "Honestly, no — severe damage needs a programme of treatments plus a review of heat styling, products and colour frequency. We’ll tell you honestly what’s realistic and build a plan with you."
+          }
+        ]
+      },
+      "fields": {
+        "title": "列斯市中心頭髮護理服務",
+        "hero": "頭髮護理",
+        "metaDescription": "列斯修復護髮療程，適合乾燥、受損或染後頭髮。按你的頭髮度身提供深層護理、修復及柔順療程。立即網上預約。",
+        "intro": "有時候，你的頭髮只需要好好重新調理。我們的護髮療程針對真正的問題——乾燥、斷裂、褪色、毛躁——而不是空泛的「寵愛」。",
+        "overview": [
+          "Harbour 的護髮療程重診斷、不重裝飾。我們會先找出你頭髮的真正問題，才建議蛋白質修復、保濕髮膜、柔順護理或組合療程。目標永遠是看得見的改變，而不是一小時的放鬆、翌日便消失無蹤。",
+          "每項護髮療程都以我們對待全頭染髮的同樣用心進行：分區塗抹、用量準確、作用時間恰當，以及不會沖走功效的沖洗技巧。",
+          "護髮療程與剪髮或染髮預約十分合拍。如你預約的染髮服務可能對頭髮負擔較大，不妨加一個護髮療程——這是你能為頭髮買到最便宜的保險。"
+        ],
+        "includes": [
+          "坦誠評估你頭髮真正所需",
+          "可選蛋白質、保濕、柔順或髮鍵修復療程",
+          "分區塗抹及恰當的作用時間",
+          "沖洗及造型，讓你離開前已感受到分別",
+          "提供家居護理建議，延長效果"
+        ],
+        "process": [
+          {
+            "step": "評估",
+            "detail": "髮型師會檢查髮質強度、彈性及多孔性，選擇合適的療程。"
+          },
+          {
+            "step": "塗抹",
+            "detail": "分區塗抹，確保每一條髮絲都均勻覆蓋。"
+          },
+          {
+            "step": "作用時間",
+            "detail": "護髮療程需要恰當的時間——太短沒有效果，太長則可能護理過度。"
+          },
+          {
+            "step": "完成造型",
+            "detail": "仔細沖洗並吹乾，讓你看到效果，也知道在家如何護理。"
+          }
+        ],
+        "aftercare": [
+          "24 小時內避免使用熱力造型，讓護理成分在頭髮中穩定下來。",
+          "使用無硫酸鹽洗頭水，令護理效果維持更久。",
+          "大部分療程效果可維持 4–6 星期，之後便應再做。",
+          "配合每星期在家使用髮膜，效果會明顯更好。"
+        ],
+        "faqs": [
+          {
+            "question": "你們為受損頭髮提供哪些護髮療程？",
+            "answer": "我們提供蛋白質修復、深層保濕髮膜、柔順護理及髮鍵修復服務。髮型師會在檢查你的頭髮狀況後推薦合適的療程。"
+          },
+          {
+            "question": "染髮時可以加做護髮療程嗎？",
+            "answer": "可以——而且我們十分推薦。護髮療程特別適合配合漂髮或高提亮度染髮，在過程中保持頭髮強韌。"
+          },
+          {
+            "question": "應該多久做一次護髮療程？",
+            "answer": "大部分客人每 4–6 星期做一次療程便見成效。染過、電過或經常以熱力造型的頭髮，可能需要更頻密地護理。"
+          },
+          {
+            "question": "一次療程能修復多年累積的損傷嗎？",
+            "answer": "坦白說，不能——嚴重受損需要一系列療程，並檢討熱力造型、產品及染髮次數。我們會坦誠告訴你甚麼是實際可行的，並與你一起制定計劃。"
+          }
+        ]
+      }
+    },
+    {
+      "entityType": "CATEGORY_CONTENT",
+      "match": {
+        "by": "slug",
+        "slug": "styling"
+      },
+      "source": {
+        "title": "Hair Styling & Blow Dries in Leeds",
+        "hero": "Styling",
+        "metaDescription": "Professional hair styling and blow dries in Leeds city centre. Shampoo, blow dry, set and event styling tailored to your hair and the occasion. Book online.",
+        "intro": "Whether it’s a polished blow dry for a work day, a full set for an event, or a shampoo and finish to round off a long week, styling at Harbour is about making your hair look like the best version of itself.",
+        "overview": [
+          "A great blow dry starts with the right shampoo. Our stylists choose products based on your hair type — fine hair needs different volume, thick hair needs different smoothing — so the finish actually holds through the day.",
+          "For events, we recommend booking a trial appointment first. Thirty minutes of exploration up front means the real day is calm, predictable and you leave looking exactly how you wanted.",
+          "Styling pairs perfectly with a fresh haircut or colour. Book both in one visit and save yourself a trip."
+        ],
+        "includes": [
+          "Shampoo with a product matched to your hair type",
+          "Blow dry or set to your chosen finish",
+          "Light hold product and shine spray as needed",
+          "Advice on how to maintain the look until your next wash"
+        ],
+        "process": [
+          {
+            "step": "Consultation",
+            "detail": "Even for a blow dry — we need to know the finish you want before we pick the brush."
+          },
+          {
+            "step": "Shampoo",
+            "detail": "Product matched to hair type for the right base."
+          },
+          {
+            "step": "Blow dry or set",
+            "detail": "Sectioned drying, proper tension and the right brush for the shape you’re after."
+          },
+          {
+            "step": "Finish",
+            "detail": "Light hold or shine finish, plus care advice so the look lasts."
+          }
+        ],
+        "aftercare": [
+          "Protect your blow dry overnight with a silk pillowcase or loose braid.",
+          "Avoid touching your hair — hands add oil and break up the shape.",
+          "Dry shampoo at the roots on day two keeps the style fresh.",
+          "Book regular blow dries in 5–7 day intervals if you want the look consistently."
+        ],
+        "faqs": [
+          {
+            "question": "How much is a blow dry at Harbour Hair Salon?",
+            "answer": "Shampoo and blow dry prices start from our student and NHS rates for short hair. Full pricing is listed above."
+          },
+          {
+            "question": "Do you do event and wedding hair?",
+            "answer": "Yes — we recommend booking a trial appointment first so the real day is calm and predictable."
+          },
+          {
+            "question": "How long will a professional blow dry last?",
+            "answer": "With the right care, a professional blow dry typically holds for 3–5 days depending on hair type and activity level."
+          }
+        ]
+      },
+      "fields": {
+        "title": "列斯髮型造型及吹髮服務",
+        "hero": "造型",
+        "metaDescription": "列斯市中心專業髮型造型及吹髮。按你的頭髮及場合度身提供洗頭、吹髮、定型及活動造型。立即網上預約。",
+        "intro": "無論是上班日的精緻吹髮、出席活動的完整定型，還是為漫長一星期作結的洗頭造型，Harbour 的造型服務都是為了讓你的頭髮展現最佳狀態。",
+        "overview": [
+          "出色的吹髮由合適的洗頭水開始。我們的髮型師會按你的髮質選擇產品——幼髮需要不同的蓬鬆度，粗厚頭髮需要不同的順滑處理——讓造型真正維持一整天。",
+          "如是出席活動，我們建議先預約試造型。事前花三十分鐘嘗試，正日便能從容不迫、一切在預計之內，讓你以心目中的造型離開。",
+          "造型與新剪的髮型或染髮是完美配搭。一次過預約兩項服務，省卻多走一趟。"
+        ],
+        "includes": [
+          "以配合你髮質的產品洗頭",
+          "按你選擇的效果吹髮或定型",
+          "按需要使用輕度定型產品及亮澤噴霧",
+          "教你如何保持造型至下次洗頭"
+        ],
+        "process": [
+          {
+            "step": "諮詢",
+            "detail": "即使只是吹髮——我們也要先了解你想要的效果，才選擇合適的髮梳。"
+          },
+          {
+            "step": "洗頭",
+            "detail": "按髮質選用產品，打好基礎。"
+          },
+          {
+            "step": "吹髮或定型",
+            "detail": "分區吹乾、力度適中，並以合適的髮梳打造你想要的造型。"
+          },
+          {
+            "step": "完成造型",
+            "detail": "以輕度定型或亮澤效果收尾，並提供護理建議，讓造型更持久。"
+          }
+        ],
+        "aftercare": [
+          "晚上可使用絲質枕袋或鬆鬆地編辮，保護吹好的髮型。",
+          "避免觸摸頭髮——雙手會帶來油脂，並破壞造型。",
+          "第二天在髮根使用乾洗頭噴霧，可令造型保持清爽。",
+          "如想一直保持造型，可每隔 5–7 天定期預約吹髮。"
+        ],
+        "faqs": [
+          {
+            "question": "Harbour Hair Salon 吹髮收費多少？",
+            "answer": "洗頭吹髮價錢由短髮的學生及 NHS 價起。完整價目已列於上方。"
+          },
+          {
+            "question": "你們提供活動及婚禮髮型服務嗎？",
+            "answer": "有——我們建議先預約試造型，讓正日從容不迫、一切在預計之內。"
+          },
+          {
+            "question": "專業吹髮造型可維持多久？",
+            "answer": "只要護理得宜，專業吹髮造型一般可維持 3–5 天，視乎髮質及活動量而定。"
+          }
+        ]
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "contact",
+        "question": "How do I get to Harbour Hair Salon from Leeds train station?"
+      },
+      "source": {
+        "question": "How do I get to Harbour Hair Salon from Leeds train station?",
+        "answer": "We are an easy 7 to 10 minute walk from Leeds train station. Head north through Boar Lane and Briggate towards Central Arcade — we are on the upper floor of Unit 15."
+      },
+      "fields": {
+        "question": "如何由列斯火車站前往 Harbour Hair Salon？",
+        "answer": "由列斯火車站只需輕鬆步行 7 至 10 分鐘。經 Boar Lane 及 Briggate 向北走往 Central Arcade——我們位於 Unit 15 上層。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "contact",
+        "question": "Is there parking near the salon?"
+      },
+      "source": {
+        "question": "Is there parking near the salon?",
+        "answer": "Yes. Several paid city-centre car parks (including The Light, Trinity Leeds and Q-Park Albion Street) are within a short walk of Central Arcade."
+      },
+      "fields": {
+        "question": "髮型屋附近有停車場嗎？",
+        "answer": "有。Central Arcade 步行不遠處有多個收費市中心停車場（包括 The Light、Trinity Leeds 及 Q-Park Albion Street）。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "contact",
+        "question": "What is the best way to contact the salon?"
+      },
+      "source": {
+        "question": "What is the best way to contact the salon?",
+        "answer": "Calling us on 07831 830898 during opening hours is the fastest way to reach the salon. You can also book through our Treatwell page, or message us on Instagram @harbourhair_leeds."
+      },
+      "fields": {
+        "question": "聯絡髮型屋的最佳方法是甚麼？",
+        "answer": "營業時間內致電 07831 830898 是聯絡髮型屋最快的方法。你亦可透過我們的 Treatwell 專頁預約，或在 Instagram @harbourhair_leeds 向我們發訊息。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "contact",
+        "question": "Can I cancel or reschedule my appointment?"
+      },
+      "source": {
+        "question": "Can I cancel or reschedule my appointment?",
+        "answer": "Yes. You can cancel or reschedule free of charge up to 24 hours before your appointment through the My Bookings page. Changes within 24 hours may not be possible."
+      },
+      "fields": {
+        "question": "可以取消或更改預約嗎？",
+        "answer": "可以。你可於預約時間 24 小時前，透過「我的預約」頁面免費取消或改期。預約前 24 小時內可能無法更改。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "contact",
+        "question": "Do you speak Cantonese at the salon?"
+      },
+      "source": {
+        "question": "Do you speak Cantonese at the salon?",
+        "answer": "Yes. Our Hong Kong trained stylists are happy to consult in English or Cantonese — whichever you are most comfortable with."
+      },
+      "fields": {
+        "question": "髮型屋可以用廣東話溝通嗎？",
+        "answer": "可以。我們的香港培訓髮型師樂意以英語或廣東話為你諮詢——以你最自在的語言為準。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "home",
+        "question": "Where is Harbour Hair Salon located in Leeds?"
+      },
+      "source": {
+        "question": "Where is Harbour Hair Salon located in Leeds?",
+        "answer": "We are on the upper floor of Unit 15, Central Arcade, Central Road, Leeds LS1 6DX — a short walk from Leeds train station in the heart of the city centre."
+      },
+      "fields": {
+        "question": "Harbour Hair Salon 位於列斯哪裡？",
+        "answer": "我們位於 Unit 15, Central Arcade, Central Road, Leeds LS1 6DX 上層——在市中心核心地帶，由列斯火車站步行不遠即達。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "home",
+        "question": "What are your opening hours?"
+      },
+      "source": {
+        "question": "What are your opening hours?",
+        "answer": "We are open Monday to Sunday from 10:00 to 19:00."
+      },
+      "fields": {
+        "question": "你們的營業時間是？",
+        "answer": "我們逢星期一至星期日 10:00 至 19:00 營業。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "home",
+        "question": "Do I need to book in advance or can I walk in?"
+      },
+      "source": {
+        "question": "Do I need to book in advance or can I walk in?",
+        "answer": "We strongly recommend booking in advance so we can reserve your preferred stylist and time — call the salon or book through Treatwell. Walk-ins are accepted only if a stylist is available."
+      },
+      "fields": {
+        "question": "需要預先預約，還是可以直接到店？",
+        "answer": "我們強烈建議預先預約，以便為你預留心儀的髮型師及時段——請致電髮型屋或透過 Treatwell 預約。沒有預約的客人，只會在有髮型師空檔時接待。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "home",
+        "question": "Do your stylists speak Cantonese?"
+      },
+      "source": {
+        "question": "Do your stylists speak Cantonese?",
+        "answer": "Yes. Our Hong Kong trained stylists speak both English and Cantonese, so you can comfortably discuss your look in either language."
+      },
+      "fields": {
+        "question": "你們的髮型師會講廣東話嗎？",
+        "answer": "會。我們的香港培訓髮型師能說英語及廣東話，你可以用任何一種語言輕鬆討論你想要的造型。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "home",
+        "question": "Do you offer student and NHS discounts?"
+      },
+      "source": {
+        "question": "Do you offer student and NHS discounts?",
+        "answer": "Yes. Discounted rates are available on selected haircut, shampoo and blow-dry services for students and NHS staff. Please bring valid ID to your appointment."
+      },
+      "fields": {
+        "question": "你們有沒有學生及 NHS 優惠？",
+        "answer": "有。學生及 NHS 員工可以優惠價享用指定剪髮及洗頭吹髮服務。預約當日請帶備有效證件。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "home",
+        "question": "How do I book an appointment at Harbour Hair Salon?"
+      },
+      "source": {
+        "question": "How do I book an appointment at Harbour Hair Salon?",
+        "answer": "You can book through our Treatwell page, or call the salon on 07831 830898 during opening hours. We are always happy to take a booking over the phone — you will speak to the salon directly."
+      },
+      "fields": {
+        "question": "如何預約 Harbour Hair Salon？",
+        "answer": "你可以透過我們的 Treatwell 專頁預約，或於營業時間內致電髮型屋 07831 830898。我們非常樂意接受電話預約——你會直接與髮型屋聯絡。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "services-master",
+        "question": "How much does a haircut cost at Harbour Hair Salon?"
+      },
+      "source": {
+        "question": "How much does a haircut cost at Harbour Hair Salon?",
+        "answer": "Haircuts at Harbour Hair Salon start from £19. Pricing depends on hair length and the service chosen — full prices are listed above and at the salon."
+      },
+      "fields": {
+        "question": "Harbour Hair Salon 剪髮收費多少？",
+        "answer": "Harbour Hair Salon 剪髮 £19 起。價錢視乎頭髮長度及所選服務而定——完整價目已列於上方，亦於髮型屋內展示。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "services-master",
+        "question": "Do you offer hair colouring and balayage?"
+      },
+      "source": {
+        "question": "Do you offer hair colouring and balayage?",
+        "answer": "Yes. We offer a full range of colour services including full colour, root touch-up, balayage, highlights and fashion colours. A patch test is required at least 48 hours before any colour service."
+      },
+      "fields": {
+        "question": "你們有沒有染髮及 Balayage 服務？",
+        "answer": "有。我們提供全面的染髮服務，包括全頭染髮、補染髮根、Balayage、挑染及潮流髮色。任何染髮服務前最少 48 小時必須先進行皮膚敏感測試。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "services-master",
+        "question": "How long does a perm take?"
+      },
+      "source": {
+        "question": "How long does a perm take?",
+        "answer": "Most perms take between two and three hours depending on hair length and thickness. Your stylist will give you an exact estimate during consultation."
+      },
+      "fields": {
+        "question": "電髮需時多久？",
+        "answer": "大部分電髮需時兩至三小時，視乎頭髮長度及厚薄而定。髮型師會在諮詢時給你準確的預計時間。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "services-master",
+        "question": "Do you do children's haircuts?"
+      },
+      "source": {
+        "question": "Do you do children's haircuts?",
+        "answer": "Yes. We offer dedicated children's haircuts for ages up to 12 — both short over ears and long hair — with gentle handling and a calm environment."
+      },
+      "fields": {
+        "question": "你們有沒有兒童剪髮服務？",
+        "answer": "有。我們為 12 歲或以下兒童提供專屬剪髮服務——短髮及長髮均可——手法溫柔，環境寧靜。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "services-master",
+        "question": "Do I need a patch test before colouring?"
+      },
+      "source": {
+        "question": "Do I need a patch test before colouring?",
+        "answer": "A patch test checks for allergic reactions to colour products and is required at least 48 hours before your colour appointment. Call the salon on 07831 830898 and we will arrange a free patch test before your appointment."
+      },
+      "fields": {
+        "question": "染髮前需要做皮膚敏感測試嗎？",
+        "answer": "皮膚敏感測試用以檢查你會否對染髮產品出現過敏反應，必須在染髮預約前最少 48 小時進行。請致電髮型屋 07831 830898，我們會在你的預約前為你安排免費皮膚敏感測試。"
+      }
+    },
+    {
+      "entityType": "FAQ",
+      "match": {
+        "by": "faqKeyQuestion",
+        "key": "services-master",
+        "question": "What treatments do you offer for damaged hair?"
+      },
+      "source": {
+        "question": "What treatments do you offer for damaged hair?",
+        "answer": "We offer a range of repair and conditioning treatments designed to restore strength and shine to dry, coloured or chemically treated hair. Our stylists will recommend the right option after a short consultation."
+      },
+      "fields": {
+        "question": "你們為受損頭髮提供哪些護髮療程？",
+        "answer": "我們提供一系列修復及護理療程，為乾燥、染過或經化學處理的頭髮恢復強韌與光澤。髮型師會在簡短諮詢後為你推薦合適的選擇。"
+      }
+    },
+    {
+      "entityType": "BLOG_POST",
+      "match": {
+        "by": "slug",
+        "slug": "best-hair-salon-leeds-what-to-look-for"
+      },
+      "source": {
+        "title": "How to Choose the Best Hair Salon in Leeds",
+        "description": "A practical guide to choosing a hair salon in Leeds city centre. What to check before booking, questions to ask at consultation, and red flags to avoid.",
+        "excerpt": "Not all salons are equal. Here’s what actually matters when picking a hair salon in Leeds — from consultation quality to aftercare honesty.",
+        "authorRole": "Harbour Hair Salon, Leeds",
+        "coverAlt": "Hair salon interior in Leeds city centre",
+        "lede": "Leeds has dozens of hair salons. Picking one is less about price or Instagram feed, and more about what happens during the first ten minutes of your appointment.",
+        "sections": [
+          {
+            "type": "paragraph",
+            "text": "If you've ever walked out of a salon thinking “that's not what I asked for,” you already know the problem. The issue is almost never the stylist's skill — it's the consultation that never really happened. Before you book your next appointment anywhere in Leeds, here's what we'd look for."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "1. A real consultation, not a quick nod"
+          },
+          {
+            "type": "paragraph",
+            "text": "Every good haircut starts before the scissors do. A proper consultation means the stylist asks about your routine, checks how your hair actually behaves (not just how it looks wet at the basin), and shows you what’s realistic. If your stylist just says “yeah, I can do that” and reaches for the cape, that’s a red flag."
+          },
+          {
+            "type": "paragraph",
+            "text": "At Harbour, every appointment — including a simple wash and cut — starts with five minutes of real conversation. We need to know whether your hair shape needs to survive a gym three times a week, whether you have five minutes or thirty to style it in the morning, and what the last cut you loved felt like six weeks in."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "2. Honest pricing, upfront"
+          },
+          {
+            "type": "paragraph",
+            "text": "Price lists should be visible online and at the salon, with no surprises at the till. Beware of “from £X” pricing without a ceiling — that’s how a £35 haircut becomes an £85 one. Ask before you sit down: what’s the full price including wash, cut, blow dry, and anything you’re likely to want (like a toner or treatment)?"
+          },
+          {
+            "type": "paragraph",
+            "text": "Discounts should be transparent too. Student and NHS rates are a nice touch, but they should apply to specific listed services, not discretionary ones the stylist picks at checkout."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "3. They’ll say no when they should"
+          },
+          {
+            "type": "paragraph",
+            "text": "A great salon is one that tells you when something isn’t a good idea. If you walk in wanting a colour correction that needs three sessions to do safely, a good colourist will tell you that — even if it means you book only one appointment today. Short-term revenue sacrifices are the clearest sign a stylist puts your hair’s long-term health first."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "4. Hygiene and calm, not chaos"
+          },
+          {
+            "type": "paragraph",
+            "text": "Clean stations, clean capes, clean brushes. A salon that feels busy but not rushed. The best salons in Leeds are calm environments — stylists aren’t running between three clients at once, and the person who shampoos you is the person who dries you."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "5. Aftercare advice you can actually use"
+          },
+          {
+            "type": "paragraph",
+            "text": "Before you leave, your stylist should tell you exactly how to wash and style your hair at home, when to book your next appointment, and what to expect in weeks three and six. If all you hear is a product upsell, the aftercare conversation isn’t really happening."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Quick checklist before you book"
+          },
+          {
+            "type": "list",
+            "items": [
+              "Can you see full pricing online, including any add-ons?",
+              "Do they require (or offer) a patch test for colour services?",
+              "Can you book a short consultation before committing to a big change?",
+              "Are reviews recent, specific, and from named clients?",
+              "Does the booking flow make it easy to cancel or reschedule?"
+            ]
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Where we fit in"
+          },
+          {
+            "type": "paragraph",
+            "text": "At Harbour Hair Salon on Central Arcade in Leeds city centre, every point on this list is how we’ve always worked — our Hong Kong trained stylists run proper consultations, we’re honest when a service won’t work today, and our prices are listed openly. If you want to see the difference, book online in under a minute or pop in during opening hours."
+          }
+        ]
+      },
+      "fields": {
+        "title": "如何在列斯挑選最好的髮型屋",
+        "description": "列斯市中心髮型屋實用挑選指南：預約前要檢查甚麼、諮詢時該問甚麼問題，以及需要避開的警號。",
+        "excerpt": "髮型屋水準各有不同。在列斯挑選髮型屋時，真正重要的是甚麼？由諮詢質素到護理建議是否坦誠，這裡一一細說。",
+        "authorRole": "Harbour Hair Salon，列斯",
+        "coverAlt": "列斯市中心髮型屋內部",
+        "lede": "列斯有數十間髮型屋。揀選哪一間，關鍵不在價錢或 Instagram 帖文，而在於你預約的頭十分鐘內發生甚麼。",
+        "sections": [
+          {
+            "type": "paragraph",
+            "text": "如果你曾經在離開髮型屋時心想「這不是我要的」，你已經知道問題所在。問題幾乎從來不在於髮型師的技術——而在於那次從未真正進行過的諮詢。在列斯任何地方預約下一次服務之前，以下是我們會留意的地方。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "1. 真正的諮詢，而不是隨便點頭"
+          },
+          {
+            "type": "paragraph",
+            "text": "每個好髮型，在落剪之前已經開始。真正的諮詢，是髮型師會問你的日常習慣，檢查你頭髮的實際特性（而不只是在洗頭盆沾濕後的樣子），並讓你了解甚麼效果是實際可行的。如果髮型師只說一句「好，我做得到」便伸手拿圍布，那就是警號。"
+          },
+          {
+            "type": "paragraph",
+            "text": "在 Harbour，每次預約——即使只是簡單的洗剪——都由五分鐘的真正交談開始。我們需要知道你的髮型是否要應付每星期三次健身、你早上有五分鐘還是三十分鐘打理頭髮，以及你上一個喜愛的髮型在六星期後是甚麼感覺。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "2. 價錢坦誠，事先講明"
+          },
+          {
+            "type": "paragraph",
+            "text": "價目表應在網上及髮型屋內清楚列明，結帳時不會有意外。小心只寫「£X 起」卻沒有上限的定價——£35 的剪髮就是這樣變成 £85。坐下之前先問清楚：包括洗頭、剪髮、吹髮，以及你可能想加的項目（例如調色或護理）在內，總價是多少？"
+          },
+          {
+            "type": "paragraph",
+            "text": "優惠同樣應該透明。學生及 NHS 優惠價固然貼心，但應適用於明確列出的指定服務，而不是由髮型師在結帳時隨意決定。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "3. 該說不時會說不"
+          },
+          {
+            "type": "paragraph",
+            "text": "好的髮型屋會在某些做法不適合時直接告訴你。如果你想修正髮色，而安全地完成需要分三次進行，好的染髮師會如實相告——即使這代表你今天只預約一次。願意犧牲短期收入，是髮型師把你頭髮的長遠健康放在首位最清晰的證明。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "4. 衛生整潔、從容寧靜，而非混亂"
+          },
+          {
+            "type": "paragraph",
+            "text": "乾淨的工作位、乾淨的圍布、乾淨的髮梳。髮型屋可以忙碌，但不會匆忙。列斯最好的髮型屋都環境寧靜——髮型師不會同時在三位客人之間來回奔走，為你洗頭的人，也會為你吹乾頭髮。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "5. 真正實用的護理建議"
+          },
+          {
+            "type": "paragraph",
+            "text": "離開前，髮型師應清楚告訴你在家如何洗頭和打理頭髮、何時預約下一次，以及第三及第六星期時頭髮會有甚麼變化。如果你聽到的只有產品推銷，那就不算真正的護理建議。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "預約前快速檢查清單"
+          },
+          {
+            "type": "list",
+            "items": [
+              "能否在網上看到包括所有附加項目在內的完整價目？",
+              "染髮服務是否要求（或提供）皮膚敏感測試？",
+              "作出大改變前，能否先預約簡短諮詢？",
+              "評價是否近期、具體，並來自具名客人？",
+              "預約流程是否方便取消或改期？"
+            ]
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "我們的做法"
+          },
+          {
+            "type": "paragraph",
+            "text": "位於列斯市中心 Central Arcade 的 Harbour Hair Salon，一直以來都按以上每一點工作——我們的香港培訓髮型師會進行真正的諮詢；當某項服務今天不適合進行時，我們會坦白相告；我們的價目亦公開列明。想親身感受分別，可以用不到一分鐘在網上預約，或在營業時間內到店看看。"
+          }
+        ]
+      }
+    },
+    {
+      "entityType": "BLOG_POST",
+      "match": {
+        "by": "slug",
+        "slug": "balayage-vs-highlights-which-is-right-for-you"
+      },
+      "source": {
+        "title": "Balayage vs Highlights: Which Is Right For You?",
+        "description": "Balayage and highlights both lighten hair, but the technique, maintenance and finish are very different. Here’s how to choose between them.",
+        "excerpt": "Both lighten the hair, but that’s where the similarities end. Here’s how balayage and highlights actually differ — and which one suits your lifestyle.",
+        "authorRole": "Harbour Hair Salon, Leeds",
+        "coverAlt": "Close-up of lightened hair with natural dimensional colour",
+        "lede": "If you’re booking a colour service in Leeds for the first time, the terminology is a minefield. Balayage, babylights, foilyage, ombré, partial highlights, full heads — everyone uses the words slightly differently. Here’s the real difference between the two services people ask about most: balayage and highlights.",
+        "sections": [
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Highlights: the traditional technique"
+          },
+          {
+            "type": "paragraph",
+            "text": "Highlights are sections of hair lifted to a lighter tone, wrapped in foil, and processed in precise thickness. The foil traps heat, lets the colour develop quickly, and allows your colourist to place lightness exactly where they want it — right up to the root."
+          },
+          {
+            "type": "paragraph",
+            "text": "Because highlights start at the root, you get a uniform, mapped pattern of lightness through the hair. The trade-off is maintenance: as your natural hair grows, the root regrowth is visible. Most people with highlights book a touch-up every 6–8 weeks if they want to keep the look fresh."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Balayage: painted, softer, grows out gently"
+          },
+          {
+            "type": "paragraph",
+            "text": "Balayage (French for “sweeping”) is hand-painted colour. Your colourist sections the hair and sweeps lightener on freehand, usually starting below the root so the finish blends naturally as it grows. There are no foils, and every piece is placed visually."
+          },
+          {
+            "type": "paragraph",
+            "text": "Because balayage starts below the root, the regrowth is much softer. You can stretch appointments to 10–16 weeks comfortably. The finish is less uniform than highlights and more dimensional — sun-kissed rather than striped."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Which should you pick?"
+          },
+          {
+            "type": "paragraph",
+            "text": "There’s no universal “best.” It depends on three things: how much maintenance you want, what finish you’re going for, and what your hair’s starting point is."
+          },
+          {
+            "type": "list",
+            "items": [
+              "Want low maintenance and a lived-in look? Balayage.",
+              "Want a bright, crisp, uniform lightness? Highlights.",
+              "Want to transition from full colour to natural over time? Balayage.",
+              "Want visible lift right at the parting? Highlights (or a combination).",
+              "Have previously coloured hair? Your colourist will assess whether balayage will lift enough safely — sometimes foils are needed on top."
+            ]
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "The combination approach"
+          },
+          {
+            "type": "paragraph",
+            "text": "Some of the best results come from combining both. Balayage through the mid-lengths and ends, with a few fine foils or babylights around the face and parting, gives you the soft regrowth of balayage plus the brightness highlights provide around the features you see in the mirror every morning."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Aftercare is non-negotiable"
+          },
+          {
+            "type": "paragraph",
+            "text": "Whichever service you choose, lifted hair needs care. Sulphate-free shampoo, a weekly mask, cool rinses, and heat protection are the minimum. Add a toner refresh every 4–6 weeks to keep brassiness at bay — especially for cool-toned finishes."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Book a consultation first"
+          },
+          {
+            "type": "paragraph",
+            "text": "A ten-minute consultation beforehand is the easiest way to avoid disappointment. Your colourist can assess your natural base, any previous colour, and your lifestyle, then recommend exactly which approach will give the finish you’re after. Book a free consultation at Harbour Hair Salon in Leeds city centre through our booking page."
+          }
+        ]
+      },
+      "fields": {
+        "title": "Balayage 與挑染：哪一種適合你？",
+        "description": "Balayage 與挑染同樣能提亮髮色，但技術、打理方式及效果大不相同。以下教你如何選擇。",
+        "excerpt": "兩者都能提亮髮色，但相似之處僅此而已。以下看看 Balayage 與挑染的真正分別——以及哪一種適合你的生活方式。",
+        "authorRole": "Harbour Hair Salon，列斯",
+        "coverAlt": "提亮後髮色自然、富層次感的頭髮特寫",
+        "lede": "如果你第一次在列斯預約染髮服務，各種術語簡直令人無所適從。Balayage、Babylights、Foilyage、Ombré、局部挑染、全頭挑染——每個人用這些字眼的意思都略有不同。以下是大家最常問的兩項服務的真正分別：Balayage 與挑染。",
+        "sections": [
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "挑染：傳統技術"
+          },
+          {
+            "type": "paragraph",
+            "text": "挑染是把分區的頭髮提亮至較淺的色調，以錫紙包裹，並按精確厚度處理。錫紙能保存熱力，令顏色迅速顯色，也讓染髮師把亮色準確放在想要的位置——直至髮根。"
+          },
+          {
+            "type": "paragraph",
+            "text": "由於挑染由髮根開始，亮色會以均勻、有規劃的紋理分佈於整頭頭髮。代價是需要打理：天然頭髮長出後，新生髮根會清楚可見。大部分做挑染的人如想保持效果，會每 6–8 星期預約補染一次。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Balayage：手繪上色，效果柔和，長出來也自然"
+          },
+          {
+            "type": "paragraph",
+            "text": "Balayage（法文意思是「掃」）是一種手繪染髮技術。染髮師會把頭髮分區，然後徒手掃上漂髮劑，通常由髮根以下開始，讓頭髮長出來時效果自然融合。過程不用錫紙，每一束都憑目測擺放。"
+          },
+          {
+            "type": "paragraph",
+            "text": "由於 Balayage 從髮根以下開始，新生髮根的界線柔和得多，兩次預約之間可以輕鬆相隔 10–16 星期。效果不及挑染般均勻，卻更有層次——是陽光親吻過的自然感，而不是一條條的間條。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "應該選哪一種？"
+          },
+          {
+            "type": "paragraph",
+            "text": "沒有放諸四海皆準的「最好」。這取決於三件事：你願意花多少功夫打理、你想要甚麼效果，以及你頭髮目前的狀況。"
+          },
+          {
+            "type": "list",
+            "items": [
+              "想少花功夫打理、效果自然隨性？選 Balayage。",
+              "想要明亮、清晰、均勻的亮色？選挑染。",
+              "想由全頭染髮逐步過渡回天然髮色？選 Balayage。",
+              "想在頭髮分界處就看到明顯提亮？選挑染（或兩者結合）。",
+              "頭髮曾經染過？染髮師會評估 Balayage 能否安全地提亮到足夠程度——有時需要額外加上錫紙。"
+            ]
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "兩者結合"
+          },
+          {
+            "type": "paragraph",
+            "text": "有些最出色的效果正是來自兩者結合。在中段及髮尾做 Balayage，再在臉部周圍及頭髮分界處加上少量幼細錫紙挑染或 Babylights，既有 Balayage 柔和的生長效果，又有挑染為你每天早上照鏡時看到的五官周圍帶來的明亮感。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "護理不可或缺"
+          },
+          {
+            "type": "paragraph",
+            "text": "無論選擇哪種服務，提亮過的頭髮都需要護理。無硫酸鹽洗頭水、每星期一次髮膜、用涼水沖洗及熱力保護，都是最基本的。另外每 4–6 星期補一次調色，防止頭髮泛黃泛橙——冷色調效果尤其需要。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "先預約諮詢"
+          },
+          {
+            "type": "paragraph",
+            "text": "事先進行十分鐘諮詢，是避免失望最簡單的方法。染髮師可以評估你的天然底色、過往染髮情況及生活方式，然後準確建議哪種做法能達到你想要的效果。歡迎透過我們的預約頁面，預約列斯市中心 Harbour Hair Salon 的免費諮詢。"
+          }
+        ]
+      }
+    },
+    {
+      "entityType": "BLOG_POST",
+      "match": {
+        "by": "slug",
+        "slug": "how-to-care-for-your-hair-after-a-perm"
+      },
+      "source": {
+        "title": "How to Care for Your Hair After a Perm",
+        "description": "Perm aftercare guide from Harbour Hair Salon, Leeds. The first 48 hours, weekly routine, product choices and when to book a refresh for longer-lasting waves.",
+        "excerpt": "A great perm is only half the work. The other half is the first 48 hours and the routine you build after. Here’s everything you need to know.",
+        "authorRole": "Harbour Hair Salon, Leeds",
+        "coverAlt": "Waved hair after a professional perm treatment",
+        "lede": "If you’ve just walked out of the salon with a fresh perm, the next 48 hours are the most important. Here’s how to protect your new waves, what products help, and when to come back for a refresh.",
+        "sections": [
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "The first 48 hours: don’t wash"
+          },
+          {
+            "type": "paragraph",
+            "text": "This is the single most important rule. Perming chemically restructures the bonds inside your hair, and those bonds need time to fully set after the neutraliser. Washing, wetting, or even heavy steam can disrupt the new shape before it locks in."
+          },
+          {
+            "type": "paragraph",
+            "text": "Avoid tying your hair up tightly for the first week too. Loose styles only. You want the curls to settle into their new natural fall, not be bent into the shape of a hairband for eight hours at a time."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Your new wash routine"
+          },
+          {
+            "type": "paragraph",
+            "text": "Once you start washing again, switch to a curl-friendly, sulphate-free shampoo. Sulphates are harsh detergents that strip natural oils — exactly the oils your permed hair needs to hold its bounce."
+          },
+          {
+            "type": "list",
+            "items": [
+              "Use a sulphate-free shampoo designed for curls or chemically treated hair.",
+              "Follow with a rich conditioner or a leave-in cream for curl definition.",
+              "Once a week, use a deep conditioning mask to replace moisture lost during perming.",
+              "Avoid washing daily — two to three times a week is plenty for most hair types.",
+              "Rinse with cool water where possible to seal the cuticle and boost shine."
+            ]
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Drying without killing the curl"
+          },
+          {
+            "type": "paragraph",
+            "text": "Air drying is always safest. If you need speed, use a diffuser attachment on a hair dryer at the lowest heat setting. Don’t scrunch aggressively — scrunch gently upwards, then leave the hair alone. Touching it too much is the fastest way to introduce frizz."
+          },
+          {
+            "type": "paragraph",
+            "text": "Avoid flat-irons and high-heat tools for at least a month after your perm. If you must use heat, always apply a heat protectant first."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Sleeping without crushing the shape"
+          },
+          {
+            "type": "paragraph",
+            "text": "Cotton pillowcases absorb moisture and create friction, which leads to frizz and broken curls. Switch to a silk or satin pillowcase, or loosely pineapple your hair on top of your head with a soft silk scrunchie before bed."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "When to come back"
+          },
+          {
+            "type": "paragraph",
+            "text": "A healthy perm lasts anywhere from three to six months, depending on hair type, length, and how well you stick to the routine above. Longer hair holds the shape better because the weight works in your favour. Fine hair tends to drop first."
+          },
+          {
+            "type": "paragraph",
+            "text": "Book a conditioning treatment every 4–6 weeks to replace moisture and keep elasticity high. When the curl starts dropping noticeably at the top (usually around month four or five), book a consultation — we can often refresh only the regrowth rather than re-perming the full length."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "When something feels off"
+          },
+          {
+            "type": "paragraph",
+            "text": "If in the first two weeks your hair feels unusually dry, straw-like, or is shedding more than normal, come back in. We’d rather see you early and fix it than have you struggle through it at home. Small corrections are always on the house."
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "Considering your first perm?"
+          },
+          {
+            "type": "paragraph",
+            "text": "If you’re thinking about a perm but haven’t booked yet, start with a consultation. Our Hong Kong trained specialists at Harbour Hair Salon in Leeds will assess your hair strength, discuss the exact wave pattern you want, and give you an honest answer on whether a perm will work for you — and how to care for it afterwards."
+          }
+        ]
+      },
+      "fields": {
+        "title": "電髮後如何護理頭髮",
+        "description": "列斯 Harbour Hair Salon 電髮後護理指南：首 48 小時、每星期護理、產品選擇，以及何時預約補做電髮，令波浪更持久。",
+        "excerpt": "出色的電髮只完成了一半工夫，另一半在於首 48 小時，以及之後建立的護理習慣。以下是你需要知道的一切。",
+        "authorRole": "Harbour Hair Salon，列斯",
+        "coverAlt": "專業電髮後的波浪髮型",
+        "lede": "如果你剛做完電髮離開髮型屋，接下來的 48 小時最為重要。以下教你如何保護剛電好的波浪、哪些產品有幫助，以及何時回來補做電髮。",
+        "sections": [
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "首 48 小時：切勿洗頭"
+          },
+          {
+            "type": "paragraph",
+            "text": "這是最重要的一條規則。電髮會以化學方式重組頭髮內部的髮鍵，而這些髮鍵在使用中和劑後需要時間才能完全定型。洗頭、弄濕頭髮，甚至大量蒸氣，都可能在新捲度定型前將其破壞。"
+          },
+          {
+            "type": "paragraph",
+            "text": "第一星期亦應避免把頭髮紮得太緊，只宜梳鬆散的髮型。你要讓捲髮自然垂落、慢慢定型，而不是一次過被髮圈壓出八小時的摺痕。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "新的洗頭習慣"
+          },
+          {
+            "type": "paragraph",
+            "text": "重新開始洗頭後，請改用適合捲髮的無硫酸鹽洗頭水。硫酸鹽是強烈的清潔劑，會洗走頭髮的天然油脂——而電過的頭髮正需要這些油脂來保持彈性。"
+          },
+          {
+            "type": "list",
+            "items": [
+              "使用專為捲髮或經化學處理頭髮而設的無硫酸鹽洗頭水。",
+              "之後使用滋潤護髮素或免沖洗護髮乳，令捲度更分明。",
+              "每星期使用一次深層護理髮膜，補充電髮時流失的水分。",
+              "避免每天洗頭——對大部分髮質來說，每星期兩至三次已經足夠。",
+              "盡可能用涼水沖洗，以收緊毛鱗片並提升光澤。"
+            ]
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "吹乾頭髮而不破壞捲度"
+          },
+          {
+            "type": "paragraph",
+            "text": "自然風乾永遠最安全。如需要快一點，可在風筒裝上擴散風罩，並使用最低溫度。不要用力抓捏——輕輕向上抓鬆，然後便不要再碰。過度觸摸是令頭髮毛躁最快的方法。"
+          },
+          {
+            "type": "paragraph",
+            "text": "電髮後最少一個月內避免使用直髮夾及高溫工具。如必須使用熱力工具，請務必先塗上熱力保護產品。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "睡覺時不壓壞捲度"
+          },
+          {
+            "type": "paragraph",
+            "text": "棉質枕袋會吸走水分並產生摩擦，令頭髮毛躁、捲度散亂。改用絲質或緞面枕袋，或在睡前用柔軟的絲質髮圈把頭髮鬆鬆地束在頭頂（即「菠蘿頭」）。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "何時回來"
+          },
+          {
+            "type": "paragraph",
+            "text": "健康的電髮可維持三至六個月，視乎髮質、長度，以及你有多嚴格遵守上述護理習慣。較長的頭髮因為重量有利，捲度保持得更好；幼髮的捲度通常最先鬆散。"
+          },
+          {
+            "type": "paragraph",
+            "text": "每 4–6 星期預約一次護髮療程，補充水分並保持彈性。當頭頂的捲度開始明顯變直（通常約在第四或第五個月），請預約諮詢——我們通常可以只為新長出的部分補做電髮，而不需要把整頭頭髮重新電過。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "感覺不對勁時"
+          },
+          {
+            "type": "paragraph",
+            "text": "如果首兩星期內頭髮感覺異常乾燥、像稻草般粗糙，或脫髮比平常多，請回來找我們。我們寧願及早見你並作出修正，也不想你在家苦苦應付。小修正一律免費。"
+          },
+          {
+            "type": "heading",
+            "level": 2,
+            "text": "考慮第一次電髮？"
+          },
+          {
+            "type": "paragraph",
+            "text": "如果你正考慮電髮但仍未預約，不妨先從諮詢開始。列斯 Harbour Hair Salon 的香港培訓電髮專家會評估你的髮質強度，與你商討想要的波浪紋理，並坦誠告訴你電髮是否適合你——以及之後應如何護理。"
+          }
+        ]
+      }
+    },
+    {
+      "entityType": "STYLIST",
+      "match": {
+        "by": "stylistName",
+        "name": "Chan"
+      },
+      "source": {
+        "role": "Lead Stylist",
+        "bio": "Experienced barber delivering tailored haircuts and grooming services with meticulous attention to detail. Led by Hong Kong Stylist standards.",
+        "tagline": "Precision cutting and grooming, Hong Kong style.",
+        "specialties": [
+          "Men's precision haircuts",
+          "Classic and contemporary barbering",
+          "Children's haircuts",
+          "Short and layered women's cuts"
+        ],
+        "languages": [
+          "English",
+          "Cantonese"
+        ],
+        "trainedIn": "Hong Kong",
+        "extendedBio": [
+          "Chan leads the team at Harbour Hair Salon with the precision-first approach he trained in during his years working in Hong Kong's busiest city-centre salons. His cuts are built around face shape, natural growth pattern and the way a shape grows out over six weeks — not just how it looks on day one.",
+          "Whether you're coming in for a classic short back and sides, a contemporary layered cut, or your child's first proper haircut, Chan's priority is the consultation: understanding what you want, checking what your hair will actually do, and agreeing the shape before any scissor work begins.",
+          "Chan speaks both English and Cantonese fluently, so clients from across Leeds' Chinese community can comfortably discuss exactly the finish they're after."
+        ]
+      },
+      "fields": {
+        "role": "首席髮型師",
+        "bio": "經驗豐富的理髮師，以一絲不苟的態度提供度身訂造的剪髮及修容服務。秉承香港髮型師的專業標準。",
+        "tagline": "港式精準剪髮及修容。",
+        "specialties": [
+          "男士精準剪髮",
+          "經典及時尚男士理髮",
+          "兒童剪髮",
+          "女士短髮及層次剪裁"
+        ],
+        "languages": [
+          "英語",
+          "廣東話"
+        ],
+        "trainedIn": "香港",
+        "extendedBio": [
+          "Chan 帶領 Harbour Hair Salon 團隊，秉持他多年在香港最繁忙的市區髮型屋工作時練就、以精準為先的理念。他的剪裁以臉型、頭髮天然生長方向，以及髮型在六星期內長出的變化為本——而不只是第一天的樣子。",
+          "無論你是來剪經典的兩側及後腦剪短髮型、時尚的層次剪裁，還是為孩子剪第一個正式髮型，Chan 最重視的都是諮詢：了解你的要求、檢查你的頭髮實際會有甚麼效果，並在落剪前與你確定髮型。",
+          "Chan 能說流利的英語及廣東話，讓列斯各地華人社群的客人都能自在地講清楚自己想要的效果。"
+        ]
+      }
+    },
+    {
+      "entityType": "STYLIST",
+      "match": {
+        "by": "stylistName",
+        "name": "Funky"
+      },
+      "source": {
+        "role": "Stylist",
+        "bio": "",
+        "tagline": "",
+        "specialties": [],
+        "languages": [
+          "English"
+        ],
+        "trainedIn": "",
+        "extendedBio": []
+      },
+      "fields": {
+        "role": "髮型師",
+        "bio": "",
+        "tagline": "",
+        "specialties": [],
+        "languages": [
+          "英語"
+        ],
+        "trainedIn": "",
+        "extendedBio": []
+      }
+    },
+    {
+      "entityType": "STYLIST",
+      "match": {
+        "by": "stylistName",
+        "name": "Ivan"
+      },
+      "source": {
+        "role": "Stylist",
+        "bio": "",
+        "tagline": "",
+        "specialties": [],
+        "languages": [
+          "English"
+        ],
+        "trainedIn": "",
+        "extendedBio": []
+      },
+      "fields": {
+        "role": "髮型師",
+        "bio": "",
+        "tagline": "",
+        "specialties": [],
+        "languages": [
+          "英語"
+        ],
+        "trainedIn": "",
+        "extendedBio": []
+      }
+    },
+    {
+      "entityType": "STYLIST",
+      "match": {
+        "by": "stylistName",
+        "name": "Lox"
+      },
+      "source": {
+        "role": "Stylist",
+        "bio": "",
+        "tagline": "",
+        "specialties": [],
+        "languages": [
+          "English"
+        ],
+        "trainedIn": "",
+        "extendedBio": []
+      },
+      "fields": {
+        "role": "髮型師",
+        "bio": "",
+        "tagline": "",
+        "specialties": [],
+        "languages": [
+          "英語"
+        ],
+        "trainedIn": "",
+        "extendedBio": []
+      }
+    },
+    {
+      "entityType": "STYLIST",
+      "match": {
+        "by": "stylistName",
+        "name": "Shania"
+      },
+      "source": {
+        "role": "Hairstylist Assistant",
+        "bio": "",
+        "tagline": "",
+        "specialties": [],
+        "languages": [],
+        "trainedIn": "",
+        "extendedBio": []
+      },
+      "fields": {
+        "role": "髮型助理",
+        "bio": "",
+        "tagline": "",
+        "specialties": [],
+        "languages": [],
+        "trainedIn": "",
+        "extendedBio": []
+      }
+    },
+    {
+      "entityType": "SITE_SETTINGS",
+      "match": {
+        "by": "singleton"
+      },
+      "source": {
+        "heroEyebrow": "Leeds City Centre",
+        "heroTitleLine1": "Expert Hair",
+        "heroTitleLine2": "Styling",
+        "heroSubtitle": "Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment."
+      },
+      "fields": {
+        "heroEyebrow": "列斯市中心",
+        "heroTitleLine1": "專業髮型",
+        "heroTitleLine2": "設計",
+        "heroSubtitle": "由香港培訓的髮型師為你度身打造剪髮、染髮及修容服務，每次預約都精準細緻、講究手藝。"
+      }
+    }
+  ]
+}

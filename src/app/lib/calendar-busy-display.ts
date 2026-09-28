@@ -1,4 +1,7 @@
 import type { ExternalBusyBlock } from '@prisma/client';
+import { formatSalonDateTime } from '@/i18n/dates';
+import type { Translate } from '@/i18n/translator';
+import type { Messages } from '@/i18n/messages/types-client';
 import { salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
 
 export type CalendarBusyBlock = Pick<ExternalBusyBlock, 'id' | 'stylistId' | 'source'> & {
@@ -23,12 +26,11 @@ export function calendarBusyForDay(blocks: CalendarBusyBlock[], dayKey: string) 
   });
 }
 
-export function calendarBusyLabel(block: CalendarBusyBlock, stylist: string, startMin: number, endMin: number) {
-  const provider = block.source === 'TREATWELL' ? 'Treatwell' : block.source === 'FRESHA' ? 'Fresha' : 'External calendar';
+/** Platform names are brands and stay as they are in every language. */
+export function calendarBusyLabel(block: CalendarBusyBlock, stylist: string, startMin: number, endMin: number, t: Translate<Messages['adminSchedule']>) {
+  const provider = block.source === 'TREATWELL' ? 'Treatwell' : block.source === 'FRESHA' ? 'Fresha' : t('busy.external');
   const time = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
   const range = `${time(startMin)}–${time(endMin)}`;
-  const synced = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/London', dateStyle: 'medium', timeStyle: 'short',
-  }).format(new Date(block.lastSyncAt));
-  return { provider, range, synced, detail: `${provider} · ${stylist} · ${range} (London time). Last imported ${synced}. Manage this time in ${provider}.` };
+  const synced = formatSalonDateTime(t.locale, new Date(block.lastSyncAt));
+  return { provider, range, synced, detail: t('busy.detail', { provider, stylist, range, synced }) };
 }

@@ -1,4 +1,5 @@
 import { getSocialLinks, type SocialLink } from './social-links-data';
+import { getT } from '@/i18n/server';
 
 function Icon({ k }: { k: SocialLink['key'] }) {
   const common = {
@@ -34,7 +35,7 @@ function Icon({ k }: { k: SocialLink['key'] }) {
   );
 }
 
-export default function SocialLinks({
+export default async function SocialLinks({
   settings,
   className = '',
   tone = 'light',
@@ -47,6 +48,7 @@ export default function SocialLinks({
 }) {
   const links = getSocialLinks(settings);
   if (links.length === 0) return null;
+  const t = await getT('contact');
   const hover = tone === 'dark' ? 'hover:text-white' : 'hover:text-zinc-900';
   return (
     <div className={`flex items-center gap-4 ${className}`}>
@@ -56,7 +58,7 @@ export default function SocialLinks({
           href={l.href}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={l.label}
+          aria-label={t(`social.${l.key}`)}
           className={`text-zinc-500 ${hover} transition-colors`}
         >
           <Icon k={l.key} />

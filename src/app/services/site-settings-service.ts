@@ -2,6 +2,8 @@ import 'server-only';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import prisma from '@/app/lib/prisma';
+import { isLocale, type Locale } from '@/i18n/config';
+import { loadPublishedTranslations, overlay } from './content/translations';
 
 export type SiteSettings = {
   phone: string;
@@ -19,6 +21,8 @@ export type SiteSettings = {
   heroSubtitle: string;
   /** Online-booking master switch, toggled from Admin -> Settings. */
   bookingEnabled: boolean;
+  /** Language of the salon's own notification mails (new booking alerts). */
+  salonNotificationLocale: Locale;
 };
 
 const SINGLETON_ID = 'singleton';
@@ -40,6 +44,7 @@ const DEFAULTS: SiteSettings = {
   // Fail CLOSED: if settings cannot be read, booking stays off rather than
   // silently opening a booking flow that may double-book against Treatwell.
   bookingEnabled: false,
+  salonNotificationLocale: 'zh-HK',
 };
 
 function mapRow(row: {
@@ -57,6 +62,7 @@ function mapRow(row: {
   heroTitleLine2: string;
   heroSubtitle: string;
   bookingEnabled: boolean;
+  salonNotificationLocale: string;
 }): SiteSettings {
   return {
     phone: row.phone,
@@ -73,6 +79,7 @@ function mapRow(row: {
     heroTitleLine2: row.heroTitleLine2,
     heroSubtitle: row.heroSubtitle,
     bookingEnabled: row.bookingEnabled,
+    salonNotificationLocale: isLocale(row.salonNotificationLocale) ? row.salonNotificationLocale : DEFAULTS.salonNotificationLocale,
   };
 }
 
@@ -103,6 +110,30 @@ const getSiteSettingsFromStore = unstable_cache(async (): Promise<SiteSettings> 
 // React cache deduplicates within one render; unstable_cache shares the safe,
 // public singleton across requests and allows instant admin invalidation.
 export const getSiteSettings = cache(getSiteSettingsFromStore);
+
+export type HeroContent = Pick<SiteSettings, 'heroEyebrow' | 'heroTitleLine1' | 'heroTitleLine2' | 'heroSubtitle'> & { translated: boolean };
+
+const HERO_KEYS = ['heroEyebrow', 'heroTitleLine1', 'heroTitleLine2', 'heroSubtitle'] as const;
+
+/**
+ * The homepage hero in `locale`: English from the settings row, Chinese from
+ * its PUBLISHED translation. Cached per language under the same tag, so the
+ * publish step (which revalidates 'site-settings') refreshes both at once.
+ */
+const getHeroFromStore = unstable_cache(async (locale: Locale): Promise<HeroContent> => {
+  const settings = await getSiteSettingsFromStore();
+  const hero = { heroEyebrow: settings.heroEyebrow, heroTitleLine1: settings.heroTitleLine1, heroTitleLine2: settings.heroTitleLine2, heroSubtitle: settings.heroSubtitle };
+  if (locale === 'en-GB') return { ...hero, translated: true };
+  try {
+    const translations = await loadPublishedTranslations(prisma, 'SITE_SETTINGS', [SINGLETON_ID], locale);
+    return overlay(hero, translations.get(SINGLETON_ID), [...HERO_KEYS]);
+  } catch (error) {
+    console.error('Failed to load hero translation:', error);
+    return { ...hero, translated: false };
+  }
+}, ['site-settings-hero'], { revalidate: 3600, tags: ['site-settings'] });
+
+export const getHeroContent = cache(getHeroFromStore);
 
 export function buildSameAsArray(settings: SiteSettings): string[] {
   return [

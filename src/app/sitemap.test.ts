@@ -36,6 +36,21 @@ test('a sitemap database failure rejects regeneration instead of publishing miss
   await assert.rejects(fixture(true).default(), /database unavailable/);
 });
 
+test('every public page is listed in both languages with hreflang alternates', async () => {
+  const entries = await fixture().default();
+  const urls = entries.map((entry) => entry.url);
+  assert.ok(urls.includes('https://salon.example'));
+  assert.ok(urls.includes('https://salon.example/zh-hk'));
+  assert.ok(urls.includes('https://salon.example/services/haircuts'));
+  assert.ok(urls.includes('https://salon.example/zh-hk/services/haircuts'));
+  const zh = entries.find((entry) => entry.url === 'https://salon.example/zh-hk/services/haircuts');
+  assert.deepEqual(zh?.alternates?.languages, {
+    'en-GB': 'https://salon.example/services/haircuts',
+    'zh-HK': 'https://salon.example/zh-hk/services/haircuts',
+  });
+  assert.equal(urls.filter((url) => url.includes('/en-gb')).length, 0, 'the internal English segment is never published');
+});
+
 test('static sitemap entries do not invent modification dates from generation time', async () => {
   const entries = await fixture().default();
   assert.equal(entries.find((entry) => entry.url.endsWith('/try-color'))?.lastModified, undefined);

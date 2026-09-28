@@ -1,15 +1,17 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { createReview } from '@/app/actions/reviews';
+import { useT } from '@/i18n/client';
+import { useLocalizedRouter } from '@/i18n/navigation';
 
 interface ReviewFormProps {
   appointmentId: string;
 }
 
 export function ReviewForm({ appointmentId }: ReviewFormProps) {
-  const router = useRouter();
+  const router = useLocalizedRouter();
+  const t = useT('reviews');
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [state, formAction, pending] = useActionState(createReview, {});
@@ -29,9 +31,9 @@ export function ReviewForm({ appointmentId }: ReviewFormProps) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h2 className="text-2xl font-serif text-zinc-900 mb-2">Thank you!</h2>
+        <h2 className="text-2xl font-serif text-zinc-900 mb-2">{t('form.thankYou')}</h2>
         <p className="text-zinc-600 font-light">
-          Your review has been submitted and will appear once approved.
+          {t('form.submitted')}
         </p>
       </div>
     );
@@ -44,9 +46,9 @@ export function ReviewForm({ appointmentId }: ReviewFormProps) {
 
       <fieldset>
         <legend className="block text-sm font-medium text-zinc-900 mb-4 uppercase tracking-wider">
-          Your rating
+          {t('form.rating')}
         </legend>
-        <div className="flex items-center gap-2" role="radiogroup" aria-label="Rating out of 5">
+        <div className="flex items-center gap-2" role="radiogroup" aria-label={t('form.ratingGroup')}>
           {[1, 2, 3, 4, 5].map((value) => {
             const active = (hover || rating) >= value;
             return (
@@ -55,7 +57,7 @@ export function ReviewForm({ appointmentId }: ReviewFormProps) {
                 type="button"
                 role="radio"
                 aria-checked={rating === value}
-                aria-label={`${value} star${value > 1 ? 's' : ''}`}
+                aria-label={t('form.stars', { count: value })}
                 onClick={() => setRating(value)}
                 onMouseEnter={() => setHover(value)}
                 onMouseLeave={() => setHover(0)}
@@ -86,14 +88,14 @@ export function ReviewForm({ appointmentId }: ReviewFormProps) {
           htmlFor="comment"
           className="block text-sm font-medium text-zinc-900 mb-2 uppercase tracking-wider"
         >
-          Tell us more <span className="text-zinc-400 normal-case tracking-normal">(optional)</span>
+          {t('form.comment')} <span className="text-zinc-400 normal-case tracking-normal">{t('form.optional')}</span>
         </label>
         <textarea
           id="comment"
           name="comment"
           rows={5}
           maxLength={1000}
-          placeholder="What did you love? Anything we could do better?"
+          placeholder={t('form.placeholder')}
           className="w-full border border-zinc-300 rounded-lg px-4 py-3 text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent font-light"
         />
       </div>
@@ -109,7 +111,7 @@ export function ReviewForm({ appointmentId }: ReviewFormProps) {
         disabled={pending || rating === 0}
         className="w-full bg-zinc-900 text-white px-10 py-4 text-sm uppercase tracking-[0.15em] font-bold hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {pending ? 'Submitting…' : 'Submit Review'}
+        {pending ? t('form.submitting') : t('form.submit')}
       </button>
     </form>
   );

@@ -13,7 +13,7 @@ test('a brand-new email creates a fresh account', () => {
 test('an email with a password is rejected, never overwritten', () => {
   assert.deepEqual(decideRegistration({ hasPassword: true, linkedProviderCount: 0 }), {
     kind: 'REJECT',
-    error: ALREADY_REGISTERED_ERROR,
+    code: 'ALREADY_REGISTERED', error: ALREADY_REGISTERED_ERROR,
   });
 });
 
@@ -22,21 +22,21 @@ test('a Google-only account (no password) is NOT claimable — account takeover 
   // wrote the registrant's password onto the victim's row and signed them in.
   assert.deepEqual(decideRegistration({ hasPassword: false, linkedProviderCount: 1 }), {
     kind: 'REJECT',
-    error: USE_GOOGLE_ERROR,
+    code: 'USE_GOOGLE', error: USE_GOOGLE_ERROR,
   });
 });
 
 test('a password-less account with several linked providers is still not claimable', () => {
   assert.deepEqual(decideRegistration({ hasPassword: false, linkedProviderCount: 3 }), {
     kind: 'REJECT',
-    error: USE_GOOGLE_ERROR,
+    code: 'USE_GOOGLE', error: USE_GOOGLE_ERROR,
   });
 });
 
 test('a guest placeholder requires email recovery proof instead of registration', () => {
   assert.deepEqual(decideRegistration({ hasPassword: false, linkedProviderCount: 0 }), {
     kind: 'REJECT',
-    error: ALREADY_REGISTERED_ERROR,
+    code: 'ALREADY_REGISTERED', error: ALREADY_REGISTERED_ERROR,
   });
 });
 

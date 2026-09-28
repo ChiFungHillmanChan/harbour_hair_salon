@@ -5,8 +5,13 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { deleteSession } from '@/app/lib/session';
+import { localizedPath } from '@/i18n/request';
 
 const CHALLENGE_COOKIE = 'admin_mfa_pending';
+// Site-wide, not '/auth/mfa': the challenge must also reach /zh-hk/auth/mfa
+// (and its Server Action POSTs), including after switching language mid-setup.
+// A cookie has one path, and a path is no boundary within one origin anyway.
+const CHALLENGE_PATH = '/';
 
 function key() {
   const secret = process.env.SESSION_SECRET;
@@ -18,11 +23,16 @@ export async function beginAdminMfaChallenge(userId: string, sessionVersion: num
   await deleteSession();
   const token = await new SignJWT({ purpose: 'admin-mfa', userId, sessionVersion, nonce: randomBytes(24).toString('base64url') })
     .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('5m').sign(key());
-  (await cookies()).set(CHALLENGE_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/auth/mfa', maxAge: 300 });
+  (await cookies()).set(CHALLENGE_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: CHALLENGE_PATH, maxAge: 300 });
 }
 
 export async function clearAdminMfaChallenge() {
-  (await cookies()).set(CHALLENGE_COOKIE, '', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/auth/mfa', maxAge: 0 });
+  (await cookies()).set(CHALLENGE_COOKIE, '', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: CHALLENGE_PATH, maxAge: 0 });
+}
+
+/** Sign-in again, in the visitor's language, returning to the admin panel. */
+async function restartSignIn() {
+  return localizedPath(`/auth/signin?redirect=${encodeURIComponent(await localizedPath('/admin'))}`);
 }
 
 export async function requirePendingAdminMfa() {
@@ -34,7 +44,7 @@ export async function requirePendingAdminMfa() {
       identity = { userId: payload.userId, sessionVersion: payload.sessionVersion };
     }
   } catch { /* No first-factor proof: the sign-in flow must run again. */ }
-  if (!identity) redirect('/auth/signin?redirect=/admin');
+  if (!identity) redirect(await restartSignIn());
   const user = await prisma.user.findUnique({
     where: { id: identity.userId },
     select: {
@@ -43,6 +53,6 @@ export async function requirePendingAdminMfa() {
       mfaRecoveryCodesJson: true, mfaPendingSecretEncrypted: true, mfaPendingExpiresAt: true,
     },
   });
-  if (!user || user.role !== 'ADMIN' || user.sessionVersion !== identity.sessionVersion) redirect('/auth/signin?redirect=/admin');
+  if (!user || user.role !== 'ADMIN' || user.sessionVersion !== identity.sessionVersion) redirect(await restartSignIn());
   return user;
 }

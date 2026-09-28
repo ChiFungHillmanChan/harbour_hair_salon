@@ -1,7 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import { updateTimeEntry } from '@/app/actions/timesheets';
+import { useT } from '@/i18n/client';
+import { clearDraft, usePreservedForm } from '@/i18n/draft-store';
 
 type State = { error?: string; success?: boolean };
 
@@ -23,42 +25,49 @@ const fieldClass = 'border border-zinc-300 rounded px-2 py-1 text-sm w-full';
  * so a corrected entry has to be approved again before payroll picks it up.
  */
 export function TimeEntryEditForm({ entryId, date, clockInTime, clockOutTime, breakMinutes, note }: TimeEntryEditFormProps) {
+  const t = useT('adminStaff');
+  const draftKey = `time-entry:${entryId}`;
+  const formRef = usePreservedForm(draftKey);
   const [state, action, pending] = useActionState<State, FormData>(
     async (_prev, formData) => updateTimeEntry(entryId, formData),
     {},
   );
 
+  useEffect(() => {
+    if (state.success) clearDraft(draftKey);
+  }, [state.success, draftKey]);
+
   return (
-    <form action={action} className="mt-2 w-56 space-y-2 whitespace-normal">
+    <form ref={formRef} action={action} className="mt-2 w-56 space-y-2 whitespace-normal">
       <div>
-        <label className="block text-xs font-medium text-zinc-700" htmlFor={`date-${entryId}`}>Date</label>
+        <label className="block text-xs font-medium text-zinc-700" htmlFor={`date-${entryId}`}>{t('timesheets.editForm.date')}</label>
         <input id={`date-${entryId}`} type="date" name="date" defaultValue={date} required className={fieldClass} />
       </div>
       <div>
-        <label className="block text-xs font-medium text-zinc-700" htmlFor={`clockIn-${entryId}`}>Clock in</label>
+        <label className="block text-xs font-medium text-zinc-700" htmlFor={`clockIn-${entryId}`}>{t('timesheets.editForm.clockIn')}</label>
         <input id={`clockIn-${entryId}`} type="time" name="clockInTime" defaultValue={clockInTime} required className={fieldClass} />
       </div>
       <div>
-        <label className="block text-xs font-medium text-zinc-700" htmlFor={`clockOut-${entryId}`}>Clock out</label>
+        <label className="block text-xs font-medium text-zinc-700" htmlFor={`clockOut-${entryId}`}>{t('timesheets.editForm.clockOut')}</label>
         <input id={`clockOut-${entryId}`} type="time" name="clockOutTime" defaultValue={clockOutTime} className={fieldClass} />
-        <p className="mt-1 text-xs text-zinc-500">Leave empty to keep the entry open. Clock-out must be later on the same day.</p>
+        <p className="mt-1 text-xs text-zinc-500">{t('timesheets.editForm.clockOutHelp')}</p>
       </div>
       <div>
-        <label className="block text-xs font-medium text-zinc-700" htmlFor={`break-${entryId}`}>Break (minutes)</label>
+        <label className="block text-xs font-medium text-zinc-700" htmlFor={`break-${entryId}`}>{t('timesheets.editForm.breakMinutes')}</label>
         <input id={`break-${entryId}`} type="number" name="breakMinutes" min={0} max={1440} step={1} defaultValue={breakMinutes} className={fieldClass} />
       </div>
       <div>
-        <label className="block text-xs font-medium text-zinc-700" htmlFor={`note-${entryId}`}>Note</label>
-        <input id={`note-${entryId}`} type="text" name="note" maxLength={500} defaultValue={note} placeholder="Why it was changed" className={fieldClass} />
+        <label className="block text-xs font-medium text-zinc-700" htmlFor={`note-${entryId}`}>{t('timesheets.editForm.note')}</label>
+        <input id={`note-${entryId}`} type="text" name="note" maxLength={500} defaultValue={note} placeholder={t('timesheets.editForm.notePlaceholder')} className={fieldClass} />
       </div>
       {state.error && <p className="text-xs text-red-600" role="alert">{state.error}</p>}
-      {state.success && <p className="text-xs text-zinc-600" role="status">Saved — this entry now needs approving again.</p>}
+      {state.success && <p className="text-xs text-zinc-600" role="status">{t('timesheets.editForm.saved')}</p>}
       <button
         type="submit"
         disabled={pending}
         className="bg-zinc-900 hover:bg-black text-white px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
       >
-        {pending ? 'Saving…' : 'Save changes'}
+        {pending ? t('timesheets.editForm.saving') : t('timesheets.editForm.save')}
       </button>
     </form>
   );

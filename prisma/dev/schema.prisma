@@ -24,6 +24,9 @@ model User {
   mfaRecoveryCodesJson String @default("[]")
   mfaPendingSecretEncrypted String?
   mfaPendingExpiresAt DateTime?
+  /// Language for mail the salon sends when no page supplies one (e.g. a
+  /// booking an administrator enters). en-GB or zh-HK; null means en-GB.
+  preferredLocale String?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   appointments   Appointment[]
@@ -92,9 +95,52 @@ model Service {
   isConsultation       Boolean       @default(false)
   imageUrl             String?
   treatwellExternalId  String? // Treatwell API service/menu-item id
+  /// Groups the length/price-type options of one menu item. Pricing never
+  /// matches names: the standard/NHS pair is (offeringId, hairLength, priceType).
+  offeringId           String?
+  offering             ServiceOffering? @relation(fields: [offeringId], references: [id], onDelete: SetNull)
+  hairLength           String? // SHORT, MEDIUM, LONG, EXTRA_LONG; null when the item has no length options
+  priceType            String        @default("STANDARD") // STANDARD, NHS
+  /// Listed on public pages. A retired option stays in the table so past
+  /// appointments keep their relation, but leaves every listing.
+  isPublic             Boolean       @default(true)
+  /// Accepts NEW bookings (customer or admin). Existing appointments are managed
+  /// regardless, under the usual cancellation/reschedule policy.
+  isBookable           Boolean       @default(true)
+  /// Bumped on every price change; quotes carry it so a stale confirm is caught.
+  priceVersion         Int           @default(1)
+  vatDisplay           String        @default("UNSPECIFIED") // EXCLUDED, UNSPECIFIED
+  priceNature          String        @default("LISTED") // LISTED, SUBJECT_TO_CONSULTATION
+  durationConfirmed    Boolean       @default(true)
+  /// A composite option priced as another option plus a fixed surcharge
+  /// (full-head colour extra long = long-hair price + £37 "Adds Extra Long").
+  surchargeBaseServiceId String?
+  surchargeBase        Service?      @relation("ServiceSurcharge", fields: [surchargeBaseServiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  surchargeDependents  Service[]     @relation("ServiceSurcharge")
+  surchargeAmount      Decimal?
+  /// Published English fine print shown beside the price (zh-HK lives in ContentTranslation).
+  priceNote            String?
+  priceSource          String? // e.g. "treatwell:2026-09-28" — see prisma/price-catalog
+  priceVerifiedAt      DateTime?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   appointments         Appointment[]
+
+  @@index([offeringId])
+  @@index([isPublic, category])
+}
+
+/// One menu item whose options (hair length × standard/NHS) are Service rows.
+model ServiceOffering {
+  id           String    @id @default(cuid())
+  key          String    @unique // stable, never translated, e.g. "full-head-colour"
+  category     String
+  name         String
+  description  String?
+  displayOrder Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  services     Service[]
 }
 
 model Appointment {
@@ -104,6 +150,11 @@ model Appointment {
   notes               String?
   priceAtBooking      Decimal?
   durationAtBooking   Int?
+  /// Versioned server quote (see services/pricing/quote.ts). Null on bookings
+  /// made before quotes existed: their price type and VAT basis are UNKNOWN.
+  quoteJson           String?
+  /// Customer mail language fixed when the booking was made; null means en-GB.
+  notificationLocale  String?
   reminderSent        Boolean   @default(false)
   reviewRequestSent   Boolean   @default(false)
   treatwellBookingId  String?
@@ -250,6 +301,8 @@ model SiteSettings {
   // FALSE (booking closed) so a fresh environment can never accidentally take
   // bookings before Treatwell two-way sync is configured.
   bookingEnabled    Boolean  @default(false)
+  /// Language of the salon's own notification mails (new booking alerts).
+  salonNotificationLocale String @default("zh-HK")
   updatedAt         DateTime @updatedAt
 }
 
@@ -484,4 +537,39 @@ model AuditEvent {
   @@index([createdAt])
   @@index([actorUserId, createdAt])
   @@index([targetType, targetId])
+}
+
+/// Published copy of one entity's translatable fields in one locale. Written
+/// only by the publish step, for both locales in the same transaction, so the
+/// two languages always show the same revision. English is ALSO mirrored into
+/// the entity's own columns, which is what English pages read.
+model ContentTranslation {
+  id                 String   @id @default(cuid())
+  entityType         String // SERVICE, SERVICE_OFFERING, CATEGORY_CONTENT, FAQ, BLOG_POST, STYLIST, OFFER, SITE_SETTINGS
+  entityId           String
+  locale             String // en-GB, zh-HK
+  fieldsJson         String
+  revision           Int
+  publishedAt        DateTime @default(now())
+  publishedByAdminId String?
+
+  @@unique([entityType, entityId, locale])
+  @@index([entityType, locale])
+}
+
+/// Unpublished edits to an entity's translatable fields, both languages in one
+/// row. Saving a draft never touches what the public site shows.
+model ContentDraft {
+  id               String   @id @default(cuid())
+  entityType       String
+  entityId         String
+  baseRevision     Int      @default(0) // published revision the draft started from
+  fieldsJson       String // { "en-GB": {...}, "zh-HK": {...} }
+  reviewJson       String   @default("{}") // per-locale proofreading marks, see content-review.ts
+  sharedJson       String   @default("{}") // non-text fields published with the text (service price)
+  updatedByAdminId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([entityType, entityId])
 }

@@ -10,10 +10,12 @@ import { salonDayWindow, toSalonDateStr, resolveSalonDateTime, salonDateKey, for
 import { firstFreeStylist, hasConflict, buildSlotsForWindow, type BookedInterval, type TimeSlot } from './scheduling';
 import { loadExternalBusy, toBookedInterval, toSlotAppointment } from './external-busy';
 import { BookingError, SlotUnavailableError, DiscountUnavailableError } from './booking-errors';
+import { quoteForNewBooking } from './pricing/quote-service';
+import { quoteMatches, serializeQuote, type PriceQuote, type QuoteExpectation } from './pricing/quote';
+import { penceToDecimalString } from './pricing/money';
+import type { Locale } from '@/i18n/config';
 import { bookingCoverageEndsAt, isWithinBookingHorizon } from './booking-horizon';
 import { getTreatwellApiConfiguration, initialTreatwellSyncStatus } from './treatwell-api';
-import { getActiveGlobalOffer } from './offers-service';
-import { applyOfferToPrice } from './offer-pricing';
 
 /**
  * Run a Serializable transaction, retrying a few times on Postgres serialization
@@ -58,7 +60,7 @@ async function assertActiveBookingLimit(tx: Prisma.TransactionClient, userId: st
   const count = await tx.appointment.count({
     where: { userId, status: { in: ['PENDING', 'CONFIRMED'] }, date: { gt: new Date() } },
   });
-  if (count >= 6) throw new BookingError('You already have the maximum number of upcoming bookings. Please manage your existing appointments first.');
+  if (count >= 6) throw new BookingError('MAX_UPCOMING');
 }
 
 /** Recheck the full reserved duration and current calendar inside a mutation. */
@@ -70,16 +72,16 @@ export async function assertAppointmentSlotAvailable(
 ) {
   const duration = appointment.durationAtBooking ?? appointment.service.duration;
   if (!isWithinBookingHorizon(date, duration)) {
-    throw new BookingError('Please choose a future appointment within the available online booking dates.');
+    throw new BookingError('OUTSIDE_HORIZON');
   }
   const salon = resolveSalonDateTime(salonDateKey(date), formatSalonTime(date));
   const availability = await tx.availability.findFirst({
     where: { stylistId: appointment.stylistId, dayOfWeek: salon.dayOfWeek, isOff: false, stylist: { isActive: true } },
     select: { startTime: true, endTime: true },
   });
-  if (!availability) throw new BookingError('Stylist is not available on this day');
+  if (!availability) throw new BookingError('STYLIST_OFF_THAT_DAY');
   if (!fitsWithinAvailability(salon.timeMinutes, duration, availability.startTime, availability.endTime)) {
-    throw new BookingError('Selected time is outside business hours');
+    throw new BookingError('OUTSIDE_HOURS');
   }
 
   let blocking = loadedBlocking;
@@ -263,55 +265,72 @@ export async function getAvailableSlotsUnion(
 }
 
 /**
- * Validate and claim a discount code INSIDE a booking transaction, so a booking
- * that later rolls back also rolls back the `usedCount` increment. Throws
- * DiscountUnavailableError if the code can't be claimed.
+ * The customer confirmed a price that is no longer the price (a new price list
+ * went live, or an option was re-priced, between viewing and submitting).
+ * Carries the CURRENT quote so the page can show it for a fresh confirmation;
+ * nothing is written.
  */
-async function claimDiscountInTx(tx: Prisma.TransactionClient, code: string) {
-  // Codes are stored upper-cased; normalise so a lower-cased submission still matches.
-  const discount = await tx.discountCode.findUnique({ where: { code: code.trim().toUpperCase() } });
-  if (!discount || !discount.isActive) throw new DiscountUnavailableError();
-  if (discount.expiresAt && new Date() >= discount.expiresAt) throw new DiscountUnavailableError();
-  if (discount.maxUses !== null && discount.usedCount >= discount.maxUses) throw new DiscountUnavailableError();
-
-  await tx.discountCode.update({
-    where: { id: discount.id },
-    data: { usedCount: { increment: 1 } },
-  });
-  return discount;
+export class PriceChangedError extends BookingError {
+  readonly quote: PriceQuote;
+  constructor(quote: PriceQuote) {
+    super('PRICE_CHANGED');
+    this.name = 'PriceChangedError';
+    this.quote = quote;
+  }
 }
 
-export async function createBooking(data: {
-  stylistId: string;
+/**
+ * Offers and discount codes are paused (pricing/policy.ts). A request that
+ * still carries a code — an old tab, a crafted call — is refused before any
+ * database work, so no code is ever validated, applied or counted as used.
+ */
+function refuseDiscountCode(code: string | undefined) {
+  if (code && code.trim()) throw new DiscountUnavailableError('DISCOUNTS_PAUSED');
+}
+
+type NewBookingInput = {
   serviceId: string;
   date: Date;
   userId: string;
+  /** Always refused while discounts are paused; accepted only to give a clear answer. */
   discountCode?: string;
   notes?: string;
-}) {
-  // Snapshot the live global offer so the recorded price matches what the public
-  // pages advertise. Read outside the tx: it is a rarely-changing announcement,
-  // not part of the double-booking invariant.
-  const globalOffer = await getActiveGlobalOffer();
+  /** What the page showed. When given it must still be the live quote. */
+  expectedQuote?: QuoteExpectation | null;
+  /** Language the customer booked in; their emails for this booking use it. */
+  locale?: Locale;
+};
+
+async function quoteInTx(tx: Prisma.TransactionClient, data: NewBookingInput) {
+  const { service, quote } = await quoteForNewBooking(tx, data.serviceId, 'CUSTOMER');
+  if (data.expectedQuote !== undefined && !quoteMatches(quote, data.expectedQuote)) throw new PriceChangedError(quote);
+  return { service, quote };
+}
+
+function appointmentPriceFields(quote: PriceQuote, locale: Locale | undefined) {
+  return {
+    priceAtBooking: penceToDecimalString(quote.amountPence),
+    quoteJson: serializeQuote(quote),
+    notificationLocale: locale ?? null,
+  };
+}
+
+export async function createBooking(data: NewBookingInput & { stylistId: string }) {
+  refuseDiscountCode(data.discountCode);
   // Use Serializable transaction to prevent double-booking race conditions
   const appointment = await runSerializableWithRetry(async (tx) => {
     const settings = await assertOnlineBookingReady(tx);
     await assertActiveBookingLimit(tx, data.userId);
-    const [service, stylist] = await Promise.all([
-      tx.service.findUnique({ where: { id: data.serviceId }, select: { duration: true, price: true, treatwellExternalId: true } }),
+    const [{ service, quote }, stylist] = await Promise.all([
+      quoteInTx(tx, data),
       tx.stylist.findUnique({
         where: { id: data.stylistId },
         select: { isActive: true, treatwellExternalId: true },
       }),
     ]);
-    if (!service) throw new Error('Service not found');
-    if (!stylist?.isActive) throw new BookingError('This stylist is no longer available. Please choose another stylist.');
+    if (!stylist?.isActive) throw new BookingError('STYLIST_UNAVAILABLE');
 
     await assertAppointmentSlotAvailable(tx, { id: '', stylistId: data.stylistId, durationAtBooking: service.duration, service }, data.date);
-
-    // Claim the discount in the same transaction (rolls back if the create fails).
-    const discount = data.discountCode ? await claimDiscountInTx(tx, data.discountCode) : null;
-    const offerPrice = applyOfferToPrice(Number(service.price), globalOffer);
 
     const api = getTreatwellApiConfiguration();
     const treatwellSyncStatus = initialTreatwellSyncStatus({
@@ -329,8 +348,7 @@ export async function createBooking(data: {
         // Double-confirm flow: requests start PENDING and only become CONFIRMED
         // when an admin approves them from the schedule board (updateAppointmentStatus).
         status: 'PENDING',
-        discountCodeId: discount?.id,
-        priceAtBooking: applyOfferToPrice(offerPrice, discount ? { discountType: discount.type, discountValue: Number(discount.value) } : null),
+        ...appointmentPriceFields(quote, data.locale),
         durationAtBooking: service.duration,
         notes: data.notes ?? null,
         treatwellSyncStatus,
@@ -356,20 +374,12 @@ export async function createBooking(data: {
  * inside one Serializable transaction so two concurrent "Anyone" bookings can't
  * be assigned the same stylist for the same slot.
  */
-export async function createBookingForFirstAvailable(data: {
-  candidateStylistIds: string[];
-  serviceId: string;
-  date: Date;
-  userId: string;
-  discountCode?: string;
-  notes?: string;
-}) {
-  const globalOffer = await getActiveGlobalOffer();
+export async function createBookingForFirstAvailable(data: NewBookingInput & { candidateStylistIds: string[] }) {
+  refuseDiscountCode(data.discountCode);
   const appointment = await runSerializableWithRetry(async (tx) => {
     const settings = await assertOnlineBookingReady(tx);
     await assertActiveBookingLimit(tx, data.userId);
-    const service = await tx.service.findUnique({ where: { id: data.serviceId }, select: { duration: true, price: true, treatwellExternalId: true } });
-    if (!service) throw new Error('Service not found');
+    const { service, quote } = await quoteInTx(tx, data);
 
     const { start: dayStart, end: dayEnd } = salonDayWindow(data.date);
 
@@ -406,17 +416,15 @@ export async function createBookingForFirstAvailable(data: {
     );
 
     if (!stylistId) {
-      throw new SlotUnavailableError('No stylist is available at this time. Please choose another time.');
+      throw new SlotUnavailableError('NO_STYLIST_AT_TIME');
     }
 
     const stylist = await tx.stylist.findUnique({
       where: { id: stylistId },
       select: { isActive: true, treatwellExternalId: true },
     });
-    if (!stylist?.isActive) throw new BookingError('This stylist is no longer available. Please choose another stylist.');
+    if (!stylist?.isActive) throw new BookingError('STYLIST_UNAVAILABLE');
 
-    const discount = data.discountCode ? await claimDiscountInTx(tx, data.discountCode) : null;
-    const offerPrice = applyOfferToPrice(Number(service.price), globalOffer);
     const api = getTreatwellApiConfiguration();
     const treatwellSyncStatus = initialTreatwellSyncStatus({
       apiEnabled: api.enabled && api.configured,
@@ -434,8 +442,7 @@ export async function createBookingForFirstAvailable(data: {
         // Double-confirm flow: requests start PENDING and only become CONFIRMED
         // when an admin approves them from the schedule board (updateAppointmentStatus).
         status: 'PENDING',
-        discountCodeId: discount?.id,
-        priceAtBooking: applyOfferToPrice(offerPrice, discount ? { discountType: discount.type, discountValue: Number(discount.value) } : null),
+        ...appointmentPriceFields(quote, data.locale),
         durationAtBooking: service.duration,
         notes: data.notes ?? null,
         treatwellSyncStatus,

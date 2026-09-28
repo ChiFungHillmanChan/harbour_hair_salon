@@ -4,6 +4,7 @@ import {
   createGoogleAuthorization,
   getGoogleCallbackUrl,
   readGoogleState,
+  readGoogleStateLocale,
   resolveOAuthOrigin,
 } from './google-oauth';
 
@@ -26,6 +27,27 @@ test('Google authorization preserves a safe destination and enables PKCE', async
 
   const state = await readGoogleState(stateCookie, url.searchParams.get('state'));
   assert.equal(state.redirectTo, '/book?stylist=amy');
+});
+
+test('Google authorization carries the page language through the signed state', async () => {
+  const { authorizationUrl, stateCookie } = await createGoogleAuthorization(
+    'http://localhost:3000',
+    '/zh-hk/book',
+    'zh-HK'
+  );
+  const url = new URL(authorizationUrl);
+  // The callback registered with Google never changes with the language.
+  assert.equal(url.searchParams.get('redirect_uri'), 'http://localhost:3000/api/auth/google/callback');
+
+  const state = await readGoogleState(stateCookie, url.searchParams.get('state'));
+  assert.equal(state.locale, 'zh-HK');
+  assert.equal(state.redirectTo, '/zh-hk/book');
+  assert.equal(await readGoogleStateLocale(stateCookie), 'zh-HK');
+
+  const legacy = await createGoogleAuthorization('http://localhost:3000', null);
+  assert.equal(await readGoogleStateLocale(legacy.stateCookie), null);
+  assert.equal(await readGoogleStateLocale('not-a-signed-state'), null);
+  assert.equal(await readGoogleStateLocale(undefined), null);
 });
 
 test('Google authorization rejects an altered state value', async () => {

@@ -11,7 +11,7 @@ after(() => mock.timers.reset());
 function bookingFixture(
   discount: { type: string; value: number; maxUses?: number; usedCount?: number },
   globalOffer: { discountType: string; discountValue: number } | null = null,
-  options: { failEnqueueAt?: number; ready?: boolean; hoursEnd?: string; stylistActive?: boolean; activeBookings?: number } & NotificationTimingHooks = {},
+  options: { failEnqueueAt?: number; ready?: boolean; hoursEnd?: string; stylistActive?: boolean; activeBookings?: number; bookable?: boolean; priceVersion?: number } & NotificationTimingHooks = {},
 ) {
   const stored: Record<string, unknown>[] = [];
   type Event = { id: string; eventKey: string; appointmentId: string; kind: string; payloadJson: string; delivered?: boolean };
@@ -24,7 +24,12 @@ function bookingFixture(
   let conflictReads = 0;
   let externalReads = 0;
   const code = { id: 'code-1', code: 'SAVE', isActive: true, expiresAt: null, maxUses: null, usedCount: 0, ...discount };
-  const liveService = { id: 'service-1', name: 'Cut', price: 100, duration: 60, treatwellExternalId: null, requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false };
+  const liveService = {
+    id: 'service-1', name: 'Cut', price: '100.00', duration: 60, treatwellExternalId: null, requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false,
+    // Price-option fields read by quoteForNewBooking.
+    offeringId: null, hairLength: null, priceType: 'STANDARD', priceVersion: options.priceVersion ?? 1, vatDisplay: 'EXCLUDED', priceNature: 'LISTED',
+    durationConfirmed: true, surchargeBaseServiceId: null, surchargeAmount: null, priceSource: 'treatwell:2026-09-28', isPublic: true, isBookable: options.bookable !== false,
+  };
   const hours = { startTime: '09:00', endTime: options.hoursEnd ?? '18:00' };
   const tx = {
     service: { findUnique: async () => liveService },
@@ -46,6 +51,7 @@ function bookingFixture(
       },
     },
     externalBusyBlock: { findMany: async () => { externalReads++; return []; } },
+    user: { update: async () => ({}) },
     discountCode: {
       findUnique: async () => ({ ...code }),
       update: async () => { code.usedCount++; return code; },
@@ -101,7 +107,7 @@ function bookingFixture(
     isBookingEnabled: async () => true,
     assertOnlineBookingReady: async (database: unknown) => {
       assert.equal(database, tx, 'readiness must be checked inside the booking transaction');
-      if (options.ready === false) throw new BookingError('Online booking is closed');
+      if (options.ready === false) throw new BookingError('MAINTENANCE');
       return { bookingEnabled: true, phone: '020 0000 0000' };
     },
   };
@@ -163,38 +169,64 @@ test('named creation loads appointment and external conflicts once inside its tr
   assert.deepEqual(f.reads(), { conflicts: 1, external: 1 });
 });
 
+const quote = { serviceId: 'service-1', priceVersion: 1, amountPence: 10000 };
+
 for (const anyone of [false, true]) {
-  test(`${anyone ? 'Anyone' : 'named stylist'} booking persists the 20% code price and consumes one use`, async () => {
-    const { service, code, stored } = bookingFixture({ type: 'PERCENTAGE', value: 20 });
-    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', discountCode: ' save ' };
+  test(`${anyone ? 'Anyone' : 'named stylist'} booking freezes the listed price with its quote and never applies an offer`, async () => {
+    // Discounts are paused: an active global offer must not change the price.
+    const { service, code, stored } = bookingFixture({ type: 'PERCENTAGE', value: 20 }, { discountType: 'PERCENTAGE', discountValue: 20 });
+    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', expectedQuote: quote, locale: 'zh-HK' as const };
     if (anyone) await service.createBookingForFirstAvailable({ ...data, candidateStylistIds: ['stylist-1'] });
     else await service.createBooking({ ...data, stylistId: 'stylist-1' });
-    assert.equal(stored[0].priceAtBooking, 80);
+    assert.equal(Number(stored[0].priceAtBooking), 100);
     assert.equal(stored[0].durationAtBooking, 60);
     assert.equal(stored[0].status, 'PENDING');
-    assert.equal(stored[0].discountCodeId, 'code-1');
-    assert.equal(code.usedCount, 1);
+    assert.equal(stored[0].discountCodeId, undefined);
+    assert.equal(stored[0].notificationLocale, 'zh-HK');
+    const frozen = JSON.parse(String(stored[0].quoteJson));
+    assert.equal(frozen.amountPence, 10000);
+    assert.equal(frozen.priceType, 'STANDARD');
+    assert.equal(frozen.vatDisplay, 'EXCLUDED');
+    assert.equal(frozen.discountsApplied, false);
+    assert.equal(code.usedCount, 0);
+  });
+
+  test(`${anyone ? 'Anyone' : 'named stylist'} booking refuses a discount code before any write and never counts it`, async () => {
+    const { service, code, stored } = bookingFixture({ type: 'PERCENTAGE', value: 20 });
+    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', discountCode: ' save ', expectedQuote: quote };
+    await assert.rejects(anyone
+      ? service.createBookingForFirstAvailable({ ...data, candidateStylistIds: ['stylist-1'] })
+      : service.createBooking({ ...data, stylistId: 'stylist-1' }), /paused/i);
+    assert.equal(code.usedCount, 0);
+    assert.equal(stored.length, 0);
+  });
+
+  test(`${anyone ? 'Anyone' : 'named stylist'} booking returns the current price instead of booking at a stale one`, async () => {
+    const { service, stored } = bookingFixture({ type: 'FIXED', value: 0 }, null, { priceVersion: 2 });
+    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', expectedQuote: quote };
+    await assert.rejects(anyone
+      ? service.createBookingForFirstAvailable({ ...data, candidateStylistIds: ['stylist-1'] })
+      : service.createBooking({ ...data, stylistId: 'stylist-1' }), (error: Error & { quote?: { priceVersion: number } }) => {
+      assert.equal(error.name, 'PriceChangedError');
+      assert.equal(error.quote?.priceVersion, 2);
+      return true;
+    });
+    assert.equal(stored.length, 0);
+  });
+
+  test(`${anyone ? 'Anyone' : 'named stylist'} booking refuses an option closed to new bookings, even by direct id`, async () => {
+    const { service, stored } = bookingFixture({ type: 'FIXED', value: 0 }, null, { bookable: false });
+    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', expectedQuote: quote };
+    await assert.rejects(anyone
+      ? service.createBookingForFirstAvailable({ ...data, candidateStylistIds: ['stylist-1'] })
+      : service.createBooking({ ...data, stylistId: 'stylist-1' }), /cannot be booked online/i);
+    assert.equal(stored.length, 0);
   });
 }
 
-test('discount codes apply after the global offer and never make the frozen price negative', async () => {
-  for (const [value, expected] of [[5, 75], [90, 0]]) {
-    const { service, stored } = bookingFixture({ type: 'FIXED', value }, { discountType: 'PERCENTAGE', discountValue: 20 });
-    await service.createBooking({ stylistId: 'stylist-1', serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', discountCode: 'SAVE' });
-    assert.equal(stored[0].priceAtBooking, expected);
-  }
-});
-
-test('an exhausted discount rejects the whole booking without consuming another use', async () => {
-  const { service, code, stored } = bookingFixture({ type: 'FIXED', value: 5, maxUses: 1, usedCount: 1 });
-  await assert.rejects(service.createBooking({ stylistId: 'stylist-1', serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', discountCode: 'SAVE' }), /Discount code/);
-  assert.equal(code.usedCount, 1);
-  assert.equal(stored.length, 0);
-});
-
 for (const anyone of [false, true]) {
   const label = anyone ? 'Anyone' : 'named stylist';
-  const input = { stylistId: anyone ? ANY_STYLIST_ID : 'stylist-1', serviceId: 'service-1', date: '2099-09-14', time: '11:00', discountCode: 'SAVE' };
+  const input = { stylistId: anyone ? ANY_STYLIST_ID : 'stylist-1', serviceId: 'service-1', date: '2099-09-14', time: '11:00', expectedQuote: quote };
 
   test(`${label} submit publishes its busy period before waiting for email delivery`, async () => {
     await assertFeedInvalidatesBeforeDelivery((hooks) => {
@@ -208,7 +240,7 @@ for (const anyone of [false, true]) {
     const result = await f.actions.submitBooking(input);
     assert.equal(result.success, true);
     assert.equal(f.stored.length, 1);
-    assert.equal(f.code.usedCount, 1);
+    assert.equal(f.code.usedCount, 0);
     assert.equal(f.stored[0].status, 'PENDING');
     assert.deepEqual(f.events.map((event) => event.eventKey), [
       'appointment/appointment-1/0/REQUEST_RECEIVED',
@@ -216,7 +248,7 @@ for (const anyone of [false, true]) {
     ]);
     for (const event of f.events) {
       const payload = JSON.parse(event.payloadJson);
-      assert.equal(payload.appointment.service.price, 80);
+      assert.equal(payload.appointment.price.amountPence, 10000);
       assert.equal(payload.appointment.service.duration, 60);
       assert.equal(payload.date, '2099-09-14T10:00:00.000Z');
     }
@@ -225,7 +257,33 @@ for (const anyone of [false, true]) {
     assert.equal(f.dispatches(), 1);
   });
 
-  test(`${label} rolls back the appointment, discount use, and first notice when the second enqueue fails`, async () => {
+  test(`${label} submit with a stale price returns the new quote and books nothing`, async () => {
+    const f = bookingFixture({ type: 'FIXED', value: 0 }, null, { priceVersion: 2 });
+    const result = await f.actions.submitBooking(input);
+    assert.equal(result.success, false);
+    assert.equal(!result.success && result.code, 'PRICE_CHANGED');
+    assert.equal(!result.success && result.quote?.priceVersion, 2);
+    assert.equal(f.stored.length, 0);
+    assert.equal(f.events.length, 0);
+  });
+
+  test(`${label} submit from an old page that still sends a discount code is refused clearly and counts nothing`, async () => {
+    const f = bookingFixture({ type: 'PERCENTAGE', value: 20 });
+    const result = await f.actions.submitBooking({ ...input, discountCode: 'SAVE' });
+    assert.equal(result.success, false);
+    assert.equal(!result.success && result.code, 'DISCOUNTS_PAUSED');
+    assert.equal(f.stored.length, 0);
+    assert.equal(f.code.usedCount, 0);
+  });
+
+  test(`${label} submit refuses a retired option sent by id`, async () => {
+    const f = bookingFixture({ type: 'FIXED', value: 0 }, null, { bookable: false });
+    const result = await f.actions.submitBooking(input);
+    assert.equal(!result.success && result.code, 'SERVICE_NOT_BOOKABLE');
+    assert.equal(f.stored.length, 0);
+  });
+
+  test(`${label} rolls back the appointment and first notice when the second enqueue fails`, async () => {
     const f = bookingFixture({ type: 'PERCENTAGE', value: 20 }, null, { failEnqueueAt: 2 });
     const result = await f.actions.submitBooking(input);
     assert.equal(result.success, false);
@@ -238,7 +296,7 @@ for (const anyone of [false, true]) {
 
   test(`${label} direct service call cannot bypass the final readiness check`, async () => {
     const f = bookingFixture({ type: 'PERCENTAGE', value: 20 }, null, { ready: false });
-    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', discountCode: 'SAVE' };
+    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', expectedQuote: quote };
     const booking = anyone
       ? f.service.createBookingForFirstAvailable({ ...data, candidateStylistIds: ['stylist-1'] })
       : f.service.createBooking({ ...data, stylistId: 'stylist-1' });
@@ -249,9 +307,9 @@ for (const anyone of [false, true]) {
     assert.equal(f.delivered.length, 0);
   });
 
-  test(`${label} direct service call rechecks current hours and rolls back a claimed discount`, async () => {
+  test(`${label} direct service call rechecks current hours and writes nothing`, async () => {
     const f = bookingFixture({ type: 'PERCENTAGE', value: 20 }, null, { hoursEnd: '11:45' });
-    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', discountCode: 'SAVE' };
+    const data = { serviceId: 'service-1', date: new Date('2099-09-14T10:00:00Z'), userId: 'user-1', expectedQuote: quote };
     const booking = anyone
       ? f.service.createBookingForFirstAvailable({ ...data, candidateStylistIds: ['stylist-1'] })
       : f.service.createBooking({ ...data, stylistId: 'stylist-1' });

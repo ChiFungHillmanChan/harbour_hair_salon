@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { getT } from '@/i18n/server';
 
 /**
  * Honest credibility strip shown directly under the hero. Unlike SocialProofBar
@@ -32,30 +33,32 @@ const ICON = {
   ),
 };
 
-type Pillar = { icon: ReactNode; label: string };
+// `label` names the pillar's text in the `home.trustBar` dictionary.
+type Pillar = { icon: ReactNode; label: 'hongKongTrained' | 'expertServices' | 'location' | 'openDaily' };
 
 const PILLARS: Pillar[] = [
-  { icon: ICON.scissors, label: 'Hong Kong trained stylists' },
-  { icon: ICON.sparkle, label: 'Expert cuts, colour & perms' },
-  { icon: ICON.pin, label: 'Central Arcade, Leeds LS1 6DX' },
-  { icon: ICON.clock, label: 'Open 7 days a week' },
+  { icon: ICON.scissors, label: 'hongKongTrained' },
+  { icon: ICON.sparkle, label: 'expertServices' },
+  { icon: ICON.pin, label: 'location' },
+  { icon: ICON.clock, label: 'openDaily' },
 ];
 
-export function TrustBar({
+export async function TrustBar({
   treatwellUrl,
   googleBusinessUrl,
 }: {
   treatwellUrl?: string | null;
   googleBusinessUrl?: string | null;
 }) {
+  const t = await getT('home');
   return (
-    <section className="bg-white border-b border-zinc-100" aria-label="Why choose Harbour Hair Salon">
+    <section className="bg-white border-b border-zinc-100" aria-label={t('trustBar.label')}>
       <div className="container mx-auto px-4 py-5">
         <ul className="flex flex-wrap items-center justify-center gap-x-7 md:gap-x-10 gap-y-3 text-sm text-zinc-600">
           {PILLARS.map((p) => (
             <li key={p.label} className="inline-flex items-center gap-2">
               <span className="text-zinc-900">{p.icon}</span>
-              <span className="tracking-wide">{p.label}</span>
+              <span className="tracking-wide">{t(`trustBar.${p.label}`)}</span>
             </li>
           ))}
         </ul>
@@ -69,7 +72,7 @@ export function TrustBar({
                 rel="noopener noreferrer"
                 className="font-semibold text-zinc-900 hover:text-zinc-600 transition-colors"
               >
-                Book on Treatwell
+                {t('trustBar.bookOnTreatwell')}
               </a>
             )}
             {googleBusinessUrl && (
@@ -79,7 +82,7 @@ export function TrustBar({
                 rel="noopener noreferrer"
                 className="text-zinc-500 hover:text-zinc-900 transition-colors"
               >
-                Find us on Google
+                {t('trustBar.findOnGoogle')}
               </a>
             )}
           </div>

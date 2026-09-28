@@ -1,6 +1,7 @@
 'use server';
 
 import { appendAuditEvent } from '@/app/lib/audit';
+import { revalidateAllLocales } from '@/i18n/revalidate';
 import prisma from '@/app/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { verifySession } from '@/app/lib/session';
@@ -15,30 +16,35 @@ import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
 import { refreshStaleCalendarFeeds } from '@/app/services/calendar-sync-service';
 import { assertAppointmentSlotAvailable, runSerializableWithRetry } from '@/app/services/booking-service';
-import { BookingError } from '@/app/services/booking-errors';
+import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
+import { getActionLocale } from '@/i18n/request';
+import { translator } from '@/i18n/messages';
+import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
 
 // --- Validation Schemas ---
 
+// Messages are codes, translated by promotionError() below.
 const discountCodeSchema = z.object({
-  code: z.string().min(1, 'Code is required').toUpperCase(),
-  type: z.enum(['PERCENTAGE', 'FIXED']),
-  value: z.coerce.number().positive('Value must be positive'),
-  maxUses: z.coerce.number().int().positive().nullable().optional(),
-  expiresAt: z.coerce.date().nullable().optional(),
+  code: z.string('CODE_REQUIRED').min(1, 'CODE_REQUIRED').toUpperCase(),
+  type: z.enum(['PERCENTAGE', 'FIXED'], 'TYPE'),
+  value: z.coerce.number('VALUE_POSITIVE').positive('VALUE_POSITIVE'),
+  maxUses: z.coerce.number('MAX_USES').int('MAX_USES').positive('MAX_USES').nullable().optional(),
+  expiresAt: z.coerce.date('EXPIRES').nullable().optional(),
 }).refine(
   (data) => data.type !== 'PERCENTAGE' || data.value <= 100,
-  { message: 'Percentage discount cannot exceed 100%', path: ['value'] }
+  { message: 'PERCENT_MAX', path: ['value'] }
 );
 
+// An offer's title and description are bilingual content (created with both
+// languages via createPublished, edited as a draft in actions/admin-content);
+// the discount itself is operational and saves immediately.
 const offerSchema = z.object({
-  title: z.string().min(1, 'Title is required'),
-  description: z.string().optional(),
-  discountType: z.enum(['PERCENTAGE', 'FIXED']),
-  discountValue: z.coerce.number().positive('Value must be positive'),
+  discountType: z.enum(['PERCENTAGE', 'FIXED'], 'TYPE'),
+  discountValue: z.coerce.number('VALUE_POSITIVE').positive('VALUE_POSITIVE'),
   isGlobal: z.boolean().optional(),
 }).refine(
   (data) => data.discountType !== 'PERCENTAGE' || data.discountValue <= 100,
-  { message: 'Percentage discount cannot exceed 100%', path: ['discountValue'] }
+  { message: 'PERCENT_MAX', path: ['discountValue'] }
 );
 
 // Same `{ error?, success? }` shape resetUserPassword below already returns —
@@ -48,10 +54,11 @@ export type OfferActionState = { error?: string; success?: boolean };
 export type DiscountActionState = { error?: string; success?: boolean };
 export type AdminUserActionState = { error?: string; success?: boolean };
 
+// Messages are codes, translated by adminUserError() below.
 const adminUserSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
-  email: z.string().email('Please enter a valid email').max(254),
-  password: z.string().min(8, 'Password must be at least 8 characters').max(128),
+  name: z.string('NAME_TOO_SHORT').min(2, 'NAME_TOO_SHORT').max(100, 'NAME_TOO_LONG'),
+  email: z.string('EMAIL_INVALID').email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
+  password: z.string('PASSWORD_TOO_SHORT').min(8, 'PASSWORD_TOO_SHORT').max(128, 'PASSWORD_TOO_LONG'),
 });
 
 async function requireAdmin() {
@@ -64,12 +71,22 @@ async function requireAdmin() {
 
 // --- Discount Codes ---
 
+/**
+ * Offer and discount-code errors in the admin's language. The records stay
+ * fully manageable while discounts are paused (pricing/policy.ts
+ * DISCOUNTS_PAUSED); only their use in new quotes is switched off.
+ */
+async function promotionError(code: string): Promise<string> {
+  const t = translator(await getActionLocale(), 'adminContent');
+  return t.dynamic(`promotions.errors.${code}`, undefined, t('promotions.errors.GENERIC'));
+}
+
 export async function createDiscountCode(
   _prevState: DiscountActionState,
   formData: FormData
 ): Promise<DiscountActionState> {
   const { error, session } = await requireAdmin();
-  if (error || !session) return { error };
+  if (error || !session) return { error: await promotionError('UNAUTHORISED') };
 
   const parsed = discountCodeSchema.safeParse({
     code: formData.get('code'),
@@ -80,7 +97,7 @@ export async function createDiscountCode(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
+    return { error: await promotionError(parsed.error.issues[0].message) };
   }
 
   try {
@@ -95,19 +112,19 @@ export async function createDiscountCode(
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      return { error: 'Discount code already exists' };
+      return { error: await promotionError('CODE_TAKEN') };
     }
     console.error('createDiscountCode failed:', error);
-    return { error: 'Failed to create discount code. Please try again.' };
+    return { error: await promotionError('CODE_CREATE_FAILED') };
   }
 
-  revalidatePath('/admin/discounts');
+  revalidateAllLocales(revalidatePath, '/admin/discounts');
   return { success: true };
 }
 
 export async function deleteDiscountCode(id: string): Promise<DiscountActionState> {
   const { error } = await requireAdmin();
-  if (error) return { error };
+  if (error) return { error: await promotionError('UNAUTHORISED') };
 
   try {
     // Check if any appointments use this code
@@ -128,10 +145,10 @@ export async function deleteDiscountCode(id: string): Promise<DiscountActionStat
     }
   } catch (error) {
     console.error('deleteDiscountCode failed:', error);
-    return { error: 'Failed to delete discount code. Please try again.' };
+    return { error: await promotionError('CODE_DELETE_FAILED') };
   }
 
-  revalidatePath('/admin/discounts');
+  revalidateAllLocales(revalidatePath, '/admin/discounts');
   return { success: true };
 }
 
@@ -146,7 +163,7 @@ export async function toggleDiscountCodeStatus(
   isActive: boolean
 ): Promise<DiscountActionState> {
   const { error } = await requireAdmin();
-  if (error) return { error };
+  if (error) return { error: await promotionError('UNAUTHORISED') };
 
   try {
     await prisma.discountCode.update({
@@ -155,12 +172,10 @@ export async function toggleDiscountCodeStatus(
     });
   } catch (error) {
     console.error('toggleDiscountCodeStatus failed:', error);
-    return {
-      error: `Failed to ${isActive ? 'activate' : 'deactivate'} discount code. Please try again.`,
-    };
+    return { error: await promotionError(isActive ? 'CODE_ACTIVATE_FAILED' : 'CODE_DEACTIVATE_FAILED') };
   }
 
-  revalidatePath('/admin/discounts');
+  revalidateAllLocales(revalidatePath, '/admin/discounts');
   return { success: true };
 }
 
@@ -170,42 +185,56 @@ export async function createOffer(
   _prevState: OfferActionState,
   formData: FormData
 ): Promise<OfferActionState> {
-  const { error } = await requireAdmin();
-  if (error) return { error };
+  const { error, session } = await requireAdmin();
+  if (error || !session) return { error: await promotionError('UNAUTHORISED') };
 
   const parsed = offerSchema.safeParse({
-    title: formData.get('title'),
-    description: formData.get('description'),
     discountType: formData.get('discountType'),
     discountValue: formData.get('discountValue'),
     isGlobal: formData.get('isGlobal') === 'on',
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
+    return { error: await promotionError(parsed.error.issues[0].message) };
   }
 
+  let contentFields: unknown = null;
   try {
-    await prisma.offer.create({
-      data: {
-        title: parsed.data.title,
-        description: parsed.data.description || null,
-        discountType: parsed.data.discountType,
-        discountValue: parsed.data.discountValue,
-        isActive: true,
-        isGlobal: parsed.data.isGlobal ?? false,
-      },
-    });
-  } catch (error) {
-    console.error('createOffer failed:', error);
-    return { error: 'Failed to create offer. Please try again.' };
+    contentFields = JSON.parse(String(formData.get('contentJson') ?? 'null'));
+  } catch {
+    return { error: await promotionError('OFFER_CONTENT') };
   }
 
-  revalidatePath('/admin/offers');
+  // A new offer goes live only with its title (and description) in both
+  // languages, confirmed proofread — never English-only.
+  try {
+    await prisma.$transaction((tx) => createPublished(
+      tx,
+      'OFFER',
+      { fields: contentFields, confirmedReviewed: formData.get('contentReviewed') === 'on', adminId: session.userId },
+      (english) => tx.offer.create({
+        data: {
+          title: typeof english.title === 'string' ? english.title : '',
+          description: typeof english.description === 'string' && english.description.trim() ? english.description : null,
+          discountType: parsed.data.discountType,
+          discountValue: parsed.data.discountValue,
+          isActive: true,
+          isGlobal: parsed.data.isGlobal ?? false,
+        },
+        select: { id: true },
+      }),
+    ));
+  } catch (error) {
+    if (error instanceof ContentError) return { error: await promotionError('OFFER_CONTENT') };
+    console.error('createOffer failed:', error);
+    return { error: await promotionError('OFFER_CREATE_FAILED') };
+  }
+
+  revalidateAllLocales(revalidatePath, '/admin/offers');
   updateTag('active-offers');
-  revalidatePath('/offers');
-  revalidatePath('/');
-  revalidatePath('/services');
+  revalidateAllLocales(revalidatePath, '/offers');
+  revalidateAllLocales(revalidatePath, '/');
+  revalidateAllLocales(revalidatePath, '/services');
   await revalidateCategoryPages();
 
   return { success: true };
@@ -216,34 +245,31 @@ export async function updateOffer(
   formData: FormData
 ): Promise<OfferActionState> {
   const { error } = await requireAdmin();
-  if (error) return { error };
+  if (error) return { error: await promotionError('UNAUTHORISED') };
 
   const id = formData.get('id');
   if (typeof id !== 'string' || !id) {
-    return { error: 'Missing offer id.' };
+    return { error: await promotionError('OFFER_MISSING_ID') };
   }
 
-  const existing = await prisma.offer.findUnique({ where: { id } });
-  if (!existing) return { error: 'Offer not found.' };
+  const existing = await prisma.offer.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) return { error: await promotionError('OFFER_NOT_FOUND') };
 
+  // Discount settings only; the title and description are drafted separately.
   const parsed = offerSchema.safeParse({
-    title: formData.get('title'),
-    description: formData.get('description'),
     discountType: formData.get('discountType'),
     discountValue: formData.get('discountValue'),
     isGlobal: formData.get('isGlobal') === 'on',
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
+    return { error: await promotionError(parsed.error.issues[0].message) };
   }
 
   try {
     await prisma.offer.update({
       where: { id },
       data: {
-        title: parsed.data.title,
-        description: parsed.data.description || null,
         discountType: parsed.data.discountType,
         discountValue: parsed.data.discountValue,
         isGlobal: parsed.data.isGlobal ?? false,
@@ -251,14 +277,14 @@ export async function updateOffer(
     });
   } catch (error) {
     console.error('updateOffer failed:', error);
-    return { error: 'Failed to update offer. Please try again.' };
+    return { error: await promotionError('OFFER_UPDATE_FAILED') };
   }
 
-  revalidatePath('/admin/offers');
+  revalidateAllLocales(revalidatePath, '/admin/offers');
   updateTag('active-offers');
-  revalidatePath('/offers');
-  revalidatePath('/');
-  revalidatePath('/services');
+  revalidateAllLocales(revalidatePath, '/offers');
+  revalidateAllLocales(revalidatePath, '/');
+  revalidateAllLocales(revalidatePath, '/services');
   await revalidateCategoryPages();
 
   return { success: true };
@@ -266,7 +292,7 @@ export async function updateOffer(
 
 export async function toggleOfferStatus(id: string, isActive: boolean): Promise<OfferActionState> {
   const { error } = await requireAdmin();
-  if (error) return { error };
+  if (error) return { error: await promotionError('UNAUTHORISED') };
 
   try {
     await prisma.offer.update({
@@ -275,48 +301,55 @@ export async function toggleOfferStatus(id: string, isActive: boolean): Promise<
     });
   } catch (error) {
     console.error('toggleOfferStatus failed:', error);
-    return { error: 'Failed to update offer status. Please try again.' };
+    return { error: await promotionError('OFFER_STATUS_FAILED') };
   }
 
-  revalidatePath('/admin/offers');
+  revalidateAllLocales(revalidatePath, '/admin/offers');
   updateTag('active-offers');
-  revalidatePath('/offers');
-  revalidatePath('/');
-  revalidatePath('/services');
+  revalidateAllLocales(revalidatePath, '/offers');
+  revalidateAllLocales(revalidatePath, '/');
+  revalidateAllLocales(revalidatePath, '/services');
   await revalidateCategoryPages();
   return { success: true };
 }
 
 export async function deleteOffer(id: string): Promise<OfferActionState> {
   const { error } = await requireAdmin();
-  if (error) return { error };
+  if (error) return { error: await promotionError('UNAUTHORISED') };
 
   try {
-    await prisma.offer.delete({
-      where: { id },
+    await prisma.$transaction(async (tx) => {
+      await deleteContent(tx, 'OFFER', id);
+      await tx.offer.delete({ where: { id } });
     });
   } catch (error) {
     console.error('deleteOffer failed:', error);
-    return { error: 'Failed to delete offer. Please try again.' };
+    return { error: await promotionError('OFFER_DELETE_FAILED') };
   }
 
-  revalidatePath('/admin/offers');
+  revalidateAllLocales(revalidatePath, '/admin/offers');
   updateTag('active-offers');
-  revalidatePath('/offers');
-  revalidatePath('/');
-  revalidatePath('/services');
+  revalidateAllLocales(revalidatePath, '/offers');
+  revalidateAllLocales(revalidatePath, '/');
+  revalidateAllLocales(revalidatePath, '/services');
   await revalidateCategoryPages();
   return { success: true };
 }
 
 // --- Admin Users ---
 
+/** Admin-account errors in the admin's language, addressed by stable code. */
+async function adminUserError(code: string, params?: { count: number }): Promise<string> {
+  const t = translator(await getActionLocale(), 'adminOps');
+  return t.dynamic(`users.errors.${code}`, params, t('users.errors.INVALID'));
+}
+
 export async function createAdminUser(
   _prevState: AdminUserActionState,
   formData: FormData
 ): Promise<AdminUserActionState> {
   const { error, session } = await requireAdmin();
-  if (error || !session) return { error: error ?? 'Unauthorized' };
+  if (error || !session) return { error: await adminUserError('UNAUTHORIZED') };
 
   const parsed = adminUserSchema.safeParse({
     name: formData.get('name'),
@@ -325,7 +358,7 @@ export async function createAdminUser(
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
+    return { error: await adminUserError(parsed.error.issues[0]?.message ?? 'INVALID') };
   }
 
   const hashedPassword = await hashPassword(parsed.data.password);
@@ -340,22 +373,22 @@ export async function createAdminUser(
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      return { error: 'Email already exists' };
+      return { error: await adminUserError('EMAIL_TAKEN') };
     }
     console.error('createAdminUser failed:', error);
-    return { error: 'Failed to create admin user. Please try again.' };
+    return { error: await adminUserError('CREATE_FAILED') };
   }
 
-  revalidatePath('/admin/users');
+  revalidateAllLocales(revalidatePath, '/admin/users');
   return { success: true };
 }
 
 export async function deleteAdminUser(id: string): Promise<AdminUserActionState> {
   const { error, session } = await requireAdmin();
-  if (error || !session) return { error: error ?? 'Unauthorized' };
+  if (error || !session) return { error: await adminUserError('UNAUTHORIZED') };
 
   if (id === session.userId) {
-    return { error: 'You cannot delete your own account.' };
+    return { error: await adminUserError('DELETE_SELF') };
   }
 
   // Their appointments carry the booking history and hold a foreign key to the
@@ -366,7 +399,7 @@ export async function deleteAdminUser(id: string): Promise<AdminUserActionState>
   });
 
   if (appointmentCount > 0) {
-    return { error: `This admin has ${appointmentCount} appointment(s) and cannot be deleted.` };
+    return { error: await adminUserError('HAS_APPOINTMENTS', { count: appointmentCount }) };
   }
 
   try {
@@ -376,10 +409,10 @@ export async function deleteAdminUser(id: string): Promise<AdminUserActionState>
     });
   } catch (error) {
     console.error('deleteAdminUser failed:', error);
-    return { error: 'Failed to delete admin user. Please try again.' };
+    return { error: await adminUserError('DELETE_FAILED') };
   }
 
-  revalidatePath('/admin/users');
+  revalidateAllLocales(revalidatePath, '/admin/users');
   return { success: true };
 }
 
@@ -407,7 +440,7 @@ export async function promoteGoogleUserToAdmin(id: string) {
     await appendAuditEvent({ actorUserId: session.userId, action: 'ADMIN.PROMOTED', targetType: 'User', targetId: user.id }, tx);
   });
 
-  revalidatePath('/admin/users');
+  revalidateAllLocales(revalidatePath, '/admin/users');
 }
 
 // Requests need explicit approval. Every transition checks the current row in
@@ -417,12 +450,14 @@ const ALLOWED_APPOINTMENT_STATUSES = ['CONFIRMED', 'COMPLETED', 'CANCELLED'] as 
 type AppointmentStatus = (typeof ALLOWED_APPOINTMENT_STATUSES)[number];
 
 export async function updateAppointmentStatus(appointmentId: string, status: string) {
+  // Messages go back in the admin's interface language; see booking-errors.ts.
+  const locale = await getActionLocale();
   const session = await verifySession();
   if (session.role !== 'ADMIN') {
-    return { success: false, error: 'Not authorised' };
+    return { success: false, error: bookingErrorText(locale, 'NOT_AUTHORISED') };
   }
   if (!ALLOWED_APPOINTMENT_STATUSES.includes(status as AppointmentStatus)) {
-    return { success: false, error: 'Invalid status' };
+    return { success: false, error: translator(locale, 'adminSchedule')('errors.INVALID_STATUS') };
   }
   try {
     // Network I/O stays outside the serializable transaction below. Outside
@@ -436,18 +471,18 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
         service: { select: { name: true, price: true, duration: true, treatwellExternalId: true } },
       } as const;
       const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
-      if (!current) throw new BookingError('Appointment not found');
+      if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
       if (current.status === status) return { appointment: current, changed: false };
       if (status === 'CONFIRMED' && current.status !== 'PENDING') {
-        throw new BookingError('Only pending requests can be confirmed');
+        throw new BookingError('ONLY_PENDING_CONFIRM');
       }
       if (current.status === 'CANCELLED') {
-        throw new BookingError('A cancelled appointment cannot be reinstated — create a new booking.');
+        throw new BookingError('CANCELLED_CANNOT_REINSTATE');
       }
 
       if (status === 'CONFIRMED') {
         const readiness = await checkCalendarBookingReadiness(tx);
-        if (!readiness.ready) throw new BookingError('Calendar setup needs attention. Check Integrations before confirming this request.');
+        if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
         // Imported bookings or opening hours may have changed since the request.
         await assertAppointmentSlotAvailable(tx, current, current.date);
       }
@@ -471,9 +506,9 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
         where: { id: appointmentId, status: current.status, date: current.date, updatedAt: current.updatedAt },
         data,
       });
-      if (result.count !== 1) throw new BookingError('This appointment has changed. Please refresh and try again.');
+      if (result.count !== 1) throw new BookingError('STALE');
       const updated = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
-      if (!updated) throw new BookingError('Appointment not found');
+      if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
       if (status === 'CONFIRMED' || status === 'CANCELLED') await enqueueAppointmentNotification(tx, status === 'CONFIRMED' ? 'CONFIRMATION' : 'CANCELLATION', updated);
       await appendAuditEvent({ actorUserId: session.userId, action: 'APPOINTMENT.STATUS', targetType: 'Appointment', targetId: appointmentId, metadata: { from: current.status, to: status } }, tx);
       return { appointment: updated, changed: true };
@@ -483,24 +518,24 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
     invalidateStylistIcalFeed();
     if (changed) after(() => dispatchAppointmentNotifications(appointment.id));
   } catch (error) {
-    return { success: false, error: error instanceof BookingError ? error.message : 'Could not update the appointment. Please try again.' };
+    return { success: false, error: describeBookingError(error, locale, 'ADMIN_UPDATE_FAILED') };
   }
-  revalidatePath('/admin');
-  revalidatePath('/appointments');
-  revalidatePath('/book');
+  revalidateAllLocales(revalidatePath, '/admin');
+  revalidateAllLocales(revalidatePath, '/appointments');
+  revalidateAllLocales(revalidatePath, '/book');
   return { success: true };
 }
 
 export async function resetUserPassword(userId: string, newPassword: string) {
   const { error, session } = await requireAdmin();
-  if (error || !session) return { error: error ?? 'Unauthorized' };
+  if (error || !session) return { error: await adminUserError('UNAUTHORIZED') };
 
   if (!newPassword || newPassword.length < 8) {
-    return { error: 'Password must be at least 8 characters' };
+    return { error: await adminUserError('PASSWORD_TOO_SHORT') };
   }
 
   if (newPassword.length > 128) {
-    return { error: 'Password must be at most 128 characters' };
+    return { error: await adminUserError('PASSWORD_TOO_LONG') };
   }
 
   // Verify the target user is an admin (admins can only reset other admin passwords)
@@ -510,7 +545,7 @@ export async function resetUserPassword(userId: string, newPassword: string) {
   });
 
   if (!targetUser || targetUser.role !== 'ADMIN') {
-    return { error: 'Can only reset passwords for admin users' };
+    return { error: await adminUserError('RESET_ONLY_ADMINS') };
   }
 
   const hashedPassword = await hashPassword(newPassword);
@@ -523,6 +558,6 @@ export async function resetUserPassword(userId: string, newPassword: string) {
     await appendAuditEvent({ actorUserId: session.userId, action: 'ADMIN.PASSWORD_RESET', targetType: 'User', targetId: userId }, tx);
   });
 
-  revalidatePath('/admin/users');
+  revalidateAllLocales(revalidatePath, '/admin/users');
   return { success: true };
 }

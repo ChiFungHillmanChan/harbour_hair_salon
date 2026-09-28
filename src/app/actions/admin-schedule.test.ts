@@ -82,6 +82,16 @@ function fixture(options: {
         return { count: 1 };
       },
     },
+    // Only read when an edit changes the service (quoteForNewBooking).
+    service: {
+      findUnique: async ({ where }: { where: { id: string } }) => where.id === 'service-2' ? {
+        id: 'service-2', name: 'Blow Dry', price: 40, duration: 45, offeringId: null, hairLength: null,
+        priceType: 'STANDARD', priceVersion: 3, vatDisplay: 'EXCLUDED', priceNature: 'LISTED', durationConfirmed: true,
+        surchargeBaseServiceId: null, surchargeAmount: null, priceSource: 'treatwell:2026-09-28', isPublic: true,
+        isBookable: true, requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false,
+        treatwellExternalId: null,
+      } : null,
+    },
     availability: { findFirst: async () => ({ startTime: '09:00', endTime: '18:00' }) },
     externalBusyBlock: { findMany: async () => [] },
   };
@@ -274,6 +284,23 @@ test('changing the stylist on a confirmed booking sends a reschedule email', asy
 
   assert.equal(enqueued.length, 1);
   assert.equal(enqueued[0].kind, 'RESCHEDULE');
+});
+
+test('re-servicing a confirmed booking at the price shown records it and tells the customer once', async () => {
+  const { actions, appointment, enqueued, writes } = fixture();
+
+  const result = await actions.editAppointmentByAdmin({
+    ...move({ time: '10:00' }),
+    serviceId: 'service-2',
+    expectedQuote: { serviceId: 'service-2', priceVersion: 3, amountPence: 4000 },
+  });
+
+  assert.deepEqual(result, { success: true });
+  assert.equal(appointment.serviceId, 'service-2');
+  assert.equal(writes[0].priceAtBooking, '40.00');
+  assert.equal(JSON.parse(writes[0].quoteJson as string).vatDisplay, 'EXCLUDED');
+  assert.equal(appointment.notificationVersion, 1);
+  assert.deepEqual(enqueued.map((event) => event.kind), ['RESCHEDULE']);
 });
 
 test('moving a pending request replaces its stale receipt and salon alert without confirming it', async () => {

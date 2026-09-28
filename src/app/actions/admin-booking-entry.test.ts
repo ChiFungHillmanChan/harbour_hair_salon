@@ -12,7 +12,23 @@ const UPDATED_AT = new Date('2099-09-01T00:00:00Z');
 
 type Row = Record<string, unknown>;
 
-function fixture(options: { role?: string; conflicting?: boolean; existingUser?: Row | null } & NotificationTimingHooks = {}) {
+/** A Service row as quoteForNewBooking reads it (quotableServiceSelect). */
+function serviceRow(id: string, name: string, price: number, duration: number, extra: Row = {}): Row {
+  return {
+    id, name, price, duration, offeringId: null, hairLength: null, priceType: 'STANDARD', priceVersion: 1,
+    vatDisplay: 'UNSPECIFIED', priceNature: 'LISTED', durationConfirmed: true, surchargeBaseServiceId: null,
+    surchargeAmount: null, priceSource: null, isPublic: true, isBookable: true, requiresPatchTest: false,
+    requiresConsultation: false, isConsultation: false, isPatchTest: false, treatwellExternalId: null, ...extra,
+  };
+}
+
+/** The price the dialog showed for a service, echoed back with the booking. */
+const shownPrice = (serviceId: string, amountPence: number, priceVersion = 1) => ({ serviceId, priceVersion, amountPence });
+
+/** A site-wide offer that WOULD have discounted a customer booking before discounts were paused. */
+const HALF_PRICE_OFFER = { id: 'offer-1', title: 'Half price', discountType: 'PERCENTAGE', discountValue: 50, isActive: true, isGlobal: true };
+
+function fixture(options: { role?: string; conflicting?: boolean; existingUser?: Row | null; globalOffer?: Row | null } & NotificationTimingHooks = {}) {
   const users: Row[] = options.existingUser ? [options.existingUser] : [];
   const created: Row[] = [];
   const updates: Row[] = [];
@@ -37,9 +53,12 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
   };
 
   const services: Record<string, Row> = {
-    'service-1': { id: 'service-1', name: 'Full Colour', duration: 60, price: 80, requiresPatchTest: false, treatwellExternalId: null },
-    'service-2': { id: 'service-2', name: 'Dry Cut', duration: 30, price: 35, requiresPatchTest: false, treatwellExternalId: null },
+    'service-1': serviceRow('service-1', 'Full Colour', 80, 60),
+    'service-2': serviceRow('service-2', 'Dry Cut', 35, 30),
+    // An unverified NHS option: kept for the bookings that already use it, closed to new ones.
+    'service-retired': serviceRow('service-retired', 'Dry Cut (Student & NHS)', 30, 30, { priceType: 'NHS', isPublic: false, isBookable: false }),
   };
+  const activeOffer = async () => options.globalOffer ?? null;
 
   const tx = {
     appointment: {
@@ -100,7 +119,7 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
     'src/app/services/booking-service.ts',
     {
       '@/app/lib/prisma': db,
-      './offers-service': { getActiveGlobalOffer: async () => null },
+      './offers-service': { getActiveGlobalOffer: activeOffer },
       '@/app/lib/booking-maintenance': { assertOnlineBookingReady: async () => ({ phone: '', bookingEnabled: true }) },
       './notification-outbox-service': queue,
     },
@@ -111,7 +130,7 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
     '@/app/services/booking-service': bookingService,
     '@/app/services/notification-outbox-service': queue,
-    '@/app/services/offers-service': { getActiveGlobalOffer: async () => null },
+    '@/app/services/offers-service': { getActiveGlobalOffer: activeOffer },
     '@/app/services/treatwell-api': {
       getTreatwellApiConfiguration: () => ({ enabled: false, configured: false }),
       changedTreatwellSyncStatus: () => 'NOT_REQUIRED',
@@ -141,6 +160,7 @@ const newBooking = (overrides: Row = {}) => ({
   notes: 'Booked over WhatsApp',
   notifyCustomer: true,
   overrideClashes: false,
+  expectedQuote: shownPrice('service-1', 8000),
   ...overrides,
 });
 
@@ -243,24 +263,88 @@ test('a booking with no customer name is refused before it reaches the database'
   assert.equal(created.length, 0);
 });
 
-test('swapping the service on an existing booking re-freezes its price', async () => {
-  const { actions, updates } = fixture();
+const swapToDryCut = (expectedQuote?: ReturnType<typeof shownPrice>) => ({
+  appointmentId: 'appt-1',
+  ...SLOT,
+  durationMin: 30,
+  stylistId: 'stylist-1',
+  serviceId: 'service-2',
+  notes: '',
+  overrideClashes: false,
+  expectedUpdatedAt: UPDATED_AT.toISOString(),
+  expectedQuote,
+});
 
-  const result = await actions.editAppointmentByAdmin({
-    appointmentId: 'appt-1',
-    ...SLOT,
-    durationMin: 30,
-    stylistId: 'stylist-1',
-    serviceId: 'service-2',
-    notes: '',
-    overrideClashes: false,
-    expectedUpdatedAt: UPDATED_AT.toISOString(),
-  });
+test('swapping the service on an existing booking re-freezes its price', async () => {
+  // A live site-wide offer must not touch it: discounts are paused for every
+  // new quote, admin service changes included.
+  const { actions, updates } = fixture({ globalOffer: HALF_PRICE_OFFER });
+
+  const result = await actions.editAppointmentByAdmin(swapToDryCut(shownPrice('service-2', 3500)));
 
   assert.equal(result.success, true);
   const write = updates.at(-1)!;
   assert.equal(write.serviceId, 'service-2');
-  assert.equal(write.priceAtBooking, 35, 'the diary and the bill must agree on which service was done');
+  assert.equal(write.priceAtBooking, '35.00', 'the diary and the bill must agree on which service was done, at its listed price');
+  const quote = JSON.parse(write.quoteJson as string);
+  assert.equal(quote.serviceId, 'service-2');
+  assert.equal(quote.amountPence, 3500);
+  assert.equal(quote.discountsApplied, false);
+});
+
+test('a service change priced differently from what the admin was shown returns the new price and writes nothing', async () => {
+  const { actions, updates, enqueued } = fixture();
+
+  for (const stale of [shownPrice('service-2', 3000), shownPrice('service-2', 3500, 0), undefined]) {
+    const result = await actions.editAppointmentByAdmin(swapToDryCut(stale));
+
+    assert.equal(result.success, false);
+    assert.ok(!result.success && 'error' in result && /price/i.test(result.error));
+    assert.deepEqual(!result.success && 'quote' in result ? result.quote : null, {
+      serviceId: 'service-2', priceVersion: 1, amountPence: 3500, priceType: 'STANDARD', vatDisplay: 'UNSPECIFIED', priceNature: 'LISTED',
+    }, 'the board needs the current price to ask the admin again');
+  }
+  assert.equal(updates.length, 0, 'nothing may be written at a price nobody confirmed');
+  assert.deepEqual(enqueued, []);
+});
+
+test('a retired option cannot be chosen for a new admin booking or a service change', async () => {
+  const { actions, created, updates } = fixture();
+
+  const booking = await actions.createAppointmentByAdmin(newBooking({ serviceId: 'service-retired', expectedQuote: shownPrice('service-retired', 3000) }));
+  assert.equal(booking.success, false);
+  assert.ok(!booking.success && 'error' in booking && /cannot be booked/i.test(booking.error));
+  assert.equal(created.length, 0);
+
+  const change = await actions.editAppointmentByAdmin({ ...swapToDryCut(shownPrice('service-retired', 3000)), serviceId: 'service-retired' });
+  assert.equal(change.success, false);
+  assert.equal(updates.length, 0);
+});
+
+test('a new admin booking records the listed price, never an offer, and needs the price it was shown', async () => {
+  const { actions, created } = fixture({ globalOffer: HALF_PRICE_OFFER });
+
+  const unconfirmed = await actions.createAppointmentByAdmin(newBooking({ expectedQuote: undefined }));
+  assert.equal(unconfirmed.success, false);
+  assert.ok(!unconfirmed.success && 'quote' in unconfirmed && unconfirmed.quote?.amountPence === 8000);
+  assert.equal(created.length, 0);
+
+  const result = await actions.createAppointmentByAdmin(newBooking());
+  assert.equal(result.success, true);
+  assert.equal(created[0].priceAtBooking, '80.00');
+  assert.equal(JSON.parse(created[0].quoteJson as string).discountsApplied, false);
+});
+
+test('a new customer\'s email language is the one the admin chose, not the admin\'s screen', async () => {
+  const { actions, created, users } = fixture();
+
+  await actions.createAppointmentByAdmin(newBooking({
+    customer: { kind: 'new', name: 'Mei', email: 'mei@example.test', phone: '' },
+    customerLocale: 'zh-HK',
+  }));
+
+  assert.equal(users[0].preferredLocale, 'zh-HK');
+  assert.equal(created[0].notificationLocale, 'zh-HK');
 });
 
 test('editing only the notes leaves the price and the customer undisturbed', async () => {

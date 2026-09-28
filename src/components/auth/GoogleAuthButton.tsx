@@ -1,11 +1,20 @@
+'use client';
+
+import { sanitizeRedirect } from '@/app/lib/redirect';
+import { useLocale, useT } from '@/i18n/client';
+
 type GoogleAuthButtonProps = {
   redirect?: string | null;
 };
 
 export default function GoogleAuthButton({ redirect }: GoogleAuthButtonProps) {
-  const href = redirect
-    ? `/api/auth/google?redirect=${encodeURIComponent(redirect)}`
-    : '/api/auth/google';
+  const locale = useLocale();
+  const t = useT('auth');
+  // /api/auth/google keeps one language-free address, so the page's language
+  // rides along and returns through the signed OAuth state to the callback.
+  const params = new URLSearchParams({ locale });
+  if (redirect) params.set('redirect', sanitizeRedirect(redirect));
+  const href = `/api/auth/google?${params}`;
 
   return (
     <a
@@ -18,7 +27,7 @@ export default function GoogleAuthButton({ redirect }: GoogleAuthButtonProps) {
         <path fill="#FBBC05" d="M6.39 13.93A6.02 6.02 0 0 1 6.07 12c0-.67.12-1.32.32-1.93V7.45H3.05A10 10 0 0 0 2 12c0 1.61.39 3.14 1.05 4.55l3.34-2.62Z" />
         <path fill="#EA4335" d="M12 5.94c1.47 0 2.79.5 3.82 1.5l2.88-2.88A9.65 9.65 0 0 0 12 2a10 10 0 0 0-8.95 5.45l3.34 2.62C7.18 7.7 9.39 5.94 12 5.94Z" />
       </svg>
-      Continue with Google
+      {t('google.continue')}
     </a>
   );
 }

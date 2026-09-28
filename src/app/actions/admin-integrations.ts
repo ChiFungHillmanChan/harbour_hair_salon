@@ -1,6 +1,7 @@
 'use server';
 
 import { randomBytes } from 'crypto';
+import { revalidateAllLocales } from '@/i18n/revalidate';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { invalidateStylistIcalToken } from '@/app/services/stylist-ical-cache';
@@ -11,6 +12,7 @@ import { verifySession } from '@/app/lib/session';
 import { syncCalendarFeeds } from '@/app/services/calendar-sync-service';
 import { CALENDAR_PROVIDERS } from '@/app/services/treatwell-sync-coverage';
 import { saveCalendarConnectionSettings } from '@/app/services/calendar-connection-settings';
+import { localizedPath } from '@/i18n/request';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -18,17 +20,18 @@ async function requireAdmin() {
   return session;
 }
 function refreshIntegrations() {
-  revalidatePath('/admin/integrations');
-  revalidatePath('/admin');
-  revalidatePath('/book');
+  revalidateAllLocales(revalidatePath, '/admin/integrations');
+  revalidateAllLocales(revalidatePath, '/admin');
+  revalidateAllLocales(revalidatePath, '/book');
 }
 
 export async function saveCalendarConnectionAction(formData: FormData): Promise<void> {
   const session = await requireAdmin();
   const result = await saveCalendarConnectionSettings(formData, prisma, session.userId);
-  if (!result.ok) redirect(`/admin/integrations?calendarError=${encodeURIComponent(result.error ?? 'Check the calendar settings and try again.')}`);
+  // A code, not text: the page words it in the admin's language.
+  if (!result.ok) redirect(await localizedPath(`/admin/integrations?calendarError=${result.code ?? 'INVALID_INPUT'}`));
   refreshIntegrations();
-  redirect('/admin/integrations?calendar=saved');
+  redirect(await localizedPath('/admin/integrations?calendar=saved'));
 }
 
 export async function runCalendarIcalSyncAction(formData: FormData): Promise<void> {
@@ -38,7 +41,7 @@ export async function runCalendarIcalSyncAction(formData: FormData): Promise<voi
   const failed = results.filter((result) => !result.ok).length;
   const skipped = results.filter((result) => result.skipped).length;
   refreshIntegrations();
-  redirect(`/admin/integrations?ical=complete&feeds=${results.length}&failed=${failed}&skipped=${skipped}&upserted=${results.reduce((total, result) => total + result.upserted, 0)}`);
+  redirect(await localizedPath(`/admin/integrations?ical=complete&feeds=${results.length}&failed=${failed}&skipped=${skipped}&upserted=${results.reduce((total, result) => total + result.upserted, 0)}`));
 }
 
 /** Kept for existing bookmarked/operator flows; now reconciles both providers. */
@@ -46,27 +49,30 @@ export async function runTreatwellIcalSyncAction(): Promise<void> {
   await requireAdmin();
   const results = await syncCalendarFeeds();
   refreshIntegrations();
-  redirect(`/admin/integrations?ical=complete&feeds=${results.length}&failed=${results.filter((r) => !r.ok).length}&upserted=${results.reduce((total, r) => total + r.upserted, 0)}`);
+  redirect(await localizedPath(`/admin/integrations?ical=complete&feeds=${results.length}&failed=${results.filter((r) => !r.ok).length}&upserted=${results.reduce((total, r) => total + r.upserted, 0)}`));
 }
 
 export async function confirmCalendarOutboundAction(formData: FormData): Promise<void> {
   const session = await requireAdmin();
   const input = z.object({ stylistId: z.string().min(1).max(128), provider: z.enum(CALENDAR_PROVIDERS), token: z.string().min(1).max(128), confirmed: z.literal('on') })
     .parse({ stylistId: formData.get('stylistId'), provider: formData.get('provider'), token: formData.get('token'), confirmed: formData.get('confirmed') });
-  await prisma.$transaction(async (tx) => {
+  const confirmed = await prisma.$transaction(async (tx) => {
     // Lock/check the exact token the owner reviewed. A concurrent rotation
-    // cannot leave a stale subscription marked as confirmed.
+    // cannot leave a stale subscription marked as confirmed. Nothing has been
+    // written when the token no longer matches.
     const matching = await tx.stylist.updateMany({ where: { id: input.stylistId, icalToken: input.token }, data: { updatedAt: new Date() } });
-    if (!matching.count) throw new Error('This busy-feed URL changed. Reload and subscribe to the new URL first.');
+    if (!matching.count) return false;
     await tx.calendarConnection.upsert({
       where: { stylistId_provider: { stylistId: input.stylistId, provider: input.provider } },
       create: { stylistId: input.stylistId, provider: input.provider, outboundConfirmedAt: new Date() },
       update: { outboundConfirmedAt: new Date() },
     });
     await appendAuditEvent({ actorUserId: session.userId, action: 'CALENDAR.OUTBOUND_CONFIRM', targetType: 'Stylist', targetId: input.stylistId, metadata: { provider: input.provider } }, tx);
+    return true;
   });
+  if (!confirmed) redirect(await localizedPath('/admin/integrations?calendarError=FEED_URL_CHANGED'));
   refreshIntegrations();
-  redirect('/admin/integrations?calendar=confirmed');
+  redirect(await localizedPath('/admin/integrations?calendar=confirmed'));
 }
 
 export async function generateStylistIcalFeedTokenAction(formData: FormData): Promise<void> {
@@ -81,7 +87,7 @@ export async function generateStylistIcalFeedTokenAction(formData: FormData): Pr
   // would 404, until the token cache happened to expire.
   invalidateStylistIcalToken();
   refreshIntegrations();
-  redirect('/admin/integrations?feedToken=rotated');
+  redirect(await localizedPath('/admin/integrations?feedToken=rotated'));
 }
 
 export async function retryFailedTreatwellBookingsAction(): Promise<void> {

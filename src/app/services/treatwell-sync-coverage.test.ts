@@ -81,12 +81,15 @@ test('retired stylists are excluded before they can reach the booking gate', asy
   assert.match(body, /where:\s*\{\s*isActive:\s*true\s*\}/,
     'getCalendarSyncCoverage must load only active stylists.');
 
-  // The same row would otherwise still be sold on the public site.
-  for (const page of ['../page.tsx', '../book/page.tsx']) {
+  // The same row would otherwise still be sold on the public site. The home
+  // page lists stylists through the shared public helper (stylists/slug.ts).
+  for (const page of ['../stylists/slug.ts', '../[locale]/book/page.tsx']) {
     const source = await readFile(new URL(page, import.meta.url), 'utf8');
     const query = source.slice(source.indexOf('stylist.findMany'));
     assert.match(query.slice(0, 200), /isActive:\s*true/, `${page} must not list retired stylists.`);
   }
+  const home = await readFile(new URL('../[locale]/page.tsx', import.meta.url), 'utf8');
+  assert.match(home, /getAllStylistsWithSlug\(/, 'the home page must list stylists through the active-only helper');
 });
 
 // A retired stylist keeps their rows, so a stale marketplace URL left on one
@@ -97,4 +100,19 @@ test('the calendar-sync cron skips connections belonging to retired stylists', a
   const query = source.slice(source.indexOf('calendarConnection.findMany'));
   assert.match(query.slice(0, 600), /stylist:\s*\{\s*isActive:\s*true\s*\}/,
     'syncCalendarFeeds must not poll feeds for retired stylists.');
+});
+test('every English blocker has a matching code with raw stylist and provider values', () => {
+  assert.deepEqual(evaluateSyncCoverage({ stylists: [], now }).issues, [{ code: 'NO_STYLISTS' }]);
+  const row = stylist(); row.availabilities.pop();
+  row.calendarConnections[0].lastSuccessAt = null; row.calendarConnections[0].outboundConfirmedAt = null;
+  row.calendarConnections.push({ ...row.calendarConnections[0], provider: 'BOOKSY' });
+  const result = evaluateSyncCoverage({ stylists: [row], now });
+  assert.equal(result.issues.length, result.blockers.length);
+  assert.deepEqual(result.issues, [
+    { code: 'HOURS_INVALID', params: { stylist: 'Stylist one' } },
+    { code: 'INBOUND_NOT_FRESH', params: { stylist: 'Stylist one', provider: 'TREATWELL', minutes: CALENDAR_FRESHNESS_MINUTES } },
+    { code: 'OUTBOUND_UNCONFIRMED', params: { stylist: 'Stylist one', provider: 'TREATWELL' } },
+    { code: 'PROVIDER_UNSUPPORTED', params: { stylist: 'Stylist one', provider: 'BOOKSY' } },
+  ]);
+  assert.equal(evaluateSyncCoverage({ stylists: [stylist()], now }).issues.length, 0);
 });

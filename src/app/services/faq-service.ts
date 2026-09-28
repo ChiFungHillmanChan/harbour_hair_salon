@@ -1,5 +1,7 @@
 import 'server-only';
 import prisma from '@/app/lib/prisma';
+import type { Locale } from '@/i18n/config';
+import { loadPublishedTranslations, overlay } from './content/translations';
 
 export type FaqRow = {
   id: string;
@@ -9,12 +11,16 @@ export type FaqRow = {
   sortOrder: number;
 };
 
-export async function getFaqsByKey(key: string): Promise<FaqRow[]> {
+/** Public FAQ list in `locale` (published translations only; English fallback per question). */
+export async function getFaqsByKey(key: string, locale: Locale = 'en-GB'): Promise<(FaqRow & { translated: boolean })[]> {
   const rows = await prisma.faq.findMany({
     where: { key },
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true, key: true, question: true, answer: true, sortOrder: true },
   });
-  return rows;
+  if (locale === 'en-GB') return rows.map((row) => ({ ...row, translated: true }));
+  const translations = await loadPublishedTranslations(prisma, 'FAQ', rows.map((row) => row.id), locale);
+  return rows.map((row) => overlay(row, translations.get(row.id), ['question', 'answer']));
 }
 
 export async function getAllFaqs(): Promise<FaqRow[]> {

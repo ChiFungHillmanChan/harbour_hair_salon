@@ -1,24 +1,51 @@
-import Link from 'next/link';
+import Link from '@/i18n/link';
+import { getT } from '@/i18n/server';
 import type { SyncCoverage } from '@/app/services/treatwell-sync-coverage';
 
 type Props = {
-  coverage: Pick<SyncCoverage, 'blockers'>;
+  /** `issues` are the coded form of `blockers`, one per blocker in the same order. */
+  coverage: Pick<SyncCoverage, 'blockers'> & Partial<Pick<SyncCoverage, 'issues'>>;
   bookingEnabled: boolean;
   scheduledSyncEnabled: boolean;
 };
 
-export function CalendarSetupNotice({ coverage, bookingEnabled, scheduledSyncEnabled }: Props) {
-  if (coverage.blockers.length === 0) return null;
+type Check = { text: string; english: boolean };
 
-  // Keep every blocker, including future/unlabelled checks. Existing checks use
-  // a stylist or stylist/provider prefix, so their instructions can sit together.
-  const groups = new Map<string, string[]>();
-  for (const blocker of coverage.blockers) {
-    const separator = blocker.indexOf(': ');
-    const label = separator > 0 ? blocker.slice(0, separator) : 'General setup';
-    const detail = separator > 0 ? blocker.slice(separator + 2) : blocker;
-    groups.set(label, [...(groups.get(label) ?? []), detail]);
+/**
+ * A check reads "Ava / FRESHA: …" on its own; here it sits under an
+ * "Ava / FRESHA" heading, so drop that lead-in (either colon style).
+ */
+function withoutLabel(text: string, label: string): string {
+  if (!label) return text;
+  for (const separator of [': ', '：']) {
+    if (text.startsWith(`${label}${separator}`)) return text.slice(label.length + separator.length);
   }
+  return text;
+}
+
+export async function CalendarSetupNotice({ coverage, bookingEnabled, scheduledSyncEnabled }: Props) {
+  if (coverage.blockers.length === 0) return null;
+  const [t, tOps] = await Promise.all([getT('adminSchedule'), getT('adminOps')]);
+  // A check without a translation is shown as generated (English), and marked
+  // so on a Chinese page; stylist and platform names are never translated.
+  const englishLang = t.locale === 'en-GB' ? undefined : 'en';
+  const coded = coverage.issues?.length === coverage.blockers.length ? coverage.issues : null;
+
+  // Keep every blocker, including future/unlabelled checks. Checks about one
+  // stylist or stylist/provider connection sit together under that heading.
+  const groups = new Map<string, Check[]>();
+  coverage.blockers.forEach((blocker, index) => {
+    const issue = coded?.[index];
+    const separator = blocker.indexOf(': ');
+    const label = issue
+      ? [issue.params?.stylist, issue.params?.provider].filter(Boolean).join(' / ')
+      : separator > 0 ? blocker.slice(0, separator) : '';
+    const translated = issue ? tOps.dynamic(`readiness.calendar.${issue.code}`, issue.params, '') : '';
+    const check = translated
+      ? { text: withoutLabel(translated, label), english: false }
+      : { text: withoutLabel(blocker, label), english: true };
+    groups.set(label, [...(groups.get(label) ?? []), check]);
+  });
 
   return (
     <section aria-labelledby="calendar-setup-heading" className="mb-6 overflow-hidden rounded-xl border border-zinc-200 bg-white">
@@ -31,36 +58,34 @@ export function CalendarSetupNotice({ coverage, bookingEnabled, scheduledSyncEna
             </svg>
           </span>
           <div className="min-w-0">
-            <h2 id="calendar-setup-heading" className="font-semibold text-zinc-900">Calendar setup needs attention</h2>
+            <h2 id="calendar-setup-heading" className="font-semibold text-zinc-900">{t('notice.title')}</h2>
             <p className="mt-1 max-w-prose text-sm leading-6 text-zinc-600">
-              {bookingEnabled
-                ? 'Website bookings are blocked by these calendar checks.'
-                : 'Website booking is switched off. Complete these checks before opening it.'}
+              {bookingEnabled ? t('notice.blocked') : t('notice.off')}
             </p>
             <p className="mt-1 max-w-prose text-sm leading-6 text-zinc-600">
-              Review provider calendars before confirming appointments.
+              {t('notice.review')}
             </p>
           </div>
         </div>
         <Link href="/admin/integrations" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-[#174F7F]/20 px-4 py-2 text-sm font-semibold text-[#174F7F] transition-colors hover:bg-[#174F7F]/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#174F7F]">
-          Review integrations
+          {t('notice.link')}
         </Link>
       </div>
       <details className="border-t border-zinc-100 px-4 sm:px-5">
         <summary className="cursor-pointer py-3 text-sm font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#174F7F]">
-          View {coverage.blockers.length} setup {coverage.blockers.length === 1 ? 'check' : 'checks'}
-          {!scheduledSyncEnabled && <span className="ml-2 inline-block text-xs font-normal text-amber-800">Scheduled sync is off</span>}
+          {t('notice.summary', { count: coverage.blockers.length })}
+          {!scheduledSyncEnabled && <span className="ml-2 inline-block text-xs font-normal text-amber-800">{t('notice.syncOff')}</span>}
         </summary>
         <p className="mb-4 max-w-prose text-sm leading-6 text-zinc-600">
-          These checks report missing or outdated setup evidence. Appointment conflicts are checked separately.
-          {!scheduledSyncEnabled && ' Enable scheduled sync after configuring and testing the calendar feeds.'}
+          {t('notice.evidence')}
+          {!scheduledSyncEnabled && ` ${t('notice.enableSync')}`}
         </p>
         <div className="grid gap-x-8 gap-y-5 pb-5 lg:grid-cols-2">
           {[...groups].map(([label, checks]) => (
             <div key={label} className="min-w-0">
-              <h3 className="text-sm font-semibold text-zinc-900">{label}</h3>
+              <h3 className="text-sm font-semibold text-zinc-900">{label || t('notice.general')}</h3>
               <ul className="mt-2 list-disc space-y-2 pl-4 text-sm leading-6 text-zinc-600">
-                {checks.map((check, index) => <li key={index} className="break-words">{check}</li>)}
+                {checks.map((check, index) => <li key={index} lang={check.english ? englishLang : undefined} className="break-words">{check.text}</li>)}
               </ul>
             </div>
           ))}

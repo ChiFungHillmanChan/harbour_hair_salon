@@ -6,7 +6,12 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/admin', '/auth/', '/appointments', '/api/', '/book'],
+      // Private and transactional pages in both languages. These pages are
+      // also noindex and protected server-side; robots is not the lock.
+      disallow: [
+        '/admin', '/auth/', '/appointments', '/api/', '/book', '/kiosk',
+        '/zh-hk/admin', '/zh-hk/auth/', '/zh-hk/appointments', '/zh-hk/book', '/zh-hk/kiosk',
+      ],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
   };

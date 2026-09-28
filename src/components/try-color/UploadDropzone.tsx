@@ -1,6 +1,8 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useT } from '@/i18n/client';
+import { rich } from '@/i18n/rich';
 
 interface UploadDropzoneProps {
   onImageLoaded: (image: HTMLImageElement | HTMLCanvasElement) => void;
@@ -26,6 +28,7 @@ function resizeImage(img: HTMLImageElement): HTMLCanvasElement {
 }
 
 export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
+  const t = useT('tryColor');
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -34,11 +37,11 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
     setError(null);
 
     if (!ACCEPTED_TYPES.includes(file.type)) {
-      setError('Please upload a JPEG, PNG, or WebP image.');
+      setError(t('upload.wrongType'));
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      setError('File is too large. Please use an image under 10MB.');
+      setError(t('upload.tooLarge'));
       return;
     }
 
@@ -57,7 +60,7 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
     };
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
-      setError('Could not read this image. Try another file.');
+      setError(t('upload.unreadable'));
     };
     img.src = objectUrl;
   };
@@ -100,13 +103,15 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
         </svg>
       </div>
       <div className="text-center">
-        <p className="text-white font-serif text-lg mb-1">Upload Your Photo</p>
+        <p className="text-white font-serif text-lg mb-1">{t('upload.title')}</p>
         <p className="text-zinc-500 text-sm">
-          Drop here or <span className="text-zinc-300 hover:underline">browse</span>
+          {rich(t('upload.dropOrBrowse'), {
+            browse: (text) => <span className="text-zinc-300 hover:underline">{text}</span>,
+          })}
         </p>
       </div>
       <p className="text-zinc-600 text-xs tracking-wider uppercase">
-        JPEG, PNG, or WebP · Max 10MB
+        {t('upload.formats')}
       </p>
 
       {error && (

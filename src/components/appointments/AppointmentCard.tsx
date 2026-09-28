@@ -1,11 +1,25 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/i18n/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cancelAppointment } from '@/app/actions/booking';
-import { formatSalonDate, formatSalonTime } from '@/app/services/salon-time';
+import type { PriceNature, PriceType, VatDisplay } from '@/app/services/pricing/policy';
+import { useFormatPrice } from '@/components/pricing/PriceParts';
+import { useLocale, useT } from '@/i18n/client';
+import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
+import { useDraftState } from '@/i18n/draft-store';
 import { RescheduleModal } from './RescheduleModal';
+
+/**
+ * The price as it was RECORDED on the booking (recorded-price.ts) — never
+ * today's price list. Unknown for bookings made before prices were stored
+ * per appointment; the type/VAT/consultation facts are null when the booking
+ * has no stored quote.
+ */
+export type BookedPrice =
+  | { known: true; amountPence: number; priceType: PriceType | null; vatDisplay: VatDisplay | null; priceNature: PriceNature | null }
+  | { known: false };
 
 type SerializedAppointment = {
   id: string;
@@ -13,8 +27,10 @@ type SerializedAppointment = {
   status: string;
   stylist: { name: string };
   stylistId: string;
-  service: { name: string; price: number; duration: number };
+  /** nameIsEnglish: no published translation, so the English name is shown (marked lang="en"). */
+  service: { name: string; nameIsEnglish?: boolean; duration: number };
   serviceId: string;
+  price: BookedPrice;
   hasReview?: boolean;
 };
 
@@ -29,9 +45,14 @@ interface AppointmentCardProps {
 }
 
 export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: AppointmentCardProps) {
+  const t = useT('appointments');
+  const tp = useT('pricing');
+  const locale = useLocale();
+  const formatPrice = useFormatPrice();
   const router = useRouter();
   const [cancelling, setCancelling] = useState(false);
-  const [showReschedule, setShowReschedule] = useState(false);
+  // An open reschedule dialog stays open across a language switch.
+  const [showReschedule, setShowReschedule] = useDraftState(`appointments:reschedule:${appointment.id}`, false);
   const [error, setError] = useState<string | null>(null);
 
   const appointmentDate = new Date(appointment.date);
@@ -42,9 +63,9 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
 
   // Pin to salon time so the server render (UTC on Vercel) and the browser render
   // agree — otherwise BST produces a hydration mismatch and non-UK viewers see
-  // their own timezone. Always shows the salon-local time.
-  const formattedDate = formatSalonDate(appointmentDate);
-  const formattedTime = formatSalonTime(appointmentDate);
+  // their own timezone. Always shows the salon-local time, in the page's language.
+  const formattedDate = formatSalonLongDate(locale, appointmentDate);
+  const formattedTime = formatSalonClock(locale, appointmentDate);
 
   const statusColors: Record<string, string> = {
     PENDING: 'bg-amber-100 text-amber-800',
@@ -52,6 +73,15 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
     CANCELLED: 'bg-red-100 text-red-800',
     COMPLETED: 'bg-zinc-100 text-zinc-600',
   };
+
+  // The recorded amount and the notes that were true when it was booked.
+  const { price } = appointment;
+  const priceNotes: string[] = [];
+  if (price.known) {
+    if (price.priceType === 'NHS') priceNotes.push(tp('nhsApplied'));
+    if (price.vatDisplay === 'EXCLUDED') priceNotes.push(tp('vatExcluded'));
+    if (price.priceNature === 'SUBJECT_TO_CONSULTATION') priceNotes.push(tp('subjectToConsultation'));
+  }
 
   // A PENDING request may be withdrawn at any time; the 24-hour lock only
   // applies once the salon has confirmed. Rescheduling requires a confirmed
@@ -65,26 +95,27 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
   // Cancelling stays available.
   const rescheduleLocked = !bookingEnabled || isWithin24Hours;
   const rescheduleTitle = !bookingEnabled
-    ? 'Online rescheduling is temporarily unavailable — please call the salon'
+    ? t('card.rescheduleUnavailable')
     : isWithin24Hours
-      ? 'Cannot reschedule within 24 hours'
+      ? t('card.rescheduleTooLate')
       : undefined;
 
   async function handleCancel() {
-    if (!window.confirm('Are you sure you want to cancel this appointment?')) return;
+    if (!window.confirm(t('card.confirmCancel'))) return;
 
     setCancelling(true);
     setError(null);
 
     try {
+      // Errors come back in the page's language from the action.
       const result = await cancelAppointment(appointment.id);
       if (result.success) {
         router.refresh();
       } else {
-        setError(result.error || 'Failed to cancel');
+        setError(result.error || t('card.cancelFailed'));
       }
     } catch {
-      setError('Something went wrong. Please try again, or call the salon.');
+      setError(t('card.unexpectedError'));
     } finally {
       setCancelling(false);
     }
@@ -95,14 +126,16 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-1">
-            <h3 className="text-lg font-semibold text-zinc-900">{appointment.service.name}</h3>
-            <p className="text-zinc-600">with {appointment.stylist.name}</p>
+            <h3 className="text-lg font-semibold text-zinc-900" lang={appointment.service.nameIsEnglish ? 'en' : undefined}>{appointment.service.name}</h3>
+            <p className="text-zinc-600">{t('card.withStylist', { name: appointment.stylist.name })}</p>
             <p className="text-zinc-700">
-              {formattedDate} at {formattedTime}
+              {t('card.when', { date: formattedDate, time: formattedTime })}
             </p>
             <p className="text-zinc-600">
-              {appointment.service.duration} mins &middot; &pound;{appointment.service.price.toFixed(2)}
+              {tp('minutes', { count: appointment.service.duration })} &middot; {price.known ? formatPrice(price.amountPence) : tp('unknownPrice')}
             </p>
+            {priceNotes.length > 0 && <p className="text-xs text-zinc-500">{priceNotes.join(' · ')}</p>}
+            {!price.known && <p className="text-xs text-zinc-500">{tp('unknownPriceHelp')}</p>}
           </div>
 
           <div className="flex flex-col items-start sm:items-end gap-3">
@@ -111,7 +144,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
                 statusColors[appointment.status] || 'bg-zinc-100 text-zinc-600'
               }`}
             >
-              {appointment.status}
+              {t.dynamic(`status.${appointment.status}`, undefined, appointment.status)}
             </span>
 
             {isUpcoming && (
@@ -123,16 +156,16 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
                     className="px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title={rescheduleTitle}
                   >
-                    Reschedule
+                    {t('card.reschedule')}
                   </button>
                 )}
                 <button
                   onClick={handleCancel}
                   disabled={cancelLocked || cancelling}
                   className="px-4 py-2 text-sm border border-red-300 rounded-md text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={cancelLocked ? 'Cannot cancel within 24 hours' : undefined}
+                  title={cancelLocked ? t('card.cancelTooLate') : undefined}
                 >
-                  {cancelling ? 'Cancelling...' : isPending ? 'Withdraw request' : 'Cancel'}
+                  {cancelling ? t('card.cancelling') : isPending ? t('card.withdraw') : t('card.cancel')}
                 </button>
               </div>
             )}
@@ -142,11 +175,11 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
                 href={`/reviews/new?appointmentId=${appointment.id}`}
                 className="px-4 py-2 text-sm bg-zinc-900 text-white rounded-md font-medium hover:bg-black transition-colors"
               >
-                Leave a review
+                {t('card.leaveReview')}
               </Link>
             )}
             {!isUpcoming && appointment.hasReview && (
-              <span className="text-xs text-zinc-400 italic">Review submitted</span>
+              <span className="text-xs text-zinc-400 italic">{t('card.reviewSubmitted')}</span>
             )}
           </div>
         </div>
@@ -155,18 +188,17 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
 
         {isUpcoming && isPending && (
           <p className="mt-3 text-xs text-amber-700">
-            Awaiting confirmation from the salon — we&apos;ll email you once it&apos;s confirmed.
+            {t('card.awaitingConfirmation')}
           </p>
         )}
         {isUpcoming && cancelLocked && (
           <p className="mt-3 text-xs text-zinc-400">
-            Changes cannot be made within 24 hours of your appointment.
+            {t('card.changesLocked')}
           </p>
         )}
         {isUpcoming && !isPending && !bookingEnabled && !isWithin24Hours && (
           <p className="mt-3 text-xs text-amber-700">
-            Online rescheduling is temporarily unavailable while our booking system is
-            under maintenance. Please call the salon to move this appointment.
+            {t('card.maintenance')}
           </p>
         )}
       </div>

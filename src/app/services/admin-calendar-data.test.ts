@@ -60,3 +60,42 @@ test('pending cursor is bounded, deterministic and independent of selected calen
   assert.deepEqual(calls[1].orderBy, [{ date: 'asc' }, { id: 'asc' }]);
   assert.deepEqual(calls[1].where, { status: 'PENDING', OR: [{ date: { gt: pending[24].date } }, { date: pending[24].date, id: { gt: pending[24].id } }] });
 });
+
+test('the board carries each booking\'s recorded price and only bookable options for new bookings', async () => {
+  const quote = { schema: 1, serviceId: 'nhs-long', offeringId: 'o1', hairLength: 'LONG', priceType: 'NHS', currency: 'GBP', amountPence: 14200,
+    breakdown: [{ kind: 'LISTED', amountPence: 14200 }], vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION', priceVersion: 2,
+    durationMinutes: 120, durationSource: 'SERVICE', discountsApplied: false, priceSource: null };
+  const base = { date: new Date('2026-10-23T10:00:00Z'), status: 'CONFIRMED', stylistId: 's1', serviceId: 'svc', updatedAt: new Date('2026-10-01T00:00:00Z'),
+    durationAtBooking: 60, notes: null, user: { id: 'u1', name: 'Mei', email: 'mei@example.test' }, stylist: { name: 'Ivan', calendarColor: null },
+    service: { name: 'Colour', duration: 60, calendarColor: null } };
+  const db = {
+    appointment: {
+      count: async () => 0,
+      groupBy: async () => [],
+      findMany: async ({ where }: { where: { status?: string } }) => where.status === 'PENDING' ? [] : [
+        { ...base, id: 'legacy', priceAtBooking: null, quoteJson: null },
+        { ...base, id: 'quoted', priceAtBooking: '142.00', quoteJson: JSON.stringify(quote) },
+      ],
+    },
+    stylist: { findMany: async () => [] },
+    externalBusyBlock: { findMany: async () => [] },
+    service: { findMany: async ({ select }: { select: Record<string, unknown> }) => {
+      assert.ok(select.isBookable && select.priceVersion && select.priceType, 'the dialog needs the quote fields');
+      return [
+        { id: 'open', name: 'Blow Dry', duration: 45, price: '40.00', category: 'Styling', requiresPatchTest: false, priceVersion: 3, priceType: 'STANDARD', hairLength: null, vatDisplay: 'EXCLUDED', priceNature: 'LISTED', isBookable: true, offeringId: null },
+        { id: 'retired', name: 'Blow Dry (Student & NHS)', duration: 45, price: '35.00', category: 'Styling', requiresPatchTest: false, priceVersion: 1, priceType: 'NHS', hairLength: null, vatDisplay: 'UNSPECIFIED', priceNature: 'LISTED', isBookable: false, offeringId: null },
+      ];
+    } },
+  };
+  const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
+    '@/app/lib/prisma': { __esModule: true, default: db, getDatabaseProvider: () => 'postgresql' },
+    '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
+    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
+  });
+  const result = await getAdminCalendarData({ date: '2026-10-23', view: 'day' });
+  const byId = new Map(result.appointments.map((row) => [row.id, row]));
+  assert.deepEqual(byId.get('legacy')?.price, { known: false }, 'no recorded price stays unknown — never the current service price or £0');
+  assert.deepEqual(byId.get('quoted')?.price, { known: true, amountPence: 14200, priceType: 'NHS', vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION' });
+  assert.ok(!('price' in (byId.get('legacy')?.service ?? {})), 'today\'s service price never reaches the board');
+  assert.deepEqual(result.services.map((service) => [service.id, service.amountPence, service.isBookable]), [['open', 4000, true], ['retired', 3500, false]]);
+});

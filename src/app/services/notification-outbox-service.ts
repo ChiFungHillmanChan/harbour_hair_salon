@@ -4,20 +4,78 @@ import type { Appointment, Prisma, PrismaClient, Service, Stylist, User } from '
 import prisma from '@/app/lib/prisma';
 import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
 import { prepareAppointmentEmail, sendPreparedEmail, type AppointmentEmailKind, type AppointmentEmailOptions, type PreparedEmail } from './email-service';
+import type { EmailPrice } from './email-content';
+import { recordedPrice } from './pricing/recorded-price';
+import { DEFAULT_LOCALE, isLocale, localeOrDefault, type Locale } from '@/i18n/config';
 
-type QueueDb = Pick<Prisma.TransactionClient, 'notificationDelivery' | 'appointment'>;
-type NotificationAppointment = Pick<Appointment, 'id' | 'date' | 'priceAtBooking' | 'durationAtBooking' | 'notificationVersion' | 'notes'> & {
+type QueueDb = Pick<Prisma.TransactionClient, 'notificationDelivery' | 'appointment'> & Partial<Pick<Prisma.TransactionClient, 'contentTranslation' | 'siteSettings'>>;
+type NotificationAppointment = Pick<Appointment, 'id' | 'date' | 'priceAtBooking' | 'durationAtBooking' | 'notificationVersion' | 'notes'>
+  & Partial<Pick<Appointment, 'quoteJson' | 'notificationLocale' | 'serviceId'>> & {
   user: Pick<User, 'email' | 'name'> & Partial<Pick<User, 'phone'>>;
   stylist: Pick<Stylist, 'name'>;
-  service: Pick<Service, 'name' | 'price' | 'duration'>;
+  service: Pick<Service, 'name' | 'duration'> & Partial<Pick<Service, 'id' | 'price'>>;
 };
+
+/**
+ * Snapshot schema 2 (current): the service name already in the event's
+ * language, the booking's frozen price with its NHS/VAT meaning, and the
+ * language itself. Schema 1 events (queued before languages existed) carry
+ * `service.price` and no locale; they are still delivered, in English, with no
+ * NHS/VAT wording added after the fact.
+ */
+type SnapshotV2 = {
+  schema: 2;
+  id: string;
+  date: string;
+  notes: string | null;
+  user: { email: string; name: string | null; phone?: string | null };
+  stylist: { name: string };
+  service: { name: string; duration: number };
+  price: EmailPrice;
+};
+type SnapshotV1 = { id: string; date: string; notes?: string | null; user: SnapshotV2['user']; stylist: SnapshotV2['stylist']; service: { name: string; price: number; duration: number } };
 type NotificationPayload = {
   version: number;
   date: string;
+  locale?: Locale;
   email?: PreparedEmail;
-  appointment?: Omit<Parameters<typeof prepareAppointmentEmail>[1], 'date'> & { date: string };
+  appointment?: SnapshotV1 | SnapshotV2;
   options?: { salonPhone?: string; oldDate?: string };
 };
+
+/** The customer's language for their own mail; never the language of whoever triggered the event. */
+function eventLocale(kind: AppointmentEmailKind, appointment: NotificationAppointment, salonLocale: Locale): Locale {
+  return kind === 'SALON_ALERT' ? salonLocale : localeOrDefault(appointment.notificationLocale);
+}
+
+async function salonLocaleFrom(db: QueueDb): Promise<Locale> {
+  // The salon's own alerts default to Traditional Chinese (owner decision).
+  if (!db.siteSettings) return 'zh-HK';
+  const settings = await db.siteSettings.findUnique({ where: { id: 'singleton' }, select: { salonNotificationLocale: true } });
+  return isLocale(settings?.salonNotificationLocale) ? settings.salonNotificationLocale : 'zh-HK';
+}
+
+/** The PUBLISHED name of the booked service in `locale`, falling back to the booked (English) name. */
+async function serviceNameIn(db: QueueDb, appointment: NotificationAppointment, locale: Locale): Promise<string> {
+  const serviceId = appointment.serviceId ?? appointment.service.id;
+  if (locale === DEFAULT_LOCALE || !serviceId || !db.contentTranslation) return appointment.service.name;
+  const row = await db.contentTranslation.findUnique({
+    where: { entityType_entityId_locale: { entityType: 'SERVICE', entityId: serviceId, locale } },
+    select: { fieldsJson: true },
+  });
+  try {
+    const name = row ? (JSON.parse(row.fieldsJson) as { name?: unknown }).name : null;
+    return typeof name === 'string' && name.trim() ? name : appointment.service.name;
+  } catch {
+    return appointment.service.name;
+  }
+}
+
+function emailPrice(appointment: NotificationAppointment): EmailPrice {
+  const recorded = recordedPrice({ priceAtBooking: appointment.priceAtBooking, quoteJson: appointment.quoteJson ?? null });
+  if (!recorded.known) return { known: false };
+  return { known: true, amountPence: recorded.amountPence, priceType: recorded.priceType, vatDisplay: recorded.vatDisplay, priceNature: recorded.priceNature };
+}
 const LEASE_MS = 5 * 60_000;
 const RETRY_WINDOW_MS = 23 * 60 * 60_000;
 const MAX_ATTEMPTS = 12;
@@ -35,16 +93,20 @@ export async function enqueueAppointmentNotification(
   // Fast path avoids regenerating a date-relative subject for an existing event.
   const existing = await db.notificationDelivery.findUnique({ where: { eventKey }, select: { id: true } });
   if (existing) return existing;
-  const snapshot = {
+  const locale = eventLocale(kind, appointment, kind === 'SALON_ALERT' ? await salonLocaleFrom(db) : DEFAULT_LOCALE);
+  const snapshot: SnapshotV2 = {
+    schema: 2,
     id: appointment.id,
     date: appointment.date.toISOString(),
     notes: appointment.notes,
     user: { email: appointment.user.email, name: appointment.user.name, phone: appointment.user.phone },
     stylist: { name: appointment.stylist.name },
-    service: { name: appointment.service.name, price: Number(appointment.priceAtBooking ?? appointment.service.price), duration: appointment.durationAtBooking ?? appointment.service.duration },
+    service: { name: await serviceNameIn(db, appointment, locale), duration: appointment.durationAtBooking ?? appointment.service.duration },
+    // The booking's own frozen amount, never today's price list; unknown stays unknown.
+    price: emailPrice(appointment),
   };
   // Saving a booking/cancellation must not depend on email configuration or rendering.
-  const payload: NotificationPayload = { version: appointment.notificationVersion, date: appointment.date.toISOString(), appointment: snapshot, options: { salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString() } };
+  const payload: NotificationPayload = { version: appointment.notificationVersion, date: appointment.date.toISOString(), locale, appointment: snapshot, options: { salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString() } };
   return db.notificationDelivery.upsert({
     where: { eventKey },
     create: { eventKey, appointmentId: appointment.id, kind, payloadJson: JSON.stringify(payload) },
@@ -110,7 +172,13 @@ export async function dispatchPendingNotifications(options: { db?: PrismaClient;
       }
       if (!payload.email) {
         if (!payload.appointment) throw new Error('Notification snapshot is missing');
-        payload.email = await prepareAppointmentEmail(row.kind as AppointmentEmailKind, { ...payload.appointment, date: new Date(payload.appointment.date) }, { ...payload.options, oldDate: payload.options?.oldDate ? new Date(payload.options.oldDate) : undefined });
+        payload.email = await prepareAppointmentEmail(
+          row.kind as AppointmentEmailKind,
+          { ...payload.appointment, date: new Date(payload.appointment.date) },
+          { ...payload.options, oldDate: payload.options?.oldDate ? new Date(payload.options.oldDate) : undefined, now },
+          // Schema-1 events have no language: English, as they were written.
+          localeOrDefault(payload.locale),
+        );
         // Persist the exact request before transmission so ambiguous retries stay identical.
         const saved = await db.notificationDelivery.updateMany({ where: { id: row.id, lockToken }, data: { payloadJson: JSON.stringify(payload) } });
         if (saved.count !== 1) continue;

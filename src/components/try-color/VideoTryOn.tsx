@@ -15,6 +15,8 @@ import {
   VIDEO_TARGET_FPS,
   type RecolorRequest,
 } from '@/components/try-color/constants';
+import { useT } from '@/i18n/client';
+import { rich } from '@/i18n/rich';
 
 interface VideoTryOnProps {
   /** Current recolour parameters from the parent (preset + strength + level + bleach). */
@@ -29,6 +31,19 @@ interface StoredFrame {
 
 type Phase = 'idle' | 'extracting' | 'ready' | 'error';
 
+/** Keys of `tryColor.video.errors`; the message is looked up when it is shown. */
+type VideoErrorCode = 'notVideo' | 'tooLarge' | 'unreadable' | 'frameUnreadable' | 'tooLong' | 'noCanvas' | 'tooSlow' | 'noFrames' | 'generic';
+
+class VideoError extends Error {
+  readonly code: VideoErrorCode;
+  constructor(code: VideoErrorCode) {
+    super(code);
+    this.code = code;
+  }
+}
+
+const VIDEO_MAX_MB = Math.round(VIDEO_MAX_FILE_BYTES / (1024 * 1024));
+
 const FRAME_INTERVAL_MS = 1000 / VIDEO_TARGET_FPS;
 // A clip is "too slow" if a majority of frames exceed the per-frame budget.
 const SLOW_FRAME_MAJORITY = 0.5;
@@ -41,7 +56,7 @@ function loadVideoMetadata(file: string): Promise<HTMLVideoElement> {
     video.playsInline = true;
     video.crossOrigin = 'anonymous';
     video.onloadedmetadata = () => resolve(video);
-    video.onerror = () => reject(new Error('Could not read this video file.'));
+    video.onerror = () => reject(new VideoError('unreadable'));
     video.src = file;
   });
 }
@@ -56,7 +71,7 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
     const onError = () => {
       video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('error', onError);
-      reject(new Error('Could not read a frame from this video.'));
+      reject(new VideoError('frameUnreadable'));
     };
     video.addEventListener('seeked', onSeeked);
     video.addEventListener('error', onError);
@@ -65,8 +80,9 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
 }
 
 export function VideoTryOn({ request }: VideoTryOnProps) {
+  const t = useT('tryColor');
   const [phase, setPhase] = useState<Phase>('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<VideoErrorCode | null>(null);
   const [progress, setProgress] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
@@ -178,17 +194,15 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
 
         const duration = video.duration;
         if (!Number.isFinite(duration) || duration <= 0) {
-          throw new Error('Could not read this video file.');
+          throw new VideoError('unreadable');
         }
         if (duration > VIDEO_MAX_SECONDS + 0.5) {
-          throw new Error(
-            `Clip is too long. Please use a video under ${VIDEO_MAX_SECONDS} seconds.`,
-          );
+          throw new VideoError('tooLong');
         }
 
         const vw = video.videoWidth;
         const vh = video.videoHeight;
-        if (!vw || !vh) throw new Error('Could not read this video file.');
+        if (!vw || !vh) throw new VideoError('unreadable');
 
         const scale = Math.min(1, VIDEO_MAX_DIM / Math.max(vw, vh));
         const fw = Math.max(1, Math.round(vw * scale));
@@ -198,7 +212,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
         work.width = fw;
         work.height = fh;
         const workCtx = work.getContext('2d', { willReadFrequently: true });
-        if (!workCtx) throw new Error('Your browser cannot process video frames.');
+        if (!workCtx) throw new VideoError('noCanvas');
 
         const frameInterval = 1 / VIDEO_TARGET_FPS;
         const plannedFrames = Math.min(
@@ -233,16 +247,14 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
             i >= 4 &&
             slowFrames / (i + 1) > SLOW_FRAME_MAJORITY
           ) {
-            throw new Error(
-              'This device is too slow to process video. Try uploading a photo instead.',
-            );
+            throw new VideoError('tooSlow');
           }
 
           setProgress(Math.round(((i + 1) / plannedFrames) * 100));
         }
 
         if (frames.length === 0) {
-          throw new Error('No frames could be extracted from this video.');
+          throw new VideoError('noFrames');
         }
 
         framesRef.current = frames;
@@ -257,7 +269,8 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
         });
       } catch (err) {
         if (gen !== extractGenRef.current) return;
-        setError(err instanceof Error ? err.message : 'Could not process this video.');
+        if (!(err instanceof VideoError)) console.error('Video try-on failed:', err);
+        setError(err instanceof VideoError ? err.code : 'generic');
         setPhase('error');
       } finally {
         URL.revokeObjectURL(objectUrl);
@@ -271,13 +284,12 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
     (file: File) => {
       setError(null);
       if (!file.type.startsWith('video/')) {
-        setError('Please upload a video file.');
+        setError('notVideo');
         setPhase('error');
         return;
       }
       if (file.size > VIDEO_MAX_FILE_BYTES) {
-        const mb = Math.round(VIDEO_MAX_FILE_BYTES / (1024 * 1024));
-        setError(`File is too large. Please use a video under ${mb}MB.`);
+        setError('tooLarge');
         setPhase('error');
         return;
       }
@@ -322,7 +334,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
     <div className="space-y-4">
       {error && (
         <div className="bg-red-950/50 border border-red-900/50 text-red-300 px-4 py-3 rounded-lg text-sm">
-          {error}
+          {t(`video.errors.${error}`, { seconds: VIDEO_MAX_SECONDS, mb: VIDEO_MAX_MB })}
         </div>
       )}
 
@@ -363,13 +375,15 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
               </svg>
             </div>
             <div className="text-center">
-              <p className="text-white font-serif text-lg mb-1">Upload Your Video</p>
+              <p className="text-white font-serif text-lg mb-1">{t('video.title')}</p>
               <p className="text-zinc-500 text-sm">
-                Drop here or <span className="text-zinc-300 hover:underline">browse</span>
+                {rich(t('video.dropOrBrowse'), {
+                  browse: (text) => <span className="text-zinc-300 hover:underline">{text}</span>,
+                })}
               </p>
             </div>
             <p className="text-zinc-600 text-xs tracking-wider uppercase">
-              Max {VIDEO_MAX_SECONDS}s · Max {Math.round(VIDEO_MAX_FILE_BYTES / (1024 * 1024))}MB
+              {t('video.limits', { seconds: VIDEO_MAX_SECONDS, mb: VIDEO_MAX_MB })}
             </p>
             <input
               ref={inputRef}
@@ -389,7 +403,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-8">
             <div className="w-5 h-5 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
             <p className="text-zinc-400 text-sm font-light">
-              Processing video… {progress}%
+              {t('video.processing', { progress })}
             </p>
             <div className="w-full max-w-xs h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div
@@ -417,7 +431,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
               type="button"
               onClick={() => (playing ? stopPlayback() : setPlaying(true))}
               className="w-11 h-11 shrink-0 rounded-full bg-white text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition-colors"
-              aria-label={playing ? 'Pause' : 'Play'}
+              aria-label={playing ? t('video.pause') : t('video.play')}
             >
               {playing ? (
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -437,10 +451,10 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
               value={currentFrame}
               onChange={(e) => handleScrub(Number(e.target.value))}
               className="flex-1 accent-white"
-              aria-label="Scrub frames"
+              aria-label={t('video.scrub')}
             />
             <span className="text-zinc-500 text-xs tabular-nums w-16 text-right">
-              {currentFrame + 1} / {frameCount}
+              {t('video.frameCounter', { current: currentFrame + 1, total: frameCount })}
             </span>
           </div>
 
@@ -462,7 +476,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
               />
             </svg>
-            Download Frame
+            {t('video.downloadFrame')}
           </button>
         </div>
       )}

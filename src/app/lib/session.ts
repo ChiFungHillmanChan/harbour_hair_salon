@@ -1,4 +1,5 @@
 import 'server-only';
+import { localizedPath } from '@/i18n/request';
 import { cache } from 'react';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
@@ -53,7 +54,7 @@ export const verifySession = cache(async () => {
   const session = await decrypt(cookie);
 
   if (!session?.userId) {
-    redirect('/auth/signin');
+    redirect(await localizedPath('/auth/signin'));
   }
 
   // Re-load the CURRENT role from the database rather than trusting the role
@@ -67,22 +68,22 @@ export const verifySession = cache(async () => {
 
   if (!user) {
     // Account no longer exists — treat the stale cookie as unauthenticated.
-    redirect('/auth/signin');
+    redirect(await localizedPath('/auth/signin'));
   }
 
   // Tokens issued before this field existed have no claim → treat as 0, which
   // matches a freshly-migrated user (default 0). A password reset bumps the
   // stored version, invalidating every previously-issued token.
   const tokenVersion = session.sessionVersion ?? 0;
-  if (user.sessionVersion !== tokenVersion) {
-    redirect('/auth/signin');
+  if (user!.sessionVersion !== tokenVersion) {
+    redirect(await localizedPath('/auth/signin'));
   }
-  return { userId: session.userId, role: user.role };
+  return { userId: session!.userId, role: user!.role };
 });
 
 export async function requireAdmin() {
   const session = await verifySession();
-  if (session.role !== 'ADMIN') redirect('/');
+  if (session.role !== 'ADMIN') redirect(await localizedPath('/'));
   return session;
 }
 

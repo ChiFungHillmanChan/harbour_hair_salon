@@ -30,10 +30,18 @@ test('deleting a stylist retires their outbound feed token immediately', async (
   // The token cache has no short timer, so without this the deleted stylist's
   // feed URL keeps answering until the week-long safety net expires.
   const calls: string[] = [];
+  const stylist = { findUnique: async () => ({ slug: 'gone' }), delete: async () => { calls.push('delete'); return { id: 'stylist-1' }; } };
+  // The profile's translations and drafts are removed in the same transaction.
+  const tx = {
+    stylist,
+    contentTranslation: { deleteMany: async () => { calls.push('translations'); return { count: 2 }; } },
+    contentDraft: { deleteMany: async () => { calls.push('drafts'); return { count: 0 }; } },
+  };
   const actions = loadServerModule<typeof import('./admin-stylists')>('src/app/actions/admin-stylists.ts', {
     '@/app/lib/prisma': {
-      stylist: { findUnique: async () => ({ slug: 'gone' }), delete: async () => { calls.push('delete'); return { id: 'stylist-1' }; } },
+      stylist,
       appointment: { count: async () => 0 },
+      $transaction: async (run: (client: typeof tx) => Promise<unknown>) => run(tx),
     },
     '@/app/lib/session': { verifySession: async () => ({ role: 'ADMIN' }) },
     '@/app/stylists/slug': { slugify: () => 'gone' },
@@ -47,5 +55,5 @@ test('deleting a stylist retires their outbound feed token immediately', async (
   const form = new FormData();
   form.set('id', 'stylist-1');
   await actions.deleteStylist(form);
-  assert.deepEqual(calls, ['delete', 'token']);
+  assert.deepEqual(calls, ['translations', 'drafts', 'delete', 'token']);
 });

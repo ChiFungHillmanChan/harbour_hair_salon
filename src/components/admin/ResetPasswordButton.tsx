@@ -1,6 +1,7 @@
 'use client';
 
 import { resetUserPassword } from '@/app/actions/admin';
+import { useT } from '@/i18n/client';
 
 interface ResetPasswordButtonProps {
   userId: string;
@@ -8,8 +9,9 @@ interface ResetPasswordButtonProps {
 }
 
 export function ResetPasswordButton({ userId, userName }: ResetPasswordButtonProps) {
+  const t = useT('adminOps');
   const handleResetPassword = async () => {
-    const newPassword = window.prompt(`Enter new password for ${userName}:`);
+    const newPassword = window.prompt(t('users.resetPassword.prompt', { name: userName }));
 
     if (!newPassword) {
       return;
@@ -19,12 +21,12 @@ export function ResetPasswordButton({ userId, userName }: ResetPasswordButtonPro
       const result = await resetUserPassword(userId, newPassword);
 
       if (result.error) {
-        alert(`Error: ${result.error}`);
+        alert(t('users.resetPassword.error', { error: result.error }));
       } else if (result.success) {
-        alert(`Password reset successfully for ${userName}`);
+        alert(t('users.resetPassword.success', { name: userName }));
       }
     } catch (error) {
-      alert(`Error resetting password: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(t('users.resetPassword.failed', { error: error instanceof Error ? error.message : t('users.resetPassword.unknownError') }));
     }
   };
 
@@ -33,7 +35,7 @@ export function ResetPasswordButton({ userId, userName }: ResetPasswordButtonPro
       onClick={handleResetPassword}
       className="text-zinc-700 hover:text-zinc-900 mr-4"
     >
-      Reset Password
+      {t('users.resetPassword.button')}
     </button>
   );
 }

@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify, SignJWT } from 'jose';
 import { sanitizeRedirect } from '@/app/lib/redirect';
 import { isParseableUrl } from '@/app/lib/site-url';
+import { normalizeLocale, type Locale } from '@/i18n/config';
 
 const GOOGLE_AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -15,6 +16,13 @@ type OAuthState = {
   nonce: string;
   codeVerifier: string;
   redirectTo: string;
+  /**
+   * Language of the page the visitor started from. The callback URL is
+   * registered with Google and has no language of its own, so the language
+   * travels in this signed state instead. Absent on states issued before it
+   * existed.
+   */
+  locale?: Locale;
 };
 
 export type GoogleProfile = {
@@ -63,7 +71,8 @@ function randomUrlSafe(bytes = 32): string {
 
 export async function createGoogleAuthorization(
   requestOrigin: string,
-  redirect: string | null
+  redirect: string | null,
+  locale?: Locale
 ): Promise<{ authorizationUrl: string; stateCookie: string }> {
   const { clientId } = getGoogleConfig();
   const callbackUrl = getGoogleCallbackUrl(requestOrigin);
@@ -72,6 +81,7 @@ export async function createGoogleAuthorization(
     nonce: randomUrlSafe(),
     codeVerifier: randomUrlSafe(48),
     redirectTo: sanitizeRedirect(redirect),
+    ...(locale ? { locale } : {}),
   };
 
   const codeChallenge = createHash('sha256').update(state.codeVerifier).digest('base64url');
@@ -105,7 +115,24 @@ export async function readGoogleState(
   if (!state.state || state.state !== returnedState || !state.nonce || !state.codeVerifier) {
     throw new Error('Invalid OAuth state');
   }
-  return { ...state, redirectTo: sanitizeRedirect(state.redirectTo) };
+  return { ...state, redirectTo: sanitizeRedirect(state.redirectTo), locale: normalizeLocale(state.locale) ?? undefined };
+}
+
+/**
+ * The language stored in a state cookie we signed, WITHOUT the state/CSRF
+ * checks — only to word the sign-in error page when the flow fails before
+ * (or while) readGoogleState runs. It chooses between our two dictionaries
+ * and nothing else; every security decision still goes through
+ * readGoogleState.
+ */
+export async function readGoogleStateLocale(stateCookie: string | undefined): Promise<Locale | null> {
+  if (!stateCookie) return null;
+  try {
+    const { payload } = await jwtVerify(stateCookie, getSessionKey(), { algorithms: ['HS256'] });
+    return normalizeLocale(typeof payload.locale === 'string' ? payload.locale : null);
+  } catch {
+    return null;
+  }
 }
 
 export async function exchangeGoogleCode(

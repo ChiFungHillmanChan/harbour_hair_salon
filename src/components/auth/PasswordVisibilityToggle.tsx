@@ -1,16 +1,19 @@
 'use client';
 
+import { useT } from '@/i18n/client';
+
 type PasswordVisibilityToggleProps = {
   visible: boolean;
   onToggle: () => void;
 };
 
 export default function PasswordVisibilityToggle({ visible, onToggle }: PasswordVisibilityToggleProps) {
+  const t = useT('auth');
   return (
     <button
       type="button"
       onClick={onToggle}
-      aria-label={visible ? 'Hide password' : 'Show password'}
+      aria-label={visible ? t('password.hide') : t('password.show')}
       className="absolute inset-y-0 right-0 flex items-center pr-4 text-zinc-400 hover:text-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black transition-colors"
     >
       {visible ? (

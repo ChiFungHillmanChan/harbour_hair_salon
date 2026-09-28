@@ -9,13 +9,18 @@ import {
   getGoogleCallbackUrl,
   GOOGLE_OAUTH_STATE_COOKIE,
   readGoogleState,
+  readGoogleStateLocale,
   verifyGoogleIdToken,
 } from '@/app/lib/google-oauth';
+import { postSignInPath } from '@/app/lib/post-auth-redirect';
+import type { Locale } from '@/i18n/config';
+import { localizeHref } from '@/i18n/paths';
+import { getRequestLocale } from '@/i18n/request';
 
 export const runtime = 'nodejs';
 
-function signInError(request: NextRequest, code: string) {
-  const response = NextResponse.redirect(new URL(`/auth/signin?error=${code}`, request.url));
+function signInError(request: NextRequest, code: string, locale: Locale) {
+  const response = NextResponse.redirect(new URL(localizeHref(locale, `/auth/signin?error=${code}`), request.url));
   response.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, '', {
     ...getGoogleOAuthStateCookieOptions(),
     maxAge: 0,
@@ -24,13 +29,19 @@ function signInError(request: NextRequest, code: string) {
 }
 
 export async function GET(request: NextRequest) {
+  // This URL is registered with Google and stays language-free; the language
+  // of the page the visitor started on comes back in our signed state cookie
+  // (falling back to the remembered manual choice, then English).
+  const locale = (await readGoogleStateLocale(request.cookies.get(GOOGLE_OAUTH_STATE_COOKIE)?.value))
+    ?? await getRequestLocale();
+
   if (request.nextUrl.searchParams.get('error')) {
-    return signInError(request, 'google_cancelled');
+    return signInError(request, 'google_cancelled', locale);
   }
 
   try {
     const code = request.nextUrl.searchParams.get('code');
-    if (!code) return signInError(request, 'google_failed');
+    if (!code) return signInError(request, 'google_failed', locale);
 
     const state = await readGoogleState(
       request.cookies.get(GOOGLE_OAUTH_STATE_COOKIE)?.value,
@@ -93,7 +104,7 @@ export async function GET(request: NextRequest) {
     await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.LOGIN', targetType: 'User', targetId: user.id, metadata: { method: 'google' } });
     // Google is the only factor for an admin too — see lib/session.ts.
     await createSession(user.id, user.role, user.sessionVersion, true);
-    const destination = user.role === 'ADMIN' ? '/admin' : state.redirectTo;
+    const destination = postSignInPath(state.locale ?? locale, state.redirectTo, user.role);
     const response = NextResponse.redirect(new URL(destination, request.url));
     response.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, '', {
       ...getGoogleOAuthStateCookieOptions(),
@@ -103,8 +114,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Google OAuth callback failed:', error);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      return signInError(request, 'google_already_linked');
+      return signInError(request, 'google_already_linked', locale);
     }
-    return signInError(request, 'google_failed');
+    return signInError(request, 'google_failed', locale);
   }
 }

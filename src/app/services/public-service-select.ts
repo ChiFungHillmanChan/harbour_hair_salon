@@ -7,7 +7,8 @@ import type { Prisma } from '@prisma/client';
  * column ends up in the RSC payload — readable by anyone who views source. A
  * bare `prisma.service.findMany()` therefore published the whole row, including
  * `treatwellExternalId` (an internal integration id), `calendarColor` (an
- * admin-only display setting) and the bookkeeping timestamps.
+ * admin-only display setting) and the bookkeeping timestamps. The price-list
+ * provenance (`priceSource`, `priceVerifiedAt`) stays internal too.
  *
  * Mirrors `publicStylistSelect` in app/stylists/slug.ts, which exists for the
  * same reason — that one keeps the secret `treatwellIcalUrl` and `icalToken`
@@ -29,10 +30,31 @@ export const publicServiceSelect = {
   isPatchTest: true,
   requiresConsultation: true,
   isConsultation: true,
+  // Price-option model (services/pricing): which menu item, which hair length,
+  // standard or NHS, and how the price is labelled.
+  offeringId: true,
+  hairLength: true,
+  priceType: true,
+  isBookable: true,
+  priceVersion: true,
+  vatDisplay: true,
+  priceNature: true,
+  durationConfirmed: true,
+  priceNote: true,
+  surchargeBaseServiceId: true,
+  surchargeAmount: true,
 } as const;
 
 /** A Service row as fetched for a public page. */
 export type PublicService = Prisma.ServiceGetPayload<{ select: typeof publicServiceSelect }>;
 
-/** The same row after `price` is converted for client components. */
-export type ClientPublicService = Omit<PublicService, 'price'> & { price: number };
+/** The same row after money is converted for client components. */
+export type ClientPublicService = Omit<PublicService, 'price' | 'surchargeAmount'> & {
+  price: number;
+  amountPence: number;
+  surchargeAmountPence: number | null;
+  /** Both languages' names, so search finds a service whichever you type. */
+  searchText: string;
+  /** False when the visitor's language had no published translation (English shown). */
+  translated: boolean;
+};

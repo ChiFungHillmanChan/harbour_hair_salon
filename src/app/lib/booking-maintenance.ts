@@ -39,16 +39,16 @@ export const BOOKING_MAINTENANCE_MESSAGE =
 /** Read the switch and calendar state without the public settings cache. */
 export async function assertOnlineBookingReady(db: Prisma.TransactionClient) {
   // A closed deployment must not wake Neon just to confirm booking is closed.
-  if (process.env.NOTIFICATIONS_ENABLED !== 'true') throw new BookingError(BOOKING_MAINTENANCE_MESSAGE);
+  if (process.env.NOTIFICATIONS_ENABLED !== 'true') throw new BookingError('MAINTENANCE');
   const settings = await db.siteSettings.findUnique({ where: { id: 'singleton' }, select: { bookingEnabled: true, phone: true } });
-  if (!settings?.bookingEnabled) throw new BookingError(BOOKING_MAINTENANCE_MESSAGE);
+  if (!settings?.bookingEnabled) throw new BookingError('MAINTENANCE');
   const readiness = await checkCalendarBookingReadiness(db);
-  if (!readiness.ready) throw new BookingError(BOOKING_MAINTENANCE_MESSAGE);
+  if (!readiness.ready) throw new BookingError('MAINTENANCE');
   const operations = await checkOperationsRuntimeReadiness(db);
-  if (!operations.ready) throw new BookingError(BOOKING_MAINTENANCE_MESSAGE);
+  if (!operations.ready) throw new BookingError('MAINTENANCE');
   if (process.env.CALENDAR_SYNC_ENABLED !== 'true') {
     const activeChannels = await db.calendarConnection.count({ where: { receivesBookings: true } });
-    if (activeChannels) throw new BookingError(BOOKING_MAINTENANCE_MESSAGE);
+    if (activeChannels) throw new BookingError('MAINTENANCE');
   }
   return settings;
 }

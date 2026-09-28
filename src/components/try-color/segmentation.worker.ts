@@ -241,8 +241,10 @@ function processFrame(
     );
   } catch (err) {
     console.error('Worker segmentation error:', err);
+    // `code` is what the page translates; `message` stays for logs.
     self.postMessage({
       type: 'error',
+      code: 'processingFailed',
       message: 'Live preview processing failed. Try uploading a photo instead.',
     });
   } finally {
@@ -257,6 +259,7 @@ self.onmessage = (e: MessageEvent) => {
       console.error('Worker init error:', err);
       self.postMessage({
         type: 'error',
+        code: 'unavailable',
         message: 'Live preview is unavailable on this device. Try uploading a photo instead.',
       });
     });

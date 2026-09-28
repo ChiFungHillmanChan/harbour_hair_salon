@@ -1,9 +1,7 @@
-import Link from 'next/link';
-
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+import Link from '@/i18n/link';
+import { getLocale, getT } from '@/i18n/server';
+import { formatMonth, formatMonthName } from '@/i18n/dates';
+import { localizeHref } from '@/i18n/paths';
 
 /** Move a (year, month) pair by whole months, rolling the year over correctly. */
 export function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
@@ -14,9 +12,12 @@ export function shiftMonth(year: number, month: number, delta: number): { year: 
 /**
  * Month navigation for the admin timesheet/payroll pages: prev-next links plus
  * a plain GET form, so the period can be changed without hand-editing the URL.
- * Server-rendered — the form submits natively to `basePath?year=&month=`.
+ * Server-rendered — the form submits natively to `basePath?year=&month=` in the
+ * page's language.
  */
-export function MonthSelector({ basePath, year, month }: { basePath: string; year: number; month: number }) {
+export async function MonthSelector({ basePath, year, month }: { basePath: string; year: number; month: number }) {
+  const [locale, t] = await Promise.all([getLocale(), getT('admin')]);
+  const monthName = (m: number) => formatMonthName(locale, m);
   const prev = shiftMonth(year, month, -1);
   const next = shiftMonth(year, month, 1);
   const href = (p: { year: number; month: number }) => `${basePath}?year=${p.year}&month=${p.month}`;
@@ -26,21 +27,21 @@ export function MonthSelector({ basePath, year, month }: { basePath: string; yea
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Link href={href(prev)} className={linkClass} aria-label={`Previous month: ${MONTH_NAMES[prev.month - 1]} ${prev.year}`}>
-        ◀ {MONTH_NAMES[prev.month - 1]}
+      <Link href={href(prev)} className={linkClass} aria-label={t('monthSelector.previous', { period: formatMonth(locale, prev.year, prev.month) })}>
+        ◀ {monthName(prev.month)}
       </Link>
 
-      <form method="get" action={basePath} className="flex items-center gap-2">
+      <form method="get" action={localizeHref(locale, basePath)} className="flex items-center gap-2">
         <label>
-          <span className="sr-only">Month</span>
+          <span className="sr-only">{t('monthSelector.month')}</span>
           <select name="month" defaultValue={month} className={selectClass}>
-            {MONTH_NAMES.map((name, i) => (
-              <option key={name} value={i + 1}>{name}</option>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <option key={m} value={m}>{monthName(m)}</option>
             ))}
           </select>
         </label>
         <label>
-          <span className="sr-only">Year</span>
+          <span className="sr-only">{t('monthSelector.year')}</span>
           <select name="year" defaultValue={year} className={selectClass}>
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
@@ -48,12 +49,12 @@ export function MonthSelector({ basePath, year, month }: { basePath: string; yea
           </select>
         </label>
         <button type="submit" className="bg-zinc-900 hover:bg-black text-white px-3 py-1.5 rounded text-sm font-medium transition-colors">
-          Go
+          {t('monthSelector.go')}
         </button>
       </form>
 
-      <Link href={href(next)} className={linkClass} aria-label={`Next month: ${MONTH_NAMES[next.month - 1]} ${next.year}`}>
-        {MONTH_NAMES[next.month - 1]} ▶
+      <Link href={href(next)} className={linkClass} aria-label={t('monthSelector.next', { period: formatMonth(locale, next.year, next.month) })}>
+        {monthName(next.month)} ▶
       </Link>
     </div>
   );

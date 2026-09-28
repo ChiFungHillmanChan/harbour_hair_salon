@@ -2,6 +2,7 @@
 'use client';
 
 import { useRef, useEffect, useState } from 'react';
+import { useT } from '@/i18n/client';
 
 interface CameraViewProps {
   onFrame: (video: HTMLVideoElement) => void;
@@ -22,6 +23,9 @@ export function CameraView({
   hidden,
   onFacingModeChange,
 }: CameraViewProps) {
+  const t = useT('tryColor');
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const streamRef = useRef<MediaStream | null>(null);
@@ -68,14 +72,15 @@ export function CameraView({
       } catch (err) {
         if (cancelled) return;
         console.error('Camera error:', err);
+        const t = tRef.current;
         const msg =
           err instanceof DOMException && err.name === 'NotAllowedError'
-            ? 'Camera access was denied. You can upload a photo instead.'
+            ? t('camera.denied')
             : err instanceof DOMException && err.name === 'NotFoundError'
-              ? 'No camera found on this device. You can upload a photo instead.'
+              ? t('camera.notFound')
               : err instanceof DOMException && err.name === 'AbortError'
-                ? 'Camera was interrupted. Try again.'
-                : `Camera error: ${err instanceof Error ? err.message : String(err)}`;
+                ? t('camera.interrupted')
+                : t('camera.failed', { message: err instanceof Error ? err.message : String(err) });
         onErrorRef.current(msg);
       }
     })();
@@ -148,7 +153,7 @@ export function CameraView({
       <button
         onClick={flipCamera}
         className="absolute top-3 right-3 z-20 bg-black/50 backdrop-blur-sm text-white p-2.5 rounded-full hover:bg-black/70 transition-all duration-300 border border-white/10"
-        aria-label="Flip camera"
+        aria-label={t('camera.flip')}
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -158,7 +163,7 @@ export function CameraView({
       {/* Live indicator */}
       <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 bg-black/50 backdrop-blur-sm px-2.5 py-1 rounded-full border border-white/10">
         <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-        <span className="text-white text-[10px] font-bold tracking-wider uppercase">Live</span>
+        <span className="text-white text-[10px] font-bold tracking-wider uppercase">{t('camera.live')}</span>
       </div>
     </div>
   );

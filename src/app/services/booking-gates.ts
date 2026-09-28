@@ -31,30 +31,33 @@ export interface BookingGateInput {
   now: Date;
 }
 
-export type BookingGateResult = { ok: true } | { ok: false; error: string };
+export type BookingGateCode = 'PAST_TIME' | 'CONSULTATION_ONLY' | 'PATCH_TEST_TOO_SOON' | 'PATCH_TEST_EXPIRED' | 'PATCH_TEST_REQUIRED';
+
+/** `error` is the English text (logs, tests); callers show `code` in the page's language. */
+export type BookingGateResult = { ok: true } | { ok: false; code: BookingGateCode; error: string };
 
 export function evaluateBookingGates(input: BookingGateInput): BookingGateResult {
   const { requiresConsultation, requiresPatchTest, patchTestEligible, patchTestReason, bookingInstant, now } = input;
 
   // Prevent booking in the past (matches submitBooking's `fullDate <= new Date()`).
   if (bookingInstant <= now) {
-    return { ok: false, error: 'Cannot book a time in the past' };
+    return { ok: false, code: 'PAST_TIME', error: 'Cannot book a time in the past' };
   }
 
   // A gated service must never be booked directly — the client routes to a
   // consultation, but a crafted request must be rejected.
   if (requiresConsultation) {
-    return { ok: false, error: 'This service is by consultation only. Please book a consultation to discuss it.' };
+    return { ok: false, code: 'CONSULTATION_ONLY', error: 'This service is by consultation only. Please book a consultation to discuss it.' };
   }
 
   if (requiresPatchTest && !patchTestEligible) {
-    const message =
-      patchTestReason === 'too_soon'
-        ? 'Your patch test must be at least 48 hours before a colour appointment.'
-        : patchTestReason === 'expired'
-          ? 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.'
-          : 'Colour services require a completed Consultation & Patch Test first. Please book that appointment.';
-    return { ok: false, error: message };
+    if (patchTestReason === 'too_soon') {
+      return { ok: false, code: 'PATCH_TEST_TOO_SOON', error: 'Your patch test must be at least 48 hours before a colour appointment.' };
+    }
+    if (patchTestReason === 'expired') {
+      return { ok: false, code: 'PATCH_TEST_EXPIRED', error: 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.' };
+    }
+    return { ok: false, code: 'PATCH_TEST_REQUIRED', error: 'Colour services require a completed Consultation & Patch Test first. Please book that appointment.' };
   }
 
   return { ok: true };

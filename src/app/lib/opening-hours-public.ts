@@ -77,6 +77,23 @@ export function shortDayRange(days: PublicOpeningDay['day'][]): string {
   return days.length === 1 ? short(days[0]) : `${short(days[0])} – ${short(days[days.length - 1])}`;
 }
 
+/**
+ * Language-aware day range for page chrome: pass the label for one day and a
+ * joiner (e.g. `(a, b) => t('days.range', { from: a, to: b })`).
+ */
+export function dayRangeLabel(
+  days: PublicOpeningDay['day'][],
+  label: (day: PublicOpeningDay['day']) => string,
+  join: (from: string, to: string) => string,
+): string {
+  return days.length === 1 ? label(days[0]) : join(label(days[0]), label(days[days.length - 1]));
+}
+
+/** Dictionary key (`common.days.*`) for a schema.org day name. */
+export function dayKey(day: PublicOpeningDay['day'], form: 'short' | 'long' = 'short'): string {
+  return form === 'short' ? day.slice(0, 3).toLowerCase() : day.toLowerCase();
+}
+
 /** e.g. "10:15 – 19:00", the single display format used across the site. */
 export function formatRange(opens: string, closes: string): string {
   return `${opens} – ${closes}`;

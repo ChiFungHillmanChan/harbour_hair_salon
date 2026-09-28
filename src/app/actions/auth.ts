@@ -8,9 +8,10 @@ import { createSession, deleteSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { loginLimiter, registerLimiter } from '@/app/lib/rate-limit';
-import { sanitizeRedirect } from '@/app/lib/redirect';
+import { postSignInPath } from '@/app/lib/post-auth-redirect';
 import { decideRegistration } from '@/app/lib/register-gate';
 import { appendAuditEvent } from '@/app/lib/audit';
+import { getActionT, localizedPath } from '@/i18n/request';
 
 function getClientIp(headersList: Headers): string {
   const forwarded = headersList.get('x-forwarded-for');
@@ -21,30 +22,38 @@ function getClientIp(headersList: Headers): string {
 // lib/rate-limit.ts so an unset UPSTASH_* env degrades the limit instead of
 // removing it.
 
+// Messages are codes, translated into the caller's language below.
 const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email address.').max(254),
-  password: z.string().min(1, 'Password is required.').max(128),
+  email: z.string().email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
+  password: z.string().min(1, 'PASSWORD_REQUIRED').max(128, 'PASSWORD_TOO_LONG'),
 });
 
 const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters.').max(100),
-  email: z.string().email('Please enter a valid email address.').max(254),
+  name: z.string().min(2, 'NAME_TOO_SHORT').max(100, 'NAME_TOO_LONG'),
+  email: z.string().email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
   // 8 minimum, matching the admin-user schema in actions/admin.ts.
-  password: z.string().min(8, 'Password must be at least 8 characters.').max(128),
-  phone: z.string().max(20).optional(),
+  password: z.string().min(8, 'PASSWORD_TOO_SHORT').max(128, 'PASSWORD_TOO_LONG'),
+  phone: z.string().max(20, 'PHONE_TOO_LONG').optional(),
 });
 
+type AuthT = Awaited<ReturnType<typeof getActionT<'auth'>>>;
+
+function issueText(t: AuthT, issues: { message: string }[]) {
+  return t.dynamic(`errors.${issues[0]?.message}`, undefined, t('errors.INVALID_INPUT'));
+}
+
 export async function login(prevState: unknown, formData: FormData) {
+  const t = await getActionT('auth');
   const headersList = await headers();
   const ip = getClientIp(headersList);
   if (!(await loginLimiter.check(ip))) {
-    return { error: 'Too many login attempts. Please try again in 15 minutes.' };
+    return { error: t('errors.LOGIN_RATE_LIMITED') };
   }
 
   const result = loginSchema.safeParse(Object.fromEntries(formData));
 
   if (!result.success) {
-    return { error: result.error.issues[0].message };
+    return { error: issueText(t, result.error.issues) };
   }
 
   const { password } = result.data;
@@ -55,34 +64,35 @@ export async function login(prevState: unknown, formData: FormData) {
   });
 
   if (!user || !user.password) {
-    return { error: 'Incorrect email or password. Please try again.' };
+    return { error: t('errors.INCORRECT_CREDENTIALS') };
   }
 
   const isValid = await verifyPassword(password, user.password);
 
   if (!isValid) {
-    return { error: 'Incorrect email or password. Please try again.' };
+    return { error: t('errors.INCORRECT_CREDENTIALS') };
   }
 
-  const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
+  const redirectTo = postSignInPath(t.locale, formData.get('redirect') as string, user.role);
   await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.LOGIN', targetType: 'User', targetId: user.id, metadata: { method: 'password' } });
   // Password is the only factor. The session is marked verified so nothing
   // downstream can refuse an admin for a second factor that is never asked for.
   await createSession(user.id, user.role, user.sessionVersion, true);
-  redirect(user.role === 'ADMIN' ? '/admin' : redirectTo);
+  redirect(redirectTo);
 }
 
 export async function register(prevState: unknown, formData: FormData) {
+  const t = await getActionT('auth');
   const headersList = await headers();
   const ip = getClientIp(headersList);
   if (!(await registerLimiter.check(ip))) {
-    return { error: 'Too many registration attempts. Please try again in 15 minutes.' };
+    return { error: t('errors.REGISTER_RATE_LIMITED') };
   }
 
   const result = registerSchema.safeParse(Object.fromEntries(formData));
 
   if (!result.success) {
-    return { error: result.error.issues[0].message };
+    return { error: issueText(t, result.error.issues) };
   }
 
   const { password, name, phone } = result.data;
@@ -93,7 +103,7 @@ export async function register(prevState: unknown, formData: FormData) {
     select: { password: true, oauthAccounts: { select: { provider: true } } },
   });
 
-  const redirectTo = sanitizeRedirect(formData.get('redirect') as string);
+  const redirectTo = postSignInPath(t.locale, formData.get('redirect') as string);
 
   // Never merge registration input into an existing user. Legacy guests recover
   // access through the emailed password-reset proof, just like other accounts.
@@ -107,7 +117,7 @@ export async function register(prevState: unknown, formData: FormData) {
   );
 
   if (decision.kind === 'REJECT') {
-    return { error: decision.error };
+    return { error: t(`errors.${decision.code}`) };
   }
 
   const hashedPassword = await hashPassword(password);
@@ -125,7 +135,7 @@ export async function register(prevState: unknown, formData: FormData) {
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      return { error: 'This email is already registered. Please sign in instead.' };
+      return { error: t('errors.EMAIL_TAKEN') };
     }
     throw error;
   }
@@ -136,5 +146,5 @@ export async function register(prevState: unknown, formData: FormData) {
 
 export async function logout() {
   await deleteSession();
-  redirect('/');
+  redirect(await localizedPath('/'));
 }

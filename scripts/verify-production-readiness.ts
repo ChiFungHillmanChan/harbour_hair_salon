@@ -34,12 +34,16 @@ async function main() {
     const { runOperationsDiagnostics } = await import('../src/app/services/operations-readiness');
     await runOperationsDiagnostics({ db, fetchImpl: async (url) => String(url).includes('resend.com') ? Response.json({ data: [{ name: 'example.com', status: 'verified', capabilities: { sending: 'enabled' } }], has_more: false }) : Response.json({ result: 'PONG' }) });
     const date = future(14);
-    const attempts = await Promise.allSettled(Array.from({ length: 2 }, () => booking.createBooking({ stylistId: stylist.id, serviceId: service.id, userId: user.id, date, discountCode: 'VERIFY20' })));
+    // Discounts are paused: a code is refused before anything is written or counted.
+    await assert.rejects(booking.createBooking({ stylistId: stylist.id, serviceId: service.id, userId: user.id, date, discountCode: 'VERIFY20' }), /paused/i);
+    assert.equal((await db.discountCode.findUniqueOrThrow({ where: { id: 'verify-discount' } })).usedCount, 0, 'A paused code is never counted');
+    const attempts = await Promise.allSettled(Array.from({ length: 2 }, () => booking.createBooking({ stylistId: stylist.id, serviceId: service.id, userId: user.id, date, expectedQuote: { serviceId: service.id, priceVersion: 1, amountPence: 10000 } })));
     assert.equal(attempts.filter((attempt) => attempt.status === 'fulfilled').length, 1, 'Concurrent requests must reserve one slot only');
     const booked = await db.appointment.findFirstOrThrow({ where: { userId: user.id } });
-    assert.equal(Number(booked.priceAtBooking), 80);
+    assert.equal(Number(booked.priceAtBooking), 100, 'The listed price is frozen; no offer or code applies');
     assert.equal(booked.durationAtBooking, 60);
-    assert.equal((await db.discountCode.findUniqueOrThrow({ where: { id: 'verify-discount' } })).usedCount, 1);
+    assert.equal(JSON.parse(booked.quoteJson ?? '{}').amountPence, 10000, 'The server quote is frozen with the booking');
+    assert.equal((await db.discountCode.findUniqueOrThrow({ where: { id: 'verify-discount' } })).usedCount, 0);
     assert.equal(await db.notificationDelivery.count({ where: { appointmentId: booked.id } }), 2, 'Two notifications must commit with the request');
     const queue = await db.notificationDelivery.findMany({ where: { appointmentId: booked.id } });
     assert.ok(queue.every((job) => !job.payloadJson.includes('password')));
@@ -59,9 +63,9 @@ async function main() {
       './offers-service': { getActiveGlobalOffer: async () => null },
       './notification-outbox-service': { enqueueAppointmentNotification: async () => { throw new Error('Simulated queue persistence failure'); } },
     });
-    await assert.rejects(failedQueueBooking.createBooking({ stylistId: stylist.id, serviceId: service.id, userId: user.id, date: future(15), discountCode: 'VERIFY20' }));
-    assert.equal(await db.appointment.count({ where: { userId: user.id } }), 1);
-    assert.equal((await db.discountCode.findUniqueOrThrow({ where: { id: 'verify-discount' } })).usedCount, 1, 'Failed queue persistence rolls back the discount claim');
+    await assert.rejects(failedQueueBooking.createBooking({ stylistId: stylist.id, serviceId: service.id, userId: user.id, date: future(15) }));
+    assert.equal(await db.appointment.count({ where: { userId: user.id } }), 1, 'Failed queue persistence rolls back the booking');
+    assert.equal((await db.discountCode.findUniqueOrThrow({ where: { id: 'verify-discount' } })).usedCount, 0);
     // Distinct slots still contend on this customer's six-booking limit.
     await db.appointment.createMany({ data: Array.from({ length: 4 }, (_, i) => ({
       id: `verify-cap-${i}`, userId: user.id, stylistId: stylist.id, serviceId: service.id,
@@ -167,7 +171,7 @@ async function main() {
     assert.equal((await syncCalendarFeeds({ db, now, connectionId: connectionRow.id, fetchFeed: async () => { throw new Error('Disconnected'); } }))[0].ok, false);
     assert.equal(await db.externalBusyBlock.count({ where: { stylistId: stylist.id } }), 1, 'A failed import must retain occupied periods');
     await assert.rejects(booking.createBooking({ stylistId: stylist.id, serviceId: service.id, userId: user.id, date: future(15) }), /closed/);
-    console.log('PASS: real PostgreSQL booking/worker concurrency, price snapshot, discount rollback, transactional notification queue, calendar reconciliation/failure preservation, and booking readiness gate. No external messages were sent.');
+    console.log('PASS: real PostgreSQL booking/worker concurrency, price snapshot, paused discounts, transactional notification queue, calendar reconciliation/failure preservation, and booking readiness gate. No external messages were sent.');
   } finally {
     if (fixturesStarted) {
     await db.auditEvent.deleteMany({ where: { actorUserId: 'verify-user' } });

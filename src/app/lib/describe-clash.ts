@@ -1,4 +1,6 @@
-import { formatSalonTime } from '@/app/services/salon-time';
+import { formatSalonClock } from '@/i18n/dates';
+import type { Translate } from '@/i18n/translator';
+import type { Messages } from '@/i18n/messages/types-client';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
 
 /**
@@ -7,23 +9,28 @@ import type { MoveClash } from '@/app/services/admin-move-clashes';
  * Shared by the day grid, the week grid and the booking dialog so all three
  * name the same conflict identically — the salon reads one of these while
  * deciding whether to override, and a drag and a typed booking must not
- * describe the same collision in different words.
+ * describe the same collision in different words. The text follows the
+ * admin's interface language; the customer's name stays as entered.
  */
-export function describeClash(clash: MoveClash): string {
+export function describeClash(clash: MoveClash, t: Translate<Messages['adminSchedule']>): string {
   switch (clash.kind) {
-    case 'OVERLAP':
-      return `Overlaps ${clash.customerName ?? 'another booking'} at ${formatSalonTime(new Date(clash.start))}`;
+    case 'OVERLAP': {
+      const time = formatSalonClock(t.locale, new Date(clash.start));
+      return clash.customerName
+        ? t('clash.overlap', { customer: clash.customerName, time })
+        : t('clash.overlapUnknown', { time });
+    }
     case 'OUTSIDE_HOURS':
       return clash.availability
-        ? `Outside working hours (${clash.availability.startTime}–${clash.availability.endTime})`
-        : 'This stylist does not work on this day';
+        ? t('clash.outsideHours', { start: clash.availability.startTime, end: clash.availability.endTime })
+        : t('clash.dayOff');
     case 'EXTERNAL_BUSY':
-      return `Clashes with synced busy time at ${formatSalonTime(new Date(clash.start))}`;
+      return t('clash.externalBusy', { time: formatSalonClock(t.locale, new Date(clash.start)) });
     case 'PATCH_TEST':
       return clash.reason === 'expired'
-        ? 'The customer’s patch test has expired for this date'
+        ? t('clash.patchExpired')
         : clash.reason === 'too_soon'
-          ? 'The patch test is less than 48 hours before this date'
-          : 'No completed patch test on file for this colour service';
+          ? t('clash.patchTooSoon')
+          : t('clash.patchMissing');
   }
 }

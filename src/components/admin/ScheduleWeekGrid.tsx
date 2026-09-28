@@ -15,6 +15,8 @@ import { describeClash } from '@/app/lib/describe-clash';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
 import type { GridAppointment, GridBusyBlock, GridStylist, MoveResult } from './ScheduleDayGrid';
 import { calendarBusyForDay, calendarBusyLabel } from '@/app/lib/calendar-busy-display';
+import { useT } from '@/i18n/client';
+import { formatCalendarDay } from '@/i18n/dates';
 
 /**
  * The week board.
@@ -38,11 +40,9 @@ const PX_PER_MINUTE = 0.9;
  * there, so the block shows the time and who is in the chair, and the full
  * detail lives in the hover title and the day view.
  */
-function firstName(name: string | null): string {
-  return (name ?? 'Customer').trim().split(/\s+/)[0];
+function firstName(name: string | null, fallback: string): string {
+  return (name ?? fallback).trim().split(/\s+/)[0];
 }
-
-const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export type WeekStylist = GridStylist & {
   /** Working hours per weekday index, so each column can shade its own day. */
@@ -114,6 +114,8 @@ export function ScheduleWeekGrid({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<PendingConfirm | null>(null);
+  const t = useT('adminSchedule');
+  const customerFallback = t('appointment.customerFallback');
   const columnRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const stylistById = useMemo(
@@ -323,20 +325,20 @@ export function ScheduleWeekGrid({
 
   return (
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden">
-      {error && <div className="px-4 py-2 bg-red-50 text-sm text-red-700 border-b border-red-200">{error}</div>}
+      {error && <div role="alert" className="px-4 py-2 bg-red-50 text-sm text-red-700 border-b border-red-200">{error}</div>}
 
       {confirmState && (
         <div className="px-4 py-3 bg-amber-50 border-b border-amber-200">
-          <p className="text-sm font-semibold text-amber-900">This move clashes:</p>
+          <p className="text-sm font-semibold text-amber-900">{t('clash.moveTitle')}</p>
           <ul className="mt-1 mb-2 list-disc list-inside text-sm text-amber-800">
-            {confirmState.clashes.map((clash, index) => <li key={index}>{describeClash(clash)}</li>)}
+            {confirmState.clashes.map((clash, index) => <li key={index}>{describeClash(clash, t)}</li>)}
           </ul>
           <div className="flex gap-2">
             <button type="button" disabled={saving} onClick={() => confirmState.retry()} className="rounded bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50">
-              Move anyway
+              {t('clash.moveAnyway')}
             </button>
             <button type="button" onClick={() => setConfirmState(null)} className="rounded border border-amber-300 px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100">
-              Cancel
+              {t('clash.cancel')}
             </button>
           </div>
         </div>
@@ -346,18 +348,17 @@ export function ScheduleWeekGrid({
       <div className="flex border-b border-zinc-200 bg-zinc-50">
         <div className="w-12 flex-shrink-0" />
         {dayKeys.map((key) => {
-          const weekday = new Date(`${key}T12:00:00Z`).getUTCDay();
           const isToday = key === todayKey;
           return (
             <div key={key} className={`flex-1 min-w-0 px-1 py-2 text-center border-l border-zinc-200 ${isToday ? 'bg-zinc-900' : ''}`}>
               <div className={`text-[10px] font-medium uppercase tracking-wide ${isToday ? 'text-zinc-300' : 'text-zinc-500'}`}>
-                {WEEKDAY_LABELS[weekday]}
+                {formatCalendarDay(t.locale, key, { weekday: 'short' })}
               </div>
               <div className={`text-sm font-bold ${isToday ? 'text-white' : 'text-zinc-800'}`}>
                 {Number(key.slice(8, 10))}
               </div>
               <div className={`text-[10px] ${isToday ? 'text-zinc-300' : 'text-zinc-500'}`}>
-                {byDay.get(key)?.length ?? 0} booked
+                {t('grid.booked', { count: byDay.get(key)?.length ?? 0 })}
               </div>
             </div>
           );
@@ -435,7 +436,7 @@ export function ScheduleWeekGrid({
               {/* Synced busy time — visible, never draggable */}
               {dayBusy.map((block) => {
                 const { startMin, endMin } = block;
-                const label = calendarBusyLabel(block, stylistById.get(block.stylistId)?.name ?? 'Stylist', startMin, endMin);
+                const label = calendarBusyLabel(block, stylistById.get(block.stylistId)?.name ?? t('appointment.stylistFallback'), startMin, endMin, t);
                 return (
                   <div
                     key={block.id}
@@ -474,7 +475,7 @@ export function ScheduleWeekGrid({
                     key={appt.id}
                     onPointerDown={beginDrag(appt, 'move')}
                     onClick={(event) => event.stopPropagation()}
-                    title={`${timeLabel(place.startMin)} ${appt.customerName ?? 'Customer'} · ${appt.serviceName} · ${stylist?.name ?? ''}`}
+                    title={t('grid.blockTitle', { time: timeLabel(place.startMin), customer: appt.customerName ?? customerFallback, service: appt.serviceName, stylist: stylist?.name ?? '' })}
                     style={{
                       top: minutesToOffset(place.startMin, bounds.startMin, PX_PER_MINUTE),
                       height,
@@ -495,7 +496,7 @@ export function ScheduleWeekGrid({
                     />
                     <div className="pl-1 pr-0.5 py-0.5 text-[10px] leading-[1.15] pointer-events-none">
                       <div className="font-semibold tabular-nums">{timeLabel(place.startMin)}</div>
-                      <div className="truncate">{firstName(appt.customerName)}</div>
+                      <div className="truncate">{firstName(appt.customerName, customerFallback)}</div>
                     </div>
                     <div
                       onPointerDown={beginDrag(appt, 'bottom')}
@@ -511,9 +512,8 @@ export function ScheduleWeekGrid({
       </div>
 
       <div className="px-4 py-2 text-[11px] text-zinc-500 border-t border-zinc-200 bg-zinc-50">
-        Click a gap to add a booking, or a booking to edit it. Drag one sideways to move it to another
-        day, or drag its edge to change the length. Change stylist in the day view. Snaps to {MIN_DURATION_MINUTES} minutes.
-        {saving && <span className="ml-2 font-medium text-zinc-700">Saving…</span>}
+        {t('grid.weekHint', { minutes: MIN_DURATION_MINUTES })}
+        {saving && <span role="status" className="ml-2 font-medium text-zinc-700">{t('grid.saving')}</span>}
       </div>
     </div>
   );

@@ -4,9 +4,11 @@ import { z } from 'zod';
 import { headers } from 'next/headers';
 import { Resend } from 'resend';
 import { createRateLimiter } from '@/app/lib/rate-limit';
+import { getActionT } from '@/i18n/request';
 
+// Messages are codes, translated into `legal.unsubscribe.results.*` in the visitor's language.
 const unsubscribeSchema = z.object({
-  email: z.string().trim().toLowerCase().email('Please enter a valid email address.'),
+  email: z.string().trim().toLowerCase().email('INVALID_EMAIL'),
 });
 
 export type UnsubscribeState =
@@ -31,20 +33,21 @@ export async function unsubscribeFromMarketing(
   formData: FormData
 ): Promise<UnsubscribeState> {
   const ip = getClientIp(await headers());
+  const t = await getActionT('legal');
   if (!(await unsubLimiter.check(ip))) {
-    return { status: 'error', message: 'Too many requests. Please try again in an hour.' };
+    return { status: 'error', message: t('unsubscribe.results.RATE_LIMITED') };
   }
 
   const parsed = unsubscribeSchema.safeParse({ email: formData.get('email') });
   if (!parsed.success) {
-    return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid email address.' };
+    return { status: 'error', message: t('unsubscribe.results.INVALID_EMAIL') };
   }
 
   const resend = getResendClient();
   const audienceId = process.env.RESEND_AUDIENCE_ID;
   if (!resend || !audienceId) {
     console.error('Marketing unsubscribe is not configured: missing RESEND_API_KEY or RESEND_AUDIENCE_ID');
-    return { status: 'error', message: 'Unsubscribe is temporarily unavailable. Please contact the salon.' };
+    return { status: 'error', message: t('unsubscribe.results.UNAVAILABLE') };
   }
 
   try {
@@ -59,14 +62,14 @@ export async function unsubscribeFromMarketing(
       // report success without creating a new contact (which would let anyone flood
       // the audience with arbitrary emails).
       if (/not.?found|does not exist|could not find/i.test(message)) {
-        return { status: 'success', message: 'You have been unsubscribed from marketing emails.' };
+        return { status: 'success', message: t('unsubscribe.results.SUCCESS') };
       }
       throw new Error(message);
     }
   } catch (error) {
     console.error('Marketing unsubscribe failed:', error);
-    return { status: 'error', message: 'Unsubscribe failed. Please try again later.' };
+    return { status: 'error', message: t('unsubscribe.results.FAILED') };
   }
 
-  return { status: 'success', message: 'You have been unsubscribed from marketing emails.' };
+  return { status: 'success', message: t('unsubscribe.results.SUCCESS') };
 }

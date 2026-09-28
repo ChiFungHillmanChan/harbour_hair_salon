@@ -18,7 +18,14 @@ async function main() {
   const key = new TextEncoder().encode(secret);
   const sign = (claims: Record<string, unknown>) => new SignJWT({ ...claims, expiresAt: new Date(Date.now() + 3600_000).toISOString() }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('1h').sign(key);
   let fixturesStarted = false;
-  const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-H', '127.0.0.1', '-p', '3108'], {
+  // Bind to `localhost`, not 127.0.0.1. The middleware serves English by
+  // rewriting to the internal /en-gb segment; Next's NextURL normalises the
+  // host 127.0.0.1 to `localhost`, while `next start -H 127.0.0.1` names its
+  // own origin 127.0.0.1, so every rewrite looked external, was proxied back
+  // through the middleware and hit its /en-gb → / 308. Vercel (and a default
+  // `next start`) keep a same-host rewrite internal.
+  const origin = 'http://localhost:3108';
+  const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-H', 'localhost', '-p', '3108'], {
     env: { ...process.env, POSTGRES_URL: connection, POSTGRES_URL_NON_POOLING: connection, SESSION_SECRET: secret,
       NOTIFICATIONS_ENABLED: 'false', CALENDAR_SYNC_ENABLED: 'false', HOUSEKEEPING_ENABLED: 'false',
       RESEND_API_KEY: 'disabled', KV_REST_API_URL: '', KV_REST_API_TOKEN: '', UPSTASH_REDIS_REST_URL: '', UPSTASH_REDIS_REST_TOKEN: '', GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '' },
@@ -26,7 +33,7 @@ async function main() {
   });
   const log = createWriteStream(join(tmpdir(), 'harbour-backend-http-server.log'));
   server.stdout.pipe(log); server.stderr.pipe(log);
-  const fetchPage = (path: string, session?: string, extraCookie?: string) => fetch(`http://127.0.0.1:3108${path}`, {
+  const fetchPage = (path: string, session?: string, extraCookie?: string) => fetch(`${origin}${path}`, {
     headers: { cookie: [session ? `session=${session}` : '', extraCookie ?? ''].filter(Boolean).join('; ') }, redirect: 'manual',
   });
   const decodeHtml = (value: string) => value.replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
@@ -42,10 +49,13 @@ async function main() {
     assert.ok([...data.keys()].some(name => name.startsWith('$ACTION_')), 'Use action references emitted by the current build');
     return data;
   };
+  // The visible error, not the whole document: pages also ship their translated
+  // messages to the browser, so every error string is somewhere in the HTML.
+  const alertOf = (html: string) => [...html.matchAll(/<[a-z]+ role="alert"[^>]*>([\s\S]*?)<\/[a-z]+>/g)].map(match => decodeHtml(match[1].replace(/<!-- -->/g, ''))).join(' ');
   const cookieJar = new Map<string, string>();
   const mfaRequest = async (path: string, data?: FormData, ip?: string) => {
-    const response = await fetch(`http://127.0.0.1:3108${path}`, { method: data ? 'POST' : 'GET', body: data,
-      headers: { cookie: [...cookieJar].map(([name, value]) => `${name}=${value}`).join('; '), origin: 'http://127.0.0.1:3108', ...(ip ? { 'x-forwarded-for': ip } : {}) }, redirect: 'manual' });
+    const response = await fetch(`${origin}${path}`, { method: data ? 'POST' : 'GET', body: data,
+      headers: { cookie: [...cookieJar].map(([name, value]) => `${name}=${value}`).join('; '), origin, ...(ip ? { 'x-forwarded-for': ip } : {}) }, redirect: 'manual' });
     for (const cookie of response.headers.getSetCookie()) {
       const pair = cookie.split(';')[0]; const equal = pair.indexOf('=');
       if (!pair.slice(equal + 1)) cookieJar.delete(pair.slice(0, equal)); else cookieJar.set(pair.slice(0, equal), pair.slice(equal + 1));
@@ -106,7 +116,7 @@ async function main() {
     const history = await fetchPage('/appointments?page=2', customer);
     assert.equal(history.status, 200);
     const historyBody = await history.text();
-    assert.ok(historyBody.includes('Page ') && historyBody.includes('Synthetic Cut'));
+    assert.ok(/Page (?:<!-- -->)?2(?!\d)/.test(historyBody) && historyBody.includes('Synthetic Cut'), 'Page 2 of the history is rendered');
     assert.ok(!historyBody.includes('PRIVATE_FIXTURE_ICAL_SECRET'));
     const blog = await fetchPage('/blog?page=2');
     const blogBody = await blog.text();
@@ -146,7 +156,7 @@ async function main() {
     const verifyPage = await mfaRequest('/auth/mfa');
     const replayData = formFields(verifyPage.body, 'code'); replayData.set('code', usedCode);
     const rejectedReplay = await mfaRequest('/auth/mfa', replayData);
-    assert.ok(rejectedReplay.body.includes('already used'));
+    assert.ok(alertOf(rejectedReplay.body).includes('already used'));
     assert.ok(!cookieJar.has('session'));
     const recoverData = formFields(rejectedReplay.body, 'code'); recoverData.set('code', recoveryCodes[0]);
     const recovered = await mfaRequest('/auth/mfa', recoverData);
@@ -156,7 +166,7 @@ async function main() {
     const againPage = await mfaRequest('/auth/mfa');
     const againData = formFields(againPage.body, 'code'); againData.set('code', recoveryCodes[0]);
     const reused = await mfaRequest('/auth/mfa', againData);
-    assert.ok(reused.body.includes('already used'));
+    assert.ok(alertOf(reused.body).includes('already used'));
     assert.ok(!cookieJar.has('session'));
     await db.auditEvent.deleteMany({ where: { actorUserId: 'http-enroll-admin', action: 'AUTH.MFA_ATTEMPT' } });
     const attempts = await Promise.all(Array.from({ length: 12 }, (_, i) => {
@@ -164,7 +174,7 @@ async function main() {
       return mfaRequest('/auth/mfa', invalid, `192.0.2.${i + 1}`);
     }));
     assert.equal(await db.auditEvent.count({ where: { actorUserId: 'http-enroll-admin', action: 'AUTH.MFA_ATTEMPT' } }), 8, 'Database-backed account budget serializes concurrent requests independently of IP/process limiter');
-    assert.equal(attempts.filter(result => result.body.includes('Too many attempts')).length, 4);
+    assert.equal(attempts.filter(result => alertOf(result.body).includes('Too many attempts')).length, 4);
     assert.ok(!cookieJar.has('session'));
     console.log('PASS: actual PostgreSQL12parallelMFAattempts record8anddeny4 across12syntheticIPs.');
     console.log('PASS: actual HTTP MFA enrollment retains10recoverycodes, fresh GET hides them, usedTOTP/recoverycode cannot issue another session.');

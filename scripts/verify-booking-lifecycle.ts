@@ -232,7 +232,7 @@ async function main() {
     assert.ok(movedEmail);
     const movedPayload = JSON.parse(movedEmail.payload);
     assert.equal(movedPayload.options.oldDate, appointment.date.toISOString());
-    assert.equal(movedPayload.appointment.service.price, 100);
+    assert.deepEqual(movedPayload.appointment.price, { known: true, amountPence: 10000, priceType: 'STANDARD', vatDisplay: 'UNSPECIFIED', priceNature: 'LISTED' }, 'The moved notice carries the frozen quote, not the new catalogue price');
     assert.equal(movedPayload.appointment.service.duration, 60);
     console.log('PASS: real create → admin confirm → customer reschedule; duplicate/ownership/status guards, idempotent confirmation, audit and notification writes, frozen price/duration, and moved outbound ICS.');
 
@@ -292,7 +292,10 @@ async function main() {
     await sync(icalFeed([]));
     assert.equal(await db.externalBusyBlock.count(), 0);
     assert.equal(await slotAvailable(bookingDay, '12:00'), true);
-    assert.ok(revalidatedPaths.includes('/book') && revalidatedPaths.includes('/appointments') && revalidatedPaths.includes('/admin'));
+    // Pages exist once per language under the internal [locale] segment; both are refreshed.
+    for (const path of ['/book', '/appointments', '/admin']) {
+      for (const segment of ['/en-gb', '/zh-hk']) assert.ok(revalidatedPaths.includes(`${segment}${path}`), `${segment}${path} must be revalidated`);
+    }
     assert.equal(new Set(deliveries.map(delivery => delivery.eventKey)).size, deliveries.length, 'Each notification event is delivered to the synthetic transport once');
     console.log('PASS: successful Fresha move/removal reconciles and frees old slots; all synthetic notification events have unique idempotency keys. No external calls or messages were made.');
   } finally {

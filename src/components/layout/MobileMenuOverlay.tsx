@@ -1,6 +1,8 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/i18n/link';
+import { useT } from '@/i18n/client';
+import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -15,6 +17,7 @@ interface MobileMenuOverlayProps {
 
 export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, hasOffers = false }: MobileMenuOverlayProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const t = useT('common');
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -32,7 +35,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
     <dialog
       ref={dialogRef}
       id="mobile-navigation"
-      aria-label="Main menu"
+      aria-label={t('nav.menu')}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -40,12 +43,13 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
       className="fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none border-0 bg-black text-white p-0 open:flex open:flex-col [&_a:focus-visible]:outline-2 [&_a:focus-visible]:outline-offset-4 [&_a:focus-visible]:outline-white [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-4 [&_button:focus-visible]:outline-white"
     >
       {/* Close Button inside Overlay */}
-      <div className="flex shrink-0 justify-end px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+      <div className="flex shrink-0 items-center justify-between px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+        <LanguageSwitcher className="text-sm" />
          <button
           type="button"
           onClick={onClose}
           className="text-white min-h-11 min-w-11 inline-flex items-center justify-center p-2 hover:bg-zinc-800 rounded-md transition-colors"
-          aria-label="Close menu"
+          aria-label={t('nav.closeMenu')}
         >
           <svg
             className="w-6 h-6"
@@ -66,13 +70,13 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
       </div>
 
       <div className="min-h-0 flex-1 px-6 sm:px-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col gap-6 overflow-y-auto overscroll-contain">
-        <nav aria-label="Main navigation" className="flex flex-col gap-3 sm:gap-4 mt-2 sm:mt-6 [&>a]:flex [&>a]:items-center [&>a]:min-h-11 [&>button]:min-h-11">
+        <nav aria-label={t('nav.main')} className="flex flex-col gap-3 sm:gap-4 mt-2 sm:mt-6 [&>a]:flex [&>a]:items-center [&>a]:min-h-11 [&>button]:min-h-11">
           <Link
             href="/services"
             className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
-            Services
+            {t('nav.services')}
           </Link>
           {hasOffers && (
             <Link
@@ -80,7 +84,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
               className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
               onClick={onClose}
             >
-              Offers
+              {t('nav.offers')}
             </Link>
           )}
           <Link
@@ -88,21 +92,21 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
             className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
-            Team
+            {t('nav.team')}
           </Link>
           <Link
             href="/contact"
             className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
-            Contact
+            {t('nav.contact')}
           </Link>
           <Link
             href="/try-color"
             className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
-            Try Color
+            {t('nav.tryColor')}
           </Link>
 
           <div className="border-t border-zinc-800 my-4 w-full"></div>
@@ -115,7 +119,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
                   className="text-zinc-400 hover:text-white text-xl tracking-wide transition-colors"
                   onClick={onClose}
                 >
-                  Dashboard
+                  {t('nav.dashboard')}
                 </Link>
               )}
               {role !== 'ADMIN' && (
@@ -124,7 +128,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
                   className="text-zinc-400 hover:text-white text-xl tracking-wide transition-colors"
                   onClick={onClose}
                 >
-                  My Bookings
+                  {t('nav.myBookings')}
                 </Link>
               )}
               <button
@@ -136,7 +140,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
                 }}
                 className="text-zinc-400 hover:text-white text-xl tracking-wide uppercase w-full text-left transition-colors"
               >
-                Sign Out
+                {t('nav.signOut')}
               </button>
             </>
           ) : (
@@ -145,7 +149,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
               className="text-zinc-400 hover:text-white text-xl tracking-wide transition-colors"
               onClick={onClose}
             >
-              Sign In
+              {t('nav.signIn')}
             </Link>
           )}
         </nav>
@@ -156,7 +160,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
             className="block w-full bg-white text-zinc-900 py-4 text-center text-lg uppercase tracking-widest font-bold hover:bg-zinc-200 transition-colors rounded-sm"
             onClick={onClose}
           >
-            Book Now
+            {t('nav.bookNow')}
           </Link>
         </div>
       </div>

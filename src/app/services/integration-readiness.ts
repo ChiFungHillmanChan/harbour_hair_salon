@@ -2,7 +2,7 @@ import 'server-only';
 import prisma from '@/app/lib/prisma';
 import type { Prisma } from '@prisma/client';
 import { getTreatwellApiConfiguration } from './treatwell-api';
-import { evaluateSyncCoverage, type SyncCoverage } from './treatwell-sync-coverage';
+import { evaluateSyncCoverage, type CalendarIssue, type SyncCoverage } from './treatwell-sync-coverage';
 
 
 export type IntegrationReadiness = {
@@ -81,9 +81,9 @@ export async function getCalendarSyncCoverage(db: Pick<Prisma.TransactionClient,
 export async function checkCalendarBookingReadiness(
   db: Pick<Prisma.TransactionClient, 'stylist'>,
   now = new Date(),
-): Promise<{ ready: boolean; blockers: string[] }> {
+): Promise<{ ready: boolean; blockers: string[]; issues: CalendarIssue[] }> {
   const coverage = await getCalendarSyncCoverage(db, now);
-  return { ready: coverage.safeToEnableOnlineBooking, blockers: coverage.blockers };
+  return { ready: coverage.safeToEnableOnlineBooking, blockers: coverage.blockers, issues: coverage.issues };
 }
 
 /** Compatibility for existing dashboard consumers. */

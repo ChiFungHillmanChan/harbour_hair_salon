@@ -47,7 +47,7 @@ function fixture(options: {
     stylist: { name: 'Stylist', treatwellExternalId: null },
     service: { name: 'Cut', duration: 30, price: 100, requiresPatchTest: false, treatwellExternalId: null },
   };
-  type Notification = { service: { duration: number; price: number } };
+  type Notification = { service: { duration: number }; price: { amountPence: number } };
   const messages: { kind: string; appointment: Notification }[] = [];
   type Event = { id: string; eventKey: string; appointmentId: string; kind: string; payloadJson: string; delivered?: boolean };
   const events: Event[] = [];
@@ -146,7 +146,7 @@ function fixture(options: {
     isBookingEnabled: async () => true,
     assertOnlineBookingReady: async (database: unknown) => {
       assert.equal(database, tx, 'the final readiness check must use the transaction client');
-      if (options.onlineReady === false) throw new BookingError('Online booking is closed');
+      if (options.onlineReady === false) throw new BookingError('MAINTENANCE');
       return { phone: '020 0000 0000', bookingEnabled: true };
     },
   };
@@ -235,7 +235,7 @@ test('a successful reschedule retains frozen price/duration and increments the e
   assert.equal(appointment.reminderSent, false);
   assert.equal(appointment.notificationVersion, 1);
   assert.equal(messages[0].appointment.service.duration, 60);
-  assert.equal(messages[0].appointment.service.price, 80);
+  assert.equal(messages[0].appointment.price.amountPence, 8000);
 });
 
 test('legacy bookings without a frozen duration still use the service duration', async () => {
@@ -289,7 +289,7 @@ test('approval sends frozen booking details once and leaves the manual confirmat
   assert.equal(appointment.status, 'CONFIRMED');
   assert.equal(appointment.notificationVersion, 1);
   assert.equal(messages[0].kind, 'confirmation');
-  assert.equal(messages[0].appointment.service.price, 80);
+  assert.equal(messages[0].appointment.price.amountPence, 8000);
   assert.equal(messages[0].appointment.service.duration, 60);
   await admin.updateAppointmentStatus(appointment.id, 'CONFIRMED');
   assert.equal(messages.length, 1);
@@ -413,7 +413,7 @@ test('a reschedule persists its old date and frozen details under the new event 
   assert.equal(payload.version, 1);
   assert.equal(payload.options.oldDate, '2099-09-14T12:00:00.000Z');
   assert.equal(payload.appointment.date, '2099-09-15T09:00:00.000Z');
-  assert.equal(payload.appointment.service.price, 80);
+  assert.equal(payload.appointment.price.amountPence, 8000);
   assert.equal(payload.appointment.service.duration, 60);
   assert.equal(f.dispatches(), 1);
 });

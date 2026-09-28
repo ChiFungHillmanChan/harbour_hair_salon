@@ -6,28 +6,59 @@ import { dateCursor, encodeDateCursor } from '@/app/lib/pagination';
 import { resolveAdminCalendarRange, type CalendarQuery } from './admin-calendar-range';
 import { resolveSalonDateTime } from './salon-time';
 import { getTreatwellSyncCoverage } from './integration-readiness';
+import { recordedPrice } from './pricing/recorded-price';
+import { toPence } from './pricing/money';
+import type { BoardPrice } from '@/app/lib/board-price';
 
+// The service's CURRENT price is deliberately not selected: an appointment
+// shows only the price recorded when it was booked (unknown when none was).
 export const calendarAppointmentSelect = {
   id: true, date: true, status: true, stylistId: true, serviceId: true, updatedAt: true,
-  durationAtBooking: true, priceAtBooking: true, notes: true,
+  durationAtBooking: true, priceAtBooking: true, quoteJson: true, notes: true,
   user: { select: { id: true, name: true, email: true } },
   stylist: { select: { name: true, calendarColor: true } },
-  service: { select: { name: true, duration: true, price: true, calendarColor: true } },
+  service: { select: { name: true, duration: true, calendarColor: true } },
 } satisfies Prisma.AppointmentSelect;
 
 type CalendarRow = Prisma.AppointmentGetPayload<{ select: typeof calendarAppointmentSelect }>;
+
+function boardPrice(row: Pick<CalendarRow, 'priceAtBooking' | 'quoteJson'>): BoardPrice {
+  const recorded = recordedPrice(row);
+  if (!recorded.known) return { known: false };
+  const { amountPence, priceType, vatDisplay, priceNature } = recorded;
+  return { known: true, amountPence, priceType, vatDisplay, priceNature };
+}
+
 export function serializeCalendarAppointment(row: CalendarRow, includeContact = true) {
   return {
     id: row.id, date: row.date.toISOString(), status: row.status, stylistId: row.stylistId,
     serviceId: row.serviceId, updatedAt: row.updatedAt.toISOString(),
     durationAtBooking: row.durationAtBooking, notes: row.notes,
-    priceAtBooking: row.priceAtBooking === null ? null : Number(row.priceAtBooking),
+    price: boardPrice(row),
     user: { id: row.user.id, name: row.user.name, email: includeContact ? row.user.email : null },
     stylist: row.stylist,
-    service: { ...row.service, price: Number(row.service.price) },
+    service: row.service,
   };
 }
 export type CalendarAppointment = ReturnType<typeof serializeCalendarAppointment>;
+
+/**
+ * The booking dialog's service menu. Every service is loaded so an existing
+ * appointment on a retired option still names it, but only `isBookable` rows
+ * are offered for new bookings or service changes. Price fields are what the
+ * dialog shows and echoes back as the expected quote.
+ */
+const dialogServiceSelect = {
+  id: true, name: true, duration: true, price: true, category: true, requiresPatchTest: true,
+  priceVersion: true, priceType: true, hairLength: true, vatDisplay: true, priceNature: true,
+  isBookable: true, offeringId: true,
+} satisfies Prisma.ServiceSelect;
+type DialogServiceRow = Prisma.ServiceGetPayload<{ select: typeof dialogServiceSelect }>;
+
+function serializeDialogService({ price, ...row }: DialogServiceRow) {
+  return { ...row, amountPence: toPence(price) };
+}
+export type CalendarDialogService = ReturnType<typeof serializeDialogService>;
 
 const pendingSelect = {
   id: true, date: true, status: true,
@@ -91,13 +122,13 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     // on the year view, which deliberately loads counts and nothing else.
     view === 'year' ? Promise.resolve([]) : prisma.service.findMany({
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, duration: true, price: true, category: true, requiresPatchTest: true },
+      select: dialogServiceSelect,
     }),
   ]);
   const page = pendingRows.slice(0, 25);
   return {
     dateStr, view, todayStats, syncCoverage, stylists, pendingCount, monthCounts, loadedAt: new Date().toISOString(),
-    services: services.map((row) => ({ ...row, price: Number(row.price) })),
+    services: services.map(serializeDialogService),
     periodCount: view === 'year' ? monthCounts.reduce((sum, count) => sum + count, 0) : appointments.length,
     appointments: appointments.map((row) => serializeCalendarAppointment(row, view === 'day')),
     busyBlocks: busyBlocks.map((row) => ({ ...row, start: row.start.toISOString(), end: row.end.toISOString(), lastSyncAt: row.lastSyncAt.toISOString() })),

@@ -1,16 +1,9 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/i18n/link';
 import { useEffect, useRef } from 'react';
-
-// Current copy, kept as the fallback so the hero renders sensibly even if a
-// prop is omitted or (defensively) stored as an empty string in SiteSettings.
-const DEFAULT_EYEBROW = 'Leeds City Centre';
-const DEFAULT_TITLE_LINE1 = 'Expert Hair';
-const DEFAULT_TITLE_LINE2 = 'Styling';
-const DEFAULT_SUBTITLE =
-  'Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.';
+import { useT } from '@/i18n/client';
 
 interface HeroProps {
   eyebrow?: string;
@@ -20,19 +13,22 @@ interface HeroProps {
 }
 
 export function Hero({
-  eyebrow = DEFAULT_EYEBROW,
-  titleLine1 = DEFAULT_TITLE_LINE1,
-  titleLine2 = DEFAULT_TITLE_LINE2,
-  subtitle = DEFAULT_SUBTITLE,
+  eyebrow = '',
+  titleLine1 = '',
+  titleLine2 = '',
+  subtitle = '',
 }: HeroProps) {
+  const t = useT('home');
   const bgRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
 
-  // Belt and braces: fall back on empty strings too, not just undefined props.
-  const safeEyebrow = eyebrow.trim() || DEFAULT_EYEBROW;
-  const safeTitleLine1 = titleLine1.trim() || DEFAULT_TITLE_LINE1;
-  const safeTitleLine2 = titleLine2.trim() || DEFAULT_TITLE_LINE2;
-  const safeSubtitle = subtitle.trim() || DEFAULT_SUBTITLE;
+  // The default copy (home.hero.default*) is the fallback so the hero renders
+  // sensibly even if a prop is omitted or (defensively) stored as an empty
+  // string in SiteSettings.
+  const safeEyebrow = eyebrow.trim() || t('hero.defaultEyebrow');
+  const safeTitleLine1 = titleLine1.trim() || t('hero.defaultTitleLine1');
+  const safeTitleLine2 = titleLine2.trim() || t('hero.defaultTitleLine2');
+  const safeSubtitle = subtitle.trim() || t('hero.defaultSubtitle');
 
   useEffect(() => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -73,9 +69,10 @@ export function Hero({
         <div className="absolute inset-0 hero-zoom">
           <Image
             src="/images/hero-salon.webp"
-            alt="Harbour Hair Salon interior in Leeds Central Arcade"
+            alt={t('hero.imageAlt')}
             fill
-            priority
+            loading="eager"
+            fetchPriority="high"
             sizes="100vw"
             className="object-cover"
           />
@@ -110,7 +107,7 @@ export function Hero({
             href="/book"
             className="group inline-flex items-center justify-center gap-2 bg-white text-zinc-900 px-7 md:px-10 py-3 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.12em] md:tracking-[0.15em] font-bold hover:bg-zinc-200 transition-all duration-500 ease-apple hover:shadow-[0_20px_50px_-15px_rgba(0,0,0,0.6)] hover:-translate-y-0.5"
           >
-            Book Appointment
+            {t('hero.bookAppointment')}
             <svg className="w-4 h-4 transition-transform duration-500 ease-apple group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14M13 6l6 6-6 6" />
             </svg>
@@ -119,7 +116,7 @@ export function Hero({
             href="/services"
             className="inline-flex items-center justify-center border border-white/40 text-white px-7 md:px-10 py-3 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.12em] md:tracking-[0.15em] font-medium hover:bg-white/10 hover:border-white/70 transition-all duration-500 ease-apple"
           >
-            View Services
+            {t('hero.viewServices')}
           </Link>
         </div>
 

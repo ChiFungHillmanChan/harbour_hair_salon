@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import { stripLocale } from '@/i18n/paths';
 
 /**
  * Hides footer chrome on auth pages, per route, on the client — so soft navigation
@@ -17,8 +18,8 @@ export function FooterSwitcher({
   footer: React.ReactNode;
   mobileBookBar: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const hidden = pathname?.startsWith('/auth') || pathname?.startsWith('/admin') || pathname?.startsWith('/kiosk');
+  const pathname = stripLocale(usePathname());
+  const hidden = pathname.startsWith('/auth') || pathname.startsWith('/admin') || pathname.startsWith('/kiosk');
 
   if (hidden) return null;
 

@@ -15,8 +15,8 @@ This document tracks the architectural structure of the Harbour Hair Salon proje
 ## Key Components
 
 ### Try-Color (Virtual Hair Color Try-On)
-- `src/app/try-color/page.tsx` — Server page with metadata
-- `src/app/try-color/TryColorClient.tsx` — Main client orchestrator. Modes: `upload` (photo) and `video`; live camera is retained but disabled behind the `ENABLE_LIVE_CAMERA = false` flag. Holds the `bleachState` ('pre'/'post') state and threads it into every recolor request via `buildRecolorRequest`.
+- `src/app/[locale]/try-color/page.tsx` — Server page with metadata
+- `src/app/[locale]/try-color/TryColorClient.tsx` — Main client orchestrator. Modes: `upload` (photo) and `video`; live camera is retained but disabled behind the `ENABLE_LIVE_CAMERA = false` flag. Holds the `bleachState` ('pre'/'post') state and threads it into every recolor request via `buildRecolorRequest`.
 - `src/components/try-color/CameraView.tsx` — Camera feed (currently flag-disabled, code retained)
 - `src/components/try-color/VideoTryOn.tsx` — Video-clip try-on: uploads a short clip, extracts/segments frames (`segmentStill`), recolors each frame with the engine, and plays them back with scrub + download-still. Guardrails: `VIDEO_MAX_SECONDS`, `VIDEO_MAX_DIM`, `VIDEO_TARGET_FPS`, `VIDEO_MAX_FRAMES`, `VIDEO_MAX_FILE_BYTES`, plus a slow-device fallback.
 - `src/components/try-color/PreviewCanvas.tsx` — Preview surface for upload mode
@@ -43,7 +43,7 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 The hours the booking engine sells from. Before this, `Availability` was written only by `prisma/seed.ts` — production had no way to change it.
 - `src/app/services/opening-hours.ts` — pure, dependency-free: `validateWeek(days)` (structure, time format, close-after-open, normalises closed days), `countSlots(start, end, duration)` and `DAY_NAMES`. Unit-tested in `opening-hours.test.ts`; `countSlots` is pinned against the booking engine's own `buildSlotsForWindow` so the two cannot drift.
 - `src/app/actions/admin-availability.ts` — `updateStylistAvailability` replaces one stylist's whole week in a `$transaction` of upserts. Admin-gated and validated before any write (locked by `opening-hours-schema.test.ts`).
-- `src/app/admin/opening-hours/page.tsx` — pads stylists with fewer than seven rows to a full week; explicit `select` so the secret `treatwellIcalUrl`/`icalToken` never reach the client.
+- `src/app/[locale]/admin/opening-hours/page.tsx` — pads stylists with fewer than seven rows to a full week; explicit `select` so the secret `treatwellIcalUrl`/`icalToken` never reach the client.
 - `src/components/admin/OpeningHoursForm.tsx` — stylist tabs, per-day open/closed + time inputs, live slot-count preview, copy-hours-to-all-open-days.
 
 ### Admin schedule board — colours & drag (Admin → Schedule, Day view)
@@ -127,8 +127,8 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `src/app/admin/timesheets/page.tsx` — admin timesheet browser and manual entry editor
 - `src/app/admin/payroll/page.tsx` — admin payroll runner: period picker, computed gross lines, CSV export, finalize
 - `src/app/admin/integrations/page.tsx` — per-stylist Fresha/Treatwell setup and synchronization evidence. Inbound URLs stay masked; secret outbound subscription URLs are available only to administrators.
-- `src/app/auth/forgot-password/page.tsx` — request a reset link; always shows the same confirmation so accounts cannot be enumerated
-- `src/app/auth/reset-password/page.tsx` — redeem `?token=` and set a new password; handles missing/invalid/expired links
+- `src/app/[locale]/auth/forgot-password/page.tsx` + `src/components/auth/ForgotPasswordForm.tsx` — request a reset link (mail in the page's language); always shows the same confirmation so accounts cannot be enumerated
+- `src/app/[locale]/auth/reset-password/page.tsx` + `src/components/auth/ResetPasswordForm.tsx` — redeem `?token=` and set a new password; handles missing/invalid/expired links
 - `src/app/kiosk/page.tsx` — PIN kiosk screen: employee roster with clock-in/out via `KioskClock`
 
 ## Components (new — payroll / kiosk build)
@@ -151,10 +151,7 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - ExternalBusyBlock — busy periods imported per source/stylist/UID from CalendarConnection; contains no customer title.
 
 ## Email templates
-- `src/components/emails/BookingRequestReceived.tsx` — customer acknowledgement sent the moment a PENDING request is created (explicitly NOT a confirmation); monochrome brand
-- `src/components/emails/NewBookingAlert.tsx` — internal salon alert that a request needs approving; includes customer contact details (staff-only recipient)
-- `src/components/emails/PasswordReset.tsx` — reset link email; monochrome brand
-- Note: the older templates (BookingConfirmation, BookingCancellation, BookingReschedule, AppointmentReminder, ReviewRequest) still use the legacy blue/gold palette and have not been migrated to the monochrome brand.
+- `src/components/emails/EmailFrame.tsx` — the single localized layout for every transactional mail (booking request, salon alert, confirmation, cancellation, reschedule, reminder, review request, password reset). Words come from `src/app/services/email-content.ts`, which also renders the plain-text part. The confirmation keeps its original blue palette; every other mail is monochrome.
 
 ## Components (auth)
 - `src/components/auth/PasswordVisibilityToggle.tsx` — eye / eye-off button overlaid on password inputs (used by signin + register pages)
@@ -228,3 +225,49 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `refreshStaleCalendarFeeds()` (calendar-sync-service) — admin Confirm refreshes feeds older than one poll interval before the freshness check; Settings saves only run launch checks when turning booking ON.
 - `scripts/production-build-guard.mjs` — first step of `vercel-build`; refuses production builds outside the GitHub Actions deploy job on `main`. `vercel.json` `git.deploymentEnabled: false` stops Vercel's own untested git builds.
 - Final review follow-ups (2026-09-22): the guard compares real paths (spaces/accents/`#` in the checkout path used to skip it silently) and refuses a Vercel build with no `VERCEL_ENV` (unknown target); it logs "`<env>` build allowed" so deploy logs prove it ran. Token cache: 7-day safety net, cleared on token rotation **and** stylist deletion — rotate feed secrets only via Admin → Integrations, never by SQL. Admin Confirm/Decline show "Checking calendars…" and cannot be double-submitted; the board refreshes a Back/Forward-restored payload after the next import (`payloadArrival`).
+
+### English / 繁體中文 site and Treatwell price list (2026-09-28)
+Requirements: `docs/superpowers/plans/2026-09-28-treatwell-pricing-bilingual-implementation-prompt.md`. How-to for every page: `docs/superpowers/plans/2026-09-28-i18n-implementation-conventions.md`. Production steps: `docs/superpowers/plans/2026-09-28-bilingual-pricing-rollout.md`.
+
+**Routing / i18n (`src/i18n/`)**
+- All pages live under `src/app/[locale]/` (root layout `src/app/[locale]/layout.tsx` sets `<html lang>`). English keeps unprefixed URLs (middleware rewrites them to the internal `/en-gb` segment, which itself 308-redirects); Chinese is `/zh-hk/…`. API, cron, ICS, OAuth callback, sitemap, robots and files keep language-free paths. Unknown paths inside a language hit `src/app/[locale]/[...rest]/page.tsx` → localized not-found.
+- `config.ts` (LOCALES, segments, prefixes, `hh_locale` preference cookie, `x-harbour-locale` header), `paths.ts` (`splitLocalePath`, `stripLocale`, `localizeHref`, `switchLocaleHref`, `isMachinePath`), `format.ts` + `translator.ts` (interpolation, plural forms, typed keys, `t.dynamic`), `rich.tsx` (`<link>…</link>` in messages).
+- Server components: `server.ts` → `getLocale()` (via `next/root-params`), `getT(ns)`. Actions/route handlers/unit-tested code: `request.ts` → `getActionLocale()`, `getActionT(ns)`, `localizedPath(path)`, `getRequestLocale()` (cookie, for `/api` routes). Never import `server.ts` from actions (root-params throws outside the compiler).
+- Client: `client.tsx` (`I18nProvider`, `useLocale`, `useT`), `ClientMessages.tsx` (server component that ships only the listed namespaces), `link.tsx` (drop-in `next/link` that localizes hrefs), `navigation.ts` (`useLocalizedRouter`), `LanguageSwitcher.tsx` ("English｜繁體中文").
+- `draft-store.ts` — in-memory only (never URL/storage): `useDraftState`, `usePreservedForm`, `clearDraft`, `clearAllDrafts`, `announceLanguageSwitch`. Restores unsaved state only when the language switcher announced a switch for the same page.
+- `metadata.ts` (`alternatesFor` canonical + hreflang, `ogLocale`), `revalidate.ts` (`revalidateAllLocales(revalidatePath, path)`), `dates.ts` (Europe/London formatting per language).
+- Dictionaries: `messages/en/<ns>.ts` + `messages/zh/<ns>.ts`, registry `messages/index.ts` (`MESSAGES`, `translator`, `pickMessages`). `messages/completeness.test.ts` enforces identical keys, placeholders and rich tags.
+
+**Pricing (`src/app/services/pricing/`)**
+- `policy.ts` — `DISCOUNTS_PAUSED` (offers/codes never apply to new quotes), price types, hair lengths, VAT display, price nature.
+- `money.ts` — exact Decimal→pence (`toPence`), `penceToDecimalString`, `formatGBP`.
+- `quote.ts` — `PriceQuote` (versioned server quote), `buildQuote` (composite = base + surcharge, refused if inconsistent), `quoteMatches`, `parseQuote`.
+- `quote-service.ts` — `quoteForNewBooking(db, serviceId, 'CUSTOMER'|'ADMIN')`: refuses non-bookable/retired options; used by customer booking, admin create and admin service change.
+- `recorded-price.ts` — `recordedPrice(appointment)`: the frozen amount of an existing booking, or `{ known: false }` (never today's price or £0).
+- `public-catalog.ts` — `getPublicCatalog(locale)` (the one source for every public price display, wizard and JSON-LD), `standardPriceRange` (never quotes NHS as the "from" price).
+- `json-ld.ts` — `serviceSchemaItems` (standard prices only; `valueAddedTaxIncluded: false` where shown as VAT excluded).
+- `service-price.ts` — `applyServicePrice` (price published with service text; bumps `priceVersion`; re-prices extra-long composites).
+- `src/components/pricing/PriceParts.tsx` (`useFormatPrice`, `PriceFinePrint`, `SurchargeBreakdown`, `Duration`, `OptionLabel`, `useCategoryLabel`) and `OfferingPrices.tsx` (standard/NHS table on desktop, stacked on phones). `src/components/services/CategoryPriceList.tsx`, `src/components/home/MenuPrice.tsx`.
+- `prisma/price-catalog/treatwell-2026-09-28.ts` — reviewable catalogue (offerings, options, legacy-name mapping, retired NHS, deliberately unchanged items, source notes). `apply-price-catalog.ts` — dry run / apply / rollback tool. Preview report: `docs/pricing/2026-09-28-price-mapping-production-preview.md`.
+- Payroll: `runPayrollWith` throws `PayrollMissingPriceError` instead of counting an unrecorded booking at today's price.
+
+**Bilingual content (`src/app/services/content/`)**
+- `fields.ts` — translatable fields per record type (`CONTENT_FIELDS`), `englishFieldsFromRow`, `rowFromEnglishFields`, `fingerprint`.
+- `review.ts` — proofreading marks, `evaluateDraft` (publishable only when both languages are complete and checked against each other), `sanitizeFields`.
+- `drafts.ts` — `getEditorState`, `saveDraft`, `markReviewed`, `publishDraft` (both languages + same revision in one transaction), `createPublished` (new records need both languages), `writePublished`, `deleteContent`.
+- `translations.ts` — `loadPublishedTranslations` (published only; drafts never reach public pages), `overlay`.
+- Locale-aware reads: `getCategoryContentBySlug(slug, locale)`, `getAllCategoryContent(locale)`, `getRelatedCategories(slugs, locale)`, `getFaqsByKey(key, locale)`, `getPublishedPosts(page, locale)`, `getPublishedPostBySlug(slug, locale)`, `getRelatedPublishedPosts(slugs, locale)`, `getAllStylistsWithSlug(locale)`, `getStylistBySlug(slug, locale)`, `getRelatedStylists(id, locale)`, `getHeroContent(locale)`.
+- Admin: `src/app/actions/admin-content.ts` (save draft / mark checked / publish / discard) and `src/components/admin/BilingualContentEditor.tsx` (content-language tabs independent of the UI language; create mode for new records).
+- `prisma/content-translations/zh-HK.json` + `import-content-translations.ts` — reviewed translations of the site's existing content, applied only where the current English still matches the translated source.
+
+**Email**
+- `src/app/services/email-content.ts` — every mail's words in one place (`appointmentEmailContent`, `passwordResetContent`, `renderPlainText`, `EmailPrice`). `src/components/emails/EmailFrame.tsx` — the single localized HTML layout (replaces the eight per-mail templates). Customer mail uses `Appointment.notificationLocale`; the salon alert uses `SiteSettings.salonNotificationLocale` (default zh-HK, Cantonese copy); password reset uses the requesting page's language. Outbox snapshots are schema 2 (locale, localized service name, frozen `EmailPrice`); schema-1 events still send in English.
+
+**Added by the bilingual work (other areas)**
+- Auth: `src/components/auth/SignInForm.tsx`, `RegisterForm.tsx` (client forms behind the server pages, so pages can export localized metadata); `src/app/lib/post-auth-redirect.ts` — `postSignInPath(locale, requested, role)`: sanitize → re-home into the page's language → sanitize again (blocks `/zh-hk//evil` becoming `//evil`). Google OAuth carries the language in its signed state (`/api/auth/google?locale=`); the callback path is unchanged. The admin-MFA challenge cookie path is `/` so `/zh-hk/auth/mfa` receives it.
+- Admin content: `src/app/services/admin-content-status.ts` (per-list "Chinese not published" / "unpublished draft" flags, two queries per list), `src/components/admin/ContentStatusBadges.tsx`, `src/components/admin/faq-key-label.ts`; text-edit pages `src/app/[locale]/admin/faqs/[id]/edit` and `src/app/[locale]/admin/offers/[id]/edit`. `BlogSectionEditor.tsx` was removed (blog sections are edited in `BilingualContentEditor`).
+- Admin ops/staff: `src/components/admin/DraftForm.tsx` — client `<form>` wrapper that keeps unsaved fields across a language switch for server-rendered forms (passwords, PINs, secret feed URLs excluded).
+- Schedule: `src/app/lib/board-price.ts` — `describeBoardPrice` (recorded price with NHS/VAT wording, or "price not recorded"); `AppointmentDialog.test.ts`, `admin-availability.test.ts`.
+- Readiness codes: `treatwell-sync-coverage.ts` returns `issues` (codes) alongside English `blockers`; `operations-readiness.ts` checks carry `code`/`params`; `opening-hours.ts` `validateWeek` refusals carry `code`. Wording lives in `adminOps.readiness.*` / `adminSchedule.openingHours.errors.*`.
+- `register-gate.ts` returns a `code` (`ALREADY_REGISTERED` | `USE_GOOGLE`) with its English `error`.
+

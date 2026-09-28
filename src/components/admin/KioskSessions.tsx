@@ -1,14 +1,17 @@
 import type { listKioskSessions } from '@/app/actions/kiosk';
 import { revokeAllKioskSessions, revokeKioskSession } from '@/app/actions/kiosk';
 import { RowActionButton } from '@/components/admin/RowActionButton';
+import { formatSalonDateTime, formatSalonMediumDate } from '@/i18n/dates';
+import { getLocale, getT } from '@/i18n/server';
 
-export default function KioskSessions({ sessions }: { sessions: Awaited<ReturnType<typeof listKioskSessions>> }) {
+export default async function KioskSessions({ sessions }: { sessions: Awaited<ReturnType<typeof listKioskSessions>> }) {
+  const [locale, t] = await Promise.all([getLocale(), getT('adminStaff')]);
   return (
     <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-4">
-      <h2 className="text-xl text-zinc-900">Kiosk devices</h2>
-      <p className="text-sm text-zinc-600">Disable a lost or shared device here to stop its access immediately. Each kiosk must be enabled again after 30 days.</p>
+      <h2 className="text-xl text-zinc-900">{t('kioskDevices.title')}</h2>
+      <p className="text-sm text-zinc-600">{t('kioskDevices.intro')}</p>
       {sessions.length === 0 ? (
-        <p className="text-sm text-zinc-600">No active kiosk devices.</p>
+        <p className="text-sm text-zinc-600">{t('kioskDevices.empty')}</p>
       ) : (
         <>
           <ul className="divide-y divide-zinc-100">
@@ -17,16 +20,18 @@ export default function KioskSessions({ sessions }: { sessions: Awaited<ReturnTy
                 <div>
                   <p className="font-medium text-zinc-900">{session.deviceName}</p>
                   <p className="text-xs text-zinc-500">
-                    Enabled {session.createdAt.toLocaleString('en-GB', { timeZone: 'Europe/London' })}
-                    {' · '}Expires {session.expiresAt.toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}
+                    {t('kioskDevices.meta', {
+                      enabled: formatSalonDateTime(locale, session.createdAt),
+                      expires: formatSalonMediumDate(locale, session.expiresAt),
+                    })}
                   </p>
                 </div>
-                <RowActionButton action={revokeKioskSession.bind(null, session.id)} label="Disable device" pendingLabel="Disabling…" buttonClassName="rounded border border-zinc-300 px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-50" confirmMessage={`Disable kiosk access for ${session.deviceName}?`} />
+                <RowActionButton action={revokeKioskSession.bind(null, session.id)} label={t('kioskDevices.disable')} pendingLabel={t('kioskDevices.disabling')} buttonClassName="rounded border border-zinc-300 px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-50" confirmMessage={t('kioskDevices.disableConfirm', { name: session.deviceName })} />
               </li>
             ))}
           </ul>
-          {sessions.length === 100 && <p className="text-xs text-zinc-500">Showing the latest 100 active devices. Disable all applies to every device.</p>}
-          <RowActionButton action={revokeAllKioskSessions} label="Disable all kiosks" pendingLabel="Disabling…" buttonClassName="rounded border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50" confirmMessage="Disable every kiosk device? Each will need an administrator to enable it again." />
+          {sessions.length === 100 && <p className="text-xs text-zinc-500">{t('kioskDevices.limit')}</p>}
+          <RowActionButton action={revokeAllKioskSessions} label={t('kioskDevices.disableAll')} pendingLabel={t('kioskDevices.disabling')} buttonClassName="rounded border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50" confirmMessage={t('kioskDevices.disableAllConfirm')} />
         </>
       )}
     </section>

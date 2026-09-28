@@ -1,6 +1,8 @@
 import 'server-only';
 import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
+import type { Locale } from '@/i18n/config';
+import { loadPublishedTranslations } from './content/translations';
 
 export type AggregateRating = {
   count: number;
@@ -23,8 +25,13 @@ export async function getAggregateRating(): Promise<AggregateRating> {
   };
 }
 
-export async function getApprovedReviews(limit = 30) {
-  return prisma.review.findMany({
+/**
+ * Approved reviews for the public page. Review text and names are shown as the
+ * customer wrote them; only the booked SERVICE name is shown in `locale` when a
+ * published translation exists (`serviceTranslated` says whether it was).
+ */
+export async function getApprovedReviews(limit = 30, locale: Locale = 'en-GB') {
+  const rows = await prisma.review.findMany({
     where: { status: 'APPROVED' },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: Math.min(Math.max(limit, 1), 100),
@@ -33,11 +40,22 @@ export async function getApprovedReviews(limit = 30) {
       user: { select: { name: true } },
       appointment: {
         select: {
+          serviceId: true,
           service: { select: { name: true } },
           stylist: { select: { name: true } },
         },
       },
     },
+  });
+  const translations = await loadPublishedTranslations(prisma, 'SERVICE', rows.map((row) => row.appointment.serviceId), locale);
+  return rows.map((row) => {
+    const name = translations.get(row.appointment.serviceId)?.name;
+    const localized = typeof name === 'string' && name.trim() ? name : null;
+    return {
+      ...row,
+      appointment: { ...row.appointment, service: { name: localized ?? row.appointment.service.name } },
+      serviceTranslated: locale === 'en-GB' || localized !== null,
+    };
   });
 }
 

@@ -12,12 +12,21 @@ type Env = Partial<Record<string, string | undefined>>;
 type ReadinessDb = Pick<Prisma.TransactionClient, 'backgroundJobState'>;
 type DiagnosticDb = ReadinessDb & Pick<Prisma.TransactionClient, '$queryRaw'>;
 
+// `label` and `message` stay English (logs, reports saved before codes
+// existed). The admin page words each check from its `id` and `code` in the
+// admin's language (adminOps.readiness); `params` carry only raw provider
+// diagnostics such as an HTTP status.
 const checkSchema = z.object({
   id: z.string(), status: z.enum(['pass', 'fail', 'unknown']),
   label: z.string().max(100), message: z.string().max(600),
+  code: z.string().max(60).optional(),
+  params: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   fingerprint: z.string().optional(),
 });
 export type OperationCheck = z.infer<typeof checkSchema>;
+
+/** A reason booking cannot open, as a code under adminOps.readiness.operations. */
+export type ReadinessIssue = { code: string; params?: Record<string, string | number> };
 
 export function parseOperationsChecks(json: string | null | undefined): OperationCheck[] {
   try {
@@ -54,16 +63,20 @@ function runtimeChecks(env: Env): OperationCheck[] {
   const domain = from?.split('@')[1];
   const notify = mailbox(env.SALON_NOTIFY_EMAIL?.trim() || env.EMAIL_REPLY_TO);
   return [
-    { id: 'configuration', label: 'Runtime configuration', status: 'pass',
+    { id: 'configuration', label: 'Runtime configuration', status: 'pass', code: 'configuration.pass',
       message: 'These results apply to the settings checked in this environment.', fingerprint: configurationFingerprint(env) },
     { id: 'email', label: 'Booking email settings', status: from && domain !== 'resend.dev' && notify && env.RESEND_API_KEY?.trim() ? 'pass' : 'fail',
-      message: from && domain !== 'resend.dev' && notify && env.RESEND_API_KEY?.trim()
-        ? 'A branded sender, salon notification mailbox and Resend key are configured.'
-        : 'Set EMAIL_FROM to a valid branded address, RESEND_API_KEY, and SALON_NOTIFY_EMAIL (or EMAIL_REPLY_TO).' },
+      ...(from && domain !== 'resend.dev' && notify && env.RESEND_API_KEY?.trim()
+        ? { code: 'email.pass', message: 'A branded sender, salon notification mailbox and Resend key are configured.' }
+        : { code: 'email.fail', message: 'Set EMAIL_FROM to a valid branded address, RESEND_API_KEY, and SALON_NOTIFY_EMAIL (or EMAIL_REPLY_TO).' }) },
     { id: 'notifications', label: 'Notification delivery', status: env.NOTIFICATIONS_ENABLED === 'true' ? 'pass' : 'fail',
-      message: env.NOTIFICATIONS_ENABLED === 'true' ? 'Notification delivery is enabled.' : 'Enable NOTIFICATIONS_ENABLED after the salon authorises live notifications.' },
+      ...(env.NOTIFICATIONS_ENABLED === 'true'
+        ? { code: 'notifications.pass', message: 'Notification delivery is enabled.' }
+        : { code: 'notifications.fail', message: 'Enable NOTIFICATIONS_ENABLED after the salon authorises live notifications.' }) },
     { id: 'cron', label: 'Scheduled job authentication', status: env.CRON_SECRET?.trim() ? 'pass' : 'fail',
-      message: env.CRON_SECRET?.trim() ? 'CRON_SECRET is configured. Check the job history below to confirm execution.' : 'Configure CRON_SECRET and deploy the scheduled jobs.' },
+      ...(env.CRON_SECRET?.trim()
+        ? { code: 'cron.pass', message: 'CRON_SECRET is configured. Check the job history below to confirm execution.' }
+        : { code: 'cron.fail', message: 'Configure CRON_SECRET and deploy the scheduled jobs.' }) },
   ];
 }
 
@@ -80,50 +93,50 @@ async function resendCheck(env: Env, fetchImpl: typeof fetch): Promise<Operation
   const base = { id: 'resend', label: 'Resend sender domain' };
   const domain = mailbox(env.EMAIL_FROM, true)?.split('@')[1];
   if (!domain || domain === 'resend.dev' || !env.RESEND_API_KEY?.trim()) {
-    return { ...base, status: 'fail', message: 'Configure a branded EMAIL_FROM and the matching Resend API key.' };
+    return { ...base, status: 'fail', code: 'resend.notConfigured', message: 'Configure a branded EMAIL_FROM and the matching Resend API key.' };
   }
   try {
     const response = await fetchImpl('https://api.resend.com/domains?limit=100', {
       method: 'GET', headers: { Authorization: `Bearer ${env.RESEND_API_KEY.trim()}` },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), redirect: 'error', cache: 'no-store',
     });
-    if (response.status === 403) return { ...base, status: 'unknown', message: 'This key cannot list domains (often a sending-only key). An authorised administrator must check the domain with a key that can read domains, then rerun diagnostics. No email was sent.' };
-    if (!response.ok) return { ...base, status: 'fail', message: `Resend domain lookup failed (HTTP ${response.status}). Check the account, key and service status.` };
+    if (response.status === 403) return { ...base, status: 'unknown', code: 'resend.forbidden', message: 'This key cannot list domains (often a sending-only key). An authorised administrator must check the domain with a key that can read domains, then rerun diagnostics. No email was sent.' };
+    if (!response.ok) return { ...base, status: 'fail', code: 'resend.httpError', params: { status: response.status }, message: `Resend domain lookup failed (HTTP ${response.status}). Check the account, key and service status.` };
     const body = await response.json();
     const domains = z.object({ data: z.array(z.object({ name: z.string(), status: z.string(),
       capabilities: z.object({ sending: z.string() }).optional() })), has_more: z.boolean().optional() }).safeParse(body);
-    if (!domains.success) return { ...base, status: 'unknown', message: 'Resend returned an unexpected domain response. Review the provider settings and retry.' };
+    if (!domains.success) return { ...base, status: 'unknown', code: 'resend.unexpected', message: 'Resend returned an unexpected domain response. Review the provider settings and retry.' };
     const match = domains.data.data.find((entry) => entry.name.toLowerCase() === domain);
-    if (!match && domains.data.has_more) return { ...base, status: 'unknown', message: 'The sender domain was not on the first domain page. Check the correct Resend team and review its domain list.' };
+    if (!match && domains.data.has_more) return { ...base, status: 'unknown', code: 'resend.notOnFirstPage', message: 'The sender domain was not on the first domain page. Check the correct Resend team and review its domain list.' };
     if (match?.status === 'verified' && match.capabilities?.sending === 'enabled') {
-      return { ...base, status: 'pass', message: 'Resend reports the configured sender domain as verified with sending enabled. Delivery to a real mailbox still needs acceptance testing.' };
+      return { ...base, status: 'pass', code: 'resend.verified', message: 'Resend reports the configured sender domain as verified with sending enabled. Delivery to a real mailbox still needs acceptance testing.' };
     }
-    return { ...base, status: 'fail', message: 'The configured sender domain is absent, unverified or not enabled for sending in this Resend team. Verify its DNS and account ownership.' };
+    return { ...base, status: 'fail', code: 'resend.unverified', message: 'The configured sender domain is absent, unverified or not enabled for sending in this Resend team. Verify its DNS and account ownership.' };
   } catch {
-    return { ...base, status: 'fail', message: 'Resend could not be checked within the request limit. Check connectivity and provider availability, then retry.' };
+    return { ...base, status: 'fail', code: 'resend.unreachable', message: 'Resend could not be checked within the request limit. Check connectivity and provider availability, then retry.' };
   }
 }
 
 async function redisCheck(env: Env, fetchImpl: typeof fetch): Promise<OperationCheck> {
   const base = { id: 'redis', label: 'Shared Redis connection' };
   const credentials = resolveRedisCredentials(env);
-  if (!credentials) return { ...base, status: 'fail', message: 'Configure a matching Upstash REST URL and full-access database token. A local memory fallback is not shared.' };
+  if (!credentials) return { ...base, status: 'fail', code: 'redis.notConfigured', message: 'Configure a matching Upstash REST URL and full-access database token. A local memory fallback is not shared.' };
   try {
     const url = new URL(credentials.url);
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash ||
       !url.hostname.endsWith('.upstash.io') || (url.port && url.port !== '443') || !['', '/'].includes(url.pathname)) {
-      return { ...base, status: 'fail', message: 'Use the HTTPS REST endpoint from the Upstash database dashboard, without credentials or query parameters in the URL.' };
+      return { ...base, status: 'fail', code: 'redis.badUrl', message: 'Use the HTTPS REST endpoint from the Upstash database dashboard, without credentials or query parameters in the URL.' };
     }
     url.pathname = '/ping';
     const response = await fetchImpl(url.toString(), { method: 'GET',
       headers: { Authorization: `Bearer ${credentials.token}` },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), redirect: 'error', cache: 'no-store' });
-    if (!response.ok) return { ...base, status: 'fail', message: `Redis authentication or connectivity failed (HTTP ${response.status}). Check the active database and matching token.` };
+    if (!response.ok) return { ...base, status: 'fail', code: 'redis.httpError', params: { status: response.status }, message: `Redis authentication or connectivity failed (HTTP ${response.status}). Check the active database and matching token.` };
     const body = await response.json();
     return body?.result === 'PONG'
-      ? { ...base, status: 'pass', message: 'The configured shared Redis endpoint answered an authenticated PING. This read-only check does not test rate-limit writes.' }
-      : { ...base, status: 'fail', message: 'Redis did not return a valid PING result. Check the endpoint and database state.' };
-  } catch { return { ...base, status: 'fail', message: 'Redis could not be reached within the request limit. Check DNS, database state and the configured URL/token pair.' }; }
+      ? { ...base, status: 'pass', code: 'redis.pass', message: 'The configured shared Redis endpoint answered an authenticated PING. This read-only check does not test rate-limit writes.' }
+      : { ...base, status: 'fail', code: 'redis.badPing', message: 'Redis did not return a valid PING result. Check the endpoint and database state.' };
+  } catch { return { ...base, status: 'fail', code: 'redis.unreachable', message: 'Redis could not be reached within the request limit. Check DNS, database state and the configured URL/token pair.' }; }
 }
 
 /** Explicit admin action only. Provider requests are read-only and never send mail. */
@@ -137,10 +150,10 @@ export async function runOperationsDiagnostics(options: {
   await db.backgroundJobState.upsert({ where: { name: OPERATIONS_READINESS_JOB },
     create: { name: OPERATIONS_READINESS_JOB, lastStartedAt: now }, update: { lastStartedAt: now } });
   const [database, resend, redis] = await Promise.all([
-    bounded(db.$queryRaw`SELECT 1`).then((): OperationCheck => ({ id: 'database', label: 'Database', status: 'pass', message: 'The configured database answered a read-only query.' }))
-      .catch((): OperationCheck => ({ id: 'database', label: 'Database', status: 'fail', message: 'Database check failed. Review the connection, credentials and provider status.' })),
-    bounded(resendCheck(env, fetchImpl)).catch((): OperationCheck => ({ id: 'resend', label: 'Resend sender domain', status: 'fail', message: 'Resend check timed out. Retry after checking provider availability.' })),
-    bounded(redisCheck(env, fetchImpl)).catch((): OperationCheck => ({ id: 'redis', label: 'Shared Redis connection', status: 'fail', message: 'Redis check timed out. Review the active database and endpoint.' })),
+    bounded(db.$queryRaw`SELECT 1`).then((): OperationCheck => ({ id: 'database', label: 'Database', status: 'pass', code: 'database.pass', message: 'The configured database answered a read-only query.' }))
+      .catch((): OperationCheck => ({ id: 'database', label: 'Database', status: 'fail', code: 'database.fail', message: 'Database check failed. Review the connection, credentials and provider status.' })),
+    bounded(resendCheck(env, fetchImpl)).catch((): OperationCheck => ({ id: 'resend', label: 'Resend sender domain', status: 'fail', code: 'resend.timeout', message: 'Resend check timed out. Retry after checking provider availability.' })),
+    bounded(redisCheck(env, fetchImpl)).catch((): OperationCheck => ({ id: 'redis', label: 'Shared Redis connection', status: 'fail', code: 'redis.timeout', message: 'Redis check timed out. Review the active database and endpoint.' })),
   ]);
   const checks = [...runtimeChecks(env), database, resend, redis];
   const passed = checks.every((check) => check.status === 'pass');
@@ -152,9 +165,18 @@ export async function runOperationsDiagnostics(options: {
 }
 
 /** Cached evidence only: safe to call inside the settings transaction. */
-async function checkOperationsEvidence(db: ReadinessDb, now: Date, env: Env, requireRecent: boolean): Promise<{ ready: boolean; blockers: string[] }> {
-  const blockers = runtimeChecks(env).filter((check) => check.status !== 'pass').map((check) => check.message);
-  if (!resolveRedisCredentials(env)) blockers.push('Configure shared Redis credentials before enabling booking.');
+/**
+ * `blockers` are English (logs, existing callers); `issues` are the same
+ * reasons as codes for callers that show them in the admin's language.
+ */
+async function checkOperationsEvidence(db: ReadinessDb, now: Date, env: Env, requireRecent: boolean): Promise<{ ready: boolean; blockers: string[]; issues: ReadinessIssue[] }> {
+  const failing = runtimeChecks(env).filter((check) => check.status !== 'pass');
+  const blockers = failing.map((check) => check.message);
+  const issues: ReadinessIssue[] = failing.map((check) => ({ code: check.code ?? check.id }));
+  if (!resolveRedisCredentials(env)) {
+    blockers.push('Configure shared Redis credentials before enabling booking.');
+    issues.push({ code: 'blockers.redisMissing' });
+  }
   const state = await db.backgroundJobState.findUnique({ where: { name: OPERATIONS_READINESS_JOB },
     select: { lastStartedAt: true, lastSucceededAt: true, lastFailedAt: true, lastResultJson: true } });
   const checks = parseOperationsChecks(state?.lastResultJson);
@@ -168,8 +190,9 @@ async function checkOperationsEvidence(db: ReadinessDb, now: Date, env: Env, req
     blockers.push(requireRecent
       ? 'Run Operations diagnostics successfully with the current settings within the last 24 hours before enabling booking.'
       : 'Current runtime settings do not have a passing Operations report. Check provider settings and run diagnostics.');
+    issues.push({ code: requireRecent ? 'blockers.reportRequired' : 'blockers.reportInvalid' });
   }
-  return { ready: blockers.length === 0, blockers };
+  return { ready: blockers.length === 0, blockers, issues };
 }
 
 /** Opening booking needs a fresh report; ongoing operation does not expire daily. */

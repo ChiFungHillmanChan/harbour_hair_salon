@@ -15,6 +15,7 @@ import { overlaps } from '@/app/services/scheduling';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
 import { describeClash } from '@/app/lib/describe-clash';
 import { calendarBusyForDay, calendarBusyLabel, type CalendarBusyBlock } from '@/app/lib/calendar-busy-display';
+import { useT } from '@/i18n/client';
 
 /** 15 minutes = 18px. Tall enough to grab an edge, short enough to fit a day. */
 const PX_PER_MINUTE = 1.2;
@@ -113,6 +114,7 @@ export function ScheduleDayGrid({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<PendingConfirm | null>(null);
+  const t = useT('adminSchedule');
   const gridRef = useRef<HTMLDivElement>(null);
   const columnRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -307,21 +309,21 @@ export function ScheduleDayGrid({
   };
 
   if (stylists.length === 0) {
-    return <div className="p-12 text-center text-zinc-500 bg-white rounded-lg border border-zinc-200">No stylists are scheduled for this day.</div>;
+    return <div className="p-12 text-center text-zinc-500 bg-white rounded-lg border border-zinc-200">{t('grid.noStylists')}</div>;
   }
 
   return (
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden">
       {error && (
-        <div className="px-4 py-2 bg-red-50 text-sm text-red-700 border-b border-red-200">{error}</div>
+        <div role="alert" className="px-4 py-2 bg-red-50 text-sm text-red-700 border-b border-red-200">{error}</div>
       )}
 
       {confirmState && (
         <div className="px-4 py-3 bg-amber-50 border-b border-amber-200">
-          <p className="text-sm font-semibold text-amber-900">This move clashes:</p>
+          <p className="text-sm font-semibold text-amber-900">{t('clash.moveTitle')}</p>
           <ul className="mt-1 mb-2 list-disc list-inside text-sm text-amber-800">
             {confirmState.clashes.map((clash, index) => (
-              <li key={index}>{describeClash(clash)}</li>
+              <li key={index}>{describeClash(clash, t)}</li>
             ))}
           </ul>
           <div className="flex gap-2">
@@ -331,14 +333,14 @@ export function ScheduleDayGrid({
               onClick={() => confirmState.retry()}
               className="rounded bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
             >
-              Move anyway
+              {t('clash.moveAnyway')}
             </button>
             <button
               type="button"
               onClick={() => setConfirmState(null)}
               className="rounded border border-amber-300 px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
             >
-              Cancel
+              {t('clash.cancel')}
             </button>
           </div>
         </div>
@@ -356,7 +358,7 @@ export function ScheduleDayGrid({
                 <span className="text-xs font-bold text-zinc-800 truncate">{stylist.name}</span>
               </div>
               <div className="text-[10px] text-zinc-500">
-                {stylist.availability ? `${stylist.availability.startTime}–${stylist.availability.endTime}` : 'Off'}
+                {stylist.availability ? `${stylist.availability.startTime}–${stylist.availability.endTime}` : t('grid.off')}
               </div>
             </div>
           );
@@ -439,7 +441,7 @@ export function ScheduleDayGrid({
                 .filter((block) => block.stylistId === stylist.id)
                 .map((block) => {
                   const { startMin, endMin } = block;
-                  const label = calendarBusyLabel(block, stylist.name, startMin, endMin);
+                  const label = calendarBusyLabel(block, stylist.name, startMin, endMin, t);
                   return (
                     <div
                       key={block.id}
@@ -494,10 +496,10 @@ export function ScheduleDayGrid({
                       />
                       <div className="pl-2.5 pr-1 py-1 text-[10px] leading-tight pointer-events-none">
                         <div className="font-semibold truncate">
-                          {timeLabel(position.startMin)} {appt.customerName ?? 'Customer'}
+                          {timeLabel(position.startMin)} {appt.customerName ?? t('appointment.customerFallback')}
                         </div>
                         <div className="truncate opacity-90">{appt.serviceName}</div>
-                        <div className="opacity-80">{position.durationMin} min</div>
+                        <div className="opacity-80">{t('grid.minutes', { count: position.durationMin })}</div>
                       </div>
                       <div
                         onPointerDown={beginDrag(appt, 'bottom')}
@@ -513,10 +515,8 @@ export function ScheduleDayGrid({
       </div>
 
       <div className="px-4 py-2 text-[11px] text-zinc-500 border-t border-zinc-200 bg-zinc-50">
-        Click a gap to add a booking, or a booking to edit it. Drag a booking to move it, or drag its
-        top/bottom edge to change the length. Drop it on another column to change stylist. Snaps to{' '}
-        {MIN_DURATION_MINUTES} minutes.
-        {saving && <span className="ml-2 font-medium text-zinc-700">Saving…</span>}
+        {t('grid.dayHint', { minutes: MIN_DURATION_MINUTES })}
+        {saving && <span role="status" className="ml-2 font-medium text-zinc-700">{t('grid.saving')}</span>}
       </div>
     </div>
   );

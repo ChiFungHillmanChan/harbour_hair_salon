@@ -1,8 +1,10 @@
-import Link from 'next/link';
+import Link from '@/i18n/link';
+import { getT } from '@/i18n/server';
+import { rich } from '@/i18n/rich';
 
-function Stars({ value }: { value: number }) {
+function Stars({ value, label }: { value: number; label: string }) {
   return (
-    <div className="flex items-center gap-0.5" aria-label={`Rated ${value} out of 5`}>
+    <div className="flex items-center gap-0.5" aria-label={label}>
       {[1, 2, 3, 4, 5].map((n) => (
         <svg
           key={n}
@@ -27,13 +29,15 @@ function Stars({ value }: { value: number }) {
  * Slim trust strip surfacing the salon's review reputation — the 4.9★/80-review
  * standing that previously only existed in JSON-LD. Renders nothing with no reviews.
  */
-export function SocialProofBar({ average, count }: { average: number; count: number }) {
+export async function SocialProofBar({ average, count }: { average: number; count: number }) {
   if (!count) return null;
+  const t = await getT('home');
+  const stars = Math.round(average);
   return (
-    <section className="bg-white border-b border-zinc-100" aria-label="Customer reviews">
+    <section className="bg-white border-b border-zinc-100" aria-label={t('socialProof.label')}>
       <div className="container mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-5 text-center">
         <div className="flex items-center gap-2">
-          <Stars value={Math.round(average)} />
+          <Stars value={stars} label={t('socialProof.rated', { value: stars })} />
           <span className="font-serif text-lg text-zinc-900">{average.toFixed(1)}</span>
         </div>
         <span className="hidden sm:block w-px h-5 bg-zinc-200" aria-hidden="true" />
@@ -41,7 +45,9 @@ export function SocialProofBar({ average, count }: { average: number; count: num
           href="/reviews"
           className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
         >
-          <span className="font-semibold text-zinc-900">{count}</span> verified client reviews
+          {rich(t('socialProof.verifiedReviews', { count }), {
+            count: (text) => <span className="font-semibold text-zinc-900">{text}</span>,
+          })}
         </Link>
       </div>
     </section>

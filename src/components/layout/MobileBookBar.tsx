@@ -1,7 +1,9 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/i18n/link';
 import { usePathname } from 'next/navigation';
+import { useT } from '@/i18n/client';
+import { stripLocale } from '@/i18n/paths';
 
 /**
  * Persistent mobile "Book" call-to-action. Salon traffic is mostly mobile, where
@@ -9,11 +11,12 @@ import { usePathname } from 'next/navigation';
  * Hidden on the booking flow, auth pages, and admin, and on desktop (md+).
  */
 export function MobileBookBar() {
-  const pathname = usePathname();
+  const pathname = stripLocale(usePathname());
+  const t = useT('common');
   if (
-    pathname?.startsWith('/book') ||
-    pathname?.startsWith('/admin') ||
-    pathname?.startsWith('/auth')
+    pathname.startsWith('/book') ||
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/auth')
   ) {
     return null;
   }
@@ -27,7 +30,7 @@ export function MobileBookBar() {
           href="/book"
           className="block w-full bg-zinc-900 text-white text-center py-3 text-sm uppercase tracking-[0.15em] font-bold hover:bg-black transition-colors rounded-sm"
         >
-          Book Appointment
+          {t('nav.bookAppointment')}
         </Link>
       </div>
     </>

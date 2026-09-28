@@ -1,11 +1,14 @@
 'use client';
 
+import { useT } from '@/i18n/client';
+
 interface ResultActionsProps {
   onDownload: () => void;
   disabled?: boolean;
 }
 
 export function ResultActions({ onDownload, disabled }: ResultActionsProps) {
+  const t = useT('tryColor');
   return (
     <button
       onClick={onDownload}
@@ -25,7 +28,7 @@ export function ResultActions({ onDownload, disabled }: ResultActionsProps) {
           d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
         />
       </svg>
-      Download Result
+      {t('workspace.download')}
     </button>
   );
 }

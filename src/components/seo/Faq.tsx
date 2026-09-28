@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react';
 import { jsonLdScript } from '@/app/lib/json-ld';
+import { getT } from '@/i18n/server';
 
 export type FaqItem = {
   question: string;
   answer: string;
+  /** Set to 'en' when the page is in another language but this item is not translated yet. */
+  lang?: string;
 };
 
 interface FaqProps {
@@ -13,7 +16,8 @@ interface FaqProps {
   className?: string;
 }
 
-export function Faq({ title = 'Frequently Asked Questions', intro, items, className = '' }: FaqProps) {
+export async function Faq({ title, intro, items, className = '' }: FaqProps) {
+  const heading = title ?? (await getT('home'))('faq.defaultTitle');
   const schema = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
@@ -36,7 +40,7 @@ export function Faq({ title = 'Frequently Asked Questions', intro, items, classN
       <div className="text-center mb-12">
         <div className="w-12 h-px bg-zinc-300 mx-auto mb-6" />
         <h2 className="text-3xl md:text-4xl font-serif text-zinc-900 tracking-tight">
-          {title}
+          {heading}
         </h2>
         {intro && (
           <p className="mt-4 text-zinc-600 font-light leading-relaxed">{intro}</p>
@@ -47,6 +51,7 @@ export function Faq({ title = 'Frequently Asked Questions', intro, items, classN
         {items.map((item, i) => (
           <details
             key={i}
+            lang={item.lang}
             className="group py-5 [&[open]>summary>span:last-child]:rotate-45"
           >
             <summary className="flex cursor-pointer items-start justify-between gap-6 text-left list-none">

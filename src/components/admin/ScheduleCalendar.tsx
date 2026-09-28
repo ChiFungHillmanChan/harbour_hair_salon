@@ -1,19 +1,25 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useTransition } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { ScheduleWeekGrid, type WeekStylist } from './ScheduleWeekGrid';
 import { AppointmentDialog, type DialogService, type DialogTarget } from './AppointmentDialog';
 import type { CalendarAppointment, PendingAppointment } from '@/app/services/admin-calendar-data';
 import { ScheduleDayGrid, type GridAppointment, type GridBusyBlock, type GridStylist } from './ScheduleDayGrid';
 import { resolveCalendarColor } from '@/app/lib/calendar-colors';
-import { formatSalonDate, formatSalonTime, resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
+import { formatSalonTime, resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import type { CalendarView } from '@/app/services/admin-calendar-range';
 import { moveAppointmentByAdmin } from '@/app/actions/admin-schedule';
 import { weekDayKeys } from '@/app/services/admin-calendar-range';
 import { calendarBusyForDay, calendarBusyLabel } from '@/app/lib/calendar-busy-display';
 import { payloadArrival, shouldRefreshCalendar } from '@/app/services/calendar-sync-window';
+import { describeBoardPrice } from '@/app/lib/board-price';
+import { useLocale, useT } from '@/i18n/client';
+import { useLocalizedRouter } from '@/i18n/navigation';
+import { useDraftState } from '@/i18n/draft-store';
+import { formatCalendarDay, formatMonth, formatMonthName, formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
+import type { Translate } from '@/i18n/translator';
+import type { Messages } from '@/i18n/messages/types-client';
 
 // Browser arrival time of each server payload this tab has shown; see payloadArrival.
 const payloadFirstSeen = new Map<string, number>();
@@ -29,6 +35,14 @@ type RosterStylist = {
 
 type BusyBlockRow = GridBusyBlock;
 
+type ScheduleT = Translate<Messages['adminSchedule']>;
+
+/** A known Sunday, for weekday column labels in the page language. */
+const WEEK_FROM_SUNDAY = ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04', '2023-01-05', '2023-01-06', '2023-01-07'];
+
+/** Status codes stay stable; only their label follows the page language. */
+const statusLabel = (t: ScheduleT, status: string) => t.dynamic(`status.${status}`, undefined, status);
+
 const statusChipClass = (status: string) =>
   status === 'CONFIRMED'
     ? 'bg-green-100 text-green-700'
@@ -40,10 +54,11 @@ async function setAppointmentStatus(
   apptId: string,
   status: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED',
   onDone: () => void,
+  failed: string,
 ) {
   const { updateAppointmentStatus } = await import('@/app/actions/admin');
   const res = await updateAppointmentStatus(apptId, status);
-  if (res.success) { onDone(); } else { alert(res.error ?? 'Failed to update'); }
+  if (res.success) { onDone(); } else { alert(res.error ?? failed); }
 }
 
 // Approve / decline buttons for a PENDING booking request (double-confirm flow:
@@ -52,8 +67,9 @@ async function setAppointmentStatus(
 // both buttons show progress and cannot be pressed twice.
 function PendingActions({ apptId, onDone }: { apptId: string; onDone: () => void }) {
   const [pending, startTransition] = useTransition();
+  const t = useT('adminSchedule');
   const run = (status: 'CONFIRMED' | 'CANCELLED') =>
-    startTransition(async () => { await setAppointmentStatus(apptId, status, onDone); });
+    startTransition(async () => { await setAppointmentStatus(apptId, status, onDone, t('appointment.updateFailed')); });
   return (
     <div className="flex gap-2" aria-busy={pending}>
       <button
@@ -62,19 +78,19 @@ function PendingActions({ apptId, onDone }: { apptId: string; onDone: () => void
         onClick={() => run('CONFIRMED')}
         className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
       >
-        {pending ? 'Checking calendars…' : 'Confirm booking'}
+        {pending ? t('pending.checking') : t('pending.confirm')}
       </button>
       <button
         type="button"
         disabled={pending}
         onClick={() => {
-          if (window.confirm('Decline this booking request? The customer will need to book again.')) {
+          if (window.confirm(t('pending.declineConfirm'))) {
             run('CANCELLED');
           }
         }}
         className="rounded border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
       >
-        Decline
+        {t('pending.decline')}
       </button>
     </div>
   );
@@ -87,6 +103,7 @@ interface YearViewProps {
 }
 
 const YearView = ({ currentDate, onSelectMonth, monthCounts }: YearViewProps) => {
+  const t = useT('adminSchedule');
   const yearStart = startOfYear(currentDate);
   const yearEnd = endOfYear(currentDate);
   const months = eachMonthOfInterval({ start: yearStart, end: yearEnd });
@@ -100,8 +117,8 @@ const YearView = ({ currentDate, onSelectMonth, monthCounts }: YearViewProps) =>
               onClick={() => onSelectMonth(month)}
               className="bg-white p-4 rounded-lg shadow hover:bg-zinc-50 text-left border border-zinc-200"
             >
-              <h3 className="font-bold text-zinc-900">{format(month, 'MMMM')}</h3>
-              <p className="text-sm text-zinc-700">{monthCounts[index] ?? 0} bookings</p>
+              <h3 className="font-bold text-zinc-900">{formatMonthName(t.locale, index + 1)}</h3>
+              <p className="text-sm text-zinc-700">{t('year.bookings', { count: monthCounts[index] ?? 0 })}</p>
             </button>
           );
       })}
@@ -117,13 +134,14 @@ interface MonthViewProps {
 }
 
 const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointments }: MonthViewProps) => {
+  const t = useT('adminSchedule');
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const startDate = startOfWeek(monthStart);
   const endDate = endOfWeek(monthEnd);
 
   const days = eachDayOfInterval({ start: startDate, end: endDate });
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const weekDays = WEEK_FROM_SUNDAY.map((key) => formatCalendarDay(t.locale, key, { weekday: 'short' }));
 
   return (
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden">
@@ -176,12 +194,12 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
                         : `${resolveCalendarColor(appt.stylist.calendarColor).fill} ${resolveCalendarColor(appt.stylist.calendarColor).text}`
                     }`}
                   >
-                    {formatSalonTime(new Date(appt.date))} {appt.user.name}
+                    {formatSalonClock(t.locale, new Date(appt.date))} {appt.user.name}
                   </div>
                 ))}
                 {dayAppts.length > 3 && (
                   <div className="text-[10px] text-zinc-400 pl-1">
-                    + {dayAppts.length - 3} more
+                    {t('month.more', { count: dayAppts.length - 3 })}
                   </div>
                 )}
               </div>
@@ -194,7 +212,7 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
 };
 
 interface DayViewProps {
-  currentDate: Date;
+  dateStr: string;
   dayAppts: AppointmentWithDetails[];
   busyBlocks: ReturnType<typeof calendarBusyForDay>;
   stylists: RosterStylist[];
@@ -202,51 +220,67 @@ interface DayViewProps {
   onEdit: (appointment: AppointmentWithDetails) => void;
 }
 
+/** "3 appointments · 1 imported" */
+function dayCountLabel(t: ScheduleT, appointments: number, imported: number): string {
+  const count = t('day.appointments', { count: appointments });
+  return imported > 0 ? `${count} · ${t('day.imported', { count: imported })}` : count;
+}
+
 function BusyAgenda({ blocks, stylists }: { blocks: ReturnType<typeof calendarBusyForDay>; stylists: RosterStylist[] }) {
+  const t = useT('adminSchedule');
   return <ul className="divide-y divide-zinc-100">
     {blocks.map((block) => {
-      const stylist = stylists.find((entry) => entry.id === block.stylistId)?.name ?? 'Stylist';
-      const label = calendarBusyLabel(block, stylist, block.startMin, block.endMin);
+      const stylist = stylists.find((entry) => entry.id === block.stylistId)?.name ?? t('appointment.stylistFallback');
+      const label = calendarBusyLabel(block, stylist, block.startMin, block.endMin, t);
       return <li key={block.id} role="note" aria-label={label.detail} className="border-l-4 border-l-zinc-400 bg-zinc-50 px-4 py-3 text-sm">
         <div className="flex flex-wrap justify-between gap-2 font-semibold text-zinc-800"><span>{label.provider}</span><span className="tabular-nums">{label.range}</span></div>
-        <p className="mt-1 text-zinc-600">{stylist} · Imported busy time</p>
-        <p className="mt-1 text-xs text-zinc-500">Last imported {label.synced} · London time</p>
+        <p className="mt-1 text-zinc-600">{t('busy.agendaImported', { stylist })}</p>
+        <p className="mt-1 text-xs text-zinc-500">{t('busy.agendaSynced', { synced: label.synced })}</p>
       </li>;
     })}
   </ul>;
 }
 
-const DayView = ({ currentDate, dayAppts, busyBlocks, stylists, onRefresh, onEdit }: DayViewProps) => {
+const DayView = ({ dateStr, dayAppts, busyBlocks, stylists, onRefresh, onEdit }: DayViewProps) => {
+  const t = useT('adminSchedule');
+  const tp = useT('pricing');
   return (
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden flex flex-col">
       <div className="p-4 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center">
-          <h3 className="font-bold text-lg">{format(currentDate, 'EEEE, MMMM d')}</h3>
-          <span className="text-sm text-zinc-500">{dayAppts.length} appointments{busyBlocks.length > 0 && ` · ${busyBlocks.length} imported`}</span>
+          <h3 className="font-bold text-lg">{formatCalendarDay(t.locale, dateStr, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+          <span className="text-sm text-zinc-500">{dayCountLabel(t, dayAppts.length, busyBlocks.length)}</span>
       </div>
       <div className="divide-y divide-zinc-100 overflow-y-auto max-h-[600px]">
           {dayAppts.length === 0 && busyBlocks.length === 0 ? (
-              <div className="p-12 text-center text-zinc-500">No appointments for this day.</div>
+              <div className="p-12 text-center text-zinc-500">{t('day.empty')}</div>
           ) : (
-              dayAppts.map(appt => (
+              dayAppts.map(appt => {
+                // The price recorded on the booking, or "Price not recorded" —
+                // never today's service price.
+                const price = describeBoardPrice(appt.price, tp);
+                return (
                   <div key={appt.id} className="flex p-4 hover:bg-zinc-50 group">
                       <div className="w-20 flex-shrink-0 text-zinc-700 text-sm pt-1 font-medium">
-                          {formatSalonTime(new Date(appt.date))}
+                          {formatSalonClock(t.locale, new Date(appt.date))}
                       </div>
                       <div className="flex-1 bg-zinc-50 rounded-lg p-3 border border-zinc-200 group-hover:border-zinc-300 transition-colors">
                           <div className="flex justify-between items-start">
                               <div>
                                   <h4 className="font-semibold text-zinc-900">{appt.user.name}</h4>
-                                  <p className="text-zinc-600 text-sm">{appt.service.name} • {appt.durationAtBooking ?? appt.service.duration} mins</p>
+                                  <p className="text-zinc-600 text-sm">{appt.service.name} • {tp('minutes', { count: appt.durationAtBooking ?? appt.service.duration })}</p>
                               </div>
                               <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusChipClass(appt.status)}`}>
-                                  {appt.status}
+                                  {statusLabel(t, appt.status)}
                               </span>
                           </div>
-                          <div className="mt-2 flex items-center gap-4 text-xs text-zinc-500">
-                              <span>Stylist: {appt.stylist.name}</span>
-                              <span>£{Number(appt.priceAtBooking ?? appt.service.price).toFixed(2)}</span>
+                          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+                              <span>{t('appointment.stylist', { name: appt.stylist.name })}</span>
+                              <span>
+                                <span className="font-medium text-zinc-700 tabular-nums">{price.amount}</span>
+                                {price.notes.length > 0 && <span className="ml-1">({price.notes.join(' · ')})</span>}
+                              </span>
                           </div>
-                          <button type="button" onClick={() => onEdit(appt)} className="mt-2 mr-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-white">Edit booking</button>
+                          <button type="button" onClick={() => onEdit(appt)} className="mt-2 mr-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-white">{t('appointment.edit')}</button>
                           {appt.status === 'PENDING' && (
                             <div className="mt-2">
                               <PendingActions apptId={appt.id} onDone={onRefresh} />
@@ -255,15 +289,16 @@ const DayView = ({ currentDate, dayAppts, busyBlocks, stylists, onRefresh, onEdi
                           {appt.status === 'CONFIRMED' && (
                             <button
                               type="button"
-                              onClick={() => setAppointmentStatus(appt.id, 'COMPLETED', onRefresh)}
+                              onClick={() => setAppointmentStatus(appt.id, 'COMPLETED', onRefresh, t('appointment.updateFailed'))}
                               className="mt-2 rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
                             >
-                              Mark completed
+                              {t('appointment.markCompleted')}
                             </button>
                           )}
                       </div>
                   </div>
-              ))
+                );
+              })
           )}
           <BusyAgenda blocks={busyBlocks} stylists={stylists} />
       </div>
@@ -296,13 +331,19 @@ export function ScheduleCalendar({
   pendingHasPrevious?: boolean;
   loadedAt?: string;
 }) {
-  const router = useRouter();
+  // The period and date live in the URL, so a language switch keeps them; the
+  // localized router keeps every navigation in the current language.
+  const router = useLocalizedRouter();
+  const t = useT('adminSchedule');
+  const locale = useLocale();
   const [isNavigating, startNavigation] = useTransition();
   // date-fns uses local calendar fields. This noon date is only a display carrier
   // for the requested London calendar day, never an appointment instant.
   const currentDate = new Date(`${dateStr}T12:00:00`);
-  const [localSelection, setLocalSelection] = useState<{ month: string; date: string } | null>(null);
-  const [dialog, setDialog] = useState<DialogTarget | null>(null);
+  // Client-only board state (the month's picked day, an open booking dialog)
+  // survives an interface-language switch; see i18n/draft-store.
+  const [localSelection, setLocalSelection] = useDraftState<{ month: string; date: string } | null>('schedule-board:selection', null);
+  const [dialog, setDialog] = useDraftState<DialogTarget | null>('schedule-board:dialog', null);
   const selectedDate = localSelection?.month === dateStr.slice(0, 7) ? new Date(`${localSelection.date}T12:00:00`) : currentDate;
   const viewMode = view;
   const navigate = (date: Date, nextView: CalendarView = viewMode) => {
@@ -427,9 +468,10 @@ export function ScheduleCalendar({
       serviceId: appt.serviceId,
       durationMin: appt.durationAtBooking ?? appt.service.duration,
       notes: appt.notes ?? '',
-      customerName: appt.user.name ?? 'Customer',
+      customerName: appt.user.name ?? t('appointment.customerFallback'),
       status: appt.status,
       updatedAt: appt.updatedAt,
+      price: appt.price,
     });
   };
   const closeDialog = () => setDialog(null);
@@ -451,42 +493,51 @@ export function ScheduleCalendar({
     })
     .filter((stylist) => stylist.availability !== null || busyStylistIds.has(stylist.id));
 
+  const title = viewMode === 'year'
+    ? formatCalendarDay(locale, dateStr, { year: 'numeric' })
+    : viewMode === 'week'
+      ? `${formatCalendarDay(locale, weekKeys[0], { day: 'numeric', month: 'short' })} – ${formatCalendarDay(locale, weekKeys[6], { day: 'numeric', month: 'short', year: 'numeric' })}`
+      : viewMode === 'day'
+        ? formatCalendarDay(locale, dateStr, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+        : formatMonth(locale, Number(dateStr.slice(0, 4)), Number(dateStr.slice(5, 7)));
+  const selectedKey = format(selectedDate, 'yyyy-MM-dd');
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-600">
         <p>
-          {loadedAt && <>Calendar loaded {formatSalonDate(new Date(loadedAt))} at {formatSalonTime(new Date(loadedAt))} (UK). </>}
-          {view === 'year' ? 'Year totals refresh on demand.' : 'Auto-refresh follows each 30-minute scheduled import while this tab is visible. Imports run during opening hours, including a 15-minute buffer.'}
-          {' '}Refreshing shows saved data; platform imports run separately and may be delayed.
+          {loadedAt && <>{t('refresh.loadedAt', { date: formatSalonLongDate(locale, new Date(loadedAt)), time: formatSalonClock(locale, new Date(loadedAt)) })} </>}
+          {view === 'year' ? t('refresh.yearNote') : t('refresh.autoNote')}
+          {' '}{t('refresh.savedNote')}
         </p>
-        <button type="button" onClick={() => startNavigation(() => router.refresh())} disabled={isNavigating} className="shrink-0 rounded border border-zinc-300 px-3 py-2 font-semibold text-[#174F7F] disabled:opacity-50">Refresh now</button>
+        <button type="button" onClick={() => startNavigation(() => router.refresh())} disabled={isNavigating} className="shrink-0 rounded border border-zinc-300 px-3 py-2 font-semibold text-[#174F7F] disabled:opacity-50">{t('refresh.button')}</button>
       </div>
       {(pendingAppointments.length > 0 || pendingHasPrevious) && (
-        <section aria-label="All pending booking requests" className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <h2 className="font-semibold text-amber-900">Awaiting confirmation · all dates</h2>
+        <section aria-label={t('pending.sectionLabel')} className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <h2 className="font-semibold text-amber-900">{t('pending.title')}</h2>
           <div className="mt-3 max-h-80 overflow-y-auto divide-y divide-amber-200">
             {pendingAppointments.map((appt) => (
               <div key={appt.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div>
                   <button type="button" onClick={() => navigate(new Date(`${salonDateKey(new Date(appt.date))}T12:00:00`), 'day')} className="text-left text-sm font-medium text-zinc-900 underline">
-                    {formatSalonDate(new Date(appt.date))} · {formatSalonTime(new Date(appt.date))} · {appt.user.name ?? 'Customer'}
+                    {t('pending.item', { date: formatSalonLongDate(locale, new Date(appt.date)), time: formatSalonClock(locale, new Date(appt.date)), customer: appt.user.name ?? t('appointment.customerFallback') })}
                   </button>
-                  <p className="text-sm text-zinc-600">{appt.service.name} with {appt.stylist.name}</p>
+                  <p className="text-sm text-zinc-600">{t('appointment.withStylist', { service: appt.service.name, stylist: appt.stylist.name })}</p>
                 </div>
                 <PendingActions apptId={appt.id} onDone={() => router.refresh()} />
               </div>
             ))}
           </div>
-          {(pendingNext || pendingHasPrevious) && <nav aria-label="Pending requests pagination" className="mt-3 flex gap-4 text-sm underline">
-            {pendingHasPrevious && <button type="button" onClick={() => pendingPage()}>First page</button>}
-            {pendingNext && <button type="button" onClick={() => pendingPage(pendingNext)}>Next requests</button>}
+          {(pendingNext || pendingHasPrevious) && <nav aria-label={t('pending.pagination')} className="mt-3 flex gap-4 text-sm underline">
+            {pendingHasPrevious && <button type="button" onClick={() => pendingPage()}>{t('pending.firstPage')}</button>}
+            {pendingNext && <button type="button" onClick={() => pendingPage(pendingNext)}>{t('pending.nextPage')}</button>}
           </nav>}
         </section>
       )}
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-lg shadow border border-zinc-200">
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md shadow-sm" role="group">
+          <div className="inline-flex rounded-md shadow-sm" role="group" aria-label={t('views.label')}>
             {(['day', 'week', 'month', 'year'] as const).map((period, index, all) => (
               <button
                 key={period}
@@ -497,44 +548,40 @@ export function ScheduleCalendar({
                   ${index === all.length - 1 ? 'border-r rounded-r-lg' : ''}
                   ${viewMode === period ? 'bg-zinc-900 text-white' : 'bg-white text-gray-900 hover:bg-gray-100'}`}
               >
-                {period}
+                {t(`views.${period}`)}
               </button>
             ))}
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <button onClick={prev} disabled={isNavigating} aria-label="Previous period" className="p-2 hover:bg-zinc-100 rounded-full disabled:opacity-50">
+          <button onClick={prev} disabled={isNavigating} aria-label={t('toolbar.previous')} className="p-2 hover:bg-zinc-100 rounded-full disabled:opacity-50">
              ←
           </button>
           <h2 className="text-xl font-bold min-w-[200px] text-center">
-            {viewMode === 'year'
-              ? format(currentDate, 'yyyy')
-              : viewMode === 'week'
-                ? `${format(new Date(`${weekKeys[0]}T12:00:00`), 'd MMM')} – ${format(new Date(`${weekKeys[6]}T12:00:00`), 'd MMM yyyy')}`
-                : format(currentDate, viewMode === 'day' ? 'EEEE, d MMMM yyyy' : 'MMMM yyyy')}
+            {title}
           </h2>
-          <button onClick={next} disabled={isNavigating} aria-label="Next period" className="p-2 hover:bg-zinc-100 rounded-full disabled:opacity-50">
+          <button onClick={next} disabled={isNavigating} aria-label={t('toolbar.next')} className="p-2 hover:bg-zinc-100 rounded-full disabled:opacity-50">
              →
           </button>
         </div>
 
         <div className="flex items-center gap-3">
           <button onClick={goToToday} className="text-sm font-medium text-zinc-900 hover:underline">
-            Today
+            {t('toolbar.today')}
           </button>
-          {viewMode !== 'year' && services.length > 0 && stylists.length > 0 && (
+          {viewMode !== 'year' && services.some((service) => service.isBookable) && stylists.length > 0 && (
             <button
               type="button"
               onClick={() => setDialog({ mode: 'create', dateStr, time: formatSalonTime(new Date()) })}
               className="rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
             >
-              + New booking
+              {t('toolbar.newBooking')}
             </button>
           )}
         </div>
       </div>
-      {isNavigating && <p role="status" className="text-sm text-zinc-600">Loading calendar…</p>}
+      {isNavigating && <p role="status" className="text-sm text-zinc-600">{t('toolbar.loading')}</p>}
 
       {/* Content */}
       <div>
@@ -585,20 +632,20 @@ export function ScheduleCalendar({
                       onClick={() => navigate(new Date(`${key}T12:00:00`), 'day')}
                       className={`flex w-full items-center justify-between px-4 py-2 text-left ${key === salonDateKey(new Date()) ? 'bg-zinc-900 text-white' : 'bg-zinc-50 text-zinc-900'}`}
                     >
-                      <span className="font-semibold">{format(new Date(`${key}T12:00:00`), 'EEEE d MMM')}</span>
-                      <span className="text-xs opacity-80">{dayAppts.length} appointments{dayBusy.length > 0 && ` · ${dayBusy.length} imported`}</span>
+                      <span className="font-semibold">{formatCalendarDay(locale, key, { weekday: 'long', day: 'numeric', month: 'short' })}</span>
+                      <span className="text-xs opacity-80">{dayCountLabel(t, dayAppts.length, dayBusy.length)}</span>
                     </button>
                     {dayAppts.length === 0 && dayBusy.length === 0 ? (
-                      <p className="px-4 py-3 text-sm text-zinc-500">Nothing booked.</p>
+                      <p className="px-4 py-3 text-sm text-zinc-500">{t('day.nothingBooked')}</p>
                     ) : (
                       <ul className="divide-y divide-zinc-100">
                         {dayAppts.map((appt) => (
                           <li key={appt.id} className="px-4 py-2 text-sm">
-                            <span className="font-medium text-zinc-900">{formatSalonTime(new Date(appt.date))}</span>
+                            <span className="font-medium text-zinc-900">{formatSalonClock(locale, new Date(appt.date))}</span>
                             <span className="ml-2 text-zinc-700">{appt.user.name}</span>
-                            <span className={`ml-2 inline-block rounded px-2 py-1 text-xs font-medium ${statusChipClass(appt.status)}`}>{appt.status}</span>
-                            <span className="block text-xs text-zinc-500">{appt.service.name} with {appt.stylist.name}</span>
-                            <button type="button" onClick={() => openEditor(appt)} className="mt-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-zinc-50">Edit booking</button>
+                            <span className={`ml-2 inline-block rounded px-2 py-1 text-xs font-medium ${statusChipClass(appt.status)}`}>{statusLabel(t, appt.status)}</span>
+                            <span className="block text-xs text-zinc-500">{t('appointment.withStylist', { service: appt.service.name, stylist: appt.stylist.name })}</span>
+                            <button type="button" onClick={() => openEditor(appt)} className="mt-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-zinc-50">{t('appointment.edit')}</button>
                           </li>
                         ))}
                       </ul>
@@ -628,7 +675,7 @@ export function ScheduleCalendar({
             </div>
             <div className="sm:hidden">
               <DayView
-                currentDate={currentDate}
+                dateStr={dateStr}
                 dayAppts={getDayAppointments(currentDate)}
                 busyBlocks={calendarBusyForDay(gridBusyBlocks, dateStr)}
                 stylists={stylists}
@@ -642,20 +689,20 @@ export function ScheduleCalendar({
       
       {viewMode === 'month' && (
          <div className="mt-6">
-             <h3 className="text-lg font-bold mb-4">Selected Date: {format(selectedDate, 'MMM d, yyyy')}</h3>
+             <h3 className="text-lg font-bold mb-4">{t('month.selectedDate', { date: formatCalendarDay(locale, selectedKey, { day: 'numeric', month: 'short', year: 'numeric' }) })}</h3>
              <div className="bg-white rounded-lg shadow border border-zinc-200 p-6">
                  {getDayAppointments(selectedDate).length > 0 ? (
                      <div className="space-y-4">
                          {getDayAppointments(selectedDate).map(appt => (
                              <div key={appt.id} className="flex justify-between items-center border-b border-zinc-100 last:border-0 pb-2 last:pb-0">
                                  <div>
-                                     <p className="font-medium text-zinc-900">{formatSalonTime(new Date(appt.date))} - {appt.user.name}</p>
-                                     <p className="text-sm text-zinc-500">{appt.service.name} with {appt.stylist.name}</p>
+                                     <p className="font-medium text-zinc-900">{formatSalonClock(locale, new Date(appt.date))} - {appt.user.name}</p>
+                                     <p className="text-sm text-zinc-500">{t('appointment.withStylist', { service: appt.service.name, stylist: appt.stylist.name })}</p>
                                  </div>
                                  <div className="flex flex-wrap items-center gap-2">
-                                     <button type="button" onClick={() => openEditor(appt)} className="rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-zinc-50">Edit booking</button>
+                                     <button type="button" onClick={() => openEditor(appt)} className="rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-zinc-50">{t('appointment.edit')}</button>
                                      <div className={`text-xs px-2 py-1 rounded font-medium ${statusChipClass(appt.status)}`}>
-                                         {appt.status}
+                                         {statusLabel(t, appt.status)}
                                      </div>
                                      {appt.status === 'PENDING' && (
                                        <PendingActions apptId={appt.id} onDone={() => router.refresh()} />
@@ -663,10 +710,10 @@ export function ScheduleCalendar({
                                      {appt.status === 'CONFIRMED' && (
                                        <button
                                          type="button"
-                                         onClick={() => setAppointmentStatus(appt.id, 'COMPLETED', () => router.refresh())}
+                                         onClick={() => setAppointmentStatus(appt.id, 'COMPLETED', () => router.refresh(), t('appointment.updateFailed'))}
                                          className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
                                        >
-                                         Mark completed
+                                         {t('appointment.markCompleted')}
                                        </button>
                                      )}
                                  </div>
@@ -674,7 +721,7 @@ export function ScheduleCalendar({
                          ))}
                      </div>
                  ) : (
-                     <p className="text-zinc-500">No appointments selected.</p>
+                     <p className="text-zinc-500">{t('month.noneSelected')}</p>
                  )}
              </div>
          </div>
@@ -682,6 +729,7 @@ export function ScheduleCalendar({
 
       {dialog && (
         <AppointmentDialog
+          key={dialog.mode === 'edit' ? dialog.appointmentId : 'new'}
           target={dialog}
           services={services}
           stylists={stylists.map(({ id, name }) => ({ id, name }))}

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement, isValidElement, type ReactNode } from 'react';
+import { translator } from '../../i18n/messages';
 import { loadServerModule } from '../../test/load-server-module';
 
 function elementTypes(node: unknown): unknown[] {
@@ -30,12 +31,11 @@ test('homepage footer chrome is identical before and after the router resolves i
 test('the server-rendered homepage owns its booking promotion without reading a router pathname', async () => {
   const component = () => null;
   const FooterPromotions = () => null;
-  const { default: Home } = loadServerModule<typeof import('../../app/page')>('src/app/page.tsx', {
-    '@/app/lib/prisma': {
-      service: { findMany: async () => [] },
-      stylist: { findMany: async () => [] },
-      offer: { findFirst: async () => null },
-    },
+  const { default: Home } = loadServerModule<typeof import('../../app/[locale]/page')>('src/app/[locale]/page.tsx', {
+    '@/i18n/server': { getLocale: async () => 'en-GB', getT: async (namespace: 'home') => translator('en-GB', namespace) },
+    '@/i18n/ClientMessages': { ClientMessages: ({ children }: { children: unknown }) => children },
+    '@/app/services/pricing/public-catalog': { getPublicCatalog: async () => ({ services: [], offerings: [], categories: [] }) },
+    '@/app/stylists/slug': { getAllStylistsWithSlug: async () => [] },
     '@/components/home/Hero': { Hero: component },
     '@/components/home/ServiceMenu': { ServiceMenu: component },
     '@/components/home/StylistShowcase': { StylistShowcase: component },
@@ -47,6 +47,7 @@ test('the server-rendered homepage owns its booking promotion without reading a 
     '@/app/services/review-service': { getAggregateRating: async () => ({ count: 0, average: 0 }) },
     '@/app/services/site-settings-service': {
       getSiteSettings: async () => ({ phone: '07831 830898' }),
+      getHeroContent: async () => ({ heroEyebrow: '', heroTitleLine1: '', heroTitleLine2: '', heroSubtitle: '', translated: true }),
       buildSameAsArray: () => [],
     },
     '@/app/services/faq-service': { getFaqsByKey: async () => [] },

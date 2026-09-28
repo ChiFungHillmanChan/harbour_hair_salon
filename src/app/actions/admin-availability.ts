@@ -1,9 +1,15 @@
 'use server';
 
 import { revalidatePath, updateTag } from 'next/cache';
+import { revalidateAllLocales } from '@/i18n/revalidate';
+import { getActionT } from '@/i18n/request';
+import { HTML_LANG } from '@/i18n/config';
+import { formatCalendarDay } from '@/i18n/dates';
+import type { Translate } from '@/i18n/translator';
+import type { Messages } from '@/i18n/messages';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
-import { validateWeek, type DayInput } from '@/app/services/opening-hours';
+import { validateWeek, type DayInput, type WeekValidation } from '@/app/services/opening-hours';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -17,6 +23,22 @@ export type OpeningHoursState =
   | { status: 'error'; message: string }
   | { status: 'success' };
 
+/** dayOfWeek 0-6 → a date with that weekday (2023-01-01 was a Sunday). */
+const WEEKDAY_SAMPLE = ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04', '2023-01-05', '2023-01-06', '2023-01-07'];
+
+/** The validator's refusal, from its code, in the admin's language. */
+function weekErrorText(t: Translate<Messages['adminSchedule']>, refusal: Extract<WeekValidation, { ok: false }>): string {
+  const dayName = (dayOfWeek: number) => WEEKDAY_SAMPLE[dayOfWeek]
+    ? formatCalendarDay(t.locale, WEEKDAY_SAMPLE[dayOfWeek], { weekday: 'long' })
+    : String(dayOfWeek);
+  const missing = new Intl.ListFormat(HTML_LANG[t.locale], { type: 'conjunction', style: 'narrow' })
+    .format((refusal.missing ?? []).map(dayName));
+  return t.dynamic(`openingHours.errors.${refusal.code}`, {
+    day: refusal.dayOfWeek === undefined ? undefined : dayName(refusal.dayOfWeek),
+    missing,
+  }, t('openingHours.errors.INVALID'));
+}
+
 /**
  * Replaces one stylist's whole week in a single transaction.
  *
@@ -29,10 +51,12 @@ export async function updateStylistAvailability(
   formData: FormData
 ): Promise<OpeningHoursState> {
   await requireAdmin();
+  // Messages are returned in the admin's interface language.
+  const t = await getActionT('adminSchedule');
 
   const stylistId = formData.get('stylistId');
   if (typeof stylistId !== 'string' || !stylistId) {
-    return { status: 'error', message: 'Missing stylist.' };
+    return { status: 'error', message: t('openingHours.errors.MISSING_STYLIST') };
   }
 
   const days: DayInput[] = [];
@@ -49,7 +73,7 @@ export async function updateStylistAvailability(
 
   const validated = validateWeek(days);
   if (!validated.ok) {
-    return { status: 'error', message: validated.error };
+    return { status: 'error', message: weekErrorText(t, validated) };
   }
 
   await prisma.$transaction(
@@ -74,9 +98,9 @@ export async function updateStylistAvailability(
   // page both need to reflect the new week immediately.
   updateTag('calendar-sync-hours');
   updateTag('site-settings');
-  revalidatePath('/admin');
-  revalidatePath('/admin/opening-hours');
-  revalidatePath('/book');
+  revalidateAllLocales(revalidatePath, '/admin');
+  revalidateAllLocales(revalidatePath, '/admin/opening-hours');
+  revalidateAllLocales(revalidatePath, '/book');
 
   return { status: 'success' };
 }

@@ -25,7 +25,7 @@ test('the refusal message names no marketplace', () => {
 });
 
 test('/book renders marketplace links from settings, not from a constant', () => {
-  const source = readFileSync(join(root, 'app/book/page.tsx'), 'utf8');
+  const source = readFileSync(join(root, 'app/[locale]/book/page.tsx'), 'utf8');
   assert.match(source, /activeMarketplaces\(/, 'must derive the links from settings');
   assert.doesNotMatch(source, /TREATWELL_BOOKING_URL/);
 });

@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { resolve } from 'node:path'
 import { assertSafeSeedTarget } from './seed-safety'
+import { OFFERINGS, PRICE_SOURCE, RETIRE_UNVERIFIED_NHS, VERIFIED_AT, type CatalogOffering } from './price-catalog/treatwell-2026-09-28'
 
 let prisma: PrismaClient | undefined
 
@@ -32,85 +33,83 @@ async function main() {
   await db.appointment.deleteMany()
   await db.availability.deleteMany()
   await db.stylist.deleteMany()
+  await db.service.updateMany({ data: { surchargeBaseServiceId: null } })
   await db.service.deleteMany()
+  await db.serviceOffering.deleteMany()
   await db.user.deleteMany()
 
-  const serviceList = [
-    // Haircuts
-    { name: 'Long Hair - Wash, Haircut & Blow Dry (Student & NHS)', price: 44.00, duration: 85, category: 'Haircuts', description: 'Wash, haircut and blow dry for long hair (Student & NHS rate).' },
-    { name: 'Long Hair - Wash, Haircut & Blow Dry', price: 49.00, duration: 85, category: 'Haircuts', description: 'Wash, haircut and blow dry for long hair.' },
-    { name: 'Extra Long Hair - Wash, Haircut & Blow Dry', price: 56.00, duration: 85, category: 'Haircuts', description: 'Wash, haircut and blow dry for extra long hair.' },
-    { name: 'Short Over Ears - Wash, Haircut & Blow Dry (Student & NHS)', price: 33.00, duration: 55, category: 'Haircuts', description: 'Wash, haircut and blow dry for short hair (Student & NHS rate).' },
-    { name: 'Short Over Ears - Wash, Haircut & Blow Dry', price: 37.00, duration: 55, category: 'Haircuts', description: 'Wash, haircut and blow dry for short hair.' },
-    { name: 'Children (Up to 12Yr) - Short Over Ears', price: 19.00, duration: 60, category: 'Haircuts', description: 'Wash, haircut and blow dry for children under 12 with short hair.' },
-    { name: 'Children (Up to 12Yr) - Long Hair', price: 22.00, duration: 60, category: 'Haircuts', description: 'Wash, haircut and blow dry for children under 12 with long hair.' },
-
-    // Colouring
-    { name: 'Full Head Colour & Blow Dry - Short Hair (NHS)', price: 109.00, duration: 150, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head colour application including blow dry for short hair (NHS rate).' },
-    { name: 'Full Head Colour & Blow Dry - Short Hair', price: 121.00, duration: 150, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head colour application including blow dry for short hair.' },
-    { name: 'Full Head Colour & Blow Dry - Medium Hair (NHS)', price: 131.00, duration: 150, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head colour application including blow dry for medium length hair (NHS rate).' },
-    { name: 'Full Head Colour & Blow Dry - Medium Hair', price: 145.00, duration: 150, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head colour application including blow dry for medium length hair.' },
-    { name: 'Full Head Colour & Blow Dry - Long Hair (NHS)', price: 142.00, duration: 150, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head colour application including blow dry for long hair (NHS rate).' },
-    { name: 'Full Head Colour & Blow Dry - Long Hair', price: 157.00, duration: 150, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head colour application including blow dry for long hair.' },
-
-    { name: 'Half Head Highlights & Blow Dry - Short Hair (NHS)', price: 164.00, duration: 165, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Half head highlights including blow dry for short hair (NHS rate).' },
-    { name: 'Half Head Highlights & Blow Dry - Short Hair', price: 181.00, duration: 165, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Half head highlights including blow dry for short hair.' },
-    { name: 'Half Head Highlights & Blow Dry - Long Hair (NHS)', price: 196.00, duration: 165, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Half head highlights including blow dry for long hair (NHS rate).' },
-    { name: 'Half Head Highlights & Blow Dry - Long Hair', price: 218.00, duration: 165, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Half head highlights including blow dry for long hair.' },
-
-    { name: 'Full Head Highlights & Blow Dry - Short Hair (NHS)', price: 196.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head highlights including blow dry for short hair (NHS rate).' },
-    { name: 'Full Head Highlights & Blow Dry - Short Hair', price: 211.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head highlights including blow dry for short hair.' },
-    { name: 'Full Head Highlights & Blow Dry - Long Hair (NHS)', price: 251.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head highlights including blow dry for long hair (NHS rate).' },
-    { name: 'Full Head Highlights & Blow Dry - Long Hair', price: 278.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Full head highlights including blow dry for long hair.' },
-
-    { name: 'Partial Highlights & Blow Dry - Short Hair (NHS)', price: 165.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Partial highlights including blow dry for short hair (NHS rate).' },
-    { name: 'Partial Highlights & Blow Dry - Short Hair', price: 182.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Partial highlights including blow dry for short hair.' },
-    { name: 'Partial Highlights & Blow Dry - Long Hair (NHS)', price: 251.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Partial highlights including blow dry for long hair (NHS rate).' },
-    { name: 'Partial Highlights & Blow Dry - Long Hair', price: 278.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Partial highlights including blow dry for long hair.' },
-
-    { name: 'Balayage, Haircut & Blow Dry (NHS)', price: 303.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Balayage with haircut and blow dry (NHS rate).' },
-    { name: 'Balayage, Haircut & Blow Dry (Adult)', price: 339.00, duration: 225, category: 'Colouring', requiresPatchTest: true, requiresConsultation: true, description: 'Balayage with haircut and blow dry.' },
-
-    { name: 'Consultation & Patch Test', price: 15.00, duration: 5, category: 'Colouring', isPatchTest: true, description: 'Required consultation and allergy patch test before any colour service (book at least 48h ahead).' },
-
-    // General consultation (free) — the target for perms/styling/other gated services
+  // Services come from the reviewed price catalogue (the same file the
+  // production update tool applies), so a local/test database looks like
+  // production after the 2026-09-28 price update: menu items with their
+  // length x standard/NHS options, the extra-long composite, retired
+  // unverified NHS rows and the deliberately unchanged items.
+  const verifiedAt = new Date(`${VERIFIED_AT}T12:00:00Z`)
+  const durationByLegacyName: Record<string, number> = {
+    'Short Over Ears - Wash, Haircut & Blow Dry': 55, 'Long Hair - Wash, Haircut & Blow Dry': 85,
+    'Children (Up to 12Yr) - Short Over Ears': 60, 'Children (Up to 12Yr) - Long Hair': 60,
+    'Shampoo & Blow Dry - Short Over Ears': 45, 'Shampoo & Blow Dry - Long Over Ears': 60,
+  }
+  const durationFor = (offering: CatalogOffering, length: string | null): number => {
+    if (offering.category === 'Colouring') return offering.key.includes('highlights') || offering.key === 'balayage' ? (offering.key === 'half-head-highlights' ? 165 : 225) : 150
+    if (offering.category === 'Perms') return offering.key.startsWith('cold-perm') ? 150 : offering.key === 'keratin-treatment' ? 180 : 210
+    if (offering.category === 'Treatments') return 120
+    const standard = offering.options.find((o) => o.hairLength === length && o.priceType === 'STANDARD')
+    return durationByLegacyName[standard?.legacyNames[0] ?? ''] ?? 60
+  }
+  let serviceCount = 0
+  for (const offering of OFFERINGS) {
+    const created = await db.serviceOffering.create({ data: { key: offering.key, name: offering.name, category: offering.category, displayOrder: offering.displayOrder } })
+    const ids = new Map<string, string>()
+    const ordered = [...offering.options].sort((a, b) => Number(Boolean(a.surcharge)) - Number(Boolean(b.surcharge)))
+    for (const option of ordered) {
+      const isNew = option.legacyNames.length === 0 || Boolean(option.create)
+      const name = option.legacyNames[0] ?? option.create?.name ?? offering.name
+      const base = option.surcharge ? ids.get(`${option.surcharge.baseHairLength}|${option.priceType}`) : undefined
+      const row = await db.service.create({
+        data: {
+          name,
+          description: option.create?.description ?? `${offering.name}${option.hairLength ? ` (${option.hairLength.toLowerCase().replace('_', ' ')} hair)` : ''}${option.priceType === 'NHS' ? ' — NHS price' : ''}.`,
+          price: option.pricePence / 100,
+          duration: durationFor(offering, option.surcharge ? option.surcharge.baseHairLength : option.hairLength),
+          category: offering.category,
+          requiresPatchTest: offering.flags.requiresPatchTest,
+          requiresConsultation: offering.flags.requiresConsultation,
+          offeringId: created.id,
+          hairLength: option.hairLength,
+          priceType: option.priceType,
+          vatDisplay: 'EXCLUDED',
+          priceNature: option.priceNature,
+          priceNote: offering.priceNote ?? null,
+          priceSource: PRICE_SOURCE,
+          priceVerifiedAt: verifiedAt,
+          // Options created by the price update have unconfirmed durations
+          // and are listed but not bookable until the salon confirms them.
+          isBookable: !(isNew && option.create),
+          durationConfirmed: !(isNew && option.create),
+          surchargeBaseServiceId: base ?? null,
+          surchargeAmount: option.surcharge ? option.surcharge.amountPence / 100 : null,
+        },
+      })
+      ids.set(`${option.hairLength}|${option.priceType}`, row.id)
+      serviceCount++
+    }
+    const retired = RETIRE_UNVERIFIED_NHS.find((r) => r.standardOffering === offering.key)
+    if (retired) {
+      await db.service.create({ data: { name: retired.legacyName, description: 'Unverified NHS option kept for history.', price: 198, duration: 180, category: offering.category, requiresConsultation: true, offeringId: created.id, priceType: 'NHS', isPublic: false, isBookable: false } })
+      serviceCount++
+    }
+  }
+  const unchanged = [
+    { name: 'Consultation & Patch Test', price: 15.00, duration: 15, category: 'Colouring', isPatchTest: true, description: 'Required consultation and allergy patch test before any colour service (book at least 48h ahead).' },
     { name: 'Consultation', price: 0.00, duration: 15, category: 'Consultation', isConsultation: true, description: 'Free consultation to discuss your service before booking.' },
-
-    // Perms
-    { name: 'Cold Perm Half Head (NHS)', price: 129.00, duration: 150, category: 'Perms', requiresConsultation: true, description: 'Cold perm for half head (NHS rate).' },
-    { name: 'Cold Perm Half Head', price: 157.00, duration: 150, category: 'Perms', requiresConsultation: true, description: 'Cold perm for half head.' },
-    { name: 'Cold Perm Full Head (NHS)', price: 159.00, duration: 150, category: 'Perms', requiresConsultation: true, description: 'Cold perm for full head (NHS rate).' },
-    { name: 'Cold Perm Full Head', price: 194.00, duration: 150, category: 'Perms', requiresConsultation: true, description: 'Cold perm for full head.' },
-    { name: 'Hair Correction (NHS)', price: 198.00, duration: 210, category: 'Perms', requiresConsultation: true, description: 'Hair correction service (NHS rate).' },
-    { name: 'Hair Correction', price: 242.00, duration: 210, category: 'Perms', requiresConsultation: true, description: 'Hair correction service.' },
-    { name: 'Keratin Treatment (NHS)', price: 198.00, duration: 180, category: 'Perms', requiresConsultation: true, description: 'Keratin smoothing treatment (NHS rate).' },
-    { name: 'Keratin Treatment', price: 242.00, duration: 180, category: 'Perms', requiresConsultation: true, description: 'Keratin smoothing treatment.' },
-    { name: 'Paimore Hot Perm (NHS)', price: 198.00, duration: 210, category: 'Perms', requiresConsultation: true, description: 'Paimore digital/hot perm (NHS rate).' },
-    { name: 'Paimore Hot Perm', price: 242.00, duration: 210, category: 'Perms', requiresConsultation: true, description: 'Paimore digital/hot perm.' },
     { name: 'Perm Under Shoulder Add-on', price: 24.00, duration: 210, category: 'Perms', requiresConsultation: true, description: 'Additional charge for under shoulder length perm.' },
-
-    // Treatments
-    { name: 'Dr.Jr. TOKIO Inkarami System Treatment (NHS)', price: 143.00, duration: 120, category: 'Treatments', description: 'Dr.Jr. TOKIO Inkarami System treatment (NHS rate).' },
-    { name: 'Dr.Jr. TOKIO Inkarami System Treatment', price: 154.00, duration: 120, category: 'Treatments', description: 'Dr.Jr. TOKIO Inkarami System treatment.' },
-
-    // Styling
-    { name: 'Shampoo & Dry & Set', price: 10.00, duration: 45, category: 'Styling', requiresConsultation: true, description: 'Shampoo, dry and set. From £10 depending on hair length.' },
     { name: 'Heat Set Add-on', price: 10.00, duration: 45, category: 'Styling', requiresConsultation: true, description: 'Additional heat styling service.' },
-    { name: 'Shampoo & Blow Dry - Short Over Ears (Student & NHS)', price: 25.00, duration: 45, category: 'Styling', requiresConsultation: true, description: 'Shampoo and blow dry for short hair (Student & NHS rate).' },
-    { name: 'Shampoo & Blow Dry - Short Over Ears', price: 30.00, duration: 45, category: 'Styling', requiresConsultation: true, description: 'Shampoo and blow dry for short hair.' },
-    { name: 'Shampoo & Blow Dry - Long Over Ears (Student & NHS)', price: 35.00, duration: 60, category: 'Styling', requiresConsultation: true, description: 'Shampoo and blow dry for long hair (Student & NHS rate).' },
-    { name: 'Shampoo & Blow Dry - Long Over Ears', price: 40.00, duration: 60, category: 'Styling', requiresConsultation: true, description: 'Shampoo and blow dry for long hair.' },
-  ];
-
-  // Create Services
-  await Promise.all(serviceList.map(service => 
-    db.service.create({
-      data: {
-        ...service,
-        imageUrl: null // Or map to default images if needed
-      }
-    })
-  ));
+  ]
+  for (const service of unchanged) {
+    await db.service.create({ data: service })
+    serviceCount++
+  }
+  const serviceList = { length: serviceCount }
 
   console.log(`Created ${serviceList.length} services`)
 

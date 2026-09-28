@@ -1,7 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import type { FaqActionState } from '@/app/actions/admin-faqs';
+import { useT } from '@/i18n/client';
+import { clearDraft, usePreservedForm } from '@/i18n/draft-store';
 
 type FormAction = (prev: FaqActionState, formData: FormData) => Promise<FaqActionState>;
 
@@ -9,62 +11,68 @@ interface FaqInlineEditorProps {
   faq: {
     id: string;
     key: string;
-    question: string;
-    answer: string;
     sortOrder: number;
   };
   action: FormAction;
 }
 
+/**
+ * Where an FAQ appears (page key) and its position — saved immediately. The
+ * question and answer are edited in both languages on the FAQ's own page.
+ */
 export function FaqInlineEditor({ faq, action }: FaqInlineEditorProps) {
+  const t = useT('adminContent');
+  const tc = useT('common');
+  const draftKey = `faq-placement:${faq.id}`;
+  const formRef = usePreservedForm(draftKey);
   const [state, formAction, pending] = useActionState<FaqActionState, FormData>(action, {
     status: 'idle',
   });
 
+  useEffect(() => {
+    if (state.status === 'success') clearDraft(draftKey);
+  }, [state.status, draftKey]);
+
   return (
-    <form action={formAction} className="space-y-3">
+    <form ref={formRef} action={formAction} className="space-y-2">
       <input type="hidden" name="id" value={faq.id} />
 
-      <div className="grid md:grid-cols-[1fr_8rem_8rem] gap-3">
-        <input
-          type="text"
-          name="question"
-          required
-          minLength={5}
-          maxLength={300}
-          defaultValue={faq.question}
-          placeholder="Question"
-          className="border border-zinc-300 rounded px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
-        />
-        <input
-          type="text"
-          name="key"
-          required
-          defaultValue={faq.key}
-          className="border border-zinc-300 rounded px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
-          title="Page key"
-        />
-        <input
-          type="number"
-          name="sortOrder"
-          min={0}
-          max={10000}
-          defaultValue={faq.sortOrder}
-          className="border border-zinc-300 rounded px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
-          title="Sort order"
-        />
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label htmlFor={`faq-key-${faq.id}`} className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500 mb-1">
+            {t('faqs.form.key')}
+          </label>
+          <input
+            id={`faq-key-${faq.id}`}
+            type="text"
+            name="key"
+            required
+            defaultValue={faq.key}
+            className="w-56 border border-zinc-300 rounded px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          />
+        </div>
+        <div>
+          <label htmlFor={`faq-order-${faq.id}`} className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500 mb-1">
+            {t('faqs.form.sortOrder')}
+          </label>
+          <input
+            id={`faq-order-${faq.id}`}
+            type="number"
+            name="sortOrder"
+            min={0}
+            max={10000}
+            defaultValue={faq.sortOrder}
+            className="w-24 border border-zinc-300 rounded px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={pending}
+          className="text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-1.5 rounded transition-colors disabled:opacity-50"
+        >
+          {pending ? tc('actions.saving') : t('faqs.list.savePlacement')}
+        </button>
       </div>
-
-      <textarea
-        name="answer"
-        required
-        minLength={10}
-        maxLength={2000}
-        rows={3}
-        defaultValue={faq.answer}
-        placeholder="Answer"
-        className="w-full border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
-      />
 
       {state.status === 'error' && (
         <p className="text-xs text-red-600" role="alert">
@@ -72,18 +80,8 @@ export function FaqInlineEditor({ faq, action }: FaqInlineEditorProps) {
         </p>
       )}
       {state.status === 'success' && (
-        <p className="text-xs text-emerald-600">✓ Saved</p>
+        <p className="text-xs text-emerald-600" role="status">✓ {t('faqs.list.placementSaved')}</p>
       )}
-
-      <div className="flex justify-start">
-        <button
-          type="submit"
-          disabled={pending}
-          className="text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-1.5 rounded transition-colors disabled:opacity-50"
-        >
-          {pending ? 'Saving…' : 'Save row'}
-        </button>
-      </div>
     </form>
   );
 }

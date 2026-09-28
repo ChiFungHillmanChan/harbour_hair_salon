@@ -48,14 +48,6 @@ export function evaluateResetToken(
   return { ok: true };
 }
 
-/** Customer-facing copy for a rejected token. Never leaks whether it existed. */
-export const INVALID_RESET_LINK_MESSAGE =
-  'This reset link is invalid or has expired. Please request a new one.';
-
-/**
- * Identical response for every request-reset outcome (found / not found /
- * rate-limited-by-nothing), so the form cannot be used to enumerate which
- * email addresses have accounts.
- */
-export const RESET_REQUESTED_MESSAGE =
-  'If an account exists for that email address, we have sent a password reset link. Please check your inbox and spam folder.';
+// Customer-facing copy (an invalid-link message and the identical
+// "if an account exists…" answer that prevents email enumeration) now lives in
+// the auth dictionary: auth.errors.INVALID_RESET_LINK and auth.forgot.sent.

@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { approveMonth } from '@/app/actions/timesheets';
+import { useT } from '@/i18n/client';
 
 type State = { error?: string; count?: number };
 
@@ -11,6 +12,7 @@ type State = { error?: string; count?: number };
  * way to tell "approved 12" from "matched nothing".
  */
 export function ApproveMonthButton({ year, month }: { year: number; month: number }) {
+  const t = useT('adminStaff');
   const [state, action, pending] = useActionState<State, FormData>(
     async () => approveMonth(year, month),
     {},
@@ -20,7 +22,7 @@ export function ApproveMonthButton({ year, month }: { year: number; month: numbe
     <form
       action={action}
       onSubmit={(e) => {
-        if (!window.confirm('Approve every closed entry in this month? Each one can still be un-approved individually.')) {
+        if (!window.confirm(t('timesheets.approveMonth.confirm'))) {
           e.preventDefault();
         }
       }}
@@ -30,12 +32,12 @@ export function ApproveMonthButton({ year, month }: { year: number; month: numbe
         disabled={pending}
         className="bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded transition-colors disabled:opacity-50"
       >
-        {pending ? 'Approving…' : 'Approve all (closed) for this month'}
+        {pending ? t('timesheets.approveMonth.approving') : t('timesheets.approveMonth.button')}
       </button>
       {state.error && <p className="mt-1 text-sm text-red-600" role="alert">{state.error}</p>}
       {state.count !== undefined && (
         <p className="mt-1 text-sm text-zinc-600" role="status">
-          {state.count === 0 ? 'Nothing to approve — every closed entry this month is already approved.' : `${state.count} ${state.count === 1 ? 'entry' : 'entries'} approved.`}
+          {state.count === 0 ? t('timesheets.approveMonth.none') : t('timesheets.approveMonth.approved', { count: state.count })}
         </p>
       )}
     </form>

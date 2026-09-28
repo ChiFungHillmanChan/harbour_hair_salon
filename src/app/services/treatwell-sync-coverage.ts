@@ -30,6 +30,13 @@ export type CoverageStylist = Pick<Stylist, 'id' | 'name' | 'icalToken'> & {
   availabilities: Pick<Availability, 'dayOfWeek' | 'isOff' | 'startTime' | 'endTime'>[];
   calendarConnections: Pick<CalendarConnection, 'provider' | 'receivesBookings' | 'inboundUrl' | 'inboundEnabled' | 'outboundConfirmedAt' | 'lastSuccessAt' | 'lastError'>[];
 };
+/**
+ * One setup check as a stable code, for showing it in the admin's language
+ * (adminOps.readiness.calendar.<code>). Stylist names and provider codes are
+ * raw values, never translated.
+ */
+export type CalendarIssueCode = 'NO_STYLISTS' | 'HOURS_INVALID' | 'PROVIDER_UNSUPPORTED' | 'INBOUND_NOT_FRESH' | 'OUTBOUND_UNCONFIRMED';
+export type CalendarIssue = { code: CalendarIssueCode; params?: { stylist: string; provider?: string; minutes?: number } };
 export type SyncCoverage = {
   inboundReady: boolean;
   outboundReady: boolean;
@@ -37,33 +44,40 @@ export type SyncCoverage = {
   missingOutbound: number;
   safeToEnableOnlineBooking: boolean;
   warning: string | null;
+  /** English, for logs and existing callers. */
   blockers: string[];
+  /** The same checks as codes, index for index with `blockers`. */
+  issues: CalendarIssue[];
 };
 /** Configuration checks reduce risk; delayed calendar polling is never a reservation guarantee. */
 export function evaluateSyncCoverage(input: { stylists: CoverageStylist[]; now?: Date }): SyncCoverage {
   const now = input.now ?? new Date();
   const cutoff = new Date(now.getTime() - CALENDAR_FRESHNESS_MINUTES * 60_000);
   const blockers: string[] = [];
+  const issues: CalendarIssue[] = [];
+  const block = (text: string, issue: CalendarIssue) => { blockers.push(text); issues.push(issue); };
   let missingInbound = 0;
   let missingOutbound = 0;
-  if (!input.stylists.length) blockers.push('No stylists are set up yet.');
+  if (!input.stylists.length) block('No stylists are set up yet.', { code: 'NO_STYLISTS' });
   for (const stylist of input.stylists) {
-    if (!validateWeek(stylist.availabilities).ok) blockers.push(`${stylist.name}: opening hours are incomplete or invalid.`);
+    if (!validateWeek(stylist.availabilities).ok) block(`${stylist.name}: opening hours are incomplete or invalid.`, { code: 'HOURS_INVALID', params: { stylist: stylist.name } });
     for (const connection of stylist.calendarConnections.filter((entry) => entry.receivesBookings)) {
       const label = `${stylist.name} / ${connection.provider}`;
+      const params = { stylist: stylist.name, provider: connection.provider };
       if (!CALENDAR_PROVIDERS.includes(connection.provider as CalendarProvider)) {
-        blockers.push(`${label}: this provider is not supported.`);
+        block(`${label}: this provider is not supported.`, { code: 'PROVIDER_UNSUPPORTED', params });
         missingInbound++; missingOutbound++;
         continue;
       }
       if (!connection.inboundEnabled || !connection.inboundUrl?.trim() || !connection.lastSuccessAt ||
           connection.lastSuccessAt < cutoff || connection.lastSuccessAt > now || connection.lastError) {
         missingInbound++;
-        blockers.push(`${label}: enable and successfully test its inbound feed; the last success must be within ${CALENDAR_FRESHNESS_MINUTES} minutes and its latest attempt must not have failed.`);
+        block(`${label}: enable and successfully test its inbound feed; the last success must be within ${CALENDAR_FRESHNESS_MINUTES} minutes and its latest attempt must not have failed.`,
+          { code: 'INBOUND_NOT_FRESH', params: { ...params, minutes: CALENDAR_FRESHNESS_MINUTES } });
       }
       if (!stylist.icalToken || !connection.outboundConfirmedAt) {
         missingOutbound++;
-        blockers.push(`${label}: confirm that its matching website busy feed has been subscribed to and checked in the provider calendar.`);
+        block(`${label}: confirm that its matching website busy feed has been subscribed to and checked in the provider calendar.`, { code: 'OUTBOUND_UNCONFIRMED', params });
       }
     }
   }
@@ -74,5 +88,6 @@ export function evaluateSyncCoverage(input: { stylists: CoverageStylist[]; now?:
     safeToEnableOnlineBooking: blockers.length === 0,
     warning: blockers.length ? `Calendar setup needs attention: ${blockers.join(' ')}` : null,
     blockers,
+    issues,
   };
 }

@@ -1,12 +1,16 @@
 'use server';
 
 import { z } from 'zod';
+import { revalidateAllLocales } from '@/i18n/revalidate';
 import { fromZonedTime } from 'date-fns-tz';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { SALON_TIMEZONE } from '@/app/services/salon-time';
+import { getActionT, localizedPath } from '@/i18n/request';
+import type { MessageParams } from '@/i18n/format';
+import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -21,25 +25,10 @@ function slugify(value: string): string {
     .toLowerCase()
     .trim()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
-
-const sectionSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('paragraph'), text: z.string().min(1) }),
-  z.object({
-    type: z.literal('heading'),
-    level: z.union([z.literal(2), z.literal(3)]),
-    text: z.string().min(1),
-  }),
-  z.object({ type: z.literal('list'), items: z.array(z.string().min(1)).min(1) }),
-  z.object({
-    type: z.literal('quote'),
-    text: z.string().min(1),
-    attribution: z.string().optional(),
-  }),
-]);
 
 /** What `<input type="datetime-local">` submits: wall-clock text, no timezone. */
 const DATETIME_LOCAL_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
@@ -56,189 +45,149 @@ const publishedAtSchema = z.preprocess((value: unknown) => {
     return fromZonedTime(withSeconds, SALON_TIMEZONE);
   }
   return value;
-}, z.coerce.date());
+}, z.coerce.date('PUBLISHED_AT'));
 
-const postSchema = z.object({
+/**
+ * Post SETTINGS — saved immediately, in both languages at once: address,
+ * byline, date, cover image, tags, related posts and whether the post is
+ * listed on /blog at all. The article text (title, descriptions, cover alt
+ * text, lede and body sections) is bilingual content: created with both
+ * languages here, then edited as a draft that goes live on publish
+ * (actions/admin-content.ts).
+ */
+const settingsSchema = z.object({
   slug: z
     .string()
     .trim()
-    .max(120)
+    .max(120, 'SLUG')
     .optional()
     .transform((v) => (v ? slugify(v) : '')),
-  title: z.string().trim().min(3, 'Title is required').max(180),
-  description: z.string().trim().min(20, 'Description must be at least 20 characters').max(300),
-  excerpt: z.string().trim().min(20, 'Excerpt must be at least 20 characters').max(400),
-  author: z.string().trim().min(1).max(80),
-  authorRole: z.string().trim().min(1).max(120),
+  author: z.string('AUTHOR').trim().min(1, 'AUTHOR').max(80, 'AUTHOR'),
   publishedAt: publishedAtSchema,
-  readingTime: z.coerce.number().int().min(1).max(60),
-  tags: z.string().trim().max(200).default(''),
+  readingTime: z.coerce.number('READING_TIME').int('READING_TIME').min(1, 'READING_TIME').max(60, 'READING_TIME'),
+  tags: z.string().trim().max(200, 'TAGS').default(''),
   // Keep this a root-relative path (e.g. /images/post.webp) wherever possible:
   // the article schema in /blog/[slug] builds its image as `${SITE_URL}${coverImage}`,
   // so a bare filename or an unsupported host yields a broken absolute URL, and
   // next/image 400s on any remote host missing from next.config images.remotePatterns.
   coverImage: z
-    .string()
+    .string('COVER_IMAGE')
     .trim()
-    .min(1)
-    .regex(
-      /^\/|^https:\/\/(res\.cloudinary\.com|[a-z0-9-]+\.googleusercontent\.com)\//,
-      'Use a path starting with / or a Cloudinary/Google image URL'
-    ),
-  coverAlt: z.string().trim().min(1).max(200),
-  lede: z.string().trim().min(20).max(500),
-  sectionsJson: z.string().min(2),
-  relatedSlugs: z.string().trim().max(300).default(''),
-  status: z.enum(['DRAFT', 'PUBLISHED']).default('DRAFT'),
+    .min(1, 'COVER_IMAGE')
+    .regex(/^\/|^https:\/\/(res\.cloudinary\.com|[a-z0-9-]+\.googleusercontent\.com)\//, 'COVER_IMAGE'),
+  relatedSlugs: z.string().trim().max(300, 'RELATED').default(''),
+  status: z.enum(['DRAFT', 'PUBLISHED'], 'STATUS').default('DRAFT'),
 });
-
-type ParsedBlogForm =
-  | { error: string }
-  | {
-      data: z.infer<typeof postSchema>;
-      sections: z.infer<typeof sectionSchema>[];
-    };
-
-function parseFormData(formData: FormData): ParsedBlogForm {
-  const raw = Object.fromEntries(formData);
-  const parsed = postSchema.safeParse(raw);
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? 'Invalid input' } as const;
-  }
-
-  // Validate sections JSON structure explicitly (schema only checks it's a non-empty string)
-  let sections: unknown;
-  try {
-    sections = JSON.parse(parsed.data.sectionsJson);
-  } catch {
-    return { error: 'Body content is invalid. Please re-check the sections.' } as const;
-  }
-  if (!Array.isArray(sections) || sections.length === 0) {
-    return { error: 'Please add at least one section to the post body.' } as const;
-  }
-  const sectionsValidation = z.array(sectionSchema).safeParse(sections);
-  if (!sectionsValidation.success) {
-    return {
-      error: `Section ${(sectionsValidation.error.issues[0]?.path[0] as number) + 1 || 1} is invalid.`,
-    } as const;
-  }
-
-  return { data: parsed.data, sections: sectionsValidation.data };
-}
-
-function getParseErrorMessage(
-  result: ParsedBlogForm,
-): string {
-  return 'error' in result ? result.error : 'Invalid input';
-}
 
 export type BlogActionState =
   | { status: 'idle' }
   | { status: 'error'; message: string }
   | { status: 'success' };
 
+async function message(code: string, params?: MessageParams): Promise<string> {
+  const t = await getActionT('adminContent');
+  return t.dynamic(`blog.errors.${code}`, params, t('blog.errors.INVALID'));
+}
+
+async function errorState(code: string, params?: MessageParams): Promise<BlogActionState> {
+  return { status: 'error', message: await message(code, params) };
+}
+
+function parseSettings(formData: FormData) {
+  return settingsSchema.safeParse(Object.fromEntries(formData));
+}
+
+function refreshBlogPages(...slugs: string[]) {
+  revalidateAllLocales(revalidatePath, '/blog');
+  for (const slug of new Set(slugs)) revalidateAllLocales(revalidatePath, `/blog/${slug}`);
+  revalidateAllLocales(revalidatePath, '/admin/blog');
+  revalidatePath('/sitemap.xml');
+}
+
+const text = (value: unknown) => (typeof value === 'string' ? value : '');
+
 export async function createBlogPost(
   _prev: BlogActionState,
   formData: FormData
 ): Promise<BlogActionState> {
-  await requireAdmin();
-  const result = parseFormData(formData);
-  if ('error' in result) return { status: 'error', message: getParseErrorMessage(result) };
+  const session = await requireAdmin();
+  const parsed = parseSettings(formData);
+  if (!parsed.success) return errorState(parsed.error.issues[0]?.message ?? 'INVALID');
 
-  const slug = result.data.slug || slugify(result.data.title);
-  if (!slug) return { status: 'error', message: 'Could not derive a slug from title.' };
+  let contentFields: unknown = null;
+  try {
+    contentFields = JSON.parse(String(formData.get('contentJson') ?? 'null'));
+  } catch {
+    return errorState('CONTENT');
+  }
+  const englishTitle = (contentFields as { 'en-GB'?: { title?: unknown } } | null)?.['en-GB']?.title;
 
-  const duplicate = await prisma.blogPost.findUnique({ where: { slug } });
-  if (duplicate) {
-    return {
-      status: 'error',
-      message: `A post with slug "${slug}" already exists. Pick a different slug.`,
-    };
+  // The address comes from the English title unless one is given, as before.
+  const slug = parsed.data.slug || slugify(text(englishTitle));
+  if (!slug) return errorState('SLUG_EMPTY');
+
+  const duplicate = await prisma.blogPost.findUnique({ where: { slug }, select: { id: true } });
+  if (duplicate) return errorState('SLUG_TAKEN', { slug });
+
+  let createdId: string;
+  try {
+    const created = await prisma.$transaction((tx) => createPublished(
+      tx,
+      'BLOG_POST',
+      { fields: contentFields, confirmedReviewed: formData.get('contentReviewed') === 'on', adminId: session.userId },
+      (english) => tx.blogPost.create({
+        data: {
+          ...parsed.data,
+          slug,
+          title: text(english.title),
+          description: text(english.description),
+          excerpt: text(english.excerpt),
+          authorRole: text(english.authorRole),
+          coverAlt: text(english.coverAlt),
+          lede: text(english.lede),
+          sectionsJson: JSON.stringify(Array.isArray(english.sections) ? english.sections : []),
+        },
+        select: { id: true },
+      }),
+    ));
+    createdId = created.id;
+  } catch (error) {
+    if (error instanceof ContentError) return errorState('CONTENT');
+    throw error;
   }
 
-  const created = await prisma.blogPost.create({
-    data: {
-      slug,
-      title: result.data.title,
-      description: result.data.description,
-      excerpt: result.data.excerpt,
-      author: result.data.author,
-      authorRole: result.data.authorRole,
-      publishedAt: result.data.publishedAt,
-      readingTime: result.data.readingTime,
-      tags: result.data.tags,
-      coverImage: result.data.coverImage,
-      coverAlt: result.data.coverAlt,
-      lede: result.data.lede,
-      sectionsJson: JSON.stringify(result.sections),
-      relatedSlugs: result.data.relatedSlugs,
-      status: result.data.status,
-    },
-  });
-
-  revalidatePath('/blog');
-  revalidatePath(`/blog/${slug}`);
-  revalidatePath('/admin/blog');
-  revalidatePath('/sitemap.xml');
-
-  redirect(`/admin/blog/${created.id}/edit?saved=1`);
+  refreshBlogPages(slug);
+  redirect(await localizedPath(`/admin/blog/${createdId}/edit?saved=1`));
 }
 
+/** Save the settings of an existing post (its text is drafted separately). */
 export async function updateBlogPost(
   _prev: BlogActionState,
   formData: FormData
 ): Promise<BlogActionState> {
   await requireAdmin();
   const id = formData.get('id');
-  if (typeof id !== 'string' || !id) {
-    return { status: 'error', message: 'Missing post id.' };
-  }
-  const existing = await prisma.blogPost.findUnique({ where: { id } });
-  if (!existing) return { status: 'error', message: 'Post not found.' };
+  if (typeof id !== 'string' || !id) return errorState('MISSING_ID');
+  const existing = await prisma.blogPost.findUnique({ where: { id }, select: { slug: true, title: true } });
+  if (!existing) return errorState('NOT_FOUND');
 
-  const result = parseFormData(formData);
-  if ('error' in result) return { status: 'error', message: getParseErrorMessage(result) };
+  const parsed = parseSettings(formData);
+  if (!parsed.success) return errorState(parsed.error.issues[0]?.message ?? 'INVALID');
 
-  const slug = result.data.slug || slugify(result.data.title);
-  if (!slug) return { status: 'error', message: 'Could not derive a slug from title.' };
+  const slug = parsed.data.slug || slugify(existing.title);
+  if (!slug) return errorState('SLUG_EMPTY');
 
   if (slug !== existing.slug) {
-    const duplicate = await prisma.blogPost.findUnique({ where: { slug } });
-    if (duplicate) {
-      return {
-        status: 'error',
-        message: `A post with slug "${slug}" already exists. Pick a different slug.`,
-      };
-    }
+    const duplicate = await prisma.blogPost.findUnique({ where: { slug }, select: { id: true } });
+    if (duplicate) return errorState('SLUG_TAKEN', { slug });
   }
 
   await prisma.blogPost.update({
     where: { id },
-    data: {
-      slug,
-      title: result.data.title,
-      description: result.data.description,
-      excerpt: result.data.excerpt,
-      author: result.data.author,
-      authorRole: result.data.authorRole,
-      publishedAt: result.data.publishedAt,
-      readingTime: result.data.readingTime,
-      tags: result.data.tags,
-      coverImage: result.data.coverImage,
-      coverAlt: result.data.coverAlt,
-      lede: result.data.lede,
-      sectionsJson: JSON.stringify(result.sections),
-      relatedSlugs: result.data.relatedSlugs,
-      status: result.data.status,
-    },
+    data: { ...parsed.data, slug },
   });
 
-  revalidatePath('/blog');
-  revalidatePath(`/blog/${existing.slug}`);
-  if (slug !== existing.slug) revalidatePath(`/blog/${slug}`);
-  revalidatePath('/admin/blog');
-  revalidatePath('/sitemap.xml');
-
+  refreshBlogPages(existing.slug, slug);
   return { status: 'success' };
 }
 
@@ -247,23 +196,22 @@ export type BlogRowActionState = { error?: string; success?: boolean };
 
 export async function deleteBlogPost(id: string): Promise<BlogRowActionState> {
   await requireAdmin();
-  if (!id) return { error: 'Missing post id.' };
+  if (!id) return { error: await message('MISSING_ID') };
 
-  const existing = await prisma.blogPost.findUnique({ where: { id } });
-  if (!existing) return { error: 'Post not found — it may already have been deleted.' };
+  const existing = await prisma.blogPost.findUnique({ where: { id }, select: { slug: true } });
+  if (!existing) return { error: await message('NOT_FOUND') };
 
   try {
-    await prisma.blogPost.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await deleteContent(tx, 'BLOG_POST', id);
+      await tx.blogPost.delete({ where: { id } });
+    });
   } catch (error) {
     console.error('deleteBlogPost failed:', error);
-    return { error: 'Failed to delete this post. Please try again.' };
+    return { error: await message('DELETE_FAILED') };
   }
 
-  revalidatePath('/blog');
-  revalidatePath(`/blog/${existing.slug}`);
-  revalidatePath('/admin/blog');
-  revalidatePath('/sitemap.xml');
-
+  refreshBlogPages(existing.slug);
   return { success: true };
 }
 
@@ -277,11 +225,11 @@ export async function toggleBlogPostStatus(
   status: 'DRAFT' | 'PUBLISHED'
 ): Promise<BlogRowActionState> {
   await requireAdmin();
-  if (!id) return { error: 'Missing post id.' };
-  if (status !== 'DRAFT' && status !== 'PUBLISHED') return { error: 'Invalid status.' };
+  if (!id) return { error: await message('MISSING_ID') };
+  if (status !== 'DRAFT' && status !== 'PUBLISHED') return { error: await message('STATUS') };
 
-  const existing = await prisma.blogPost.findUnique({ where: { id } });
-  if (!existing) return { error: 'Post not found — it may have been deleted.' };
+  const existing = await prisma.blogPost.findUnique({ where: { id }, select: { slug: true } });
+  if (!existing) return { error: await message('NOT_FOUND') };
 
   try {
     await prisma.blogPost.update({
@@ -290,13 +238,9 @@ export async function toggleBlogPostStatus(
     });
   } catch (error) {
     console.error('toggleBlogPostStatus failed:', error);
-    return { error: 'Failed to change the status. Please try again.' };
+    return { error: await message('STATUS_FAILED') };
   }
 
-  revalidatePath('/blog');
-  revalidatePath(`/blog/${existing.slug}`);
-  revalidatePath('/admin/blog');
-  revalidatePath('/sitemap.xml');
-
+  refreshBlogPages(existing.slug);
   return { success: true };
 }

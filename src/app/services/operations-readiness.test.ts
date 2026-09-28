@@ -38,7 +38,8 @@ test('verified read-only checks allow booking and persist no credentials', async
   const f = fixture();
   const checks = await runOperationsDiagnostics({ db: f.db as never, env, now, fetchImpl: f.fetchImpl });
   assert.ok(checks.every((check) => check.status === 'pass'));
-  assert.deepEqual(await checkOperationsBookingReadiness(f.db as never, now, env), { ready: true, blockers: [] });
+  assert.ok(checks.every((check) => typeof check.code === 'string'), 'every check carries a translatable code');
+  assert.deepEqual(await checkOperationsBookingReadiness(f.db as never, now, env), { ready: true, blockers: [], issues: [] });
   const saved = JSON.stringify(f.getState());
   for (const secret of ['private-resend-token', 'private-cron-token', 'private-redis-token', 'salon@example.com']) {
     assert.ok(!saved.includes(secret));
@@ -52,6 +53,7 @@ test('sending-only Resend permission is unknown and blocks enabling without expo
       ? new Response('secret response body', { status: 403 }) : f.fetchImpl(input, init),
   });
   assert.equal(checks.find((check) => check.id === 'resend')?.status, 'unknown');
+  assert.equal(checks.find((check) => check.id === 'resend')?.code, 'resend.forbidden');
   assert.equal((await checkOperationsBookingReadiness(f.db as never, now, env)).ready, false);
   assert.ok(!JSON.stringify(checks).includes('secret response body'));
 });
@@ -71,7 +73,11 @@ test('a report expires at 24 hours and malformed or incomplete evidence cannot p
   const f = fixture();
   await runOperationsDiagnostics({ db: f.db as never, env, now, fetchImpl: f.fetchImpl });
   assert.equal((await checkOperationsBookingReadiness(f.db as never, new Date('2026-09-12T09:59:59Z'), env)).ready, true);
-  assert.equal((await checkOperationsBookingReadiness(f.db as never, new Date('2026-09-12T10:00:00Z'), env)).ready, false);
+  const expired = await checkOperationsBookingReadiness(f.db as never, new Date('2026-09-12T10:00:00Z'), env);
+  assert.equal(expired.ready, false);
+  // Each English blocker has a code the admin page can word in either language.
+  assert.deepEqual(expired.issues, [{ code: 'blockers.reportRequired' }]);
+  assert.equal(expired.blockers.length, expired.issues.length);
   for (const json of ['[]', 'invalid', '[{"id":"resend","status":"pass"}]']) {
     f.setState({ lastSucceededAt: now, lastStartedAt: now, lastResultJson: json });
     assert.equal((await checkOperationsBookingReadiness(f.db as never, now, env)).ready, false);

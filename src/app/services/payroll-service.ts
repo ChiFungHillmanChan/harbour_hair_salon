@@ -17,7 +17,36 @@ const num = (d: { toString(): string } | null | undefined): number | null =>
   d == null ? null : Number(d.toString());
 
 export type PayrollDb = Pick<PrismaClient, '$transaction'>;
-export type PayrollMutationResult = { error?: string; success?: boolean };
+
+/**
+ * A commission-earning employee has COMPLETED appointments in the month whose
+ * price was never recorded (bookings made before prices were frozen per
+ * appointment). Their commission base is unknown. Computing it from today's
+ * price list (the old fallback) or from zero would silently produce a wrong
+ * payslip, so the run is refused and the affected bookings are listed. A
+ * finalized month is never recomputed at all (unchanged).
+ */
+export class PayrollMissingPriceError extends Error {
+  readonly appointments: { id: string; date: Date; stylistName: string }[];
+  constructor(appointments: { id: string; date: Date; stylistName: string }[]) {
+    super(`Payroll needs the recorded price of ${appointments.length} completed appointment(s) before commission can be calculated.`);
+    this.name = 'PayrollMissingPriceError';
+    this.appointments = appointments;
+  }
+}
+
+/** A finalized month is never recomputed; reopen it first. */
+export class PayrollFinalizedError extends Error {
+  constructor(year: number, month: number) {
+    super(`Payroll period ${year}-${month} is already finalized and cannot be recomputed.`);
+    this.name = 'PayrollFinalizedError';
+  }
+}
+
+const COMMISSION_PAY_TYPES = new Set(['COMMISSION', 'HYBRID']);
+/** `error` is English (logs); `code` lets the admin page word it in the admin's language. */
+export type PayrollErrorCode = 'LINE_NOT_FOUND' | 'PERIOD_FINALIZED' | 'NOT_DRAFT' | 'NOT_FINALIZED';
+export type PayrollMutationResult = { error?: string; code?: PayrollErrorCode; success?: boolean };
 
 /** All payroll mutations lock the same period row before reading/writing figures. */
 async function payrollTransaction<T>(db: PayrollDb, run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
@@ -49,7 +78,7 @@ export async function runPayrollWith(db: PayrollDb, year: number, month: number,
       create: { year, month, status: 'DRAFT' },
       select: { id: true, status: true },
     });
-    if (period.status === 'FINALIZED') throw new Error(`Payroll period ${year}-${month} is already finalized and cannot be recomputed.`);
+    if (period.status === 'FINALIZED') throw new PayrollFinalizedError(year, month);
 
     const [entries, existingLines] = await Promise.all([
       tx.timeEntry.findMany({
@@ -70,8 +99,15 @@ export async function runPayrollWith(db: PayrollDb, year: number, month: number,
     const stylistIds = employees.flatMap((e) => e.stylistId ? [e.stylistId] : []);
     const appointments = stylistIds.length ? await tx.appointment.findMany({
       where: { stylistId: { in: stylistIds }, status: 'COMPLETED', date: { gte: start, lt: end } },
-      select: { stylistId: true, priceAtBooking: true, service: { select: { price: true } } },
+      select: { id: true, date: true, stylistId: true, priceAtBooking: true, stylist: { select: { name: true } } },
     }) : [];
+    // Only commission pay depends on appointment prices; hourly/salary staff
+    // are unaffected by a missing amount and are not blocked by it.
+    const commissionStylists = new Set(employees.filter((e) => e.stylistId && COMMISSION_PAY_TYPES.has(e.payType)).map((e) => e.stylistId as string));
+    const unpriced = appointments.filter((a) => a.priceAtBooking === null && commissionStylists.has(a.stylistId));
+    if (unpriced.length > 0) {
+      throw new PayrollMissingPriceError(unpriced.map((a) => ({ id: a.id, date: a.date, stylistName: a.stylist?.name ?? '' })));
+    }
     const entriesByEmployee = new Map<string, typeof entries>();
     for (const entry of entries) {
       const bucket = entriesByEmployee.get(entry.employeeId) ?? [];
@@ -81,7 +117,9 @@ export async function runPayrollWith(db: PayrollDb, year: number, month: number,
     const pricesByStylist = new Map<string, number[]>();
     for (const appointment of appointments) {
       const prices = pricesByStylist.get(appointment.stylistId) ?? [];
-      prices.push(Number(appointment.priceAtBooking ?? appointment.service.price));
+      // Never today's service price: an unrecorded amount is unknown (see above).
+      if (appointment.priceAtBooking === null) continue;
+      prices.push(Number(appointment.priceAtBooking));
       pricesByStylist.set(appointment.stylistId, prices);
     }
     const linesByEmployee = new Map(existingLines.map((line) => [line.employeeId, line]));
@@ -135,15 +173,15 @@ export async function updateAdjustment(lineId: string, amount: number, note: str
   const { default: prisma } = await import('@/app/lib/prisma');
   return payrollTransaction(prisma, async (tx) => {
     const reference = await tx.payrollLine.findUnique({ where: { id: lineId }, select: { periodId: true } });
-    if (!reference) return { error: 'That payroll line no longer exists.' };
+    if (!reference) return { error: 'That payroll line no longer exists.', code: 'LINE_NOT_FOUND' };
     const claim = await tx.payrollPeriod.updateMany({
       where: { id: reference.periodId, status: 'DRAFT' }, data: { updatedAt: new Date() },
     });
-    if (!claim.count) return { error: 'This payroll month is finalized. Reopen it before changing adjustments.' };
+    if (!claim.count) return { error: 'This payroll month is finalized. Reopen it before changing adjustments.', code: 'PERIOD_FINALIZED' };
     const line = await tx.payrollLine.findUnique({
       where: { id: lineId }, select: { basePay: true, overtimePay: true, commissionPay: true },
     });
-    if (!line) return { error: 'That payroll line no longer exists.' };
+    if (!line) return { error: 'That payroll line no longer exists.', code: 'LINE_NOT_FOUND' };
     const baseGross = Number(line.basePay) + Number(line.overtimePay) + Number(line.commissionPay);
     await tx.payrollLine.update({
       where: { id: lineId },
@@ -164,7 +202,7 @@ export async function finalizePayroll(periodId: string, adminId: string): Promis
       where: { id: periodId, status: 'DRAFT' },
       data: { status: 'FINALIZED', finalizedByAdminId: adminId, finalizedAt: new Date() },
     });
-    if (!claim.count) return { error: 'That payroll month is not a draft — it may already be finalized.' };
+    if (!claim.count) return { error: 'That payroll month is not a draft — it may already be finalized.', code: 'NOT_DRAFT' };
     const lines = await tx.payrollLine.findMany({ where: { periodId } });
     for (const line of lines) {
       await tx.payrollLine.update({ where: { id: line.id }, data: { snapshotJson: JSON.stringify({
@@ -189,7 +227,7 @@ export async function reopenPayroll(periodId: string, actorUserId?: string): Pro
       where: { id: periodId, status: 'FINALIZED' },
       data: { status: 'DRAFT', finalizedByAdminId: null, finalizedAt: null },
     });
-    if (!claim.count) return { error: 'That payroll month is not finalized, so there is nothing to reopen.' };
+    if (!claim.count) return { error: 'That payroll month is not finalized, so there is nothing to reopen.', code: 'NOT_FINALIZED' };
     await tx.payrollLine.updateMany({ where: { periodId }, data: { snapshotJson: '' } });
     await tx.auditEvent.create({ data: {
       actorUserId, action: 'PAYROLL_REOPEN', targetType: 'PayrollPeriod', targetId: periodId,

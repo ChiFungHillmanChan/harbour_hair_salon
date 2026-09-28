@@ -68,8 +68,8 @@ test('no page reintroduces its own copy of the opening hours', () => {
   // The drift this module exists to prevent: four separate hardcoded copies
   // that disagreed with each other and with the marketplace listings.
   const pages = [
-    'src/app/page.tsx',
-    'src/app/contact/page.tsx',
+    'src/app/[locale]/page.tsx',
+    'src/app/[locale]/contact/page.tsx',
     'src/components/layout/Layout.tsx',
     // Seed scripts count too: this one shipped a fourth, stale copy of the
     // hours for months precisely because the guard below only read `src/`.

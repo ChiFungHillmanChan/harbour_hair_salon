@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import { useT } from '@/i18n/client';
 
 // Dynamically import the overlay with SSR disabled to avoid hydration mismatch
 // and to isolate the Portal logic which requires document.body
@@ -16,6 +17,7 @@ interface MobileNavProps {
 
 export function MobileNav({ role, onSignOut, hasOffers = false }: MobileNavProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const t = useT('common');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -47,7 +49,7 @@ export function MobileNav({ role, onSignOut, hasOffers = false }: MobileNavProps
         onClick={openMenu}
         type="button"
         className="text-white min-h-11 min-w-11 inline-flex items-center justify-center p-2 z-50 relative hover:bg-zinc-800 rounded-md transition-colors"
-        aria-label="Open menu"
+        aria-label={t('nav.openMenu')}
         aria-expanded={isOpen}
         aria-controls="mobile-navigation"
         aria-haspopup="dialog"

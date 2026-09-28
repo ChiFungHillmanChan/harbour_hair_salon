@@ -2,6 +2,8 @@ import 'server-only';
 import { cache } from 'react';
 import prisma from '@/app/lib/prisma';
 import type { BlogPost, Prisma } from '@prisma/client';
+import type { Locale } from '@/i18n/config';
+import { loadPublishedTranslations, overlay } from './content/translations';
 
 export type BlogSection =
   | { type: 'paragraph'; text: string }
@@ -27,6 +29,8 @@ export type BlogPostRuntime = {
   sections: BlogSection[];
   relatedSlugs: string[];
   status: 'DRAFT' | 'PUBLISHED';
+  /** False when shown in English because no translation is published. */
+  translated: boolean;
 };
 
 function parseSections(json: string): BlogSection[] {
@@ -75,8 +79,11 @@ function mapToRuntime(row: BlogPost): BlogPostRuntime {
     sections: parseSections(row.sectionsJson),
     relatedSlugs: splitCsv(row.relatedSlugs),
     status: (row.status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT') as 'PUBLISHED' | 'DRAFT',
+    translated: true,
   };
 }
+
+const isSectionList = (value: unknown): value is BlogSection[] => Array.isArray(value) && value.every(isValidSection);
 
 const postCardSelect = {
   id: true, slug: true, title: true, excerpt: true, author: true,
@@ -84,7 +91,7 @@ const postCardSelect = {
 } satisfies Prisma.BlogPostSelect;
 
 /** Lists never load article bodies; one extra row determines the next link. */
-export const getPublishedPosts = cache(async (page = 1) => {
+export const getPublishedPosts = cache(async (page = 1, locale: Locale = 'en-GB') => {
   const size = 12;
   const rows = await prisma.blogPost.findMany({
     where: { status: 'PUBLISHED' },
@@ -93,31 +100,41 @@ export const getPublishedPosts = cache(async (page = 1) => {
     skip: (Math.max(1, Math.min(9999, Math.floor(page) || 1)) - 1) * size,
     take: size + 1,
   });
-  return { posts: rows.slice(0, size), hasMore: rows.length > size };
+  const posts = rows.slice(0, size);
+  const translations = await loadPublishedTranslations(prisma, 'BLOG_POST', posts.map((post) => post.id), locale);
+  return { posts: posts.map((post) => (locale === 'en-GB' ? { ...post, translated: true } : overlay(post, translations.get(post.id), ['title', 'excerpt', 'coverAlt']))), hasMore: rows.length > size };
 });
 
 export async function getPublishedPostSlugs() {
   return prisma.blogPost.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true } });
 }
 
-export async function getRelatedPublishedPosts(slugs: string[]) {
+export async function getRelatedPublishedPosts(slugs: string[], locale: Locale = 'en-GB') {
   const requested = [...new Set(slugs)].slice(0, 8);
   if (!requested.length) return [];
-  const rows = await prisma.blogPost.findMany({
+  const found = await prisma.blogPost.findMany({
     where: { status: 'PUBLISHED', slug: { in: requested } },
-    select: { slug: true, title: true, excerpt: true },
+    select: { id: true, slug: true, title: true, excerpt: true },
     take: requested.length,
   });
+  const translations = await loadPublishedTranslations(prisma, 'BLOG_POST', found.map((row) => row.id), locale);
+  const rows = found.map((row) => (locale === 'en-GB' ? { ...row, translated: true } : overlay(row, translations.get(row.id), ['title', 'excerpt'])));
   const bySlug = new Map(rows.map((row) => [row.slug, row]));
   return requested.flatMap((slug) => bySlug.has(slug) ? [bySlug.get(slug)!] : []);
 }
 
 // Metadata and the page body share one full article query per request.
-export const getPublishedPostBySlug = cache(async (slug: string): Promise<BlogPostRuntime | null> => {
+export const getPublishedPostBySlug = cache(async (slug: string, locale: Locale = 'en-GB'): Promise<BlogPostRuntime | null> => {
   const row = await prisma.blogPost.findUnique({ where: { slug } });
   if (!row) return null;
   if (row.status !== 'PUBLISHED') return null;
-  return mapToRuntime(row);
+  const post = mapToRuntime(row);
+  if (locale === 'en-GB') return post;
+  const translations = await loadPublishedTranslations(prisma, 'BLOG_POST', [post.id], locale);
+  const fields = translations.get(post.id);
+  // Sections are validated like the English ones; a malformed translation falls back.
+  const safe = fields && !isSectionList(fields.sections) ? { ...fields, sections: undefined } : fields;
+  return overlay(post, safe, ['title', 'description', 'excerpt', 'authorRole', 'coverAlt', 'lede', 'sections']);
 });
 
 export async function getAllPostsForAdmin(page = 1) {

@@ -1,0 +1,63 @@
+import type { MessageTree } from '../../format';
+
+/**
+ * Customer- and admin-safe error messages, addressed by stable code. Server
+ * code throws/returns the CODE; the language is chosen when the result is
+ * sent back (never by matching English text).
+ */
+const errors = {
+  booking: {
+    APPOINTMENT_NOT_FOUND: 'Appointment not found',
+    CANCELLED_CANNOT_MOVE: 'A cancelled appointment cannot be moved — create a new booking.',
+    CANCELLED_CANNOT_REINSTATE: 'A cancelled appointment cannot be reinstated — create a new booking.',
+    SERVICE_NOT_FOUND: 'Service not found',
+    STYLIST_NOT_FOUND: 'Stylist not found',
+    STYLIST_RETIRED_ADMIN: 'That stylist has been retired — pick someone on the current team.',
+    STYLIST_UNAVAILABLE: 'This stylist is no longer available. Please choose another stylist.',
+    CUSTOMER_GONE: 'That customer no longer exists — search again.',
+    ONLY_PENDING_CONFIRM: 'Only pending requests can be confirmed',
+    CALENDAR_SETUP_NEEDED: 'Calendar setup needs attention. Check Integrations before confirming this request.',
+    STALE: 'This appointment has changed. Please refresh and try again.',
+    MAINTENANCE: 'Online booking is closed at the moment. Please call the salon to book — thank you, and sorry for any inconvenience.',
+    MAX_UPCOMING: 'You already have the maximum number of upcoming bookings. Please manage your existing appointments first.',
+    OUTSIDE_HORIZON: 'Please choose a future appointment within the available online booking dates.',
+    STYLIST_OFF_THAT_DAY: 'Stylist is not available on this day',
+    OUTSIDE_HOURS: 'Selected time is outside business hours',
+    SLOT_UNAVAILABLE: 'This time slot is no longer available. Please choose another time.',
+    NO_STYLIST_AT_TIME: 'No stylist is available at this time. Please choose another time.',
+    DISCOUNT_UNAVAILABLE: 'Discount code could not be applied. It may have been fully claimed.',
+    DISCOUNTS_PAUSED: 'Discount codes and offers are paused at the moment, so no code was applied or used. Remove the code to book at the listed price.',
+    SERVICE_NOT_BOOKABLE: 'This service cannot be booked online at the moment. Please call the salon to arrange it.',
+    PRICE_UNAVAILABLE: 'We could not confirm the price of this service. Please call the salon to book it.',
+    PRICE_CHANGED: 'The price of this service has changed since you chose it. Please check the new price and confirm again.',
+    INVALID_INPUT: 'Invalid input data',
+    INVALID_BOOKING: 'Invalid booking data',
+    INVALID_DATE_TIME: 'Invalid date or time',
+    SLOTS_FAILED: 'Failed to fetch available slots',
+    TOO_MANY_BOOKINGS: 'Too many booking attempts. Please try again shortly.',
+    TOO_MANY_ATTEMPTS: 'Too many attempts. Please try again shortly.',
+    BOOKING_FAILED: 'Failed to create booking',
+    PAST_TIME: 'Cannot book a time in the past',
+    CONSULTATION_ONLY: 'This service is by consultation only. Please book a consultation to discuss it.',
+    PATCH_TEST_TOO_SOON: 'Your patch test must be at least 48 hours before a colour appointment.',
+    PATCH_TEST_EXPIRED: 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.',
+    PATCH_TEST_REQUIRED: 'Colour services require a completed Consultation & Patch Test first. Please book that appointment.',
+    CANCEL_ONLY_ACTIVE: 'Only pending or confirmed appointments can be cancelled',
+    CANCEL_TOO_LATE: 'Cannot cancel within 24 hours of appointment',
+    CANCEL_FAILED: 'Could not cancel the appointment. Please try again.',
+    RESCHEDULE_ONLY_CONFIRMED: 'Only confirmed appointments can be rescheduled',
+    RESCHEDULE_TOO_LATE: 'Cannot reschedule within 24 hours of appointment',
+    RESCHEDULE_PAST: 'Cannot reschedule to a time in the past',
+    RESCHEDULE_FAILED: 'Reschedule failed. Please try again.',
+    NOT_AUTHORISED: 'Not authorised',
+    ADMIN_UPDATE_FAILED: 'Could not update this appointment. Please try again.',
+    ADMIN_CREATE_FAILED: 'Could not create this booking. Please try again.',
+    INVALID_REQUEST: 'Invalid request',
+    CUSTOMER_NAME_REQUIRED: 'Customer name is required',
+    EMAIL_INVALID: 'Enter a valid email',
+    CHOOSE_SERVICE: 'Choose a service',
+    CHOOSE_STYLIST: 'Choose a stylist',
+  },
+} satisfies MessageTree;
+
+export default errors;

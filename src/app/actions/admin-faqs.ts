@@ -1,26 +1,34 @@
 'use server';
 
 import { z } from 'zod';
+import { revalidateAllLocales } from '@/i18n/revalidate';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
+import { getActionT, localizedPath } from '@/i18n/request';
+import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
 
 async function requireAdmin() {
   const session = await verifySession();
   if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  return session;
 }
 
-const faqSchema = z.object({
+/**
+ * Where an FAQ appears and in what order — saved immediately, in both
+ * languages. The question and answer are bilingual content: created with
+ * both languages here, then edited as a draft that goes live on publish
+ * (actions/admin-content.ts).
+ */
+const placementSchema = z.object({
   key: z
-    .string()
+    .string('KEY_REQUIRED')
     .trim()
-    .min(1, 'Key is required')
-    .max(80)
-    .regex(/^[a-z0-9-:/]+$/, 'Key can only use lowercase letters, digits, dashes and colons'),
-  question: z.string().trim().min(5).max(300),
-  answer: z.string().trim().min(10).max(2000),
-  sortOrder: z.coerce.number().int().min(0).max(10000).default(0),
+    .min(1, 'KEY_REQUIRED')
+    .max(80, 'KEY_LENGTH')
+    .regex(/^[a-z0-9-:/]+$/, 'KEY_FORMAT'),
+  sortOrder: z.coerce.number('SORT_ORDER').int('SORT_ORDER').min(0, 'SORT_ORDER').max(10000, 'SORT_ORDER').default(0),
 });
 
 export type FaqActionState =
@@ -28,47 +36,74 @@ export type FaqActionState =
   | { status: 'error'; message: string }
   | { status: 'success' };
 
+async function errorState(code: string): Promise<FaqActionState> {
+  const t = await getActionT('adminContent');
+  return { status: 'error', message: t.dynamic(`faqs.errors.${code}`, undefined, t('faqs.errors.INVALID')) };
+}
+
 function revalidatePublicPathsFor(key: string) {
-  if (key === 'home') revalidatePath('/');
-  else if (key === 'contact') revalidatePath('/contact');
-  else if (key === 'services-master') revalidatePath('/services');
+  if (key === 'home') revalidateAllLocales(revalidatePath, '/');
+  else if (key === 'contact') revalidateAllLocales(revalidatePath, '/contact');
+  else if (key === 'services-master') revalidateAllLocales(revalidatePath, '/services');
   else if (key.startsWith('category:')) {
     const slug = key.slice('category:'.length);
-    revalidatePath(`/services/${slug}`);
+    revalidateAllLocales(revalidatePath, `/services/${slug}`);
   }
-  revalidatePath('/admin/faqs');
+  revalidateAllLocales(revalidatePath, '/admin/faqs');
 }
 
 export async function createFaq(
   _prev: FaqActionState,
   formData: FormData
 ): Promise<FaqActionState> {
-  await requireAdmin();
-  const parsed = faqSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  const session = await requireAdmin();
+  const parsed = placementSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return errorState(parsed.error.issues[0]?.message ?? 'INVALID');
+
+  let contentFields: unknown = null;
+  try {
+    contentFields = JSON.parse(String(formData.get('contentJson') ?? 'null'));
+  } catch {
+    return errorState('CONTENT');
   }
 
-  await prisma.faq.create({ data: parsed.data });
+  try {
+    await prisma.$transaction((tx) => createPublished(
+      tx,
+      'FAQ',
+      { fields: contentFields, confirmedReviewed: formData.get('contentReviewed') === 'on', adminId: session.userId },
+      (english) => tx.faq.create({
+        data: {
+          ...parsed.data,
+          question: typeof english.question === 'string' ? english.question : '',
+          answer: typeof english.answer === 'string' ? english.answer : '',
+        },
+        select: { id: true },
+      }),
+    ));
+  } catch (error) {
+    if (error instanceof ContentError) return errorState('CONTENT');
+    throw error;
+  }
+
   revalidatePublicPathsFor(parsed.data.key);
-  redirect(`/admin/faqs?key=${encodeURIComponent(parsed.data.key)}&saved=1`);
+  redirect(await localizedPath(`/admin/faqs?key=${encodeURIComponent(parsed.data.key)}&saved=1`));
 }
 
+/** Move an FAQ to another page or position (its wording is drafted separately). */
 export async function updateFaq(
   _prev: FaqActionState,
   formData: FormData
 ): Promise<FaqActionState> {
   await requireAdmin();
   const id = formData.get('id');
-  if (typeof id !== 'string' || !id) return { status: 'error', message: 'Missing id' };
+  if (typeof id !== 'string' || !id) return errorState('MISSING_ID');
 
-  const existing = await prisma.faq.findUnique({ where: { id } });
-  if (!existing) return { status: 'error', message: 'FAQ not found.' };
+  const existing = await prisma.faq.findUnique({ where: { id }, select: { key: true } });
+  if (!existing) return errorState('NOT_FOUND');
 
-  const parsed = faqSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Invalid input' };
-  }
+  const parsed = placementSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return errorState(parsed.error.issues[0]?.message ?? 'INVALID');
 
   await prisma.faq.update({ where: { id }, data: parsed.data });
 
@@ -83,9 +118,12 @@ export async function deleteFaq(formData: FormData): Promise<void> {
   const id = formData.get('id');
   if (typeof id !== 'string' || !id) throw new Error('Missing id');
 
-  const existing = await prisma.faq.findUnique({ where: { id } });
+  const existing = await prisma.faq.findUnique({ where: { id }, select: { key: true } });
   if (!existing) return;
 
-  await prisma.faq.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    await deleteContent(tx, 'FAQ', id);
+    await tx.faq.delete({ where: { id } });
+  });
   revalidatePublicPathsFor(existing.key);
 }

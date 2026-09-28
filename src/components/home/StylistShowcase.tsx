@@ -1,13 +1,15 @@
 'use client';
 
 import { Stylist } from '@prisma/client';
-import Link from 'next/link';
+import Link from '@/i18n/link';
 import { useState } from 'react';
 import { Reveal } from './Reveal';
+import { useLocale, useT } from '@/i18n/client';
 
 // Only the public-safe fields the homepage passes down (never the full Stylist
-// row, which carries the secret treatwellIcalUrl).
-type PublicStylist = Pick<Stylist, 'id' | 'name' | 'role' | 'imageUrl' | 'bio'>;
+// row, which carries the secret treatwellIcalUrl). `translated: false` marks a
+// role/bio shown in English because no translation is published.
+type PublicStylist = Pick<Stylist, 'id' | 'name' | 'role' | 'imageUrl' | 'bio'> & { translated?: boolean };
 
 function slugifyName(name: string): string {
   return name
@@ -20,6 +22,7 @@ function slugifyName(name: string): string {
 }
 
 function StylistPortrait({ stylist }: { stylist: PublicStylist }) {
+  const t = useT('home');
   const [loadFailed, setLoadFailed] = useState(false);
   const showImage = stylist.imageUrl && !loadFailed;
 
@@ -29,9 +32,11 @@ function StylistPortrait({ stylist }: { stylist: PublicStylist }) {
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={stylist.imageUrl!}
-          alt={`${stylist.name} - ${stylist.role} at Harbour Hair Salon Leeds`}
+          alt={t('stylists.portraitAlt', { name: stylist.name, role: stylist.role })}
           width={448}
           height={597}
+          loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover transition-transform duration-[1200ms] ease-apple group-hover:scale-[1.06]"
           onError={() => setLoadFailed(true)}
         />
@@ -46,6 +51,9 @@ function StylistPortrait({ stylist }: { stylist: PublicStylist }) {
 }
 
 export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
+  const t = useT('home');
+  const locale = useLocale();
+  const fallbackLang = (stylist: PublicStylist) => (locale === 'en-GB' || stylist.translated !== false ? undefined : 'en');
   return (
     <section id="team" className="relative py-28 bg-zinc-900 text-white overflow-hidden">
       {/* Ambient glow */}
@@ -53,14 +61,14 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
       <div className="relative container mx-auto px-4">
         <Reveal className="text-center mb-16">
           <p className="text-sm uppercase tracking-[0.2em] text-zinc-300 mb-4 font-medium">
-            Our Team
+            {t('stylists.eyebrow')}
           </p>
           <h2 className="text-4xl md:text-6xl font-serif mb-6 tracking-tight">
-            Meet The <span className="text-zinc-400 font-light">Stylists</span>
+            {t('stylists.titleStart')} <span className="text-zinc-400 font-light">{t('stylists.titleEnd')}</span>
           </h2>
           <div className="w-16 h-px bg-white/50 mx-auto mb-6" />
           <p className="text-zinc-400 max-w-2xl mx-auto font-light leading-relaxed">
-            Our Hong Kong trained stylists deliver tailored haircuts and grooming services with meticulous attention to detail.
+            {t('stylists.intro')}
           </p>
         </Reveal>
 
@@ -76,17 +84,17 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
                 <StylistPortrait stylist={stylist} />
                 <div className="p-8 text-center">
                   <h3 className="text-xl font-serif font-medium mb-1 text-white group-hover:text-zinc-300 transition-colors">{stylist.name}</h3>
-                  <p className="text-zinc-400 text-sm uppercase tracking-wider mb-4">{stylist.role}</p>
+                  <p className="text-zinc-400 text-sm uppercase tracking-wider mb-4" lang={fallbackLang(stylist)}>{stylist.role}</p>
                   {stylist.bio?.trim() && (
                     <>
                       <div className="w-8 h-[1px] bg-zinc-700 mx-auto mb-4" />
-                      <p className="text-zinc-400 text-sm italic font-light leading-relaxed mb-6">
+                      <p className="text-zinc-400 text-sm italic font-light leading-relaxed mb-6" lang={fallbackLang(stylist)}>
                         &ldquo;{stylist.bio.trim()}&rdquo;
                       </p>
                     </>
                   )}
                   <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-bold text-zinc-300">
-                    View profile
+                    {t('stylists.viewProfile')}
                     <svg className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
                     </svg>
@@ -102,7 +110,7 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
             href="/stylists"
             className="inline-flex items-center gap-2 border border-white/40 text-white px-10 py-4 text-sm uppercase tracking-[0.2em] font-medium hover:bg-white/10 hover:border-white/70 transition-all duration-500 ease-apple"
           >
-            Meet the whole team
+            {t('stylists.meetTeam')}
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
             </svg>

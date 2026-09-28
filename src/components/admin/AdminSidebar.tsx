@@ -1,31 +1,42 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/i18n/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
+import { useT } from '@/i18n/client';
+import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
+import { clearAllDrafts } from '@/i18n/draft-store';
+import { stripLocale } from '@/i18n/paths';
+import type { Messages } from '@/i18n/messages/types-client';
+import type { MessageKey } from '@/i18n/translator';
 
-const NAV_LINKS = [
-  { href: '/admin', label: 'Schedule' },
-  { href: '/admin/opening-hours', label: 'Opening Hours' },
-  { href: '/admin/services', label: 'Services & Pricing' },
-  { href: '/admin/categories', label: 'Category Pages' },
-  { href: '/admin/stylists', label: 'Stylists' },
-  { href: '/admin/faqs', label: 'FAQs' },
-  { href: '/admin/discounts', label: 'Discounts' },
-  { href: '/admin/offers', label: 'Offers' },
-  { href: '/admin/reviews', label: 'Reviews' },
-  { href: '/admin/blog', label: 'Journal' },
-  { href: '/admin/users', label: 'Admin Users' },
-  { href: '/admin/settings', label: 'Site Settings' },
-  { href: '/admin/integrations', label: 'Integrations' },
-  { href: '/admin/operations', label: 'Operations' },
-  { href: '/admin/employees', label: 'Employees' },
-  { href: '/admin/timesheets', label: 'Timesheets' },
-  { href: '/admin/shifts', label: 'Shifts' },
-  { href: '/admin/payroll', label: 'Payroll' },
-  { href: '/kiosk', label: 'Kiosk' },
+const NAV_LINKS: { href: string; label: MessageKey<Messages['admin']> }[] = [
+  { href: '/admin', label: 'nav.schedule' },
+  { href: '/admin/opening-hours', label: 'nav.openingHours' },
+  { href: '/admin/services', label: 'nav.services' },
+  { href: '/admin/categories', label: 'nav.categories' },
+  { href: '/admin/stylists', label: 'nav.stylists' },
+  { href: '/admin/faqs', label: 'nav.faqs' },
+  { href: '/admin/discounts', label: 'nav.discounts' },
+  { href: '/admin/offers', label: 'nav.offers' },
+  { href: '/admin/reviews', label: 'nav.reviews' },
+  { href: '/admin/blog', label: 'nav.journal' },
+  { href: '/admin/users', label: 'nav.users' },
+  { href: '/admin/settings', label: 'nav.settings' },
+  { href: '/admin/integrations', label: 'nav.integrations' },
+  { href: '/admin/operations', label: 'nav.operations' },
+  { href: '/admin/employees', label: 'nav.employees' },
+  { href: '/admin/timesheets', label: 'nav.timesheets' },
+  { href: '/admin/shifts', label: 'nav.shifts' },
+  { href: '/admin/payroll', label: 'nav.payroll' },
+  { href: '/kiosk', label: 'nav.kiosk' },
 ];
+
+/** The schedule lives at /admin itself, so it only matches exactly. */
+function isActive(path: string, href: string): boolean {
+  return path === href || (href !== '/admin' && path.startsWith(`${href}/`));
+}
 
 interface AdminSidebarProps {
   userId: string;
@@ -35,12 +46,13 @@ interface AdminSidebarProps {
 /** Disables itself while the logout action runs so it can't be re-clicked. */
 function SignOutButton() {
   const { pending } = useFormStatus();
+  const t = useT('admin');
   return (
     <button
       disabled={pending}
       className="w-full rounded bg-zinc-800 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50"
     >
-      {pending ? 'Signing Out…' : 'Sign Out'}
+      {pending ? t('sidebar.signingOut') : t('sidebar.signOut')}
     </button>
   );
 }
@@ -54,6 +66,8 @@ function SignOutButton() {
 export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const path = stripLocale(pathname);
+  const t = useT('admin');
 
   // Close the drawer whenever the route changes (a nav link was tapped).
   useEffect(() => {
@@ -96,7 +110,7 @@ export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          aria-label="Open admin menu"
+          aria-label={t('sidebar.openMenu')}
           aria-expanded={open}
           className="-ml-2 flex h-11 w-11 items-center justify-center rounded hover:bg-zinc-800 transition-colors"
         >
@@ -104,7 +118,8 @@ export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h2 className="text-lg font-serif font-bold tracking-wider">ADMIN PANEL</h2>
+        <h2 className="text-lg font-serif font-bold tracking-wider">{t('sidebar.title')}</h2>
+        <LanguageSwitcher tone="dark" className="ml-auto" />
       </div>
 
       {/* Backdrop while the drawer is open */}
@@ -122,39 +137,48 @@ export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
           open ? 'translate-x-0' : '-translate-x-full invisible lg:visible'
         }`}
       >
-        <div className="flex items-center justify-between border-b border-zinc-800 p-6">
-          <h2 className="text-xl font-serif font-bold tracking-wider">ADMIN PANEL</h2>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label="Close admin menu"
-            className="-mr-3 flex h-11 w-11 items-center justify-center rounded hover:bg-zinc-800 transition-colors lg:hidden"
-          >
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        <div className="border-b border-zinc-800 px-6 pb-2 pt-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-serif font-bold tracking-wider">{t('sidebar.title')}</h2>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label={t('sidebar.closeMenu')}
+              className="-mr-3 flex h-11 w-11 items-center justify-center rounded hover:bg-zinc-800 transition-colors lg:hidden"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <LanguageSwitcher tone="dark" className="-ml-1" />
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-          {NAV_LINKS.map(({ href, label }) => (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => setOpen(false)}
-              className="block rounded px-4 py-2.5 hover:bg-zinc-800 transition-colors"
-            >
-              {label}
-            </Link>
-          ))}
+        <nav aria-label={t('sidebar.navLabel')} className="flex-1 space-y-1 overflow-y-auto p-4">
+          {NAV_LINKS.map(({ href, label }) => {
+            const active = isActive(path, href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setOpen(false)}
+                aria-current={active ? 'page' : undefined}
+                className={`block rounded px-4 py-2.5 transition-colors hover:bg-zinc-800 ${active ? 'bg-zinc-800 font-semibold' : ''}`}
+              >
+                {t(label)}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="border-t border-zinc-800 p-4">
           <div className="mb-4 px-4">
-            <p className="text-xs uppercase text-zinc-500">Logged in as</p>
+            <p className="text-xs uppercase text-zinc-500">{t('sidebar.loggedInAs')}</p>
             <p className="truncate text-sm font-medium">{userId}</p>
           </div>
-          <form action={logoutAction}>
+          {/* Unsaved drafts kept for a language switch belong to this admin
+              session only; drop them before the account signs out. */}
+          <form action={logoutAction} onSubmit={() => clearAllDrafts()}>
             <SignOutButton />
           </form>
         </div>

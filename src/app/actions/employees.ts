@@ -1,31 +1,48 @@
 'use server';
 
 import { auditedWrite } from '@/app/lib/audited-write';
+import { revalidateAllLocales } from '@/i18n/revalidate';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath } from 'next/cache';
 import { isValidPin, hashPin } from '@/app/lib/pin';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { getActionT } from '@/i18n/request';
 
 export type EmployeeActionState = { error?: string; success?: boolean };
 
 async function requireAdmin() {
   const session = await verifySession();
-  if (session.role !== 'ADMIN') return { error: 'Unauthorized', session: null };
+  if (session.role !== 'ADMIN') return { error: 'UNAUTHORIZED', session: null };
   return { error: null, session };
 }
 
-const STYLIST_TAKEN = 'That stylist is already linked to another employee.';
+/** An error message in the admin's language, addressed by a stable code. */
+async function employeeError(code: string): Promise<EmployeeActionState> {
+  const t = await getActionT('adminStaff');
+  return { error: t.dynamic(`employees.errors.${code}`, undefined, t('employees.errors.INVALID')) };
+}
+
+/** Our own schema codes translate directly; any other rule names the field. */
+async function validationError(issue: { message: string; path: PropertyKey[] } | undefined): Promise<EmployeeActionState> {
+  const t = await getActionT('adminStaff');
+  const code = issue?.message ?? '';
+  if (/^[A-Z_]+$/.test(code) && t.has(`employees.errors.${code}`)) return { error: t.dynamic(`employees.errors.${code}`) };
+  const field = String(issue?.path[0] ?? '');
+  return t.has(`employees.fields.${field}`)
+    ? { error: t('employees.errors.INVALID_FIELD', { field: t.dynamic(`employees.fields.${field}`) }) }
+    : { error: t('employees.errors.INVALID') };
+}
 
 const PAY_TYPES = ['HOURLY', 'SALARY', 'COMMISSION', 'HYBRID'] as const;
 
 const employeeSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
-  title: z.string().min(1, 'Title is required').max(100),
+  name: z.string().min(2, 'NAME_TOO_SHORT').max(100, 'NAME_TOO_LONG'),
+  title: z.string().min(1, 'TITLE_REQUIRED').max(100, 'TITLE_TOO_LONG'),
   payType: z.enum(PAY_TYPES),
   hourlyRate: z.coerce.number().nonnegative().nullable().optional(),
   monthlySalary: z.coerce.number().nonnegative().nullable().optional(),
-  commissionRate: z.coerce.number().min(0).max(1, 'Commission rate is a fraction 0–1').nullable().optional(),
+  commissionRate: z.coerce.number().min(0, 'COMMISSION_RANGE').max(1, 'COMMISSION_RANGE').nullable().optional(),
   overtimeEnabled: z.boolean().optional(),
   overtimeThresholdHours: z.coerce.number().nonnegative().nullable().optional(),
   overtimeMultiplier: z.coerce.number().min(1).nullable().optional(),
@@ -51,13 +68,13 @@ function parseEmployeeForm(formData: FormData) {
 
 export async function createEmployee(formData: FormData): Promise<EmployeeActionState> {
   const { error, session } = await requireAdmin();
-  if (error || !session) return { error: error ?? 'Unauthorized' };
+  if (error || !session) return employeeError('UNAUTHORIZED');
 
   const parsed = parseEmployeeForm(formData);
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return validationError(parsed.error.issues[0]);
 
   const pin = String(formData.get('pin') ?? '');
-  if (!isValidPin(pin)) return { error: 'PIN must be 4–6 digits' };
+  if (!isValidPin(pin)) return employeeError('PIN_INVALID');
 
   const d = parsed.data;
   try {
@@ -79,22 +96,22 @@ export async function createEmployee(formData: FormData): Promise<EmployeeAction
     }));
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      return { error: STYLIST_TAKEN };
+      return employeeError('STYLIST_TAKEN');
     }
     console.error('createEmployee failed:', err);
-    return { error: 'Failed to add employee. Please try again.' };
+    return employeeError('CREATE_FAILED');
   }
 
-  revalidatePath('/admin/employees');
+  revalidateAllLocales(revalidatePath, '/admin/employees');
   return { success: true };
 }
 
 export async function updateEmployee(id: string, formData: FormData): Promise<EmployeeActionState> {
   const { error, session } = await requireAdmin();
-  if (error || !session) return { error: error ?? 'Unauthorized' };
+  if (error || !session) return employeeError('UNAUTHORIZED');
 
   const parsed = parseEmployeeForm(formData);
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return validationError(parsed.error.issues[0]);
 
   const d = parsed.data;
   try {
@@ -116,33 +133,33 @@ export async function updateEmployee(id: string, formData: FormData): Promise<Em
     }));
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      return { error: STYLIST_TAKEN };
+      return employeeError('STYLIST_TAKEN');
     }
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-      return { error: 'That employee no longer exists.' };
+      return employeeError('NOT_FOUND');
     }
     console.error('updateEmployee failed:', err);
-    return { error: 'Failed to save changes. Please try again.' };
+    return employeeError('SAVE_FAILED');
   }
 
-  revalidatePath('/admin/employees');
-  revalidatePath(`/admin/employees/${id}/edit`);
+  revalidateAllLocales(revalidatePath, '/admin/employees');
+  revalidateAllLocales(revalidatePath, `/admin/employees/${id}/edit`);
   return { success: true };
 }
 
 export async function setEmployeePin(id: string, pin: string): Promise<EmployeeActionState> {
   const { error, session } = await requireAdmin();
-  if (error || !session) return { error: error ?? 'Unauthorized' };
-  if (!isValidPin(pin)) return { error: 'PIN must be 4–6 digits' };
+  if (error || !session) return employeeError('UNAUTHORIZED');
+  if (!isValidPin(pin)) return employeeError('PIN_INVALID');
 
   try {
     await auditedWrite({ actorUserId: session.userId, action: 'EMPLOYEE.PIN_RESET', targetType: 'Employee', targetId: id }, async (tx) => tx.employee.update({ where: { id }, data: { pinHash: await hashPin(pin) } }));
   } catch (err) {
     console.error('setEmployeePin failed:', err);
-    return { error: 'Failed to set the PIN. Please try again.' };
+    return employeeError('PIN_FAILED');
   }
 
-  revalidatePath('/admin/employees');
+  revalidateAllLocales(revalidatePath, '/admin/employees');
   return { success: true };
 }
 
@@ -157,15 +174,15 @@ export async function resetEmployeePin(
 
 export async function setEmployeeActive(id: string, isActive: boolean): Promise<EmployeeActionState> {
   const { error, session } = await requireAdmin();
-  if (error || !session) return { error: error ?? 'Unauthorized' };
+  if (error || !session) return employeeError('UNAUTHORIZED');
 
   try {
     await auditedWrite({ actorUserId: session.userId, action: 'EMPLOYEE.STATUS', targetType: 'Employee', targetId: id }, async (tx) => tx.employee.update({ where: { id }, data: { isActive } }));
   } catch (err) {
     console.error('setEmployeeActive failed:', err);
-    return { error: 'Failed to update status. Please try again.' };
+    return employeeError('STATUS_FAILED');
   }
 
-  revalidatePath('/admin/employees');
+  revalidateAllLocales(revalidatePath, '/admin/employees');
   return { success: true };
 }

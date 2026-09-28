@@ -37,6 +37,7 @@ test('calendar save returns a safe validation message and preserves existing set
   const result = await saveCalendarConnectionSettings(form({ stylistId: 's1', provider: 'TREATWELL', inboundUrl: 'https://127.0.0.1/private?token=new-secret' }), db);
   assert.equal(result.ok, false);
   assert.match(result.error ?? '', /public HTTPS/i);
+  assert.equal(result.code, 'UNSAFE_URL');
   assert.doesNotMatch(result.error ?? '', /127\.0\.0\.1|new-secret|old-secret/);
   assert.equal(writes, 0);
   assert.equal(networkRequests, 0);
@@ -46,4 +47,11 @@ test('calendar save returns an expected form error when inbound sync is enabled 
   const result = await saveCalendarConnectionSettings(form({ stylistId: 's1', provider: 'FRESHA', inboundEnabled: 'on' }), db);
   assert.equal(result.ok, false);
   assert.match(result.error ?? '', /Add a feed URL/i);
+  assert.equal(result.code, 'URL_REQUIRED');
+});
+test('a malformed feed URL is reported with its own code', async () => {
+  const db = { $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ calendarConnection: { findUnique: async () => null } }) } as unknown as Pick<PrismaClient, '$transaction'>;
+  const result = await saveCalendarConnectionSettings(form({ stylistId: 's1', provider: 'FRESHA', inboundUrl: 'not a url' }), db);
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'INVALID_URL');
 });

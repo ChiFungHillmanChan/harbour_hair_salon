@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/app/lib/prisma';
+import { revalidateAllLocales } from '@/i18n/revalidate';
 import { verifySession, requireAdmin, createKioskSession, deleteKioskSession, getKioskSession, deleteSession } from '@/app/lib/session';
 import { verifyPin } from '@/app/lib/pin';
 import { nextClockAction } from '@/app/services/kiosk-state';
@@ -11,6 +12,18 @@ import { revalidatePath } from 'next/cache';
 import { clockLimiter } from '@/app/lib/rate-limit';
 import { z } from 'zod';
 import { appendAuditEvent } from '@/app/lib/audit';
+import { getActionT, localizedPath } from '@/i18n/request';
+
+/**
+ * Why a clock-in/out was refused. The kiosk shows the code in the device's
+ * current language; `error` is the same text in the language of the request.
+ */
+export type ClockErrorCode = 'NOT_ENABLED' | 'RATE_LIMITED' | 'UNKNOWN_EMPLOYEE' | 'WRONG_PIN' | 'RETRY';
+
+async function clockError(code: ClockErrorCode) {
+  const t = await getActionT('kiosk');
+  return { ok: false as const, code, error: t(`errors.${code}`) };
+}
 
 export async function getKioskRoster() {
   if (!(await getKioskSession())) return [];
@@ -39,18 +52,18 @@ export async function getKioskRoster() {
 }
 
 export async function clockToggle(employeeId: string, pin: string) {
-  if (!(await getKioskSession())) return { ok: false, error: 'Kiosk not enabled on this device' };
+  if (!(await getKioskSession())) return clockError('NOT_ENABLED');
 
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   if (!(await clockLimiter.check(`${ip}:${employeeId}`))) {
-    return { ok: false, error: 'Too many attempts. Please wait a few minutes.' };
+    return clockError('RATE_LIMITED');
   }
 
   const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
-  if (!employee || !employee.isActive) return { ok: false, error: 'Unknown employee' };
+  if (!employee || !employee.isActive) return clockError('UNKNOWN_EMPLOYEE');
 
   const valid = await verifyPin(pin, employee.pinHash);
-  if (!valid) return { ok: false, error: 'Incorrect PIN' };
+  if (!valid) return clockError('WRONG_PIN');
 
   // Read the open entry and act on it inside one Serializable transaction so a
   // double-tap can't have two concurrent calls both see "no open entry" and both
@@ -80,29 +93,32 @@ export async function clockToggle(employeeId: string, pin: string) {
     });
   } catch (error) {
     console.error('clockToggle transaction failed:', error);
-    return { ok: false, error: 'Please try again' };
+    return clockError('RETRY');
   }
 
-  revalidatePath('/kiosk');
-  return { ok: true, status: result.status, name: employee.name };
+  revalidateAllLocales(revalidatePath, '/kiosk');
+  return { ok: true as const, status: result.status, name: employee.name };
 }
 
 export async function enableKioskMode(deviceName = 'Salon kiosk') {
   const session = await verifySession();
-  if (session.role !== 'ADMIN') return { error: 'Unauthorized' };
+  const t = await getActionT('adminStaff');
+  if (session.role !== 'ADMIN') return { error: t('kioskDevices.errors.UNAUTHORIZED') };
   const name = z.string().trim().min(1).max(80).safeParse(deviceName);
-  if (!name.success) return { error: 'Enter a device name of 1–80 characters.' };
+  if (!name.success) return { error: t('kioskDevices.errors.DEVICE_NAME') };
   await createKioskSession(session.userId, name.data);
   // The shared staff device must keep only its kiosk access after the handoff.
   await deleteSession();
-  redirect('/kiosk');
+  // The kiosk opens in the language the admin was using; its own switcher
+  // then changes it for the device only.
+  redirect(await localizedPath('/kiosk'));
 }
 
 export async function disableKioskMode() {
   const session = await verifySession();
   if (session.role !== 'ADMIN') return;
   await deleteKioskSession(session.userId);
-  revalidatePath('/admin/employees');
+  revalidateAllLocales(revalidatePath, '/admin/employees');
 }
 
 export async function listKioskSessions() {
@@ -118,14 +134,14 @@ export async function listKioskSessions() {
 export async function revokeKioskSession(id: string) {
   const session = await requireAdmin();
   const parsed = z.string().min(1).max(128).safeParse(id);
-  if (!parsed.success) return { error: 'Invalid kiosk device.' };
+  if (!parsed.success) return { error: (await getActionT('adminStaff'))('kioskDevices.errors.INVALID_DEVICE') };
   await prisma.$transaction(async (tx) => {
     const changed = await tx.kioskSession.updateMany({
       where: { id: parsed.data, revokedAt: null }, data: { revokedAt: new Date() },
     });
     if (changed.count > 0) await appendAuditEvent({ actorUserId: session.userId, action: 'KIOSK.REVOKED', targetType: 'KioskSession', targetId: parsed.data }, tx);
   });
-  revalidatePath('/admin/employees');
+  revalidateAllLocales(revalidatePath, '/admin/employees');
   return { success: true };
 }
 
@@ -137,6 +153,6 @@ export async function revokeAllKioskSessions() {
     });
     await appendAuditEvent({ actorUserId: session.userId, action: 'KIOSK.REVOKED_ALL', targetType: 'KioskSession', metadata: { count: changed.count } }, tx);
   });
-  revalidatePath('/admin/employees');
+  revalidateAllLocales(revalidatePath, '/admin/employees');
   return { success: true };
 }

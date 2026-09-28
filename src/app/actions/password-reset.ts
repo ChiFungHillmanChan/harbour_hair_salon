@@ -12,13 +12,14 @@ import {
   hashResetToken,
   evaluateResetToken,
   RESET_TOKEN_TTL_MS,
-  RESET_REQUESTED_MESSAGE,
-  INVALID_RESET_LINK_MESSAGE,
 } from '@/app/lib/password-reset';
+import { getActionT } from '@/i18n/request';
 
+// 'sent' carries no text: the page words it in its own language, so the
+// confirmation still reads correctly after a language switch.
 export type RequestResetState =
   | { status: 'idle' }
-  | { status: 'sent'; message: string }
+  | { status: 'sent' }
   | { status: 'error'; message: string };
 
 export type ResetPasswordState =
@@ -26,20 +27,27 @@ export type ResetPasswordState =
   | { status: 'success' }
   | { status: 'error'; message: string };
 
+// Messages are codes, translated into the caller's language (auth.errors).
 const requestSchema = z.object({
-  email: z.string().trim().toLowerCase().email('Please enter a valid email address.'),
+  email: z.string().trim().toLowerCase().email('EMAIL_INVALID'),
 });
 
 const resetSchema = z
   .object({
-    token: z.string().min(1).max(200),
-    password: z.string().min(8, 'Password must be at least 8 characters.').max(128),
-    confirmPassword: z.string().max(128),
+    token: z.string().min(1, 'INVALID_RESET_LINK').max(200, 'INVALID_RESET_LINK'),
+    password: z.string().min(8, 'PASSWORD_TOO_SHORT').max(128, 'PASSWORD_TOO_LONG'),
+    confirmPassword: z.string().max(128, 'PASSWORD_TOO_LONG'),
   })
   .refine((d) => d.password === d.confirmPassword, {
-    message: 'Passwords do not match.',
+    message: 'PASSWORDS_DIFFER',
     path: ['confirmPassword'],
   });
+
+type AuthT = Awaited<ReturnType<typeof getActionT<'auth'>>>;
+
+function issueText(t: AuthT, issues: { message: string }[]) {
+  return t.dynamic(`errors.${issues[0]?.message}`, undefined, t('errors.INVALID_INPUT'));
+}
 
 function getClientIp(headersList: Headers): string {
   return headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
@@ -55,14 +63,15 @@ export async function requestPasswordReset(
   _prev: RequestResetState,
   formData: FormData,
 ): Promise<RequestResetState> {
+  const t = await getActionT('auth');
   const ip = getClientIp(await headers());
   if (!(await passwordResetLimiter.check(ip))) {
-    return { status: 'error', message: 'Too many requests. Please try again in an hour.' };
+    return { status: 'error', message: t('errors.RESET_RATE_LIMITED') };
   }
 
   const parsed = requestSchema.safeParse({ email: formData.get('email') });
   if (!parsed.success) {
-    return { status: 'error', message: parsed.error.issues[0].message };
+    return { status: 'error', message: issueText(t, parsed.error.issues) };
   }
 
   const user = await prisma.user.findUnique({
@@ -71,7 +80,7 @@ export async function requestPasswordReset(
   });
 
   // No account: stop here, but return the same message as the success path.
-  if (!user) return { status: 'sent', message: RESET_REQUESTED_MESSAGE };
+  if (!user) return { status: 'sent' };
 
   const token = generateResetToken();
 
@@ -89,16 +98,14 @@ export async function requestPasswordReset(
       }),
     ]);
 
-    await sendPasswordReset({ email: user.email, name: user.name }, token);
+    // In the language of the page that asked for it.
+    await sendPasswordReset({ email: user.email, name: user.name }, token, t.locale);
   } catch (error) {
     console.error('Password reset request failed:', error);
-    return {
-      status: 'error',
-      message: 'We could not send the reset email. Please try again later.',
-    };
+    return { status: 'error', message: t('errors.RESET_SEND_FAILED') };
   }
 
-  return { status: 'sent', message: RESET_REQUESTED_MESSAGE };
+  return { status: 'sent' };
 }
 
 /**
@@ -112,9 +119,10 @@ export async function resetPassword(
   _prev: ResetPasswordState,
   formData: FormData,
 ): Promise<ResetPasswordState> {
+  const t = await getActionT('auth');
   const ip = getClientIp(await headers());
   if (!(await passwordResetLimiter.check(`redeem:${ip}`))) {
-    return { status: 'error', message: 'Too many attempts. Please try again in an hour.' };
+    return { status: 'error', message: t('errors.RESET_REDEEM_RATE_LIMITED') };
   }
 
   const parsed = resetSchema.safeParse({
@@ -123,7 +131,7 @@ export async function resetPassword(
     confirmPassword: formData.get('confirmPassword'),
   });
   if (!parsed.success) {
-    return { status: 'error', message: parsed.error.issues[0].message };
+    return { status: 'error', message: issueText(t, parsed.error.issues) };
   }
 
   // Look the token up by hash — the raw value is never stored.
@@ -133,12 +141,12 @@ export async function resetPassword(
   });
 
   if (!record) {
-    return { status: 'error', message: INVALID_RESET_LINK_MESSAGE };
+    return { status: 'error', message: t('errors.INVALID_RESET_LINK') };
   }
 
   const verdict = evaluateResetToken({ expiresAt: record.expiresAt, usedAt: record.usedAt });
   if (!verdict.ok) {
-    return { status: 'error', message: INVALID_RESET_LINK_MESSAGE };
+    return { status: 'error', message: t('errors.INVALID_RESET_LINK') };
   }
 
   const hashedPassword = await hashPassword(parsed.data.password);
@@ -166,10 +174,10 @@ export async function resetPassword(
       });
       return true;
     });
-    if (!redeemed) return { status: 'error', message: INVALID_RESET_LINK_MESSAGE };
+    if (!redeemed) return { status: 'error', message: t('errors.INVALID_RESET_LINK') };
   } catch (error) {
     console.error('Password reset failed:', error);
-    return { status: 'error', message: 'Could not reset your password. Please try again.' };
+    return { status: 'error', message: t('errors.RESET_FAILED') };
   }
 
   return { status: 'success' };

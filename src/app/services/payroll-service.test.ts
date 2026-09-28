@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { monthBounds, runPayrollWith, type PayrollDb } from './payroll-service';
 
 type Entry = { clockIn: Date; clockOut: Date | null; breakMinutes: number };
-type Appt = { priceAtBooking: number | null; service: { price: number } };
+type Appt = { id?: string; date?: Date; priceAtBooking: number | null; service?: { price: number } };
 type Employee = {
   id: string;
   payType: string;
@@ -182,4 +182,40 @@ test('runPayrollWith: overtimeEnabled true but overtimeThresholdHours null class
   assert.equal(u.overtimeHours, 0);
   assert.equal(u.overtimePay, 0);
   assert.equal(u.basePay, 100); // 10h * £10, all regular
+});
+
+// --- unknown historical prices never become commission ---
+
+const commissionStylist: Employee = {
+  id: 'emp-c', payType: 'COMMISSION', hourlyRate: null, monthlySalary: null, commissionRate: 0.4,
+  overtimeEnabled: false, overtimeThresholdHours: null, overtimeMultiplier: null, unpaidBreakMinutes: null, stylistId: 'stylist-c',
+};
+
+test('a completed booking with no recorded price blocks a commission run instead of using today\'s price', async () => {
+  const { db, recorded } = makeFakeDb({
+    employees: [commissionStylist],
+    appointmentsByStylist: {
+      'stylist-c': [
+        { id: 'known', date: new Date('2026-07-10T10:00:00Z'), priceAtBooking: 80, service: { price: 999 } } as Appt,
+        { id: 'legacy', date: new Date('2026-07-11T10:00:00Z'), priceAtBooking: null, service: { price: 999 } } as Appt,
+      ],
+    },
+  });
+  await assert.rejects(runPayrollWith(db, 2026, 7), (error: Error & { appointments?: { id: string }[] }) => {
+    assert.equal(error.name, 'PayrollMissingPriceError');
+    assert.deepEqual(error.appointments?.map((a) => a.id), ['legacy']);
+    return true;
+  });
+  assert.equal(recorded.upserts.length, 0, 'no payroll line is written from an incomplete base');
+});
+
+test('an hourly employee is not blocked by an unpriced booking, and it never counts as revenue', async () => {
+  const hourly: Employee = { ...commissionStylist, id: 'emp-h', payType: 'HOURLY', hourlyRate: 12, commissionRate: null };
+  const { db, recorded } = makeFakeDb({
+    employees: [hourly],
+    appointmentsByStylist: { 'stylist-c': [{ id: 'legacy', date: new Date('2026-07-11T10:00:00Z'), priceAtBooking: null, service: { price: 999 } } as Appt] },
+  });
+  await runPayrollWith(db, 2026, 7);
+  assert.equal(recorded.upserts.length, 1);
+  assert.equal(recorded.upserts[0].update.commissionableRevenue, 0);
 });

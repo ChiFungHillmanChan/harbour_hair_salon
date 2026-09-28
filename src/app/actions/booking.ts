@@ -1,25 +1,35 @@
 'use server';
 
 import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest, runSerializableWithRetry, assertAppointmentSlotAvailable } from '@/app/services/booking-service';
+import { revalidatePath } from 'next/cache';
 import { evaluateBookingGates, type PatchTestGateReason } from '@/app/services/booking-gates';
 import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, SALON_TIME_RE, SALON_DATE_RE, type SalonDateTime } from '@/app/services/salon-time';
-import { BookingError } from '@/app/services/booking-errors';
+import { BookingError, bookingErrorText, describeBookingError, type BookingErrorCode } from '@/app/services/booking-errors';
+import { PriceChangedError } from '@/app/services/booking-service';
+import { getActionLocale } from '@/i18n/request';
+import type { Locale } from '@/i18n/config';
+import type { PriceQuote } from '@/app/services/pricing/quote';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { verifySession } from '@/app/lib/session';
-import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
-import { bookingLimiter, discountLimiter } from '@/app/lib/rate-limit';
+import { bookingLimiter } from '@/app/lib/rate-limit';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
-import { isBookingEnabled, assertOnlineBookingReady, BOOKING_MAINTENANCE_MESSAGE } from '@/app/lib/booking-maintenance';
+import { isBookingEnabled, assertOnlineBookingReady } from '@/app/lib/booking-maintenance';
+import { revalidateAllLocales } from '@/i18n/revalidate';
 
-// discountLimiter stops enumeration of valid discount codes; bookingLimiter
-// curbs calendar-blockade abuse. Both come from lib/rate-limit.ts, which falls
-// back to in-process limiting when Upstash is unconfigured — these two call
-// sites previously skipped limiting entirely in that case.
+// bookingLimiter curbs calendar-blockade abuse. It comes from lib/rate-limit.ts,
+// which falls back to in-process limiting when Upstash is unconfigured. (The
+// discount-code limiter went with the codes themselves: while discounts are
+// paused no code is ever looked up, so there is nothing to enumerate.)
+
+/** A failed action result in the caller's language. */
+function failure(locale: Locale, code: BookingErrorCode) {
+  return { success: false as const, code, error: bookingErrorText(locale, code) };
+}
 
 // serviceDuration is client-supplied. Bound it hard: an unvalidated negative or
 // huge value drives the slot-generation loop in booking-service for millions of
@@ -42,6 +52,8 @@ type CreateBookingInput = {
   time: string;
   discountCode?: string;
   consultationForServiceId?: string;
+  /** The price the customer saw and confirmed (see pricing/quote.ts). */
+  expectedQuote?: { serviceId: string; priceVersion: number; amountPence: number };
 };
 
 const createBookingSchema = z.object({
@@ -53,6 +65,11 @@ const createBookingSchema = z.object({
   time: z.string().regex(SALON_TIME_RE, 'Invalid time'), // strict HH:mm
   discountCode: z.string().optional(),
   consultationForServiceId: z.string().optional(),
+  expectedQuote: z.object({
+    serviceId: z.string().min(1).max(64),
+    priceVersion: z.number().int().min(0),
+    amountPence: z.number().int().min(0),
+  }).optional(),
 }) satisfies z.ZodType<CreateBookingInput>;
 
 // Shared business-hours guard for a resolved salon date/time against a stylist's
@@ -61,23 +78,24 @@ async function checkStylistHours(
   stylistId: string,
   salon: SalonDateTime,
   durationMinutes: number,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | { ok: false; code: BookingErrorCode }> {
   const availability = await prisma.availability.findFirst({
     where: { stylistId, dayOfWeek: salon.dayOfWeek, isOff: false, stylist: { isActive: true } },
     select: { startTime: true, endTime: true },
   });
   if (!availability) {
-    return { ok: false, error: 'Stylist is not available on this day' };
+    return { ok: false, code: 'STYLIST_OFF_THAT_DAY' };
   }
   if (!fitsWithinAvailability(salon.timeMinutes, durationMinutes, availability.startTime, availability.endTime)) {
-    return { ok: false, error: 'Selected time is outside business hours' };
+    return { ok: false, code: 'OUTSIDE_HOURS' };
   }
   return { ok: true };
 }
 
 export async function getAvailableSlotsAction(prevState: unknown, formData: FormData) {
+  const locale = await getActionLocale();
   if (!(await isBookingEnabled())) {
-    return { error: BOOKING_MAINTENANCE_MESSAGE };
+    return { error: bookingErrorText(locale, 'MAINTENANCE') };
   }
 
   const stylistId = formData.get('stylistId') as string;
@@ -91,7 +109,7 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
   });
 
   if (!validated.success) {
-    return { error: 'Invalid input data' };
+    return { error: bookingErrorText(locale, 'INVALID_INPUT') };
   }
 
   try {
@@ -103,7 +121,7 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
     return { slots };
   } catch (error) {
     console.error('Error fetching slots:', error);
-    return { error: 'Failed to fetch available slots' };
+    return { error: bookingErrorText(locale, 'SLOTS_FAILED') };
   }
 }
 
@@ -164,43 +182,36 @@ async function eligibleStylistIds(salon: SalonDateTime, durationMinutes: number)
     .map((s) => s.id);
 }
 
+/**
+ * Kept for pages opened before discounts were paused, which still call it.
+ * It never looks a code up — no enumeration, no validation, no usage count —
+ * and always answers with the pause, so an old tab cannot show a discounted
+ * total. See DISCOUNTS_PAUSED in services/pricing/policy.ts.
+ */
 export async function validateDiscountCode(code: string) {
-  const session = await verifySession();
-  // Codes are stored upper-cased (admin.ts), so normalise the customer's input —
-  // otherwise someone typing "summer20" on a phone gets "Invalid code".
-  const normalized = code.trim().toUpperCase();
-  if (!normalized) return { valid: false, error: 'Code is empty' };
-
-  if (!(await discountLimiter.check(`user:${session.userId}`))) {
-    return { valid: false, error: 'Too many attempts. Please try again shortly.' };
-  }
-
-  try {
-    const discount = await prisma.discountCode.findUnique({
-      where: { code: normalized },
-    });
-
-    if (!discount) return { valid: false, error: 'Invalid code' };
-    if (!discount.isActive) return { valid: false, error: 'Code is inactive' };
-    if (discount.expiresAt && new Date() > discount.expiresAt) return { valid: false, error: 'Code has expired' };
-    if (discount.maxUses && discount.usedCount >= discount.maxUses) return { valid: false, error: 'Code usage limit reached' };
-
-    return {
-      valid: true,
-      type: discount.type,
-      value: Number(discount.value),
-    };
-  } catch (error) {
-    console.error('Error validating discount code:', error);
-    return { valid: false, error: 'Validation failed' };
-  }
+  await verifySession();
+  void code;
+  return { valid: false as const, paused: true as const, error: bookingErrorText(await getActionLocale(), 'DISCOUNTS_PAUSED') };
 }
 
-export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
+/** The part of a quote the booking page needs to show and re-confirm a price. */
+export type ClientQuote = Pick<PriceQuote, 'serviceId' | 'priceVersion' | 'amountPence' | 'priceType' | 'vatDisplay' | 'priceNature' | 'breakdown'>;
+
+function toClientQuote(quote: PriceQuote): ClientQuote {
+  const { serviceId, priceVersion, amountPence, priceType, vatDisplay, priceNature, breakdown } = quote;
+  return { serviceId, priceVersion, amountPence, priceType, vatDisplay, priceNature, breakdown };
+}
+
+export type SubmitBookingResult =
+  | { success: true }
+  | { success: false; code?: BookingErrorCode; error: string; quote?: ClientQuote };
+
+export async function submitBooking(data: z.infer<typeof createBookingSchema>): Promise<SubmitBookingResult> {
+  const locale = await getActionLocale();
   // Hard server-side block while online booking is in maintenance — checked
   // before anything else so no client (or direct action call) can bypass it.
   if (!(await isBookingEnabled())) {
-    return { success: false, error: BOOKING_MAINTENANCE_MESSAGE };
+    return failure(locale, 'MAINTENANCE');
   }
 
   // Require authentication
@@ -211,15 +222,21 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
   if (!result.success) {
     console.error('Validation failed:', result.error);
-    return { success: false, error: 'Invalid booking data' };
+    return failure(locale, 'INVALID_BOOKING');
   }
 
   const validData = result.data;
 
+  // Discounts are paused: answer an old page that still sends a code before
+  // any lookup, so the code is neither applied nor counted.
+  if (validData.discountCode?.trim()) {
+    return failure(locale, 'DISCOUNTS_PAUSED');
+  }
+
   // Per-user rate limit. Degrades to in-process limiting on a Redis outage or
   // missing config, rather than failing open.
   if (!(await bookingLimiter.check(`user:${session.userId}`))) {
-    return { success: false, error: 'Too many booking attempts. Please try again shortly.' };
+    return failure(locale, 'TOO_MANY_BOOKINGS');
   }
 
   // Resolve the salon wall-clock time to the correct absolute UTC instant
@@ -229,7 +246,7 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
 
   // Defensive: reject an unparseable date/time before it reaches the DB.
   if (Number.isNaN(fullDate.getTime())) {
-    return { success: false, error: 'Invalid date or time' };
+    return failure(locale, 'INVALID_DATE_TIME');
   }
 
   // Load the flags we gate on. Fetched here (before the stylist-hours resolution
@@ -238,10 +255,16 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   // fetch patch-test eligibility below.
   const service = await prisma.service.findUnique({
     where: { id: validData.serviceId },
-    select: { duration: true, requiresPatchTest: true, requiresConsultation: true, isConsultation: true, isPatchTest: true },
+    select: { duration: true, requiresPatchTest: true, requiresConsultation: true, isConsultation: true, isPatchTest: true, isBookable: true, isPublic: true },
   });
   if (!service) {
-    return { success: false, error: 'Service not found' };
+    return failure(locale, 'SERVICE_NOT_FOUND');
+  }
+  // Retired and not-yet-bookable options (e.g. an unverified NHS price) are
+  // refused here too, not just hidden: an old page or a crafted request can
+  // still send their id. Existing appointments for them are unaffected.
+  if (!service.isBookable || !service.isPublic) {
+    return failure(locale, 'SERVICE_NOT_BOOKABLE');
   }
 
   // Patch-test eligibility is only relevant — and only fetched — for services
@@ -269,7 +292,7 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
     now: new Date(),
   });
   if (!gate.ok) {
-    return { success: false, error: gate.error };
+    return failure(locale, gate.code);
   }
 
   // Resolve which stylist(s) can take this slot. For a named stylist we validate
@@ -279,12 +302,12 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
   if (isAnyStylist) {
     candidateStylistIds = await eligibleStylistIds(salon, service.duration);
     if (candidateStylistIds.length === 0) {
-      return { success: false, error: 'No stylist is available at this time' };
+      return failure(locale, 'NO_STYLIST_AT_TIME');
     }
   } else {
     const hoursCheck = await checkStylistHours(validData.stylistId, salon, service.duration);
     if (!hoursCheck.ok) {
-      return { success: false, error: hoursCheck.error };
+      return failure(locale, hoursCheck.code);
     }
   }
 
@@ -311,39 +334,59 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>) {
           serviceId: validData.serviceId,
           date: fullDate,
           userId: session.userId,
-          discountCode: validData.discountCode,
           notes,
+          // Without an expectation the page never showed a server price
+          // (an old tab): force a fresh confirmation rather than guess.
+          expectedQuote: validData.expectedQuote ?? null,
+          locale,
         })
       : await createBooking({
           stylistId: validData.stylistId,
           serviceId: validData.serviceId,
           date: fullDate,
           userId: session.userId,
-          discountCode: validData.discountCode,
           notes,
+          expectedQuote: validData.expectedQuote ?? null,
+          locale,
         });
+
+
 
     // The marketplaces poll a cached feed; drop it so the new busy period is
     // visible on their next poll rather than whenever the window expires.
     invalidateStylistIcalFeed();
     // Next flushes cache invalidation when the action finishes. Keep delivery
     // after the response so slow email cannot hold the busy feed stale.
-    after(() => dispatchAppointmentNotifications(appointment.id));
-    revalidatePath('/book');
-    revalidatePath('/appointments');
-    revalidatePath('/admin');
+    after(async () => {
+      await dispatchAppointmentNotifications(appointment.id);
+      // Remember the language for mail the salon later sends on the customer's
+      // behalf (e.g. a booking an administrator enters for them). Best effort
+      // and after the response: the booking already records its own language,
+      // so this can never turn a made booking into an error.
+      try {
+        await prisma.user.update({ where: { id: session.userId }, data: { preferredLocale: locale } });
+      } catch {
+        // Preference only.
+      }
+    });
+    revalidateAllLocales(revalidatePath, '/book');
+    revalidateAllLocales(revalidatePath, '/appointments');
+    revalidateAllLocales(revalidatePath, '/admin');
     return { success: true };
   } catch (error) {
+    if (error instanceof PriceChangedError) {
+      return { success: false, code: 'PRICE_CHANGED', error: error.localized(locale), quote: toClientQuote(error.quote) };
+    }
     console.error('Booking failed:', error);
-    // Only surface customer-safe messages (slot taken, discount unavailable);
+    // Only surface customer-safe messages (slot taken, price changed);
     // anything else (Prisma/internal) becomes a generic message.
-    const message = error instanceof BookingError ? error.message : 'Failed to create booking';
-    return { success: false, error: message };
+    return { success: false, code: error instanceof BookingError ? error.code : 'BOOKING_FAILED', error: describeBookingError(error, locale, 'BOOKING_FAILED') };
   }
 }
 
 export async function cancelAppointment(appointmentId: string) {
   const session = await verifySession();
+  const locale = await getActionLocale();
 
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
@@ -355,18 +398,18 @@ export async function cancelAppointment(appointmentId: string) {
   });
 
   if (!appointment || appointment.userId !== session.userId) {
-    return { success: false, error: 'Appointment not found' };
+    return failure(locale, 'APPOINTMENT_NOT_FOUND');
   }
 
   if (appointment.status !== 'CONFIRMED' && appointment.status !== 'PENDING') {
-    return { success: false, error: 'Only pending or confirmed appointments can be cancelled' };
+    return failure(locale, 'CANCEL_ONLY_ACTIVE');
   }
 
   // The 24-hour rule only protects slots the salon has actually confirmed; a
   // customer may withdraw a still-PENDING request at any time.
   const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
   if (appointment.status === 'CONFIRMED' && hoursUntil < 24) {
-    return { success: false, error: 'Cannot cancel within 24 hours of appointment' };
+    return failure(locale, 'CANCEL_TOO_LATE');
   }
 
   const treatwellApi = getTreatwellApiConfiguration();
@@ -383,20 +426,20 @@ export async function cancelAppointment(appointmentId: string) {
         where: { id: appointmentId, userId: session.userId, status: appointment.status, date: appointment.date, updatedAt: appointment.updatedAt },
         data: { status: 'CANCELLED', treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 } },
       });
-      if (changed.count !== 1) throw new BookingError('This appointment has changed. Please refresh and try again.');
+      if (changed.count !== 1) throw new BookingError('STALE');
       const cancelled = await tx.appointment.findUnique({ where: { id: appointmentId }, include: { user: true, stylist: true, service: true } });
-      if (!cancelled) throw new BookingError('Appointment not found');
+      if (!cancelled) throw new BookingError('APPOINTMENT_NOT_FOUND');
       await enqueueAppointmentNotification(tx, 'CANCELLATION', cancelled);
     });
     invalidateStylistIcalFeed();
     after(() => dispatchAppointmentNotifications(appointmentId));
   } catch (error) {
-    return { success: false, error: error instanceof BookingError ? error.message : 'Could not cancel the appointment. Please try again.' };
+    return { success: false, error: describeBookingError(error, locale, 'CANCEL_FAILED') };
   }
 
-  revalidatePath('/appointments');
-  revalidatePath('/admin');
-  revalidatePath('/book');
+  revalidateAllLocales(revalidatePath, '/appointments');
+  revalidateAllLocales(revalidatePath, '/admin');
+  revalidateAllLocales(revalidatePath, '/book');
   return { success: true };
 }
 
@@ -427,15 +470,16 @@ export async function checkColourEligibility(serviceId: string, dateStr: string)
 export async function rescheduleAppointment(appointmentId: string, dateStr: string, time: string) {
   // Rescheduling books a new slot, so it is blocked during maintenance too.
   // (Cancellation stays available — see cancelAppointment.)
+  const locale = await getActionLocale();
   if (!(await isBookingEnabled())) {
-    return { success: false, error: BOOKING_MAINTENANCE_MESSAGE };
+    return failure(locale, 'MAINTENANCE');
   }
 
   const session = await verifySession();
 
   // Reject malformed date/time before any DB work (no Zod schema on this path).
   if (!isValidSalonDate(dateStr) || !isValidSalonTime(time)) {
-    return { success: false, error: 'Invalid date or time' };
+    return failure(locale, 'INVALID_DATE_TIME');
   }
 
   const appointment = await prisma.appointment.findUnique({
@@ -448,16 +492,16 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
   });
 
   if (!appointment || appointment.userId !== session.userId) {
-    return { success: false, error: 'Appointment not found' };
+    return failure(locale, 'APPOINTMENT_NOT_FOUND');
   }
 
   if (appointment.status !== 'CONFIRMED') {
-    return { success: false, error: 'Only confirmed appointments can be rescheduled' };
+    return failure(locale, 'RESCHEDULE_ONLY_CONFIRMED');
   }
 
   const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
   if (hoursUntil < 24) {
-    return { success: false, error: 'Cannot reschedule within 24 hours of appointment' };
+    return failure(locale, 'RESCHEDULE_TOO_LATE');
   }
 
   // Resolve the new salon wall-clock time to the correct absolute UTC instant
@@ -467,32 +511,31 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
 
   // Defensive: reject an unparseable instant before it reaches the DB.
   if (Number.isNaN(newDate.getTime())) {
-    return { success: false, error: 'Invalid date or time' };
+    return failure(locale, 'INVALID_DATE_TIME');
   }
 
   // Prevent rescheduling into the past
   if (newDate <= new Date()) {
-    return { success: false, error: 'Cannot reschedule to a time in the past' };
+    return failure(locale, 'RESCHEDULE_PAST');
   }
 
   // Validate the new time falls within stylist availability for this day
   const duration = appointment.durationAtBooking ?? appointment.service.duration;
   const hoursCheck = await checkStylistHours(appointment.stylistId, salon, duration);
   if (!hoursCheck.ok) {
-    return { success: false, error: hoursCheck.error };
+    return failure(locale, hoursCheck.code);
   }
 
   // Re-validate the colour patch-test gate against the NEW date.
   if (appointment.service.requiresPatchTest) {
     const eligibility = await getValidPatchTest(session.userId, newDate);
     if (!eligibility.ok) {
-      const message =
+      return failure(locale,
         eligibility.reason === 'too_soon'
-          ? 'Your patch test must be at least 48 hours before a colour appointment.'
+          ? 'PATCH_TEST_TOO_SOON'
           : eligibility.reason === 'expired'
-            ? 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.'
-            : 'Colour services require a completed Consultation & Patch Test first.';
-      return { success: false, error: message };
+            ? 'PATCH_TEST_EXPIRED'
+            : 'PATCH_TEST_REQUIRED');
     }
   }
 
@@ -515,7 +558,7 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
         where: { id: appointmentId, userId: session.userId, status: 'CONFIRMED', date: appointment.date, updatedAt: appointment.updatedAt },
         data: { date: newDate, reminderSent: false, treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 } },
       });
-      if (changed.count !== 1) throw new BookingError('This appointment has changed. Please refresh and try again.');
+      if (changed.count !== 1) throw new BookingError('STALE');
       const rescheduled = await tx.appointment.findUnique({
         where: { id: appointmentId },
         include: {
@@ -524,20 +567,19 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
           service: true,
         },
       });
-      if (!rescheduled) throw new BookingError('Appointment not found');
+      if (!rescheduled) throw new BookingError('APPOINTMENT_NOT_FOUND');
       await enqueueAppointmentNotification(tx, 'RESCHEDULE', rescheduled, { oldDate });
       return rescheduled;
     });
 
     invalidateStylistIcalFeed();
     after(() => dispatchAppointmentNotifications(updated.id));
-    revalidatePath('/appointments');
-    revalidatePath('/admin');
-    revalidatePath('/book');
+    revalidateAllLocales(revalidatePath, '/appointments');
+    revalidateAllLocales(revalidatePath, '/admin');
+    revalidateAllLocales(revalidatePath, '/book');
     return { success: true };
   } catch (error) {
     console.error('Reschedule failed:', error);
-    const message = error instanceof BookingError ? error.message : 'Reschedule failed. Please try again.';
-    return { success: false, error: message };
+    return { success: false, error: describeBookingError(error, locale, 'RESCHEDULE_FAILED') };
   }
 }
