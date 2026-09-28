@@ -1,6 +1,11 @@
 # Treatwell price list + English/繁體中文 site — production rollout and rollback
 
-Date: 2026-09-28. Status: **implemented locally; nothing below has been run against production.**
+Date: 2026-09-28. Status: **applied to production on 2026-09-29 (UTC night of 09-28):**
+code + migration deployed by GitHub Actions (5bfc5e0; the build's `vercel-build` step ran
+`prisma migrate deploy`), price catalogue applied (`docs/pricing/2026-09-29-price-mapping-production.md`,
+identical to the rehearsal; rollback file kept outside the repo in the owner's client documents),
+Chinese content imported (`docs/i18n/2026-09-29-content-import-production.md`, 98 records).
+Steps 6–7 below (durations of the 7 new options, salon notification language) are the owner's.
 Requirements: `2026-09-28-treatwell-pricing-bilingual-implementation-prompt.md`.
 How the code is organised: `2026-09-28-i18n-implementation-conventions.md`.
 What is translated and what is deliberately not: `docs/i18n/2026-09-28-translation-coverage.md`.
@@ -31,7 +36,8 @@ compute once; run them together.
 
 1. **Migration** — `20260928120000_pricing_options_and_bilingual_content` (additive:
    new columns with defaults, three new tables, no data change). It is applied by the
-   normal GitHub Actions deploy (`prisma migrate deploy`). CI replays it and checks drift.
+   normal GitHub Actions deploy: `vercel build --prod` runs the `vercel-build` script, which
+   runs `prisma migrate deploy` before `next build`. CI replays it and checks drift first.
 
 2. **Price catalogue — dry run** (read-only transaction):
 
@@ -71,9 +77,9 @@ compute once; run them together.
    Entries whose English changed since the translation was made are reported STALE and
    skipped; translate those in Admin with the bilingual editor.
 
-5. **Cache** — the tools write directly to the database, so refresh the site cache once:
-   in Admin → Settings press Save (it revalidates every page and the settings cache), or
-   redeploy.
+5. **Cache** — the tools write directly to the database, but public pages are cached for up to
+   an hour. Refresh once: push any commit (a new deployment rebuilds every page), or in
+   Admin → Settings press Save (revalidates every page and the settings cache).
 
 6. **Owner decisions still needed before the new options can be booked online**: the
    durations of the 7 new extra-long options (created with placeholder minutes, listed
