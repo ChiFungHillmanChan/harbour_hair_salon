@@ -1,5 +1,6 @@
 import type { PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { standardPriceRange } from '@/app/services/pricing/public-catalog';
+import { menuItemDescription } from '@/app/services/pricing/policy';
 import Link from '@/i18n/link';
 import { getT } from '@/i18n/server';
 import { Reveal } from './Reveal';
@@ -26,7 +27,7 @@ export async function ServiceMenu({ entries, title, flatList = false }: ServiceM
     const hasNhs = options.some((option) => option.priceType === 'NHS');
     const name = entry.kind === 'offering' ? entry.offering.name : entry.service.name;
     const translated = entry.kind === 'offering' ? entry.offering.translated : entry.service.translated;
-    const description = entry.kind === 'offering' ? (entry.offering.description ?? options[0]?.description ?? '') : (entry.service.description ?? '');
+    const description = entry.kind === 'offering' ? (menuItemDescription(entry.offering.description, options) ?? '') : (entry.service.description ?? '');
     const key = entry.kind === 'offering' ? entry.offering.id : entry.service.id;
     const sample = options.find((option) => option.priceType !== 'NHS') ?? options[0];
     const durations = options.filter((option) => option.durationConfirmed).map((option) => option.duration);

@@ -6,6 +6,7 @@ import { useT } from '@/i18n/client';
 import { useDraftState } from '@/i18n/draft-store';
 import type { PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { standardPriceRange } from '@/app/services/pricing/public-catalog';
+import { menuItemDescription } from '@/app/services/pricing/policy';
 import { OfferingPrices } from '@/components/pricing/OfferingPrices';
 import { Duration, PriceFinePrint, useCategoryLabel, useFormatPrice } from '@/components/pricing/PriceParts';
 
@@ -184,7 +185,7 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
           const key = entry.kind === 'offering' ? entry.offering.id : entry.service.id;
           const title = entry.kind === 'offering' ? entry.offering.name : entry.service.name;
           const translated = entry.kind === 'offering' ? entry.offering.translated : entry.service.translated;
-          const description = entry.kind === 'offering' ? (entry.offering.description ?? entry.options[0]?.description ?? null) : entry.service.description;
+          const description = entry.kind === 'offering' ? menuItemDescription(entry.offering.description, entry.options) : entry.service.description;
           const note = entry.kind === 'offering' ? entry.options.find((o) => o.priceNote)?.priceNote : entry.service.priceNote;
           return (
             <article

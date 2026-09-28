@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { formatGBP, penceToDecimalString, toPence } from './money';
 import { buildQuote, parseQuote, QuoteIntegrityError, quoteMatches, serializeQuote, type QuotableService } from './quote';
 import { recordedPrice } from './recorded-price';
-import { DISCOUNTS_PAUSED } from './policy';
+import { DISCOUNTS_PAUSED, menuItemDescription } from './policy';
 import { OFFERINGS, RETIRE_UNVERIFIED_NHS, DELIBERATELY_UNCHANGED } from '../../../../prisma/price-catalog/treatwell-2026-09-28';
 
 const service = (overrides: Partial<QuotableService> = {}): QuotableService => ({
@@ -138,4 +138,15 @@ test('unverified NHS options retire and sensitive tests / Special Set stay untou
   for (const name of [...unchanged, ...RETIRE_UNVERIFIED_NHS.map((r) => r.legacyName)]) assert.equal(legacy.has(name), false, name);
   // Hair Correction keeps its English name in every language (brand-like term).
   assert.ok(OFFERINGS.some((o) => o.key === 'hair-correction' && o.name === 'Hair Correction'));
+});
+
+test('a menu item never borrows one option\'s length-specific description', () => {
+  const byLength = [{ description: 'Wash, haircut and blow dry for short hair.' }, { description: 'Wash, haircut and blow dry for long hair.' }];
+  assert.equal(menuItemDescription(null, byLength), null);
+  assert.equal(menuItemDescription('', byLength), null);
+  assert.equal(menuItemDescription('Wash, cut and finish.', byLength), 'Wash, cut and finish.');
+  assert.equal(menuItemDescription(null, [{ description: 'Smoothing treatment.' }, { description: ' Smoothing treatment. ' }]), 'Smoothing treatment.');
+  assert.equal(menuItemDescription(null, [{ description: 'Single option.' }]), 'Single option.');
+  assert.equal(menuItemDescription(null, [{ description: null }, { description: '' }]), null);
+  assert.equal(menuItemDescription(null, []), null);
 });

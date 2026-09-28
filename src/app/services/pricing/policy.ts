@@ -51,3 +51,17 @@ export const isPriceNature = oneOf(PRICE_NATURES);
 
 /** Display order for lengths inside one offering. */
 export const HAIR_LENGTH_ORDER: Record<HairLength, number> = { SHORT: 0, MEDIUM: 1, LONG: 2, EXTRA_LONG: 3 };
+
+/**
+ * The sentence under a menu item. Its own description wins; otherwise it
+ * borrows its options' text only when every option says the same thing — the
+ * short-hair option's "…for short hair" must not describe an item that also
+ * covers long and extra-long hair. No sentence beats a misleading one.
+ */
+export function menuItemDescription(own: string | null | undefined, options: readonly { description: string | null }[]): string | null {
+  if (own?.trim()) return own;
+  const texts = new Set(options.map((option) => option.description?.trim() ?? ''));
+  if (texts.size !== 1) return null;
+  const [only] = texts;
+  return only || null;
+}

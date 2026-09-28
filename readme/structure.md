@@ -239,7 +239,7 @@ Requirements: `docs/superpowers/plans/2026-09-28-treatwell-pricing-bilingual-imp
 - Dictionaries: `messages/en/<ns>.ts` + `messages/zh/<ns>.ts`, registry `messages/index.ts` (`MESSAGES`, `translator`, `pickMessages`). `messages/completeness.test.ts` enforces identical keys, placeholders and rich tags.
 
 **Pricing (`src/app/services/pricing/`)**
-- `policy.ts` — `DISCOUNTS_PAUSED` (offers/codes never apply to new quotes), price types, hair lengths, VAT display, price nature.
+- `policy.ts` — `DISCOUNTS_PAUSED` (offers/codes never apply to new quotes), price types, hair lengths, VAT display, price nature, `menuItemDescription` (a menu item never borrows one option's length-specific sentence).
 - `money.ts` — exact Decimal→pence (`toPence`), `penceToDecimalString`, `formatGBP`.
 - `quote.ts` — `PriceQuote` (versioned server quote), `buildQuote` (composite = base + surcharge, refused if inconsistent), `quoteMatches`, `parseQuote`.
 - `quote-service.ts` — `quoteForNewBooking(db, serviceId, 'CUSTOMER'|'ADMIN')`: refuses non-bookable/retired options; used by customer booking, admin create and admin service change.
