@@ -22,6 +22,7 @@ const common: Localized<Messages['common']> = {
     team: '團隊',
     contact: '聯絡我們',
     tryColor: '試髮色',
+    threeD: '3D',
     signIn: '登入',
     signOut: '登出',
     signingOut: '正在登出…',

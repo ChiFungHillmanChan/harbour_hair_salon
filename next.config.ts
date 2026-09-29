@@ -14,7 +14,7 @@ const csp = [
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "connect-src 'self' https:",
-  "frame-src https://www.google.com",
+  "frame-src 'self' https://www.google.com",
   "worker-src 'self' blob:",
 ].join('; ') + ';';
 
@@ -47,6 +47,14 @@ const nextConfig: NextConfig = {
       { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' },
       { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
       { key: 'Content-Security-Policy', value: csp },
+    ],
+  }, {
+    // Only the public walkthrough may be embedded, and only on our own origin.
+    source: '/harbour-hair-3d.html',
+    headers: [
+      { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+      { key: 'Content-Security-Policy', value: `${csp} frame-ancestors 'self';` },
+      { key: 'X-Robots-Tag', value: 'noindex' },
     ],
   }],
 };

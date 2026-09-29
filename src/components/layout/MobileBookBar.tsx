@@ -8,7 +8,8 @@ import { stripLocale } from '@/i18n/paths';
 /**
  * Persistent mobile "Book" call-to-action. Salon traffic is mostly mobile, where
  * "Book" otherwise hides behind the hamburger after the hero scrolls away.
- * Hidden on the booking flow, auth pages, and admin, and on desktop (md+).
+ * Hidden on the booking flow, auth pages, admin and the immersive 3D tour,
+ * and on desktop (md+), so it cannot cover tour movement controls.
  */
 export function MobileBookBar() {
   const pathname = stripLocale(usePathname());
@@ -16,7 +17,8 @@ export function MobileBookBar() {
   if (
     pathname.startsWith('/book') ||
     pathname.startsWith('/admin') ||
-    pathname.startsWith('/auth')
+    pathname.startsWith('/auth') ||
+    pathname === '/3d'
   ) {
     return null;
   }

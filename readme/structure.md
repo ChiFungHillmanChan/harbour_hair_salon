@@ -280,3 +280,10 @@ Plan: `docs/superpowers/plans/2026-09-29-stylist-unavailable-blocks.md`. Days of
 - `src/components/booking/DayAvailability.tsx` — `DayChip` (greyed "Unavailable" date, still tappable), `UnavailableDayBlock` (big hatched block), `TimeSlotGrid` (taken times greyed and disabled). `BookingWizard` loads the fortnight once per stylist/service and reloads after a refused booking.
 - `src/app/lib/calendar-busy-display.ts` — `salonWorkingWindow`, `isWholeDayBlock`; `calendarBusyLabel(…, wholeDay)`. Admin Day/Week grids and the mobile agenda show a block covering the stylist's hours (or the salon's, if they are off in our rota) as a hatched "Unavailable" block; Fresha stays in its detail.
 
+
+## 3D Salon Walkthrough
+
+- `src/app/[locale]/3d/page.tsx` — localized public walkthrough page, canonical metadata and responsive viewport shell; linked by desktop/mobile navigation and sitemap. `Salon3DFrame.tsx` lazily embeds the same-origin model and pauses it while offscreen. Copy is in the EN/ZH `salon3d` dictionaries.
+- `public/harbour-hair-3d.html` — self-contained photo-informed salon miniature: dollhouse, eye-level walk and plan views, clean-view eye toggle, material/daylight controls, guided tour, embedded reference photos and PNG export.
+- `demos/harbour-hair-3d/` — editable HTML/Tailwind interface, Three.js scene and isolated locked dependencies. `layout.js` defines the owner-approved stepped outline, compact shampoo couches, recessed WC with adjacent sink, smooth white reception wall, open colour shelves, glass entrance corner and circular coat rack. `rendering.js` bounds pixel/frame budgets and batches static parts; scene rendering stops when idle or hidden. Layout and performance tests run with `pnpm demo:test`; `pnpm demo:build` regenerates the checked-in HTML, verified by CI.
+- `next.config.ts` and `src/app/lib/walkthrough-headers.test.ts` — shared same-origin frame source policy supports Next client navigation; only the standalone 3D asset accepts same-origin embedding.

@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
+    "demo:build": "pnpm --dir demos/harbour-hair-3d build",
+    "demo:test": "node --test demos/harbour-hair-3d/*.test.js",
     "vercel-build": "node scripts/production-build-guard.mjs && if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma migrate deploy --schema prisma/vercel/schema.prisma; else echo \"Skipping migrations (VERCEL_ENV=$VERCEL_ENV) \u2014 only production may mutate the schema\"; fi && next build --webpack",
     "start": "next start",
     "lint": "eslint",

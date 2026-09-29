@@ -11,6 +11,7 @@ import contact from './contact';
 import reviews from './reviews';
 import blog from './blog';
 import tryColor from './tryColor';
+import salon3d from './salon3d';
 import legal from './legal';
 import auth from './auth';
 import booking from './booking';
@@ -36,6 +37,7 @@ export const en = {
   reviews,
   blog,
   tryColor,
+  salon3d,
   legal,
   auth,
   booking,

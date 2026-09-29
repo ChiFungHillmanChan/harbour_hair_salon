@@ -53,6 +53,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install 3D demo dependencies
+        run: pnpm --dir demos/harbour-hair-3d install --frozen-lockfile
+
       - name: Lint
         env:
           DATABASE_URL: "file:./dev.db"
@@ -67,8 +70,20 @@ jobs:
           SESSION_SECRET: ci-test-secret
         run: pnpm test
 
+      - name: Test 3D demo
+        run: pnpm demo:test
+
+      - name: Build and verify standalone 3D demo
+        run: |
+          pnpm demo:build
+          git ls-files --error-unmatch public/harbour-hair-3d.html
+          git diff --exit-code --stat -- public/harbour-hair-3d.html
+
       - name: Dependency audit
         run: pnpm audit --audit-level=high
+
+      - name: 3D demo dependency audit
+        run: pnpm --dir demos/harbour-hair-3d audit --audit-level=high
 
       - name: Replay production migrations
         run: pnpm db:vercel:deploy
