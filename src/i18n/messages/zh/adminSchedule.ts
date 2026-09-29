@@ -79,6 +79,9 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     detail: '{provider} · {stylist} · {range}（倫敦時間）。最後匯入時間：{synced}。請在 {provider} 管理這段時間。',
     agendaImported: '{stylist} · 已匯入的忙碌時段',
     agendaSynced: '最後匯入時間：{synced} · 倫敦時間',
+    unavailable: '不可預約',
+    unavailableDetail: '{stylist} 不可預約 · {range}（倫敦時間），由 {provider} 匯入。最後匯入時間：{synced}。請在 {provider} 管理這段時間。',
+    agendaUnavailable: '{stylist} · 全日不可預約',
   },
   clash: {
     bookingTitle: '此預約有衝突：',

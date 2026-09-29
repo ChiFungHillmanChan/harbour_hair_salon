@@ -11,7 +11,7 @@ import { formatSalonTime, resolveSalonDateTime, salonDateKey } from '@/app/servi
 import type { CalendarView } from '@/app/services/admin-calendar-range';
 import { moveAppointmentByAdmin } from '@/app/actions/admin-schedule';
 import { weekDayKeys } from '@/app/services/admin-calendar-range';
-import { calendarBusyForDay, calendarBusyLabel } from '@/app/lib/calendar-busy-display';
+import { calendarBusyForDay, calendarBusyLabel, isWholeDayBlock, salonWorkingWindow } from '@/app/lib/calendar-busy-display';
 import { payloadArrival, shouldRefreshCalendar } from '@/app/services/calendar-sync-window';
 import { describeBoardPrice } from '@/app/lib/board-price';
 import { useLocale, useT } from '@/i18n/client';
@@ -226,15 +226,23 @@ function dayCountLabel(t: ScheduleT, appointments: number, imported: number): st
   return imported > 0 ? `${count} · ${t('day.imported', { count: imported })}` : count;
 }
 
-function BusyAgenda({ blocks, stylists }: { blocks: ReturnType<typeof calendarBusyForDay>; stylists: RosterStylist[] }) {
+function BusyAgenda({ blocks, stylists, dayKey }: { blocks: ReturnType<typeof calendarBusyForDay>; stylists: RosterStylist[]; dayKey: string }) {
   const t = useT('adminSchedule');
+  const weekday = new Date(`${dayKey}T12:00:00Z`).getUTCDay();
+  const hoursOf = (entry: RosterStylist | undefined) => {
+    const row = entry?.availabilities.find((a) => a.dayOfWeek === weekday && !a.isOff);
+    return row ? { startTime: row.startTime, endTime: row.endTime } : null;
+  };
+  const salonWindow = salonWorkingWindow(stylists.map(hoursOf));
   return <ul className="divide-y divide-zinc-100">
     {blocks.map((block) => {
-      const stylist = stylists.find((entry) => entry.id === block.stylistId)?.name ?? t('appointment.stylistFallback');
-      const label = calendarBusyLabel(block, stylist, block.startMin, block.endMin, t);
+      const entry = stylists.find((candidate) => candidate.id === block.stylistId);
+      const stylist = entry?.name ?? t('appointment.stylistFallback');
+      const wholeDay = isWholeDayBlock(block, hoursOf(entry) ?? salonWindow);
+      const label = calendarBusyLabel(block, stylist, block.startMin, block.endMin, t, wholeDay);
       return <li key={block.id} role="note" aria-label={label.detail} className="border-l-4 border-l-zinc-400 bg-zinc-50 px-4 py-3 text-sm">
         <div className="flex flex-wrap justify-between gap-2 font-semibold text-zinc-800"><span>{label.provider}</span><span className="tabular-nums">{label.range}</span></div>
-        <p className="mt-1 text-zinc-600">{t('busy.agendaImported', { stylist })}</p>
+        <p className="mt-1 text-zinc-600">{wholeDay ? t('busy.agendaUnavailable', { stylist }) : t('busy.agendaImported', { stylist })}</p>
         <p className="mt-1 text-xs text-zinc-500">{t('busy.agendaSynced', { synced: label.synced })}</p>
       </li>;
     })}
@@ -300,7 +308,7 @@ const DayView = ({ dateStr, dayAppts, busyBlocks, stylists, onRefresh, onEdit }:
                 );
               })
           )}
-          <BusyAgenda blocks={busyBlocks} stylists={stylists} />
+          <BusyAgenda blocks={busyBlocks} stylists={stylists} dayKey={dateStr} />
       </div>
     </div>
   );
@@ -650,7 +658,7 @@ export function ScheduleCalendar({
                         ))}
                       </ul>
                     )}
-                    <BusyAgenda blocks={dayBusy} stylists={stylists} />
+                    <BusyAgenda blocks={dayBusy} stylists={stylists} dayKey={key} />
                   </div>
                 );
               })}

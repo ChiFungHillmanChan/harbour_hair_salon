@@ -14,7 +14,7 @@ import { salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
 import { overlaps } from '@/app/services/scheduling';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
 import { describeClash } from '@/app/lib/describe-clash';
-import { calendarBusyForDay, calendarBusyLabel, type CalendarBusyBlock } from '@/app/lib/calendar-busy-display';
+import { calendarBusyForDay, calendarBusyLabel, isWholeDayBlock, salonWorkingWindow, type CalendarBusyBlock } from '@/app/lib/calendar-busy-display';
 import { useT } from '@/i18n/client';
 
 /** 15 minutes = 18px. Tall enough to grab an edge, short enough to fit a day. */
@@ -127,6 +127,9 @@ export function ScheduleDayGrid({
     () => calendarBusyForDay(busyBlocks, dayKey),
     [busyBlocks, dayKey],
   );
+  // A stylist who is off in our rota can still have a Fresha "Pause" that day;
+  // it is judged against the salon's working day instead.
+  const salonWindow = useMemo(() => salonWorkingWindow(stylists.map((stylist) => stylist.availability)), [stylists]);
 
   // The grid spans the widest working day on show, then widens further to cover
   // anything already booked outside those hours — an admin may deliberately
@@ -441,7 +444,8 @@ export function ScheduleDayGrid({
                 .filter((block) => block.stylistId === stylist.id)
                 .map((block) => {
                   const { startMin, endMin } = block;
-                  const label = calendarBusyLabel(block, stylist.name, startMin, endMin, t);
+                  const wholeDay = isWholeDayBlock(block, stylist.availability ?? salonWindow);
+                  const label = calendarBusyLabel(block, stylist.name, startMin, endMin, t, wholeDay);
                   return (
                     <div
                       key={block.id}
@@ -450,7 +454,11 @@ export function ScheduleDayGrid({
                       aria-label={label.detail}
                       title={label.detail}
                       onClick={(event) => event.stopPropagation()}
-                      className="absolute left-1 right-1 overflow-hidden rounded border border-zinc-300 border-l-4 border-l-zinc-500 bg-zinc-100 px-1 text-[10px] leading-4 text-zinc-700 focus-visible:outline-2 focus-visible:outline-[#174F7F]"
+                      className={`absolute left-1 right-1 overflow-hidden rounded border px-1 leading-4 focus-visible:outline-2 focus-visible:outline-[#174F7F] ${
+                        wholeDay
+                          ? 'border-zinc-400 border-l-4 border-l-zinc-600 bg-[repeating-linear-gradient(135deg,var(--color-zinc-200)_0_6px,var(--color-zinc-100)_6px_12px)] py-1 text-xs text-zinc-800'
+                          : 'border-zinc-300 border-l-4 border-l-zinc-500 bg-zinc-100 text-[10px] text-zinc-700'
+                      }`}
                       style={{
                         top: minutesToOffset(startMin, bounds.startMin, PX_PER_MINUTE),
                         height: Math.max(18, (endMin - startMin) * PX_PER_MINUTE),
