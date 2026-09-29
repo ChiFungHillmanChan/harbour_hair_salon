@@ -17,6 +17,8 @@ function start() {
   const canvas = document.getElementById('scene');
   const quality = renderingQuality({ coarsePointer: matchMedia('(pointer: coarse)').matches, width: innerWidth, height: innerHeight, cores: navigator.hardwareConcurrency });
   let animationId=0, needsRender=true, frameVisible=true, contextLost=false, lastTime=0;
+  let motionRendering=false, detailTimer=0, viewWidth=0, viewHeight=0;
+  const renderSize=new THREE.Vector2();
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
   renderer.shadowMap.enabled = !quality.compact;
   renderer.shadowMap.autoUpdate = false;
@@ -565,9 +567,18 @@ function start() {
     el.addEventListener('click',()=>{stopTour();visit(key);});labelRoot.appendChild(el);return{key,el,point:new THREE.Vector3(...data.point)};
   });
   const state=()=>emit('state',{mode,zone,light:lightValue,tour:tourPlaying});
+  function updateResolution(moving=motionRendering){
+    if(!viewWidth||!viewHeight)return false;
+    const ratio=pixelRatioFor(viewWidth,viewHeight,devicePixelRatio,quality,moving);
+    renderer.getSize(renderSize);
+    if(renderSize.x===viewWidth&&renderSize.y===viewHeight&&renderer.getPixelRatio()===ratio)return false;
+    // One allocation only when the viewport or detail tier actually changes.
+    renderer.setDrawingBufferSize(viewWidth,viewHeight,ratio);
+    return true;
+  }
   function size(){
     const {width,height}=canvas.getBoundingClientRect();if(!width||!height)return;
-    renderer.setPixelRatio(pixelRatioFor(width,height,devicePixelRatio,quality));renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();
+    viewWidth=width;viewHeight=height;camera.aspect=width/height;camera.updateProjectionMatrix();
     if(mode==='dollhouse'&&!zone) home(false);
     if(mode==='plan') plan(false);
     requestRender();
@@ -643,7 +654,7 @@ function start() {
   listen('mode',({mode:next})=>{stopTour();setMode(next);});listen('zone',({zone:key})=>{stopTour();visit(key);});
   listen('light',({value})=>daylight(value));listen('labels',({visible})=>{labelsVisible=visible;requestRender();});
   listen('reset',()=>{stopTour();zone=null;setMode('dollhouse');daylight(70);labelsVisible=true;state();});
-  listen('capture',()=>{renderer.render(scene,camera);emit('captured',{url:canvas.toDataURL('image/png')});});
+  listen('capture',()=>{updateResolution(false);renderer.render(scene,camera);emit('captured',{url:canvas.toDataURL('image/png')});});
   listen('move',({direction,active})=>{if(active){if(tourPlaying)stopTour();touchMoves.add(direction);}else touchMoves.delete(direction);requestRender();});
   listen('tour',({playing})=>{
     stopTour();if(!playing)return;tourPlaying=true;setMode('walk',false);let index=0;const steps=['welcome','styling','wash','colour'];
@@ -667,10 +678,10 @@ function start() {
   window.addEventListener('keydown',event=>{if(mode!=='walk'||isUI(event.target)||document.querySelector('dialog[open]'))return;if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code)){event.preventDefault();keys.add(event.code);if(tourPlaying)stopTour();requestRender();}if(event.code==='Escape'){stopTour();setMode('dollhouse');}});
   window.addEventListener('keyup',event=>keys.delete(event.code));window.addEventListener('blur',()=>{keys.clear();touchMoves.clear();drag=null;});
   canvas.addEventListener('pointerdown',event=>{if(mode!=='walk')return;if(tourPlaying)stopTour();drag={x:event.clientX,y:event.clientY,id:event.pointerId};canvas.setPointerCapture(event.pointerId);canvas.style.cursor='grabbing';});
-  canvas.addEventListener('pointermove',event=>{if(!drag||mode!=='walk')return;yaw-=(event.clientX-drag.x)*.004;pitch=clamp(pitch-(event.clientY-drag.y)*.003,-1.05,1.05);drag.x=event.clientX;drag.y=event.clientY;requestRender();});
+  canvas.addEventListener('pointermove',event=>{if(!drag||mode!=='walk')return;yaw-=(event.clientX-drag.x)*.004;pitch=clamp(pitch-(event.clientY-drag.y)*.003,-1.05,1.05);drag.x=event.clientX;drag.y=event.clientY;requestMotionRender();});
   const release=()=>{drag=null;canvas.style.cursor='grab';};canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
   controls.addEventListener('start',()=>{tween=null;if(tourPlaying)stopTour();});
-  controls.addEventListener('change',requestRender);
+  controls.addEventListener('change',requestMotionRender);
   const resizeObserver=new ResizeObserver(size);resizeObserver.observe(canvas);
   const projected=new THREE.Vector3();
   const previousPosition=new THREE.Vector3(), previousRotation=new THREE.Quaternion();
@@ -679,6 +690,16 @@ function start() {
   function requestRender(){
     needsRender=true;
     if(!animationId&&!paused())animationId=requestAnimationFrame(render);
+  }
+  function requestMotionRender(){
+    if(quality.compact){
+      motionRendering=true;
+      clearTimeout(detailTimer);
+      // Touch/wheel events arrive in bursts. Resolve one crisp final frame
+      // after damping settles, then let the existing idle loop sleep.
+      detailTimer=setTimeout(()=>{motionRendering=false;requestRender();},180);
+    }
+    requestRender();
   }
   function render(now){
     animationId=0;
@@ -695,7 +716,9 @@ function start() {
     if(mode==='walk')move(dt);else controls.update();
     const moved=previousPosition.distanceToSquared(camera.position)>1e-10||1-Math.abs(previousRotation.dot(camera.quaternion))>1e-10;
     const walking=mode==='walk'&&!document.querySelector('dialog[open]')&&(keys.size>0||touchMoves.size>0||Math.abs(camera.position.y-LAYOUT.eyeHeight-floorHeightAt(camera.position.x,camera.position.z))>.0001);
-    if(!changing&&!moved&&!walking)return;
+    if(tween||moved||walking)requestMotionRender();
+    const resolutionChanged=updateResolution();
+    if(!changing&&!moved&&!walking&&!resolutionChanged)return;
     ceiling.visible=mode==='walk';toiletCeiling.visible=mode==='walk';
     if(mode==='walk')Object.values(walls).forEach(w=>w.visible=true);
     else if(mode==='plan'){Object.values(walls).forEach(w=>w.visible=false);}
@@ -718,6 +741,7 @@ function start() {
   }
   function resumeOrPause(){
     cancelAnimationFrame(animationId);animationId=0;lastTime=0;
+    clearTimeout(detailTimer);motionRendering=false;
     if(paused()||document.querySelector('dialog[open]')){keys.clear();touchMoves.clear();drag=null;if(tourPlaying)stopTour();}
     if(!paused())requestRender();
   }
@@ -725,9 +749,9 @@ function start() {
   window.addEventListener('message',event=>{if(event.origin===location.origin&&event.source===window.parent&&event.data?.type==='harbour:visibility'){frameVisible=event.data.visible===true;resumeOrPause();}});
   const dialogsObserver=new MutationObserver(resumeOrPause);
   document.querySelectorAll('dialog').forEach(dialog=>dialogsObserver.observe(dialog,{attributes:true,attributeFilter:['open']}));
-  window.addEventListener('pagehide',()=>{cancelAnimationFrame(animationId);animationId=0;});
+  window.addEventListener('pagehide',()=>{cancelAnimationFrame(animationId);clearTimeout(detailTimer);animationId=0;});
   window.addEventListener('pageshow',resumeOrPause);
-  canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();contextLost=true;cancelAnimationFrame(animationId);animationId=0;emit('error',{message:t('The 3D graphics context was interrupted. Reload this file to reopen the studio.')});});
+  canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();contextLost=true;cancelAnimationFrame(animationId);clearTimeout(detailTimer);animationId=0;emit('error',{message:t('The 3D graphics context was interrupted. Reload this file to reopen the studio.')});});
   size();daylight(70);state();requestRender();emit('ready');
   // A small read-only diagnostic surface for checking the standalone demo.
   window.harbourStudio={getState:()=>({mode,zone,light:lightValue,tour:tourPlaying,position:camera.position.toArray(),drawCalls:renderer.info.render.calls,frames:frameCount,quality:quality.compact?'compact':'desktop'}),renderer};

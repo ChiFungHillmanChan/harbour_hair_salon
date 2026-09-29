@@ -3,11 +3,20 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export function renderingQuality({ coarsePointer, width, height, cores = 8 }) {
   const compact = coarsePointer || Math.min(width, height) < 700 || cores <= 4;
-  return { compact, fps: compact ? 30 : 60, maxDpr: compact ? 1.15 : 1.5, maxPixels: compact ? 1000000 : 2200000 };
+  // Keep expensive scene effects in the compact tier, but let a resting image
+  // resolve fine details. Motion has its own smaller fill-rate budget.
+  return {
+    compact, fps: compact ? 30 : 60,
+    maxDpr: compact ? 2 : 1.5, maxPixels: compact ? 3000000 : 2200000,
+    motionMaxDpr: compact && cores <= 4 ? 1.15 : 1.5,
+    motionMaxPixels: compact ? (cores <= 4 ? 1000000 : 1800000) : 2200000,
+  };
 }
 
-export function pixelRatioFor(width, height, deviceRatio, quality) {
-  return Math.min(deviceRatio, quality.maxDpr, Math.sqrt(quality.maxPixels / Math.max(1, width * height)));
+export function pixelRatioFor(width, height, deviceRatio, quality, moving = false) {
+  const maxDpr = moving ? quality.motionMaxDpr : quality.maxDpr;
+  const maxPixels = moving ? quality.motionMaxPixels : quality.maxPixels;
+  return Math.min(deviceRatio, maxDpr, Math.sqrt(maxPixels / Math.max(1, width * height)));
 }
 
 // Furniture is static. Merge opaque parts by material while preserving every
