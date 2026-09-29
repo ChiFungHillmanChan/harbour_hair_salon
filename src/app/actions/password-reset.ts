@@ -165,7 +165,9 @@ export async function resetPassword(
 
       await tx.user.update({
         where: { id: record.userId },
-        data: { password: hashedPassword, sessionVersion: { increment: 1 } },
+        // Redeeming a link sent to the address proves the account receives
+        // mail there, which is what booking asks for (lib/email-verification.ts).
+        data: { password: hashedPassword, sessionVersion: { increment: 1 }, emailVerifiedAt: now },
       });
       await appendAuditEvent({ actorUserId: record.userId, action: 'AUTH.PASSWORD_RESET', targetType: 'User', targetId: record.userId }, tx);
       // Clear any other outstanding links for this account.

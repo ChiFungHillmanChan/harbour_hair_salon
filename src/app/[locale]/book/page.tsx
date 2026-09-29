@@ -8,6 +8,8 @@ import { redirect } from 'next/navigation';
 import { isBookingEnabled } from '@/app/lib/booking-maintenance';
 import { activeMarketplaces } from '@/app/services/marketplace-channels';
 import { getSession } from '@/app/lib/session';
+import { EMAIL_VERIFICATION_SELECT, hasVerifiedEmail } from '@/app/lib/email-verification';
+import { VerifyEmailResendForm } from '@/components/auth/VerifyEmailResendForm';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { getPublicCatalog } from '@/app/services/pricing/public-catalog';
 import { loadPublishedTranslations, overlay } from '@/app/services/content/translations';
@@ -141,6 +143,29 @@ export default async function BookPage() {
   const session = await getSession();
   if (!session?.userId) {
     redirect(localizeHref(locale, `/auth/signin?redirect=${encodeURIComponent(localizeHref(locale, '/book'))}`));
+  }
+
+  // Booking needs a confirmed address; submitBooking refuses without one (see
+  // lib/email-verification.ts). Say so up front, with a way to get a new link,
+  // instead of letting the customer fill in the whole wizard first.
+  const account = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { email: true, ...EMAIL_VERIFICATION_SELECT },
+  });
+  if (account && !hasVerifiedEmail(account)) {
+    const ta = await getT('auth');
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
+        <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-8 md:p-12 text-center">
+          <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
+          <h1 className="text-3xl md:text-4xl font-serif text-zinc-900 mb-4 tracking-tight">{ta('verifyEmail.promptTitle')}</h1>
+          <p className="text-zinc-600 leading-relaxed mb-8 break-words">{ta('verifyEmail.promptBody', { email: account.email })}</p>
+          <ClientMessages sections={{ auth: ['verifyEmail'] }}>
+            <VerifyEmailResendForm email={account.email} />
+          </ClientMessages>
+        </div>
+      </div>
+    );
   }
 
   const [catalog, stylists, aggregateRating] = await Promise.all([

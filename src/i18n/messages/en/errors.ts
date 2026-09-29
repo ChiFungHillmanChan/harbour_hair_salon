@@ -35,6 +35,7 @@ const errors = {
     INVALID_DATE_TIME: 'Invalid date or time',
     SLOTS_FAILED: 'Failed to fetch available slots',
     TOO_MANY_BOOKINGS: 'Too many booking attempts. Please try again shortly.',
+    EMAIL_NOT_VERIFIED: 'Please confirm your email address before booking online. Use the link we emailed you, or reload the booking page to get a new one.',
     TOO_MANY_ATTEMPTS: 'Too many attempts. Please try again shortly.',
     BOOKING_FAILED: 'Failed to create booking',
     PAST_TIME: 'Cannot book a time in the past',

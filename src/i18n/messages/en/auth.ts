@@ -20,6 +20,7 @@ const auth = {
     },
     mfa: { title: 'Verify administrator sign-in' },
     mfaSetup: { title: 'Set up administrator verification' },
+    verifyEmail: { title: 'Confirm your email address' },
   },
   fields: {
     email: 'Email address',
@@ -128,6 +129,22 @@ const auth = {
       RESTART_SETUP: 'Start authenticator setup again.',
       INVALID_CODE: 'The code is invalid, expired or already used. Try the next authenticator code or an unused recovery code.',
     },
+  },
+  verifyEmail: {
+    verifiedTitle: 'Email address confirmed',
+    verifiedBody: 'Thank you — your email address is confirmed. You can now book online.',
+    bookNow: 'Book an appointment',
+    invalidTitle: 'This link is not valid any more',
+    invalidBody: 'Confirmation links work for 48 hours, and only for the address they were sent to. Sign in and we will send you a new one.',
+    signIn: 'Sign in',
+    promptTitle: 'Confirm your email address to book',
+    promptBody: 'An online booking holds a real appointment and sends updates by email, so first we need to confirm that {email} is yours. We sent you a link when you registered.',
+    resend: 'Email me a new link',
+    resending: 'Sending…',
+    sent: 'We have sent a new link to {email}. Please check your inbox and spam folder.',
+    alreadyVerified: 'Your email address is already confirmed. Refresh this page to book.',
+    RATE_LIMITED: 'Too many requests. Please try again in an hour.',
+    SEND_FAILED: 'We could not send the email. Please try again later, or call the salon to book.',
   },
   /** Server Action results, addressed by the code the action (or its Zod schema) produced. */
   errors: {

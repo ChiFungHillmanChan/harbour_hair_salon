@@ -29,6 +29,10 @@ model User {
   /// Language for mail the salon sends when no page supplies one (e.g. a
   /// booking an administrator enters). en-GB or zh-HK; null means en-GB.
   preferredLocale String?
+  /// When the account last proved it receives mail at `email` (a verification
+  /// link or a redeemed password reset). Self-service booking requires it —
+  /// or a linked Google account — see lib/email-verification.ts.
+  emailVerifiedAt DateTime?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   appointments   Appointment[]

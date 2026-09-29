@@ -194,6 +194,30 @@ export function appointmentEmailContent(
   }
 }
 
+/**
+ * The link that proves an account receives mail at its address. It opens an
+ * API route, not a page: the route records the proof, then sends the visitor
+ * on in the language carried inside the signed token.
+ */
+export function emailVerificationContent(user: { name: string | null }, token: string, expiresInHours: number, locale: Locale): EmailContent {
+  const t = translator(locale, 'emails');
+  const name = user.name?.trim();
+  return {
+    locale,
+    palette: 'ink',
+    subject: t('emailVerification.subject'),
+    preview: t('emailVerification.preview'),
+    eyebrow: t('emailVerification.eyebrow'),
+    title: t('emailVerification.title'),
+    greeting: name ? t('common.greeting', { name }) : t('common.greetingNoName'),
+    intro: t('emailVerification.intro'),
+    details: [],
+    cta: { label: t('emailVerification.cta'), href: `${SITE_URL}/api/auth/verify-email?token=${encodeURIComponent(token)}` },
+    footnotes: [t('emailVerification.expiry', { hours: expiresInHours }), t('emailVerification.ignore')],
+    address: t('common.address'),
+  };
+}
+
 export function passwordResetContent(user: { name: string | null }, token: string, expiresInMinutes: number, locale: Locale): EmailContent {
   const t = translator(locale, 'emails');
   const name = user.name?.trim();
