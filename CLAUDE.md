@@ -108,6 +108,18 @@ Rules that follow from this:
   Before shipping any public route that touches the database, ask who polls it
   and how often, and check the runtime logs for the real cadence — not just
   `vercel.json`.
+- **A page that reads `searchParams` is dynamic, whatever its `revalidate` says.**
+  `/blog` (`?page=`) ran two Neon queries on every visit until 2026-09-29; its
+  cards now come from one Data Cache entry per language (`BLOG_POSTS_TAG` in
+  `blog-service.ts`, dropped by every blog/translation publish). Any new
+  dynamic public page must do the same or stay off the database.
+- **Preview deployments use the OLD production database** (`ep-muddy-violet…`,
+  us-east-1, project `neon-beige-river`): a stale copy of real customer data from
+  before the 2026-09-16 London move. It is NOT disposable. Apply new migrations
+  to it too (`prisma migrate deploy` with the preview env) or every PR's
+  "Deploy Preview" fails, as it did from #47 until it was migrated on
+  2026-09-29. Repointing Preview at a Neon branch of the London project is the
+  intended fix.
 - `infra/aws/treatwell-sync/` is a **dormant** EventBridge→Lambda fallback for
   the same endpoint. Do not deploy it; see its README.
 
@@ -137,5 +149,17 @@ Rules that follow from this:
 - **24-hour cancellation/reschedule policy** — enforced server-side in booking actions.
 - **Reschedule uses `$transaction` with Serializable isolation** — prevents double-booking race conditions.
 - **Use regular `<img>` for external/CDN images**, `next/image` only for local `public/` assets.
-- **Tailwind CSS only** for styling. Primary brand color: `#174F7F`.
+- **Tailwind CSS only** for styling. The brand is **monochrome black/white/grey** (client requirement) — never reintroduce the old blue `#174F7F` or gold.
 - **readme/structure.md**: Check before creating new functions/components to avoid duplication.
+
+### Security guardrails (2026-09-29 audit, PRs #48–#55 — keep them)
+
+- **Google sign-in:** a *first* Google sign-in may create or link an account only when Google is authoritative for the address (gmail/googlemail, or a Workspace `hd` claim), and never auto-links an administrator — `decideGoogleLink` in `lib/google-oauth.ts`. Already-linked identities sign in by Google id.
+- **Any code that sets a password** (admin reset, bootstrap, Google takeover defence, reset redemption) revokes that account's unused `PasswordResetToken`s in the same transaction. New passwords are capped at **72 UTF-8 bytes** (`fitsBcryptLimit`) — bcrypt ignores the rest.
+- **Rate limits** go through `lib/rate-limit.ts` and never fail open. Login and reset requests have per-IP *and* per-account buckets (keyed by `accountRateLimitKey`, a hash); a signed `login_device` cookie (`lib/login-device.ts`) lets a browser that signed in before skip the account bucket so strangers cannot lock the owner out.
+- **Self-service booking requires a confirmed email** (`hasVerifiedEmail`: `User.emailVerifiedAt` or a linked Google account).
+- **Public availability actions** refuse any date outside `isBookableDateWindow` *before* touching the database, and have a per-IP limiter. Rescheduling to the same time is a no-op; real reschedules are limited per customer and per appointment.
+- **Marketing unsubscribe** needs the signed emailed link (`lib/unsubscribe-token.ts`); the form never changes the list.
+- **Vercel Firewall:** the scanner-probe deny rule lives in the **project firewall**, versioned in `infra/vercel-firewall/` (apply with the CLI, see its README). **Never** put `routes` + `mitigate` in `vercel.json`: that deployment challenged *every* request, which Fresha's and Treatwell's iCal pollers cannot pass. Rate-limit rules are usage-billed — none are used.
+- **Spend Management:** intended as a US$10 on-demand budget with **email alerts only** (never pause production — the site would go offline). Set in the dashboard (Team → Settings → Billing).
+- **Planned, not built:** slot holds with a live Fresha check — `docs/superpowers/specs/2026-09-29-booking-slot-hold-and-live-sync-design.md` and its phase-1 plan.

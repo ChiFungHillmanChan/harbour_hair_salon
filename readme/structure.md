@@ -302,3 +302,10 @@ Plan: `docs/superpowers/plans/2026-09-29-stylist-unavailable-blocks.md`. Days of
 - `src/app/actions/email-verification.ts` — `resendVerificationEmail()` (session's own account, 3/hour); `sendEmailVerification` in `email-service.ts`, copy in `emails.emailVerification`
 - `src/components/auth/VerifyEmailResendForm.tsx` — "Email me a new link" button (action reference, works before hydration)
 - Gate: `submitBooking` refuses `EMAIL_NOT_VERIFIED` before spending the booking limiter; `/book` shows the prompt instead of the wizard. `register` sends the link after the response; redeeming a password reset also sets `emailVerifiedAt`. Migration `20260929120000_email_verification` backfills administrators and accounts that have redeemed a reset.
+
+## Security, firewall and design docs (2026-09-29)
+- `infra/vercel-firewall/block-scanner-probes.json` + `README.md` — the project-firewall deny rule for WordPress/PHP/secret-dotfile scanner probes (applied with `vercel firewall rules add --json … && vercel firewall publish`; rollback steps in the README); pinned by `src/app/lib/vercel-firewall-rules.test.ts` (real probes denied, every served path reachable). Not in `vercel.json` on purpose.
+- `src/app/lib/online-booking-lock.ts` — see the Square lock entry under Lib; also marked in CLAUDE.md/AGENTS.md.
+- `docs/superpowers/specs/2026-09-29-booking-slot-hold-and-live-sync-design.md` — design (Cantonese) for 10-minute slot holds (`SlotHold`), live per-stylist Fresha refresh and the Square/Google phases. **Not implemented.**
+- `docs/superpowers/plans/2026-09-29-booking-slot-hold-and-live-sync.md` — phase-1 implementation plan (9 TDD tasks) for the design above.
+

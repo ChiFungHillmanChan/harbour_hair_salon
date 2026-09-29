@@ -87,8 +87,21 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - **24-hour cancellation/reschedule policy** — enforced server-side in booking actions.
 - **Reschedule uses `$transaction` with Serializable isolation** — prevents double-booking race conditions.
 - **Use regular `<img>` for external/CDN images**, `next/image` only for local `public/` assets.
-- **Tailwind CSS only** for styling. Primary brand color: `#174F7F`.
+- **Tailwind CSS only** for styling. The brand is **monochrome black/white/grey** (client requirement) — never reintroduce the old blue `#174F7F` or gold.
 - **readme/structure.md**: Check before creating new functions/components to avoid duplication.
+- **Online booking is LOCKED closed in production until Square deposits are wired** (`SQUARE_DEPOSITS_WIRED = false` in `src/app/lib/online-booking-lock.ts`; every production build, fails closed). The Square code is foundation only. Flip it only in the change that takes the deposit in `submitBooking`.
+- **Neon bills compute time, not queries** — read CLAUDE.md "Neon compute budget" before adding a cron, a dynamic public page or a timed cache expiry. `/blog` reads `?page=` and is therefore dynamic; it serves from the Data Cache (`BLOG_POSTS_TAG`).
+- **Preview deployments use the OLD production database copy** (us-east-1, real customer data from before 2026-09-16). Apply new migrations to it too, or every PR's preview build fails.
+
+## Security guardrails (2026-09-29 audit — keep them)
+
+- First Google sign-in: only Gmail/googlemail or Workspace (`hd`) addresses may create or link an account; administrators are never auto-linked (`decideGoogleLink`).
+- Every password change revokes unused reset tokens in the same transaction; new passwords ≤ 72 UTF-8 bytes (`fitsBcryptLimit`).
+- Login and reset requests: per-IP and per-account limits via `lib/rate-limit.ts` (never fail open); the `login_device` cookie keeps the owner's own browser out of the account bucket.
+- Self-service booking needs a confirmed email (`hasVerifiedEmail`). Availability lookups are bounded by `isBookableDateWindow` before any query.
+- Marketing unsubscribe only through the signed emailed link.
+- Scanner probes are denied by a **project firewall** rule (`infra/vercel-firewall/`, applied with the Vercel CLI). Never use `vercel.json` `routes` + `mitigate`: it challenged all traffic, including the marketplaces' iCal pollers.
+- Planned, not built: slot holds + live Fresha check — see `docs/superpowers/specs/2026-09-29-booking-slot-hold-and-live-sync-design.md`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
