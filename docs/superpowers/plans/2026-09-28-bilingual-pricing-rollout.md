@@ -78,8 +78,10 @@ compute once; run them together.
    skipped; translate those in Admin with the bilingual editor.
 
 5. **Cache** — the tools write directly to the database, but public pages are cached for up to
-   an hour. Refresh once: push any commit (a new deployment rebuilds every page), or in
-   Admin → Settings press Save (revalidates every page and the settings cache).
+   an hour. Refresh once: in Admin → Settings press Save (revalidates every page, the
+   settings cache and — since PR #57 — the cached blog list). A new deployment rebuilds the
+   pages but does NOT clear Data Cache entries such as the blog list (`blog-posts`, up to
+   24 h); from a terminal, `npx vercel cache invalidate --tag blog-posts --yes` clears it.
 
 6. **Owner decisions still needed before the new options can be booked online**: the
    durations of the 7 new extra-long options (created with placeholder minutes, listed
