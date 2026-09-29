@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import type { Locale } from '@/i18n/config';
 
 /** The standalone scene is requested only when this route's frame is visible. */
-export default function Salon3DFrame({ title }: { title: string }) {
+export default function Salon3DFrame({ title, locale }: { title: string; locale: Locale }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export default function Salon3DFrame({ title }: { title: string }) {
   return (
     <iframe
       ref={frameRef}
-      src="/harbour-hair-3d.html"
+      src={`/harbour-hair-3d.html?lang=${locale}`}
       title={title}
       loading="lazy"
       allow="fullscreen"

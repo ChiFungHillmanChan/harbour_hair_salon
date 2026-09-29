@@ -26,7 +26,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Salon3DPage() {
-  const t = await getT('salon3d');
+  const [t, locale] = await Promise.all([getT('salon3d'), getLocale()]);
 
   return (
     <section aria-labelledby="salon-3d-heading" className="flex h-[calc(100svh-4.5rem)] flex-col bg-[#101e2b] text-white sm:h-[calc(100svh-5rem)]">
@@ -36,7 +36,7 @@ export default async function Salon3DPage() {
           <p className="mt-1 text-xs leading-relaxed text-slate-300 sm:text-sm [@media(max-height:500px)]:hidden">{t('intro')}</p>
         </div>
         <a
-          href="/harbour-hair-3d.html"
+          href={`/harbour-hair-3d.html?lang=${locale}`}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-white/20 px-3 text-xs font-medium text-white transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
@@ -48,7 +48,7 @@ export default async function Salon3DPage() {
         </a>
       </div>
       <div className="min-h-0 flex-1">
-        <Salon3DFrame title={t('frameTitle')} />
+        <Salon3DFrame title={t('frameTitle')} locale={locale} />
       </div>
       <p className="shrink-0 border-t border-white/10 px-4 py-2 text-[11px] leading-relaxed text-slate-400 sm:px-6 lg:px-8 [@media(max-height:500px)]:hidden">{t('note')}</p>
     </section>

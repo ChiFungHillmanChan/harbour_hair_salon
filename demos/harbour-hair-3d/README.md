@@ -49,6 +49,8 @@ The interface uses a slate-blue canvas, Harbour blue (#174F7F), frost-blue accen
 
 The public website embeds this file at `/3d` and `/zh-hk/3d`, linked as **3D** in desktop and mobile navigation. No Three.js code loads on other routes. The iframe loads lazily and sends visibility notifications; hidden tabs, offscreen frames and photo/export dialogs stop the render loop. Resting scenes stop rendering after camera damping settles.
 
+The website passes its selected language to both the iframe and direct-open link (`?lang=en-GB` or `?lang=zh-HK`). The standalone file defaults to English and includes Traditional Chinese translations for navigation, room labels, lighting, dialogs, photo captions, hints, accessibility labels and errors. Changing website language reloads the same scene in that language. Physical salon signs and the Harbour Hair brand remain as photographed.
+
 `rendering.js` merges static furniture parts by material while retaining cutaway-wall visibility. Touch devices, narrow views and low-core devices use a 30 fps cap, at most 1 million drawing-buffer pixels and DPR 1.15, with static mirror faces and no shadow pass. Desktop uses a 60 fps cap, 2.2 million pixel budget, 512px reflections and cached 1024px shadows. Device performance still varies; viewport tests are not a substitute for real phone GPU testing. The model keeps mouse, keyboard, touch walking controls and short-landscape layouts.
 
 Run `pnpm demo:test` and `pnpm demo:build` before committing. CI installs the pinned demo dependencies, runs layout/rendering tests, audits them and checks the generated HTML against the committed file. Production continues through the existing GitHub Actions workflow after CI passes. The asset allows only same-origin framing; all other site routes retain their existing frame-denial headers.
@@ -57,6 +59,7 @@ Run `pnpm demo:test` and `pnpm demo:build` before committing. CI installs the pi
 
 - `index.html` — semantic tool interface and photo dialogs
 - `interface.js` — UI state and input events
+- `i18n.js` / `i18n.test.js` — standalone EN/ZH translations, locale selection and coverage checks
 - `scene.js` — geometry, materials, lighting, navigation and rendering
 - `layout.js` — shared room dimensions, furniture collision and floor height
 - `layout.test.js` — walking route, fixture clearance and stair-height checks

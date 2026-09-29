@@ -1,3 +1,7 @@
+import { initI18n, t } from './i18n.js';
+
+initI18n();
+
 const emit = (name, detail = {}) => window.dispatchEvent(new CustomEvent(`salon:${name}`, { detail }));
 const $ = (selector) => document.querySelector(selector);
 const all = (selector) => [...document.querySelectorAll(selector)];
@@ -20,7 +24,7 @@ function setCleanView(enabled) {
   all('[data-studio-ui]').forEach((element) => { element.inert = state.cleanView; });
   const button = $('[data-action="labels"]');
   button.setAttribute('aria-pressed', String(state.cleanView));
-  button.title = state.cleanView ? 'Show viewing controls and labels' : 'Hide viewing controls and labels';
+  button.title = t(state.cleanView ? 'Show viewing controls and labels' : 'Hide viewing controls and labels');
   $('[data-clean-eye-slash]').classList.toggle('hidden', !state.cleanView);
   emit('labels', { visible: !state.cleanView && state.labels });
 }
@@ -34,7 +38,7 @@ document.addEventListener('keydown', (event) => {
 
 function announce(message) {
   const notice = $('#notice');
-  notice.textContent = message;
+  notice.textContent = t(message);
   notice.classList.remove('hidden');
   clearTimeout(noticeTimer);
   noticeTimer = setTimeout(() => notice.classList.add('hidden'), 2600);
@@ -48,8 +52,8 @@ function updateMode(mode) {
   all('[data-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
   $('#walk-controls').classList.toggle('hidden', mode !== 'walk');
   $('#walk-controls').classList.toggle('grid', mode === 'walk');
-  $('#interaction-hint').textContent = mode === 'walk' ? 'WASD / arrows to walk · Drag to look' : mode === 'plan' ? 'Drag to move · Scroll to zoom' : 'Drag to orbit · Scroll to zoom';
-  $('#scene').setAttribute('aria-label', mode === 'walk' ? 'Walk inside Harbour Hair. Use W A S D or arrow keys to move and drag to look around.' : mode === 'plan' ? 'Overhead floor plan of Harbour Hair. Drag to move and scroll to zoom.' : 'Interactive 3D model of Harbour Hair salon. Drag to rotate and scroll to zoom.');
+  $('#interaction-hint').textContent = t(mode === 'walk' ? 'WASD / arrows to walk · Drag to look' : mode === 'plan' ? 'Drag to move · Scroll to zoom' : 'Drag to orbit · Scroll to zoom');
+  $('#scene').setAttribute('aria-label', t(mode === 'walk' ? 'Walk inside Harbour Hair. Use W A S D or arrow keys to move and drag to look around.' : mode === 'plan' ? 'Overhead floor plan of Harbour Hair. Drag to move and scroll to zoom.' : 'Interactive 3D model of Harbour Hair salon. Drag to rotate and scroll to zoom.'));
 }
 
 function updateZone(zone) {
@@ -71,7 +75,7 @@ function updateTour(playing) {
   state.tour = Boolean(playing);
   const button = $('[data-action="tour"]');
   button.setAttribute('aria-pressed', String(state.tour));
-  $('[data-tour-label]').textContent = state.tour ? 'Pause the tour' : 'Take a little tour';
+  $('[data-tour-label]').textContent = t(state.tour ? 'Pause the tour' : 'Take a little tour');
 }
 
 function restorePanels() {
@@ -195,7 +199,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('salon:ready', () => $('#loading').classList.add('hidden'));
 window.addEventListener('salon:error', (event) => {
   $('#loading').classList.add('hidden');
-  $('#error-message').textContent = event.detail?.message || 'Open this file in a current browser with hardware acceleration enabled, then reload.';
+  $('#error-message').textContent = t(event.detail?.message || 'Open this file in a current browser with hardware acceleration enabled, then reload.');
   $('#error').classList.remove('hidden');
   $('#error').classList.add('flex');
 });

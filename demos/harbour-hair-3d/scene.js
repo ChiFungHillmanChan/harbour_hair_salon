@@ -6,6 +6,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LAYOUT, floorHeightAt, canWalkAt } from './layout.js';
 import { batchStaticMeshes, pixelRatioFor, renderingQuality } from './rendering.js';
+import { t } from './i18n.js';
 
 const emit = (name, detail = {}) => window.dispatchEvent(new CustomEvent(`salon:${name}`, { detail }));
 const listen = (name, callback) => window.addEventListener(`salon:${name}`, event => callback(event.detail));
@@ -558,8 +559,9 @@ function start() {
   };
   const labelRoot=document.getElementById('hotspots');
   const labels=Object.entries(zoneData).map(([key,data])=>{
-    const el=document.createElement('button');el.type='button';el.setAttribute('aria-label',`Visit ${data.label}`);el.className='absolute pointer-events-auto flex items-center gap-2 rounded-full border border-white/20 bg-[#102331]/90 px-3 py-2 text-[11px] text-white shadow-lg transition-colors hover:bg-[#174F7F] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-300';
-    el.innerHTML=`<span class="h-1.5 w-1.5 rounded-full bg-sky-200 shadow-[0_0_8px_#7dd3fc]"></span><span>${data.label}</span>`;
+    const el=document.createElement('button');el.type='button';el.className='absolute pointer-events-auto flex items-center gap-2 rounded-full border border-white/20 bg-[#102331]/90 px-3 py-2 text-[11px] text-white shadow-lg transition-colors hover:bg-[#174F7F] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-300';
+    el.setAttribute('aria-label',`${t('Visit')} ${t(data.label)}`);
+    el.innerHTML=`<span class="h-1.5 w-1.5 rounded-full bg-sky-200 shadow-[0_0_8px_#7dd3fc]"></span><span>${t(data.label)}</span>`;
     el.addEventListener('click',()=>{stopTour();visit(key);});labelRoot.appendChild(el);return{key,el,point:new THREE.Vector3(...data.point)};
   });
   const state=()=>emit('state',{mode,zone,light:lightValue,tour:tourPlaying});
@@ -725,9 +727,9 @@ function start() {
   document.querySelectorAll('dialog').forEach(dialog=>dialogsObserver.observe(dialog,{attributes:true,attributeFilter:['open']}));
   window.addEventListener('pagehide',()=>{cancelAnimationFrame(animationId);animationId=0;});
   window.addEventListener('pageshow',resumeOrPause);
-  canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();contextLost=true;cancelAnimationFrame(animationId);animationId=0;emit('error',{message:'The 3D graphics context was interrupted. Reload this file to reopen the studio.'});});
+  canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();contextLost=true;cancelAnimationFrame(animationId);animationId=0;emit('error',{message:t('The 3D graphics context was interrupted. Reload this file to reopen the studio.')});});
   size();daylight(70);state();requestRender();emit('ready');
   // A small read-only diagnostic surface for checking the standalone demo.
   window.harbourStudio={getState:()=>({mode,zone,light:lightValue,tour:tourPlaying,position:camera.position.toArray(),drawCalls:renderer.info.render.calls,frames:frameCount,quality:quality.compact?'compact':'desktop'}),renderer};
 }
-try { start(); } catch(error) { console.error(error);emit('error',{message:'This browser could not start the 3D view. Open this HTML in a recent Chrome, Edge, Safari or Firefox with WebGL enabled. The real salon photos are still available.'}); }
+try { start(); } catch(error) { console.error(error);emit('error',{message:t('This browser could not start the 3D view. Open this HTML in a recent Chrome, Edge, Safari or Firefox with WebGL enabled. The real salon photos are still available.')}); }
