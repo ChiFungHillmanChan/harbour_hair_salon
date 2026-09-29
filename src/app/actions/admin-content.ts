@@ -17,6 +17,7 @@ import {
   type SharedFields,
 } from '@/app/services/content/drafts';
 import { applyServicePrice, ServicePriceError } from '@/app/services/pricing/service-price';
+import { BLOG_POSTS_TAG } from '@/app/services/blog-service';
 
 export type ContentActionResult = { ok: true; state: EditorState; message?: string } | { ok: false; error: string };
 
@@ -55,6 +56,8 @@ function sharedFor(type: ContentEntityType, shared: unknown): SharedFields | und
 function refreshPublicPages() {
   updateTag('site-settings');
   updateTag('active-offers');
+  // Blog list cards, including their published translations.
+  updateTag(BLOG_POSTS_TAG);
   revalidatePath('/', 'layout');
   revalidatePath('/sitemap.xml');
 }

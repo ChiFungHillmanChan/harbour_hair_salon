@@ -8,25 +8,52 @@ const row = { id: 'p', slug: 'post', title: 'Post', description: 'Description', 
 function blogFixture() {
   const queries: Query[] = [];
   const posts = Array.from({ length: 30 }, (_, i) => ({ ...row, id: `p${i}`, slug: `post-${i}` }));
+  // A stand-in for the Data Cache: one stored entry per key, kept as JSON like
+  // the real one (so dates come back as strings).
+  const store = new Map<string, unknown>();
+  const cacheOptions = new Map<string, { revalidate?: number | false; tags?: string[] }>();
   const service = loadServerModule<typeof import('./blog-service')>('src/app/services/blog-service.ts', {
     '@/app/lib/prisma': { blogPost: {
       findMany: async (query: Query) => { queries.push(query); return posts.slice(query.skip ?? 0, query.take ? (query.skip ?? 0) + query.take : undefined); },
       groupBy: async () => [{ status: 'PUBLISHED', _count: { _all: 30 } }],
     } },
+    'next/cache': {
+      unstable_cache: (read: (...args: unknown[]) => Promise<unknown>, keyParts: string[], options: { revalidate?: number | false; tags?: string[] }) => {
+        cacheOptions.set(keyParts.join('/'), options);
+        return async (...args: unknown[]) => {
+          const key = JSON.stringify([keyParts, args]);
+          if (!store.has(key)) store.set(key, JSON.parse(JSON.stringify(await read(...args))));
+          return store.get(key);
+        };
+      },
+    },
   });
-  return { service, queries };
+  return { service, queries, cacheOptions };
 }
 
-test('public blog pagination reads a bounded summary page and exposes the next page', async () => {
+test('every public blog page is served from one cached read of summary cards', async () => {
   const f = blogFixture();
-  const result = await f.service.getPublishedPosts(2);
-  assert.equal(f.queries[0].take, 13);
-  assert.equal(f.queries[0].skip, 12);
+  const second = await f.service.getPublishedPosts(2);
+  assert.equal(second.posts.length, 12);
+  assert.equal(second.posts[0].id, 'p12');
+  assert.equal(second.hasMore, true);
+  assert.ok(second.posts[0].publishedAt instanceof Date, 'dates survive the cache');
+
+  const third = await f.service.getPublishedPosts(3);
+  assert.deepEqual(third.posts.map((post) => post.id), ['p24', 'p25', 'p26', 'p27', 'p28', 'p29']);
+  assert.equal(third.hasMore, false);
+
+  // A bot walking ?page=… reads nothing more from the database.
+  const beyond = await f.service.getPublishedPosts(9999);
+  assert.deepEqual(beyond, { posts: [], hasMore: false });
+  assert.equal(f.queries.length, 1, 'one query serves every page number');
   assert.ok(f.queries[0].select);
-  assert.ok(!('sectionsJson' in f.queries[0].select!));
-  assert.equal(result.posts.length, 12);
-  assert.equal(result.posts[0].id, 'p12');
-  assert.equal(result.hasMore, true);
+  assert.ok(!('sectionsJson' in f.queries[0].select!), 'lists never load article bodies');
+
+  // Dropped by every publish; the timer is only a safety net (Neon budget).
+  const options = f.cacheOptions.get('blog-published-cards');
+  assert.deepEqual(options?.tags, ['blog-posts']);
+  assert.ok(options?.revalidate === false || (typeof options?.revalidate === 'number' && options.revalidate >= 12 * 60 * 60));
 });
 
 test('admin blog pagination uses summary fields while totals describe all posts', async () => {

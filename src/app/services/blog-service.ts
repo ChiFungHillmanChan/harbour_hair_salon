@@ -1,5 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import prisma from '@/app/lib/prisma';
 import type { BlogPost, Prisma } from '@prisma/client';
 import type { Locale } from '@/i18n/config';
@@ -90,19 +91,44 @@ const postCardSelect = {
   publishedAt: true, readingTime: true, coverImage: true, coverAlt: true,
 } satisfies Prisma.BlogPostSelect;
 
-/** Lists never load article bodies; one extra row determines the next link. */
+/** Data Cache tag for the blog list. Every blog or translation publish drops it. */
+export const BLOG_POSTS_TAG = 'blog-posts';
+const BLOG_PAGE_SIZE = 12;
+
+/**
+ * Every published post card in one language, from the Data Cache.
+ *
+ * The list page is dynamic (it reads `?page=`), so this used to run two
+ * queries against Neon on EVERY visit — and a bot walking `?page=1…9999` could
+ * keep the compute awake on its own. Now all page numbers share one entry per
+ * language; nothing reaches the database until a post or its translation is
+ * published (actions/admin-blog.ts and actions/admin-content.ts drop the tag).
+ * The day-long expiry is only a safety net: a timed expiry is itself a poll
+ * (CLAUDE.md, "Neon compute budget"). Cards are small and posts few, so one
+ * entry stays far below the cache's size limit.
+ */
+const readPublishedCards = unstable_cache(
+  async (locale: Locale) => {
+    const rows = await prisma.blogPost.findMany({
+      where: { status: 'PUBLISHED' },
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+      select: postCardSelect,
+    });
+    if (locale === 'en-GB') return rows.map((post) => ({ ...post, translated: true }));
+    const translations = await loadPublishedTranslations(prisma, 'BLOG_POST', rows.map((post) => post.id), locale);
+    return rows.map((post) => overlay(post, translations.get(post.id), ['title', 'excerpt', 'coverAlt']));
+  },
+  ['blog-published-cards'],
+  { revalidate: 24 * 60 * 60, tags: [BLOG_POSTS_TAG] },
+);
+
+/** Lists never load article bodies. */
 export const getPublishedPosts = cache(async (page = 1, locale: Locale = 'en-GB') => {
-  const size = 12;
-  const rows = await prisma.blogPost.findMany({
-    where: { status: 'PUBLISHED' },
-    orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
-    select: postCardSelect,
-    skip: (Math.max(1, Math.min(9999, Math.floor(page) || 1)) - 1) * size,
-    take: size + 1,
-  });
-  const posts = rows.slice(0, size);
-  const translations = await loadPublishedTranslations(prisma, 'BLOG_POST', posts.map((post) => post.id), locale);
-  return { posts: posts.map((post) => (locale === 'en-GB' ? { ...post, translated: true } : overlay(post, translations.get(post.id), ['title', 'excerpt', 'coverAlt']))), hasMore: rows.length > size };
+  const cards = await readPublishedCards(locale);
+  const start = (Math.max(1, Math.min(9999, Math.floor(page) || 1)) - 1) * BLOG_PAGE_SIZE;
+  // The Data Cache stores JSON, so dates come back as strings.
+  const posts = cards.slice(start, start + BLOG_PAGE_SIZE).map((post) => ({ ...post, publishedAt: new Date(post.publishedAt) }));
+  return { posts, hasMore: cards.length > start + BLOG_PAGE_SIZE };
 });
 
 export async function getPublishedPostSlugs() {

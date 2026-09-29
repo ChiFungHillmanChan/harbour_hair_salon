@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { revalidateAllLocales } from '@/i18n/revalidate';
 import { fromZonedTime } from 'date-fns-tz';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
@@ -11,6 +11,7 @@ import { SALON_TIMEZONE } from '@/app/services/salon-time';
 import { getActionT, localizedPath } from '@/i18n/request';
 import type { MessageParams } from '@/i18n/format';
 import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
+import { BLOG_POSTS_TAG } from '@/app/services/blog-service';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -98,6 +99,8 @@ function parseSettings(formData: FormData) {
 }
 
 function refreshBlogPages(...slugs: string[]) {
+  // The list reads its cards from the Data Cache (services/blog-service.ts).
+  updateTag(BLOG_POSTS_TAG);
   revalidateAllLocales(revalidatePath, '/blog');
   for (const slug of new Set(slugs)) revalidateAllLocales(revalidatePath, `/blog/${slug}`);
   revalidateAllLocales(revalidatePath, '/admin/blog');
