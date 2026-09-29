@@ -134,3 +134,25 @@ test('production refuses to switch online booking on until Square deposits are w
     }
   }
 });
+
+test('saving settings also refreshes the cached blog list (the runbook\'s refresh step)', async () => {
+  const tags: string[] = [];
+  const f = fixture();
+  const actions = loadServerModule<typeof import('./admin-settings')>('src/app/actions/admin-settings.ts', {
+    '@/app/lib/prisma': { $transaction: async (run: (client: unknown) => Promise<unknown>) => run({
+      auditEvent: { create: async () => ({ id: 'audit' }) },
+      siteSettings: { findUnique: async () => ({ bookingEnabled: false }), upsert: async () => ({}) },
+      calendarConnection: { count: async () => 0 },
+    }) },
+    '@/app/lib/session': { verifySession: async () => ({ role: 'ADMIN' }) },
+    '@/app/services/integration-readiness': {},
+    '@/app/services/operations-readiness': {},
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
+    '@/app/services/blog-service': { BLOG_POSTS_TAG: 'blog-posts' },
+    'next/cache': { updateTag(tag: string) { tags.push(tag); }, revalidatePath() {} },
+  });
+  assert.equal((await actions.updateSiteSettings({ status: 'idle' }, f.form)).status, 'success');
+  assert.ok(tags.includes('site-settings'));
+  assert.ok(tags.includes('blog-posts'));
+});
+
