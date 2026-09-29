@@ -5,6 +5,7 @@ import prisma from '@/app/lib/prisma';
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
 import { BookingError } from '@/app/services/booking-errors';
 import { checkOperationsRuntimeReadiness } from '@/app/services/operations-readiness';
+import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
 
 // Online-booking master switch.
 //
@@ -38,6 +39,9 @@ export const BOOKING_MAINTENANCE_MESSAGE =
 
 /** Read the switch and calendar state without the public settings cache. */
 export async function assertOnlineBookingReady(db: Prisma.TransactionClient) {
+  // Production stays closed until Square deposits are wired, whatever the
+  // switch or the database says (lib/online-booking-lock.ts).
+  if (isOnlineBookingLockedForPayments()) throw new BookingError('MAINTENANCE');
   // A closed deployment must not wake Neon just to confirm booking is closed.
   if (process.env.NOTIFICATIONS_ENABLED !== 'true') throw new BookingError('MAINTENANCE');
   const settings = await db.siteSettings.findUnique({ where: { id: 'singleton' }, select: { bookingEnabled: true, phone: true } });
@@ -90,6 +94,7 @@ const readBookingOpen = unstable_cache(
 /** Configuration failures close the public booking flow; cancellation remains available. */
 export async function isBookingEnabled(): Promise<boolean> {
   // Check before cache hits too: an earlier deployment may have cached `true`.
+  if (isOnlineBookingLockedForPayments()) return false;
   if (process.env.NOTIFICATIONS_ENABLED !== 'true') return false;
   return readBookingOpen();
 }

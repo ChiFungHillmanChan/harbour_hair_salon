@@ -106,6 +106,7 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 ## Lib
 - `square-config.ts` — runtime-only Square configuration with explicit enablement, environment validation and secret-safe errors.
 - `square-webhook.ts` — constant-time HMAC verification using the exact registered URL and raw body; foundation helper only, no webhook route yet.
+- `online-booking-lock.ts` — `SQUARE_DEPOSITS_WIRED` (false) + `isOnlineBookingLockedForPayments(env)`: keeps production online booking closed until Square deposits are wired into `submitBooking`; checked first in `assertOnlineBookingReady` / `isBookingEnabled` (no DB read) and by Admin → Settings, which disables the switch and explains why. Not locked outside `VERCEL_ENV=production`; unit-tested
 - `pin.ts` — `isValidPin`, `hashPin`, `verifyPin` (bcryptjs); unit-tested
 - `password.ts` — `hashPassword`/`verifyPassword` (bcryptjs) + `fitsBcryptLimit` / `BCRYPT_MAX_PASSWORD_BYTES` (72 UTF-8 bytes — bcrypt ignores the rest), enforced wherever a NEW password is set (register, reset, admin create/reset); sign-in still accepts older longer passwords; unit-tested
 - `google-oauth.ts` — Google OAuth state/PKCE/nonce, code exchange and ID-token verification, plus `googleProfileFromClaims` (pure ID-token claims → profile), `isGoogleAuthoritativeEmail` (Gmail or Workspace `hd` only) and `decideGoogleLink` — the pure first-sign-in policy: refuse non-authoritative addresses, never auto-link an administrator, link a customer by destroying any planted password; unit-tested

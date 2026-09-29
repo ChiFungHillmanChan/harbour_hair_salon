@@ -133,6 +133,7 @@ Rules that follow from this:
 - **Never access env vars at module level** — wrap in async functions for runtime access.
 - **Email service uses `import 'server-only'`** — not `'use server'` (internal functions, not client-callable).
 - **Booking requires authentication** — middleware redirects to signin with `?redirect=/book`.
+- **Online booking is LOCKED closed in production until Square deposits are wired.** The Square code (`lib/square-config.ts`, `lib/square-webhook.ts`, `services/square-gateway.ts`, `services/deposit-policy.ts`) is foundation only — nothing in the booking flow calls it. `SQUARE_DEPOSITS_WIRED = false` in `lib/online-booking-lock.ts` makes `assertOnlineBookingReady` / `isBookingEnabled` answer "closed" on `VERCEL_ENV=production` before any DB read, and Admin → Settings refuses to switch booking on. Flip it to `true` only in the change that takes the deposit in `submitBooking`. Local, CI and preview are not locked.
 - **24-hour cancellation/reschedule policy** — enforced server-side in booking actions.
 - **Reschedule uses `$transaction` with Serializable isolation** — prevents double-booking race conditions.
 - **Use regular `<img>` for external/CDN images**, `next/image` only for local `public/` assets.

@@ -17,13 +17,15 @@ type OperationalSettings = Omit<SiteSettings, 'heroEyebrow' | 'heroTitleLine1' |
 
 interface SiteSettingsFormProps {
   settings: OperationalSettings;
+  /** Production cannot open online booking before Square deposits are wired (lib/online-booking-lock.ts). */
+  bookingLockedForPayments?: boolean;
 }
 
 const DRAFT_KEY = 'site-settings-form';
 const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
 const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2';
 
-export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
+export function SiteSettingsForm({ settings, bookingLockedForPayments = false }: SiteSettingsFormProps) {
   const t = useT('adminContent');
   const tc = useT('common');
   const formRef = usePreservedForm(DRAFT_KEY);
@@ -78,7 +80,8 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
             type="checkbox"
             name="bookingEnabled"
             defaultChecked={settings.bookingEnabled}
-            className="mt-1 h-5 w-5 rounded border-zinc-300 text-zinc-900 focus:ring-2 focus:ring-zinc-900"
+            disabled={bookingLockedForPayments}
+            className="mt-1 h-5 w-5 rounded border-zinc-300 text-zinc-900 focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
           />
           <span>
             <span className="block text-sm font-medium text-zinc-900">
@@ -92,7 +95,13 @@ export function SiteSettingsForm({ settings }: SiteSettingsFormProps) {
           </span>
         </label>
 
-        {!settings.bookingEnabled && (
+        {bookingLockedForPayments ? (
+          <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900" role="note">
+            {rich(t('settings.booking.paymentsLocked'), {
+              strong: (text) => <strong>{text}</strong>,
+            })}
+          </div>
+        ) : !settings.bookingEnabled && (
           <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
             {rich(t('settings.booking.offWarning'), {
               strong: (text) => <strong>{text}</strong>,

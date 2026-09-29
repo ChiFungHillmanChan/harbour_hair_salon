@@ -428,6 +428,7 @@ const adminContent = {
       help: 'The master switch for booking on this website. Takes effect as soon as you save — no redeploy needed.',
       label: 'Accept bookings on the website',
       explain: 'When off, <code>/book</code> shows the maintenance notice with your phone number and a link to each marketplace you have a URL for below, new bookings and reschedules are refused server-side, and the Reschedule button is disabled. Customers can still cancel existing appointments either way.',
+      paymentsLocked: '<strong>Online booking is locked until Square deposits are connected.</strong> The payment code is prepared but not wired into booking yet, so this switch cannot be turned on. Customers can still book by phone and on the marketplaces below.',
       offWarning: '<strong>Booking is currently OFF.</strong> Before switching it on, set your <hours>opening hours</hours> — and if any marketplace below is still selling the same chairs, check <integrations>Integrations</integrations> first: without two-way calendar sync the same slot can be sold twice.',
     },
     contact: {
@@ -478,6 +479,7 @@ const adminContent = {
       LOCALE: 'Choose English or Traditional Chinese.',
       CALENDAR_SYNC: 'Enable CALENDAR_SYNC_ENABLED and deploy the calendar schedule for active booking channels.',
       READINESS: 'Calendar and operational readiness must both pass.',
+      PAYMENTS_NOT_CONNECTED: 'Online booking stays locked until Square deposits are connected.',
       NOT_SAVED: 'Settings were not saved. {reasons}',
       SAVE_FAILED: 'Settings could not be saved. Retry after checking database availability.',
     },
