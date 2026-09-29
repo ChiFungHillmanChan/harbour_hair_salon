@@ -111,8 +111,11 @@ Rules that follow from this:
 - **A page that reads `searchParams` is dynamic, whatever its `revalidate` says.**
   `/blog` (`?page=`) ran two Neon queries on every visit until 2026-09-29; its
   cards now come from one Data Cache entry per language (`BLOG_POSTS_TAG` in
-  `blog-service.ts`, dropped by every blog/translation publish). Any new
-  dynamic public page must do the same or stay off the database.
+  `blog-service.ts`, dropped by every blog/translation publish and by Admin →
+  Settings → Save). A direct write (translation import, seed script, SQL) is
+  NOT seen for up to 24 h — press Settings → Save or run
+  `npx vercel cache invalidate --tag blog-posts --yes`. Any new dynamic public
+  page must do the same or stay off the database.
 - **Never return a fallback from inside a cached function.** `unstable_cache`
   stores whatever the callback returns, so a `catch { return DEFAULTS }` inside it
   caches the fallback for the whole revalidate period. Site settings did exactly
