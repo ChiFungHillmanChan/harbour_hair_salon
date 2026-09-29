@@ -1,5 +1,9 @@
 import 'server-only';
 
+// STATUS: NOT WIRED. Square deposit foundation only — nothing in the booking
+// flow calls this yet, and production online booking is locked closed until it
+// does. See lib/online-booking-lock.ts (SQUARE_DEPOSITS_WIRED).
+
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 /**

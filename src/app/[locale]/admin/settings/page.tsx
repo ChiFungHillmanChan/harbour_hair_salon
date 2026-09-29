@@ -4,6 +4,7 @@ import prisma from '@/app/lib/prisma';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { getEditorState } from '@/app/services/content/drafts';
 import { SiteSettingsForm } from '@/components/admin/SiteSettingsForm';
+import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
 import { BilingualContentEditor } from '@/components/admin/BilingualContentEditor';
 import { getT } from '@/i18n/server';
 import { rich } from '@/i18n/rich';
@@ -48,7 +49,7 @@ export default async function AdminSettingsPage() {
           })}
         </p>
       </div>
-      <SiteSettingsForm settings={operational} />
+      <SiteSettingsForm settings={operational} bookingLockedForPayments={isOnlineBookingLockedForPayments()} />
 
       <section className="mt-10 space-y-4" aria-labelledby="home-hero-title">
         <div>

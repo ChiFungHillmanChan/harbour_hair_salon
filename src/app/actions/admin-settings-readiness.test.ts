@@ -107,3 +107,30 @@ test('closing booking works even while every readiness check is failing', async 
   assert.equal(f.saved.bookingEnabled, false);
   assert.equal(f.saved.phone, '09876543210');
 });
+
+test('production refuses to switch online booking on until Square deposits are wired, but other settings still save', async () => {
+  const env = process.env as Record<string, string | undefined>;
+  const previous = { node: env.NODE_ENV, vercel: env.VERCEL_ENV };
+  env.NODE_ENV = 'production';
+  env.VERCEL_ENV = 'production';
+  try {
+    const f = fixture();
+    f.form.set('bookingEnabled', 'on');
+    const refused = await f.actions.updateSiteSettings({ status: 'idle' }, f.form);
+    assert.equal(refused.status, 'error');
+    assert.match('message' in refused ? refused.message : '', /Square deposits/);
+    assert.equal(f.saved.bookingEnabled, false);
+    assert.equal(f.saved.phone, '01234567890', 'nothing is saved with a refused switch');
+    assert.deepEqual(f.readinessCalls, { calendar: 0, operations: 0 });
+
+    // The form disables the switch, so a normal save sends no bookingEnabled.
+    const g = fixture();
+    assert.equal((await g.actions.updateSiteSettings({ status: 'idle' }, g.form)).status, 'success');
+    assert.equal(g.saved.phone, '09876543210');
+  } finally {
+    for (const [key, value] of [['NODE_ENV', previous.node], ['VERCEL_ENV', previous.vercel]] as const) {
+      if (value === undefined) delete env[key];
+      else env[key] = value;
+    }
+  }
+});

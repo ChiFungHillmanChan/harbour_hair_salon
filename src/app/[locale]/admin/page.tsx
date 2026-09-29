@@ -6,6 +6,7 @@ import { ScheduleCalendar } from '@/components/admin/ScheduleCalendar';
 import { type CalendarQuery } from '@/app/services/admin-calendar-range';
 import { getT } from '@/i18n/server';
 import { Suspense } from 'react';
+import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
 
 export default async function AdminDashboard({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[] }> }) {
   await requireAdmin();
@@ -47,7 +48,8 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
           page the salon actually opens every day. */}
       <CalendarSetupNotice
         coverage={syncCoverage}
-        bookingEnabled={settings.bookingEnabled}
+        // Effective state: the Square lock keeps production closed whatever the setting says.
+        bookingEnabled={settings.bookingEnabled && !isOnlineBookingLockedForPayments()}
         scheduledSyncEnabled={process.env.CALENDAR_SYNC_ENABLED === 'true'}
       />
 

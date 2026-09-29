@@ -110,3 +110,32 @@ test('the admin booking switch closes booking even when every other gate passes'
     if (previous.calendar === undefined) delete process.env.CALENDAR_SYNC_ENABLED; else process.env.CALENDAR_SYNC_ENABLED = previous.calendar;
   }
 });
+
+test('production stays closed until Square deposits are wired, even with a fully ready database and a warm open cache', async () => {
+  const env = process.env as Record<string, string | undefined>;
+  const previous = { node: env.NODE_ENV, vercel: env.VERCEL_ENV, notifications: env.NOTIFICATIONS_ENABLED };
+  let databaseReads = 0;
+  const db = { siteSettings: { findUnique: async () => { databaseReads++; return { bookingEnabled: true, phone: '01234' }; } } };
+  const maintenance = loadServerModule<typeof import('./booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
+    '@/app/lib/prisma': db,
+    '@/app/services/integration-readiness': { checkCalendarBookingReadiness: async () => ({ ready: true }) },
+    '@/app/services/operations-readiness': { checkOperationsRuntimeReadiness: async () => ({ ready: true }) },
+    // A cache warmed by a run that saw booking open must not reopen it.
+    'next/cache': { unstable_cache: () => async () => true },
+  });
+  try {
+    // A production build with no VERCEL_ENV at runtime: still locked.
+    env.NODE_ENV = 'production';
+    delete env.VERCEL_ENV;
+    env.NOTIFICATIONS_ENABLED = 'true';
+    await assert.rejects(maintenance.assertOnlineBookingReady(db as never), (error: unknown) =>
+      error instanceof BookingError && error.message === maintenance.BOOKING_MAINTENANCE_MESSAGE);
+    assert.equal(await maintenance.isBookingEnabled(), false);
+    assert.equal(databaseReads, 0, 'the lock is decided before any database read');
+  } finally {
+    for (const [key, value] of [['NODE_ENV', previous.node], ['VERCEL_ENV', previous.vercel], ['NOTIFICATIONS_ENABLED', previous.notifications]] as const) {
+      if (value === undefined) delete env[key];
+      else env[key] = value;
+    }
+  }
+});

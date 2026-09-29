@@ -8,6 +8,7 @@ import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
 import { checkOperationsBookingReadiness } from '@/app/services/operations-readiness';
+import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
 import { LOCALES } from '@/i18n/config';
 import { getActionT } from '@/i18n/request';
 
@@ -89,6 +90,11 @@ export async function updateSiteSettings(
       // editing the phone number or hero text must not fail just because
       // marketplace imports pause outside staff hours.
       const current = await tx.siteSettings.findUnique({ where: { id: 'singleton' }, select: { bookingEnabled: true } });
+      // Deposits are not taken yet, so production cannot open online booking
+      // at all (lib/online-booking-lock.ts). Say so rather than list readiness.
+      if (parsed.data.bookingEnabled && !current?.bookingEnabled && isOnlineBookingLockedForPayments()) {
+        return [t('settings.errors.PAYMENTS_NOT_CONNECTED')];
+      }
       if (parsed.data.bookingEnabled && !current?.bookingEnabled) {
         const calendar = await checkCalendarBookingReadiness(tx);
         const operations = await checkOperationsBookingReadiness(tx);

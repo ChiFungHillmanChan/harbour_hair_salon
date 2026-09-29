@@ -428,6 +428,7 @@ const adminContent: Localized<Messages['adminContent']> = {
       help: '本網站預約功能的總開關。儲存後即時生效，無須重新部署。',
       label: '接受網站預約',
       explain: '關閉時，<code>/book</code> 會顯示暫停預約通知，列出你的電話號碼及下方已填網址的各預約平台連結；伺服器會拒絕新預約及改期，「改期」按鈕亦會停用。無論開關與否，顧客仍可取消已有預約。',
+      paymentsLocked: '<strong>未接駁 Square 訂金前，網上預約會保持鎖定。</strong>付款程式已準備好，但仍未接入預約流程，所以此開關不能開啟。顧客仍可致電或透過下方預約平台預約。',
       offWarning: '<strong>網上預約現正關閉。</strong>開啟前請先設定<hours>營業時間</hours>——如下方任何預約平台仍在出售相同的座位，請先檢查<integrations>整合設定</integrations>：沒有雙向日曆同步，同一時段可能會被重複預約。',
     },
     contact: {
@@ -478,6 +479,7 @@ const adminContent: Localized<Messages['adminContent']> = {
       LOCALE: '請選擇英文或繁體中文。',
       CALENDAR_SYNC: '請啟用 CALENDAR_SYNC_ENABLED，並為使用中的預約渠道部署日曆同步排程。',
       READINESS: '日曆及營運檢查都必須通過。',
+      PAYMENTS_NOT_CONNECTED: '未接駁 Square 訂金前，網上預約會保持鎖定。',
       NOT_SAVED: '設定未有儲存。{reasons}',
       SAVE_FAILED: '未能儲存設定。請確認資料庫可用後再試。',
     },
