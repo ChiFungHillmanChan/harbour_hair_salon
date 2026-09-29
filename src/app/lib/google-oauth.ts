@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHash, randomBytes } from 'node:crypto';
-import { createRemoteJWKSet, jwtVerify, SignJWT } from 'jose';
+import { createRemoteJWKSet, jwtVerify, SignJWT, type JWTPayload } from 'jose';
 import { sanitizeRedirect } from '@/app/lib/redirect';
 import { isParseableUrl } from '@/app/lib/site-url';
 import { normalizeLocale, type Locale } from '@/i18n/config';
@@ -223,7 +223,11 @@ export async function verifyGoogleIdToken(idToken: string, nonce: string): Promi
     audience: clientId,
     issuer: ['https://accounts.google.com', 'accounts.google.com'],
   });
+  return googleProfileFromClaims(payload, nonce);
+}
 
+/** The profile in an ID token whose signature, audience and issuer are already checked. */
+export function googleProfileFromClaims(payload: JWTPayload, nonce: string): GoogleProfile {
   if (payload.nonce !== nonce || !payload.sub || typeof payload.email !== 'string' || payload.email_verified !== true) {
     throw new Error('Google did not return a verified identity');
   }

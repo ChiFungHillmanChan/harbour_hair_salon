@@ -129,9 +129,10 @@ export function createRateLimiter(
 export const loginLimiter = createRateLimiter({ prefix: 'rl:login', limit: 5, windowSeconds: 15 * 60 });
 // Per-ACCOUNT buckets, checked alongside the per-IP ones. Keyed by IP alone,
 // an attacker with many addresses gets a fresh budget for the same account
-// from each of them. Anyone can spend an account's budget, so the windows stay
-// short: once guessing stops, the owner waits minutes, and there is no lock
-// that needs an administrator to lift. Google sign-in is not counted here.
+// from each of them. Anyone can spend an account's budget, so a browser that
+// has signed in to the account before skips the login bucket
+// (lib/login-device.ts), and the windows stay short: there is no lock an
+// administrator has to lift. Google sign-in is not counted here.
 export const loginAccountLimiter = createRateLimiter({ prefix: 'rl:login-acct', limit: 10, windowSeconds: 15 * 60 });
 export const passwordResetAccountLimiter = createRateLimiter({ prefix: 'rl:pwreset-acct', limit: 3, windowSeconds: 60 * 60 });
 

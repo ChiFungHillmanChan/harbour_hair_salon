@@ -146,9 +146,16 @@ function loginFixture() {
   // A fresh, memory-backed account bucket with the production policy.
   const loginAccountLimiter = createRateLimiter({ prefix: 'test:login-acct', limit: 10, windowSeconds: 15 * 60 }, { redisLimiter: null });
   let ip = 0;
+  // Browsers that have signed in before, keyed by the address they signed in to.
+  let ownerDevice = false;
+  const remembered: string[] = [];
   const { login } = loadServerModule<typeof import('./auth')>('src/app/actions/auth.ts', {
     '@/app/lib/prisma': { user: { findUnique: async ({ where }: { where: { email: string } }) => ({ id: where.email, password: 'hash', role: 'ADMIN', sessionVersion: 0 }) } },
-    '@/app/lib/password': { fitsBcryptLimit, verifyPassword: async () => { verifications++; return false; } },
+    '@/app/lib/password': { fitsBcryptLimit, verifyPassword: async (value: string) => { verifications++; return value === 'correct-password'; } },
+    '@/app/lib/login-device': {
+      isRecognisedLoginDevice: async () => ownerDevice,
+      rememberLoginDevice: async (email: string) => { remembered.push(email); },
+    },
     '@/app/lib/session': { createSession: async () => {} },
     '@/app/lib/audit': { appendAuditEvent: async () => {} },
     // Every attempt comes from a new address, so the per-IP bucket never fires.
@@ -156,11 +163,11 @@ function loginFixture() {
     'next/navigation': { redirect: (path: string) => { throw new Error(path); } },
     '@/app/lib/rate-limit': { loginLimiter: { check: async () => true }, loginAccountLimiter, accountRateLimitKey },
   });
-  const attempt = (email: string) => {
-    const form = new FormData(); form.set('email', email); form.set('password', 'guess');
+  const attempt = (email: string, password = 'guess') => {
+    const form = new FormData(); form.set('email', email); form.set('password', password);
     return login(undefined, form);
   };
-  return { attempt, verifications: () => verifications };
+  return { attempt, verifications: () => verifications, remembered, useOwnerDevice: () => { ownerDevice = true; } };
 }
 
 test('password guesses spread across many IP addresses still hit a per-account limit', async () => {
@@ -173,6 +180,17 @@ test('password guesses spread across many IP addresses still hit a per-account l
   assert.equal(f.verifications(), 10, 'the eleventh guess is never checked against the password');
   // Other accounts are unaffected.
   assert.deepEqual(await f.attempt('someone-else@example.invalid'), { error: auth('errors.INCORRECT_CREDENTIALS') });
+});
+
+test('strangers spending the account limit cannot lock the owner out of their own browser', async () => {
+  const f = loginFixture();
+  for (let i = 0; i < 10; i++) await f.attempt('admin@example.invalid');
+  // A new browser is refused, even with the right password...
+  assert.deepEqual(await f.attempt('admin@example.invalid', 'correct-password'), { error: auth('errors.LOGIN_RATE_LIMITED') });
+  // ...but the one the owner signed in on before is not.
+  f.useOwnerDevice();
+  await assert.rejects(f.attempt('admin@example.invalid', 'correct-password'), /^Error: \/admin$/);
+  assert.deepEqual(f.remembered, ['admin@example.invalid'], 'only a correct password earns the device cookie');
 });
 
 test('reset requests from many IP addresses cannot flood one mailbox', async () => {

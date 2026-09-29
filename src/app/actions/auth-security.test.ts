@@ -79,6 +79,7 @@ test('administrator password login issues a full session without a second factor
       loginAccountLimiter: { check: async () => true },
       accountRateLimitKey: (email: string) => email,
     },
+    '@/app/lib/login-device': { isRecognisedLoginDevice: async () => false, rememberLoginDevice: async () => {} },
   });
   const form = new FormData(); form.set('email', 'admin@example.invalid'); form.set('password', 'fixture-password');
   await assert.rejects(login(undefined, form), /^Error: \/admin$/, 'an admin lands on the board, not an MFA screen');

@@ -9,6 +9,7 @@ import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { accountRateLimitKey, loginAccountLimiter, loginLimiter, registerLimiter } from '@/app/lib/rate-limit';
 import { postSignInPath } from '@/app/lib/post-auth-redirect';
+import { isRecognisedLoginDevice, rememberLoginDevice } from '@/app/lib/login-device';
 import { decideRegistration } from '@/app/lib/register-gate';
 import { appendAuditEvent } from '@/app/lib/audit';
 import { getActionT, localizedPath } from '@/i18n/request';
@@ -62,8 +63,10 @@ export async function login(prevState: unknown, formData: FormData) {
 
   // The per-IP bucket above cannot see guesses at one account spread across
   // many addresses; this one can. Checked before the lookup, for every
-  // address alike, so it says nothing about which accounts exist.
-  if (!(await loginAccountLimiter.check(accountRateLimitKey(email)))) {
+  // address alike, so it says nothing about which accounts exist. Anyone can
+  // spend it, so a browser that has signed in to this account before skips it
+  // (lib/login-device.ts) and the owner cannot be locked out by strangers.
+  if (!(await isRecognisedLoginDevice(email)) && !(await loginAccountLimiter.check(accountRateLimitKey(email)))) {
     return { error: t('errors.LOGIN_RATE_LIMITED') };
   }
 
@@ -83,6 +86,7 @@ export async function login(prevState: unknown, formData: FormData) {
 
   const redirectTo = postSignInPath(t.locale, formData.get('redirect') as string, user.role);
   await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.LOGIN', targetType: 'User', targetId: user.id, metadata: { method: 'password' } });
+  await rememberLoginDevice(email);
   // Password is the only factor. The session is marked verified so nothing
   // downstream can refuse an admin for a second factor that is never asked for.
   await createSession(user.id, user.role, user.sessionVersion, true);

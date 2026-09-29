@@ -4,6 +4,7 @@ import {
   createGoogleAuthorization,
   decideGoogleLink,
   getGoogleCallbackUrl,
+  googleProfileFromClaims,
   isGoogleAuthoritativeEmail,
   readGoogleState,
   readGoogleStateLocale,
@@ -123,4 +124,14 @@ test('a first Google sign-in links customers but never administrators', () => {
   assert.deepEqual(decideGoogleLink(owner, { role: 'ADMIN', hasPassword: false }), { kind: 'REFUSE', code: 'google_admin_link' });
   assert.deepEqual(decideGoogleLink(owner, { role: 'USER', hasPassword: true }), { kind: 'LINK', clearPassword: true });
   assert.deepEqual(decideGoogleLink(owner, { role: 'USER', hasPassword: false }), { kind: 'LINK', clearPassword: false });
+});
+
+test('the real ID-token mapping marks Workspace (hd) and Gmail identities authoritative, and nothing else', () => {
+  const claims = { nonce: 'n', sub: 'google-sub', email_verified: true };
+  assert.equal(googleProfileFromClaims({ ...claims, email: 'Owner@Salon.example', hd: 'salon.example' }, 'n').emailAuthoritative, true);
+  assert.equal(googleProfileFromClaims({ ...claims, email: 'owner@gmail.com' }, 'n').emailAuthoritative, true);
+  const thirdParty = googleProfileFromClaims({ ...claims, email: ' Owner@Outlook.example ', name: ' Owner ' }, 'n');
+  assert.deepEqual(thirdParty, { id: 'google-sub', email: 'owner@outlook.example', name: 'Owner', emailAuthoritative: false });
+  assert.throws(() => googleProfileFromClaims({ ...claims, email: 'owner@gmail.com' }, 'other-nonce'), /verified identity/);
+  assert.throws(() => googleProfileFromClaims({ ...claims, email: 'owner@gmail.com', email_verified: false }, 'n'), /verified identity/);
 });
