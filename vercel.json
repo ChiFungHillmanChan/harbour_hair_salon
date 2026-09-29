@@ -5,6 +5,32 @@
   "regions": [
     "lhr1"
   ],
+  "routes": [
+    {
+      "src": "^/(?:.*/)?(?:wp-admin|wp-login|wp-content|wp-includes|wp-json|wp-config|xmlrpc)(?:[/.].*)?$",
+      "mitigate": {
+        "action": "deny"
+      }
+    },
+    {
+      "src": "^/.*\\.(?:php\\d?|phtml|asp|aspx|jsp|cgi)(?:/.*)?$",
+      "mitigate": {
+        "action": "deny"
+      }
+    },
+    {
+      "src": "^/(?:.*/)?(?:phpinfo|php_info|_profiler)(?:[/.].*)?$",
+      "mitigate": {
+        "action": "deny"
+      }
+    },
+    {
+      "src": "^/(?:.*/)?\\.(?:env|git|svn|hg|aws|ssh|htaccess|htpasswd|DS_Store)(?:[/.].*)?$",
+      "mitigate": {
+        "action": "deny"
+      }
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/reminders",
