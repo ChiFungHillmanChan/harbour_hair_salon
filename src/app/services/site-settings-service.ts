@@ -86,30 +86,40 @@ function mapRow(row: {
 // Wrapped in React cache() so the several callers that fire per render (root
 // layout metadata, Header, Footer, page body) share ONE query per request
 // instead of each hitting Neon.
+// A failed read THROWS out of the cached function so it is never stored: the
+// fallback used to be returned from inside it, which cached DEFAULTS for up to
+// an hour site-wide whenever Neon was cold or briefly unreachable (seen in the
+// production logs several times a day) — silently replacing whatever the salon
+// had set in Admin → Settings. Now a failed revalidation keeps serving the last
+// good settings, and DEFAULTS only cover a request with nothing cached yet.
 const getSiteSettingsFromStore = unstable_cache(async (): Promise<SiteSettings> => {
-  try {
-    // Read-first, create-on-miss. Using upsert races under concurrent
-    // pre-rendering because two workers can both attempt INSERT.
-    const existing = await prisma.siteSettings.findUnique({ where: { id: SINGLETON_ID } });
-    if (existing) return mapRow(existing);
+  // Read-first, create-on-miss. Using upsert races under concurrent
+  // pre-rendering because two workers can both attempt INSERT.
+  const existing = await prisma.siteSettings.findUnique({ where: { id: SINGLETON_ID } });
+  if (existing) return mapRow(existing);
 
-    try {
-      const created = await prisma.siteSettings.create({ data: { id: SINGLETON_ID } });
-      return mapRow(created);
-    } catch {
-      // Someone else inserted it between our read and create. Read again.
-      const row = await prisma.siteSettings.findUnique({ where: { id: SINGLETON_ID } });
-      return row ? mapRow(row) : DEFAULTS;
-    }
+  try {
+    const created = await prisma.siteSettings.create({ data: { id: SINGLETON_ID } });
+    return mapRow(created);
+  } catch {
+    // Someone else inserted it between our read and create. Read again.
+    const row = await prisma.siteSettings.findUnique({ where: { id: SINGLETON_ID } });
+    return row ? mapRow(row) : DEFAULTS;
+  }
+}, ['site-settings'], { revalidate: 3600, tags: ['site-settings'] });
+
+async function getSiteSettingsOrDefaults(): Promise<SiteSettings> {
+  try {
+    return await getSiteSettingsFromStore();
   } catch (error) {
     console.error('Failed to load site settings:', error);
     return DEFAULTS;
   }
-}, ['site-settings'], { revalidate: 3600, tags: ['site-settings'] });
+}
 
 // React cache deduplicates within one render; unstable_cache shares the safe,
 // public singleton across requests and allows instant admin invalidation.
-export const getSiteSettings = cache(getSiteSettingsFromStore);
+export const getSiteSettings = cache(getSiteSettingsOrDefaults);
 
 export type HeroContent = Pick<SiteSettings, 'heroEyebrow' | 'heroTitleLine1' | 'heroTitleLine2' | 'heroSubtitle'> & { translated: boolean };
 
