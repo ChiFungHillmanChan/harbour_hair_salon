@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local checkouts and browser artifacts are not application source.
+    ".claude/worktrees/**",
+    "output/playwright/**",
+    ".playwright-cli/**",
   ]),
 ]);
 

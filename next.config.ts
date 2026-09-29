@@ -12,6 +12,7 @@ const csp = [
   "script-src-elem 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://cdn.jsdelivr.net",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
+  "media-src 'self' blob:",
   "font-src 'self' data:",
   "connect-src 'self' https:",
   "frame-src 'self' https://www.google.com",

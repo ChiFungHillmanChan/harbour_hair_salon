@@ -4,9 +4,11 @@ import {
   buildCustomShadePreset,
   HAIR_LEVEL_OPTIONS,
   PRESET_COLORS,
-  type BleachState,
+  type HairAnalysis,
+  type HairConsultation,
   type HairLevel,
   type HairLevelMode,
+  type RecolorNotice,
   type ShadePreset,
 } from './constants';
 import { useT } from '@/i18n/client';
@@ -28,12 +30,14 @@ interface ColorPaletteProps {
   detectedBaseLevel: HairLevel | null;
   effectiveBaseLevel: HairLevel | null;
   expectedResultNotice: string | null;
-  bleachState: BleachState;
+  consultation: HairConsultation;
+  analysis: HairAnalysis | null;
+  notices: RecolorNotice[];
   onShadeChange: (shade: ShadePreset) => void;
   onPreviewStrengthChange: (value: number) => void;
   onBaseLevelModeChange: (mode: HairLevelMode) => void;
   onManualBaseLevelChange: (value: HairLevel) => void;
-  onBleachStateChange: (value: BleachState) => void;
+  onConsultationChange: (value: HairConsultation) => void;
 }
 
 export function ColorPalette({
@@ -44,13 +48,14 @@ export function ColorPalette({
   manualBaseLevel,
   detectedBaseLevel,
   effectiveBaseLevel,
-  expectedResultNotice,
-  bleachState,
+  consultation,
+  analysis,
+  notices,
   onShadeChange,
   onPreviewStrengthChange,
   onBaseLevelModeChange,
   onManualBaseLevelChange,
-  onBleachStateChange,
+  onConsultationChange,
 }: ColorPaletteProps) {
   const t = useT('tryColor');
   // Presets keep their English names as data; only the displayed label is translated.
@@ -59,6 +64,8 @@ export function ColorPalette({
   const isPreset = PRESET_COLORS.some(
     (color) => color.swatchHex.toLowerCase() === selectedHex.toLowerCase(),
   );
+  const hasUsableAnalysis = analysis !== null && analysis.quality !== 'unusable';
+  const selectClassName = 'mt-2 h-11 min-h-11 w-full min-w-0 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white';
 
   return (
     <div className="space-y-5">
@@ -77,44 +84,81 @@ export function ColorPalette({
         </div>
       </div>
 
-      <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
-        <p className="text-zinc-300 text-xs uppercase tracking-[0.2em] font-medium">{t('palette.method')}</p>
-        <div className="grid grid-cols-2 gap-2">
-          {([
-            ['pre', t('palette.preLabel'), t('palette.preHint')],
-            ['post', t('palette.postLabel'), t('palette.postHint')],
-          ] as const).map(([value, label, hint]) => (
+      <fieldset className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+        <legend className="px-1 text-zinc-300 text-xs font-medium">{t('palette.method')}</legend>
+        <div className="grid gap-2">
+          {(['deposit', 'permanent', 'prelighten'] as const).map((value) => (
             <button
               key={value}
               type="button"
-              onClick={() => onBleachStateChange(value)}
-              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                bleachState === value
+              aria-pressed={consultation.treatment === value}
+              onClick={() => onConsultationChange({ ...consultation, treatment: value })}
+              className={`rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                consultation.treatment === value
                   ? 'border-white/30 bg-white/10 text-white'
                   : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500'
               }`}
             >
-              <span className="block text-sm font-medium">{label}</span>
-              <span className="block text-[10px] text-zinc-500">{hint}</span>
+              <span className="block text-sm font-medium">{t(`palette.treatments.${value}.label`)}</span>
+              <span className="mt-0.5 block text-xs text-zinc-400">{t(`palette.treatments.${value}.hint`)}</span>
             </button>
           ))}
         </div>
-        <p className="text-zinc-500 text-[11px]">
-          {bleachState === 'post' ? t('palette.postNote') : t('palette.preNote')}
-        </p>
-      </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="min-w-0 text-xs text-zinc-300">
+            {t('palette.history')}
+            <select
+              value={consultation.history}
+              onChange={(e) => onConsultationChange({ ...consultation, history: e.target.value as HairConsultation['history'] })}
+              className={selectClassName}
+            >
+              {(['unknown', 'natural', 'coloured', 'lightened'] as const).map((value) => (
+                <option key={value} value={value}>{t(`palette.histories.${value}`)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="min-w-0 text-xs text-zinc-300">
+            {t('palette.greyCoverage')}
+            <select
+              value={consultation.greyCoverage}
+              onChange={(e) => onConsultationChange({ ...consultation, greyCoverage: e.target.value as HairConsultation['greyCoverage'] })}
+              className={selectClassName}
+            >
+              {(['unknown', 'none', 'some', 'mostly'] as const).map((value) => (
+                <option key={value} value={value}>{t(`palette.greyOptions.${value}`)}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {consultation.treatment === 'prelighten' && (
+          <label className="text-xs text-zinc-300">
+            {t('palette.lightenedBase')}
+            <select
+              value={consultation.lightenedBase}
+              onChange={(e) => onConsultationChange({ ...consultation, lightenedBase: e.target.value as HairConsultation['lightenedBase'] })}
+              className={selectClassName}
+            >
+              {(['current', 'orange', 'yellow', 'pale-yellow'] as const).map((value) => (
+                <option key={value} value={value}>{t(`palette.lightenedBases.${value}`)}</option>
+              ))}
+            </select>
+            <span className="mt-2 block leading-relaxed text-zinc-400">{t('palette.lightenedBaseHelp')}</span>
+          </label>
+        )}
+        <p className="text-xs leading-relaxed text-zinc-400">{t('palette.historyHelp')}</p>
+      </fieldset>
 
       <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-zinc-300 text-xs uppercase tracking-[0.2em] font-medium">
+            <p className="text-zinc-300 text-xs font-medium">
               {t('palette.currentLevel')}
             </p>
-            <p className="text-zinc-500 text-xs mt-1">
+            <p className="text-zinc-400 text-xs mt-1 leading-relaxed">
               {t('palette.levelHelp')}
             </p>
           </div>
-          <label className="flex items-center gap-2 text-sm text-zinc-300">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-zinc-300">
             <input
               type="checkbox"
               checked={baseLevelMode === 'auto'}
@@ -129,15 +173,44 @@ export function ColorPalette({
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2">
             <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{t('palette.detected')}</p>
             <p className="mt-1 text-lg font-serif text-white">
-              {detectedBaseLevel ? t('palette.level', { level: detectedBaseLevel }) : t('palette.detecting')}
+              {hasUsableAnalysis && detectedBaseLevel ? t('palette.level', { level: detectedBaseLevel }) : '--'}
             </p>
           </div>
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2">
             <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{t('palette.using')}</p>
             <p className="mt-1 text-lg font-serif text-white">
-              {t('palette.level', { level: effectiveBaseLevel ?? manualBaseLevel })}
+              {hasUsableAnalysis && effectiveBaseLevel ? t('palette.level', { level: effectiveBaseLevel }) : '--'}
             </p>
           </div>
+        </div>
+
+        <div className="space-y-2 text-xs text-zinc-400">
+          <p>{t('palette.estimatedRange', {
+            range: hasUsableAnalysis && analysis.levelRange ? `${analysis.levelRange[0]}–${analysis.levelRange[1]}` : '--',
+          })}</p>
+          <p>{t('palette.scaleHelp')}</p>
+          {analysis?.quality && <p>{t(`palette.quality.${analysis.quality}`)}</p>}
+          {(analysis?.issues?.length ?? 0) > 0 && (
+            <ul className="list-disc space-y-1 pl-4 text-amber-200/90">
+              {analysis?.issues?.map((issue) => <li key={issue}>{t(`palette.issues.${issue}`)}</li>)}
+            </ul>
+          )}
+        </div>
+
+        <div>
+          <p className="text-xs text-zinc-300">{t('palette.regionsTitle')}</p>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {(['upper', 'middle', 'lower'] as const).map((position) => {
+              const region = hasUsableAnalysis ? analysis.regions?.find((item) => item.position === position) : null;
+              return (
+                <div key={position} className="border-l border-zinc-700 pl-2">
+                  <p className="text-xs text-zinc-400">{t(`palette.regions.${position}`)}</p>
+                  <p className="mt-1 text-sm text-white">{region ? t('palette.level', { level: region.level }) : '--'}</p>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-zinc-400">{t('palette.regionsHelp')}</p>
         </div>
 
         <label className="block">
@@ -145,30 +218,36 @@ export function ColorPalette({
             {t('palette.manualOverride')}
           </span>
           <select
-            value={manualBaseLevel}
+            value={baseLevelMode === 'auto' ? (hasUsableAnalysis ? detectedBaseLevel ?? '' : '') : manualBaseLevel}
             disabled={baseLevelMode === 'auto'}
             onChange={(e) => onManualBaseLevelChange(Number(e.target.value) as HairLevel)}
-            className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`${selectClassName} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
+            <option value="" disabled>--</option>
             {HAIR_LEVEL_OPTIONS.map((level) => (
               <option key={level} value={level}>
                 {t('palette.level', { level })}
               </option>
             ))}
           </select>
+          <span className="mt-2 block text-xs leading-relaxed text-zinc-400">{t('palette.manualHelp')}</span>
         </label>
       </div>
 
       <div>
-        <p className="text-zinc-300 text-xs uppercase tracking-[0.2em] font-medium mb-3">
+        <p className="text-zinc-300 text-xs uppercase tracking-[0.2em] font-medium mb-2">
           {t('palette.selectColour')}
         </p>
+        <p className="mb-3 text-xs leading-relaxed text-zinc-400">{t('palette.illustrativeShades')}</p>
         <div className="flex flex-wrap gap-2.5 pb-1">
           {PRESET_COLORS.map((color: ShadePreset) => (
             <button
               key={color.swatchHex}
+              type="button"
               onClick={() => onShadeChange(color)}
-              className="group flex flex-col items-center gap-1"
+              aria-label={shadeName(color.name)}
+              aria-pressed={selectedHex.toLowerCase() === color.swatchHex.toLowerCase()}
+              className="group flex min-h-11 min-w-11 flex-col items-center gap-1 rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
               title={shadeName(color.name)}
             >
               <div
@@ -183,14 +262,14 @@ export function ColorPalette({
                 className={`text-[9px] leading-tight text-center max-w-[2.5rem] transition-colors truncate ${
                   selectedHex.toLowerCase() === color.swatchHex.toLowerCase()
                     ? 'text-zinc-300'
-                    : 'text-zinc-600 group-hover:text-zinc-400'
+                    : 'text-zinc-400 group-hover:text-zinc-300'
                 }`}
               >
                 {shadeShort(color.name)}
               </span>
             </button>
           ))}
-          <label className="group flex flex-col items-center gap-1 cursor-pointer">
+          <label className="group flex min-h-11 min-w-11 flex-col items-center gap-1 cursor-pointer rounded focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-white">
             <div
               className={`w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center transition-all duration-300 ${
                 !isPreset
@@ -200,6 +279,7 @@ export function ColorPalette({
             >
               <input
                 type="color"
+                aria-label={t('shades.customColour')}
                 value={selectedHex}
                 onChange={(e) => onShadeChange(buildCustomShadePreset(e.target.value))}
                 className="sr-only"
@@ -214,7 +294,7 @@ export function ColorPalette({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
             </div>
-            <span className="text-[9px] text-zinc-600 group-hover:text-zinc-400">{t('palette.custom')}</span>
+            <span className="text-[9px] text-zinc-400 group-hover:text-zinc-300">{t('palette.custom')}</span>
           </label>
         </div>
       </div>
@@ -224,28 +304,36 @@ export function ColorPalette({
           {t('palette.strength')}
         </p>
         <div className="flex items-center gap-4">
-          <span className="text-zinc-600 text-xs">{t('palette.light')}</span>
+          <span className="text-zinc-400 text-xs">{t('palette.light')}</span>
           <input
             type="range"
+            aria-label={t('palette.strength')}
             min={0}
             max={100}
             value={previewStrength}
             onChange={(e) => onPreviewStrengthChange(Number(e.target.value))}
-            className="flex-1 h-1.5 accent-white cursor-pointer"
+            className="h-11 min-w-0 flex-1 accent-white cursor-pointer"
           />
-          <span className="text-zinc-600 text-xs">{t('palette.bold')}</span>
+          <span className="text-zinc-400 text-xs">{t('palette.bold')}</span>
         </div>
       </div>
 
-      {expectedResultNotice && (
+      {notices.length > 0 && (
         <div className="rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-sm text-zinc-200">
           <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400 mb-1">
             {t('palette.expected')}
           </p>
-          {/* colorMath words this notice in English; the same facts are re-worded here. */}
-          <p>{t('palette.expectedNotice', { level: effectiveBaseLevel ?? manualBaseLevel, shade: shadeName(selectedName ?? 'Custom Colour') })}</p>
+          <ul className="list-disc space-y-2 pl-4 text-xs leading-relaxed">
+            {notices.map((notice) => <li key={notice}>{t(`palette.notices.${notice}`)}</li>)}
+          </ul>
         </div>
       )}
+
+      <div className="border-t border-zinc-800 pt-4 text-xs leading-relaxed text-zinc-400">
+        <p className="font-medium text-zinc-300">{t('palette.captureTitle')}</p>
+        <p className="mt-2">{t('palette.captureTips')}</p>
+        <p className="mt-2">{t('palette.calibrationTip')}</p>
+      </div>
     </div>
   );
 }

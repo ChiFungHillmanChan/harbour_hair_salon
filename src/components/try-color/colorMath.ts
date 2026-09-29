@@ -2,12 +2,17 @@
 
 import {
   clampHairLevel,
+  DEFAULT_CONSULTATION,
+  HAIR_LEVEL_OPTIONS,
   getHairLevelReferenceLuminance,
   getUnderlyingPigmentHex,
   type HairAnalysis,
+  type AnalysisIssue,
+  type HairConsultation,
+  type LabColor,
+  type RecolorNotice,
   type HairLevel,
   type RecolorRequest,
-  type ShadePreset,
 } from './constants';
 import type { HairMaskData } from './HairSegmentation';
 
@@ -18,7 +23,9 @@ export interface ResolvedRecolorContext {
   effectiveBaseLevel: HairLevel;
   achievedLevel: HairLevel;
   constrained: boolean;
+  /** Legacy field; customer copy is translated from notices. */
   expectedResultNotice: string | null;
+  notices: RecolorNotice[];
 }
 
 interface ResolvedShadeState extends ResolvedRecolorContext {
@@ -27,15 +34,13 @@ interface ResolvedShadeState extends ResolvedRecolorContext {
   resolvedRefL: number;
   targetLinear: LinearRgb;
   strength: number;
+  canLighten: boolean;
+  assumedBase: boolean;
+  substrateLinear: LinearRgb | null;
 }
 
 interface ApplyRecolorOptions {
   analysisOverride?: HairAnalysis;
-}
-
-interface MaskBounds {
-  top: number;
-  bottom: number;
 }
 
 export function hexToRgb(hex: string): [number, number, number] {
@@ -44,7 +49,7 @@ export function hexToRgb(hex: string): [number, number, number] {
 }
 
 function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }
 
 function mix(a: number, b: number, t: number): number {
@@ -109,37 +114,39 @@ function rgbWarmCoolBias(rgb: LinearRgb): number {
   return clamp01((rgb[0] - rgb[2]) / total + 0.5) * 2 - 1;
 }
 
+/** Map into the sRGB gamut by reducing chroma, preserving requested luminance. */
 function withLuminance(rgb: LinearRgb, targetLuminance: number): LinearRgb {
   const desired = clamp01(targetLuminance);
   const current = relativeLuminance(rgb);
-
-  if (current <= 1e-5) {
-    return [desired, desired, desired];
+  if (current <= 1e-5) return [desired, desired, desired];
+  const scaled = rgb.map((channel) => channel * desired / current) as LinearRgb;
+  let chromaScale = 1;
+  for (const channel of scaled) {
+    if (channel > 1) chromaScale = Math.min(chromaScale, (1 - desired) / (channel - desired));
+    if (channel < 0) chromaScale = Math.min(chromaScale, desired / (desired - channel));
   }
+  return scaled.map((channel) => clamp01(mix(desired, channel, chromaScale))) as LinearRgb;
+}
 
-  const scaled: LinearRgb = [
-    rgb[0] * (desired / current),
-    rgb[1] * (desired / current),
-    rgb[2] * (desired / current),
+/**
+ * sRGB -> XYZ -> CIELAB, D65 / CIE 1931 2-degree observer.
+ * Uses the sRGB matrix and Lab equations from https://www.w3.org/TR/css-color-4/#color-conversion-code
+ * with D65 retained: these values are NOT CSS lab() (D50), nor measured hair reflectance.
+ */
+function linearRgbToLab([r, g, b]: LinearRgb): LabColor {
+  const xyz = [
+    (506752 / 1228815 * r + 87881 / 245763 * g + 12673 / 70218 * b) / (0.3127 / 0.329),
+    87098 / 409605 * r + 175762 / 245763 * g + 12673 / 175545 * b,
+    (7918 / 409605 * r + 87881 / 737289 * g + 1001167 / 1053270 * b) / ((1 - 0.3127 - 0.329) / 0.329),
   ];
+  const [x, y, z] = xyz.map((value) => value > 216 / 24389
+    ? Math.cbrt(value)
+    : (24389 / 27 * value + 16) / 116);
+  return { l: 116 * y - 16, a: 500 * (x - y), b: 200 * (y - z) };
+}
 
-  const peak = Math.max(...scaled);
-  if (peak <= 1) return scaled.map(clamp01) as LinearRgb;
-
-  const normalized: LinearRgb = [
-    scaled[0] / peak,
-    scaled[1] / peak,
-    scaled[2] / peak,
-  ];
-  const normalizedLum = relativeLuminance(normalized);
-  if (normalizedLum <= 1e-5) return [desired, desired, desired];
-
-  const factor = desired / normalizedLum;
-  return [
-    clamp01(normalized[0] * factor),
-    clamp01(normalized[1] * factor),
-    clamp01(normalized[2] * factor),
-  ];
+export function rgbToLab(r: number, g: number, b: number): LabColor {
+  return linearRgbToLab(rgbToLinearRgb(r, g, b));
 }
 
 function estimateBaseLevelFromLuminance(meanLuminance: number): HairLevel {
@@ -161,9 +168,25 @@ function estimateBaseLevelFromLuminance(meanLuminance: number): HairLevel {
   return 10;
 }
 
-function computeConfidence(weightedCoverage: number, pixelCount: number): number {
-  const coverage = pixelCount === 0 ? 0 : weightedCoverage / pixelCount;
-  return clamp01(coverage / 0.1);
+interface HairSample { rgb: LinearRgb; luminance: number; y: number; weight: number }
+
+function percentile(samples: HairSample[], fraction: number): number {
+  return samples[Math.round((samples.length - 1) * fraction)].luminance;
+}
+
+/** Sort and trim both tails so specular highlights and isolated dark pixels do not set the base. */
+function summarizeSamples(samples: HairSample[]): { rgb: LinearRgb; luminance: number } {
+  samples.sort((a, b) => a.luminance - b.luminance);
+  const trim = Math.floor(samples.length * 0.1);
+  const rgb: LinearRgb = [0, 0, 0];
+  let total = 0;
+  for (let i = trim; i < samples.length - trim; i++) {
+    const sample = samples[i];
+    total += sample.weight;
+    for (let c = 0; c < 3; c++) rgb[c] += sample.rgb[c] * sample.weight;
+  }
+  for (let c = 0; c < 3; c++) rgb[c] /= total;
+  return { rgb, luminance: relativeLuminance(rgb) };
 }
 
 export function smoothHairAnalysis(
@@ -171,9 +194,12 @@ export function smoothHairAnalysis(
   next: HairAnalysis,
   blend: number,
 ): HairAnalysis {
+  // A lost mask or unusable exposure must take effect immediately, including recovery.
+  if (previous.quality === 'unusable' || next.quality === 'unusable') return next;
   const t = clamp01(blend);
   const meanLuminance = mix(previous.meanLuminance, next.meanLuminance, t);
   return {
+    ...next,
     meanLuminance,
     p95Luminance: mix(previous.p95Luminance, next.p95Luminance, t),
     chroma: mix(previous.chroma, next.chroma, t),
@@ -183,232 +209,181 @@ export function smoothHairAnalysis(
   };
 }
 
-export function analyzeHair(
-  imageData: ImageData,
-  alphaMask: Float32Array,
-): HairAnalysis {
-  const pixels = imageData.data;
-  const histogram = new Float32Array(256);
-  let weightedCoverage = 0;
-  let sumLuminance = 0;
-  let sumChroma = 0;
-  let sumWarmCoolBias = 0;
-
-  for (let i = 0; i < alphaMask.length; i++) {
-    const weight = clamp01(alphaMask[i]);
-    if (weight <= 0.001) continue;
-
-    const idx = i * 4;
-    const rgb = rgbToLinearRgb(pixels[idx], pixels[idx + 1], pixels[idx + 2]);
-    const luminance = relativeLuminance(rgb);
-
-    weightedCoverage += weight;
-    sumLuminance += luminance * weight;
-    sumChroma += rgbChroma(rgb) * weight;
-    sumWarmCoolBias += rgbWarmCoolBias(rgb) * weight;
-    histogram[Math.min(255, Math.round(luminance * 255))] += weight;
-  }
-
-  if (weightedCoverage <= 0.001) {
-    return {
-      meanLuminance: getHairLevelReferenceLuminance(5),
-      p95Luminance: getHairLevelReferenceLuminance(6),
-      chroma: 0,
-      warmCoolBias: 0,
-      estimatedBaseLevel: 5,
-      confidence: 0,
-    };
-  }
-
-  const meanLuminance = sumLuminance / weightedCoverage;
-  const p95Target = weightedCoverage * 0.95;
-  let cumulative = 0;
-  let p95Luminance = meanLuminance;
-
-  for (let i = 0; i < histogram.length; i++) {
-    cumulative += histogram[i];
-    if (cumulative >= p95Target) {
-      p95Luminance = i / 255;
-      break;
-    }
-  }
-
-  return {
-    meanLuminance,
-    p95Luminance,
-    chroma: sumChroma / weightedCoverage,
-    warmCoolBias: sumWarmCoolBias / weightedCoverage,
-    estimatedBaseLevel: estimateBaseLevelFromLuminance(meanLuminance),
-    confidence: computeConfidence(weightedCoverage, alphaMask.length),
-  };
-}
-
-function buildExpectedResultNotice(
-  preset: ShadePreset,
-  effectiveBaseLevel: HairLevel,
-  achievedLevel: HairLevel,
-): string | null {
-  if (preset.mode !== 'lift') return null;
-  if (achievedLevel >= preset.targetLevel) return null;
-  return `This shade usually needs pre-lightening from level ${effectiveBaseLevel} to reach ${preset.name}.`;
-}
-
-function resolveTargetLinear(
-  preset: ShadePreset,
-  effectiveBaseLevel: HairLevel,
-  achievedLevel: HairLevel,
-  analysis: HairAnalysis,
-): LinearRgb {
-  const presetLinear = hexToLinearRgb(preset.swatchHex);
-  const pigmentLinear = hexToLinearRgb(getUnderlyingPigmentHex(achievedLevel));
-  const requestedLift = Math.max(0, preset.targetLevel - effectiveBaseLevel);
-  const achievedLift = Math.max(0, achievedLevel - effectiveBaseLevel);
-  const liftRatio = requestedLift === 0 ? 1 : achievedLift / requestedLift;
-
-  let undertoneMix = 0;
-  if (preset.mode === 'lift') {
-    undertoneMix = 0.18 + requestedLift * 0.07 + (1 - liftRatio) * 0.35;
-  } else if (preset.mode === 'tone') {
-    undertoneMix = 0.08;
-  } else {
-    undertoneMix = 0.03;
-  }
-
-  if (preset.undertoneBias === 'cool') undertoneMix += 0.08;
-  if (preset.undertoneBias === 'warm') undertoneMix -= 0.04;
-  undertoneMix += Math.max(0, analysis.warmCoolBias) * 0.05;
-
-  return mixRgb(presetLinear, pigmentLinear, clamp01(undertoneMix));
-}
-
-function computeMaskBounds(mask: HairMaskData): MaskBounds {
-  let top = mask.height;
+export function analyzeHair(imageData: ImageData, alphaMask: Float32Array): HairAnalysis {
+  const { data: pixels, width, height } = imageData;
+  const samples: HairSample[] = [];
+  // Bounded spatial sampling keeps long-hair video frames affordable without favouring the top.
+  const step = Math.max(1, Math.ceil(Math.sqrt(width * height / 12000)));
+  let top = height;
   let bottom = -1;
+  let covered = 0;
+  let inspected = 0;
+  let dark = 0;
+  let clipped = 0;
+  let darkPhotoPixels = 0;
+  let photoPixels = 0;
 
-  for (let y = 0; y < mask.height; y++) {
-    for (let x = 0; x < mask.width; x++) {
-      const idx = y * mask.width + x;
-      if (mask.alphaMask[idx] < 0.12) continue;
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      inspected++;
+      const i = y * width + x;
+      const weight = clamp01(alphaMask[i]);
+      if (!(pixels[i * 4 + 3] >= 250)) continue;
+      const rgb = rgbToLinearRgb(pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2]);
+      const luminance = relativeLuminance(rgb);
+      if (!Number.isFinite(luminance)) continue;
+      photoPixels++;
+      if (luminance < 0.01) darkPhotoPixels++;
+      if (weight < 0.7) continue;
+      // One-pixel erosion rejects skin/background mixed into the mask boundary.
+      if ((x > 0 && !(alphaMask[i - 1] >= 0.5))
+        || (x + 1 < width && !(alphaMask[i + 1] >= 0.5))
+        || (y > 0 && !(alphaMask[i - width] >= 0.5))
+        || (y + 1 < height && !(alphaMask[i + width] >= 0.5))) continue;
+      samples.push({ rgb, luminance, y, weight });
+      covered += weight;
+      if (luminance < 0.004) dark++;
+      if (Math.min(...rgb) > 0.93) clipped++;
       top = Math.min(top, y);
       bottom = Math.max(bottom, y);
     }
   }
 
-  if (bottom === -1) {
-    return { top: 0, bottom: mask.height - 1 };
-  }
-
-  return { top, bottom };
-}
-
-function deterministicVariation(index: number): number {
-  const n = Math.sin(index * 12.9898 + 78.233) * 43758.5453;
-  return (n - Math.floor(n)) * 2 - 1;
-}
-
-export function resolveRecolorContext(
-  request: RecolorRequest,
-  analysis: HairAnalysis,
-): ResolvedShadeState {
-  const effectiveBaseLevel =
-    request.baseLevelMode === 'manual' && request.manualBaseLevel
-      ? request.manualBaseLevel
-      : analysis.estimatedBaseLevel;
-
-  const bleachState = request.bleachState ?? 'pre';
-
-  if (bleachState === 'post') {
-    const targetLinear = mixRgb(
-      hexToLinearRgb(request.preset.swatchHex),
-      hexToLinearRgb(getUnderlyingPigmentHex(10)), // faint residual pale-yellow
-      0.04,
-    );
+  const colorMetadata = {
+    space: 'srgb', labWhitePoint: 'D65', observer: '2-degree', source: 'photo-srgb-estimate',
+  } as const;
+  const normalSizeImage = width * height >= 1024;
+  const insufficientSupport = normalSizeImage && samples.length < 8;
+  const limitedSupport = normalSizeImage
+    && (samples.length < 32 || covered / Math.max(1, inspected) < 0.01);
+  if (samples.length === 0 || insufficientSupport) {
     return {
-      analysis,
-      effectiveBaseLevel,
-      achievedLevel: request.preset.targetLevel,
-      constrained: false,
-      expectedResultNotice: null,
-      requestedLift: Math.max(0, request.preset.targetLevel - effectiveBaseLevel),
-      achievedLift: Math.max(0, request.preset.targetLevel - effectiveBaseLevel),
-      resolvedRefL: clamp01(request.preset.refL),
-      targetLinear,
-      strength: clamp01(request.previewStrength / 100),
+      quality: 'unusable', issues: ['no-hair'], regions: [], colorMetadata,
+      meanLuminance: 0, p95Luminance: 0, chroma: 0, warmCoolBias: 0,
+      // Compatibility placeholder only: consumers must gate the level on quality.
+      estimatedBaseLevel: 1, confidence: 0,
     };
   }
 
-  const requestedLift = Math.max(0, request.preset.targetLevel - effectiveBaseLevel);
-  let achievedLevel = request.preset.targetLevel;
-
-  if (request.preset.mode === 'lift') {
-    achievedLevel = clampHairLevel(
-      Math.min(request.preset.targetLevel, effectiveBaseLevel + request.preset.maxLiftWithoutBleach),
-    );
-  } else if (request.preset.mode === 'tone' && request.preset.targetLevel > effectiveBaseLevel + 1) {
-    achievedLevel = clampHairLevel(
-      Math.min(request.preset.targetLevel, effectiveBaseLevel + request.preset.maxLiftWithoutBleach),
-    );
+  const summary = summarizeSamples(samples);
+  const p10 = percentile(samples, 0.1);
+  const p90 = percentile(samples, 0.9);
+  const issues: AnalysisIssue[] = [];
+  if (dark / samples.length >= 0.25 || summary.luminance < 0.01) issues.push('too-dark');
+  if (clipped / samples.length >= 0.15) issues.push('overexposed');
+  const levelRange: [HairLevel, HairLevel] = [
+    estimateBaseLevelFromLuminance(p10), estimateBaseLevelFromLuminance(p90),
+  ];
+  const sampleLabs = samples.map((sample) => linearRgbToLab(sample.rgb));
+  const toneSpreads = (['a', 'b'] as const).map((axis) => {
+    const values = sampleLabs.map((lab) => lab[axis]).sort((a, b) => a - b);
+    return values[Math.round((values.length - 1) * 0.9)] - values[Math.round((values.length - 1) * 0.1)];
+  });
+  // A conservative image-quality hint, not a measured diagnosis of uneven dye uptake.
+  if (levelRange[1] - levelRange[0] >= 3 || Math.hypot(...toneSpreads) > 25) issues.push('uneven-colour');
+  const photoSeverelyDark = darkPhotoPixels / Math.max(1, photoPixels) >= 0.95;
+  // Black hair alone is not evidence that the whole photograph is underexposed.
+  const unusable = (dark / samples.length >= 0.75 && photoSeverelyDark) || clipped / samples.length >= 0.65;
+  const quality = unusable ? 'unusable' : issues.length || limitedSupport ? 'limited' : 'usable';
+  const regions: NonNullable<HairAnalysis['regions']> = [];
+  if (!unusable) {
+    const positions = ['upper', 'middle', 'lower'] as const;
+    for (let region = 0; region < 3; region++) {
+      const regional = samples.filter((sample) => Math.min(2,
+        Math.floor((sample.y - top) / (bottom - top + 1) * 3)) === region);
+      if (regional.length === 0) continue;
+      const { rgb, luminance } = summarizeSamples(regional);
+      regions.push({ position: positions[region], level: estimateBaseLevelFromLuminance(luminance), lab: linearRgbToLab(rgb) });
+    }
   }
-
-  const achievedLift = Math.max(0, achievedLevel - effectiveBaseLevel);
-  const liftRatio = requestedLift === 0 ? 1 : achievedLift / requestedLift;
-  const currentRefL = getHairLevelReferenceLuminance(effectiveBaseLevel);
-  const resolvedRefL = clamp01(
-    request.preset.mode === 'lift'
-      ? mix(currentRefL, request.preset.refL, liftRatio)
-      : request.preset.refL,
-  );
-  const constrained = achievedLevel < request.preset.targetLevel;
-
   return {
-    analysis,
-    effectiveBaseLevel,
-    achievedLevel,
-    constrained,
-    expectedResultNotice: buildExpectedResultNotice(
-      request.preset,
-      effectiveBaseLevel,
-      achievedLevel,
-    ),
-    requestedLift,
-    achievedLift,
-    resolvedRefL,
-    targetLinear: resolveTargetLinear(
-      request.preset,
-      effectiveBaseLevel,
-      achievedLevel,
-      analysis,
-    ),
-    strength: clamp01(request.previewStrength / 100),
+    quality, issues, regions, colorMetadata,
+    ...(unusable ? {} : { levelRange, lab: linearRgbToLab(summary.rgb) }),
+    meanLuminance: summary.luminance,
+    p95Luminance: percentile(samples, 0.95),
+    chroma: rgbChroma(summary.rgb),
+    warmCoolBias: rgbWarmCoolBias(summary.rgb),
+    estimatedBaseLevel: estimateBaseLevelFromLuminance(summary.luminance),
+    // Sample coverage/size and exposure quality only, never probability of a salon outcome.
+    confidence: unusable ? 0 : clamp01(covered / Math.max(1, inspected) / 0.1)
+      * Math.min(1, Math.sqrt(samples.length / 64)) * (quality === 'limited' ? 0.6 : 1),
   };
 }
 
-function buildModeBaseColor(
-  source: LinearRgb,
-  desiredLuminance: number,
-  request: RecolorRequest,
-  state: ResolvedShadeState,
-): LinearRgb {
-  if ((request.bleachState ?? 'pre') === 'post') {
-    return withLuminance(state.targetLinear, desiredLuminance);
-  }
+function resolveConsultation(request: RecolorRequest): HairConsultation {
+  if (request.consultation) return request.consultation;
+  return {
+    ...DEFAULT_CONSULTATION,
+    treatment: request.bleachState === 'post' ? 'prelighten' : 'deposit',
+  };
+}
 
-  const targetAtLuminance = withLuminance(state.targetLinear, desiredLuminance);
+// Hypothetical screen bases on the generic preview scale, NOT a measured bleach chart.
+const LIGHTENED_BASE_PREVIEWS = {
+  orange: { level: 6, hex: '#c88338' },
+  yellow: { level: 8, hex: '#e4ca73' },
+  'pale-yellow': { level: 10, hex: '#f3e6b5' },
+} as const;
 
-  if (request.preset.mode === 'deposit') {
-    const multiplied: LinearRgb = [
-      source[0] * state.targetLinear[0],
-      source[1] * state.targetLinear[1],
-      source[2] * state.targetLinear[2],
-    ];
-    return mixRgb(multiplied, targetAtLuminance, 0.4);
-  }
+export function resolveRecolorContext(request: RecolorRequest, analysis: HairAnalysis): ResolvedShadeState {
+  const consultation = resolveConsultation(request);
+  const effectiveBaseLevel = request.baseLevelMode === 'manual' && request.manualBaseLevel
+    ? request.manualBaseLevel : analysis.estimatedBaseLevel;
+  const assumed = consultation.treatment === 'prelighten' && consultation.lightenedBase !== 'current'
+    ? LIGHTENED_BASE_PREVIEWS[consultation.lightenedBase] : null;
+  const substrateLevel = assumed?.level ?? effectiveBaseLevel;
+  const requestedLift = Math.max(0, request.preset.targetLevel - substrateLevel);
+  // Two levels is a conservative illustrative rendering ceiling, not a product lifting claim.
+  const allowedLift = consultation.treatment === 'permanent' && consultation.history === 'natural' ? 2 : 0;
+  const achievedLevel = clampHairLevel(Math.min(request.preset.targetLevel, substrateLevel + allowedLift));
+  const achievedLift = Math.max(0, achievedLevel - effectiveBaseLevel);
+  const constrained = achievedLevel < request.preset.targetLevel;
+  const notices: RecolorNotice[] = ['uncalibrated'];
+  if (consultation.history === 'unknown') notices.push('history-unknown');
+  if (consultation.history === 'coloured' || consultation.history === 'lightened') notices.push('previous-colour');
+  if (consultation.greyCoverage !== 'none') notices.push('grey-coverage');
+  if (consultation.treatment === 'deposit' && requestedLift > 0) notices.push('deposit-limit');
+  if (assumed) notices.push('lightened-base-assumed');
+  if (constrained) notices.push('needs-lightening');
+  if ((assumed && consultation.lightenedBase !== 'pale-yellow') || achievedLift > 0
+    || (analysis.warmCoolBias > 0.1 && request.preset.undertoneBias === 'cool')) notices.push('warm-base');
+  if (analysis.quality === 'unusable' || analysis.quality === 'limited' || analysis.confidence === 0) notices.push('photo-unreliable');
 
-  if (request.preset.mode === 'tone') {
-    return mixRgb(source, targetAtLuminance, 0.7);
-  }
+  const baseRef = getHairLevelReferenceLuminance(effectiveBaseLevel);
+  const availableRef = getHairLevelReferenceLuminance(clampHairLevel(substrateLevel + allowedLift));
+  // Integer preview levels are labels only. Use continuous swatch luminance to avoid
+  // a visible jump when neighbouring picker values cross a level midpoint.
+  const targetRef = Math.min(request.preset.refL, availableRef);
+  const nextBaseRef = getHairLevelReferenceLuminance(clampHairLevel(effectiveBaseLevel + 1));
+  const liftAmount = clamp01((targetRef - baseRef) / Math.max(0.001, nextBaseRef - baseRef));
+  const upperPigmentLevel = HAIR_LEVEL_OPTIONS.find((level) => getHairLevelReferenceLuminance(level) >= targetRef) ?? 10;
+  const lowerPigmentLevel = clampHairLevel(upperPigmentLevel - 1);
+  const lowerPigmentRef = getHairLevelReferenceLuminance(lowerPigmentLevel);
+  const pigmentPosition = clamp01((targetRef - lowerPigmentRef)
+    / Math.max(0.001, getHairLevelReferenceLuminance(upperPigmentLevel) - lowerPigmentRef));
+  const liftedPigment = mixRgb(
+    hexToLinearRgb(getUnderlyingPigmentHex(lowerPigmentLevel)),
+    hexToLinearRgb(getUnderlyingPigmentHex(upperPigmentLevel)),
+    pigmentPosition,
+  );
+  const substrateLinear = assumed ? hexToLinearRgb(assumed.hex)
+    : liftAmount > 0 ? liftedPigment : null;
+  const target = hexToLinearRgb(request.preset.swatchHex);
+  // These blend weights are visual heuristics, deliberately not labelled measured/calibrated.
+  // Warmth ramps from zero with actual luminance lift, independently of rounded depth labels.
+  const residual = assumed ? (consultation.lightenedBase === 'pale-yellow' ? 0.12 : 0.4) : 0.25 * liftAmount;
+  const targetLinear = substrateLinear ? mixRgb(target, substrateLinear, residual) : target;
+  const canLighten = assumed !== null || (allowedLift > 0 && targetRef > baseRef);
+  const resolvedRefL = assumed ? targetRef
+    : analysis.meanLuminance * targetRef / Math.max(0.001, baseRef);
 
-  return targetAtLuminance;
+  return {
+    analysis, effectiveBaseLevel, achievedLevel, constrained, notices,
+    expectedResultNotice: null,
+    requestedLift, achievedLift, resolvedRefL, targetLinear,
+    canLighten, assumedBase: assumed !== null, substrateLinear,
+    strength: clamp01(request.previewStrength / 100),
+  };
 }
 
 /**
@@ -435,114 +410,51 @@ export function applyRecolorToImageDataWithAlpha(
 ): ResolvedRecolorContext {
   const analysis = options.analysisOverride ?? analyzeHair(imageData, hairMask.alphaMask);
   const state = resolveRecolorContext(request, analysis);
+  if (state.strength === 0 || analysis.quality === 'unusable' || analysis.confidence === 0) return state;
   const pixels = imageData.data;
-  const meanLuminance = Math.max(state.analysis.meanLuminance, 1e-4);
-  const maskBounds = computeMaskBounds(hairMask);
-  const maskHeight = Math.max(1, maskBounds.bottom - maskBounds.top + 1);
-  const warmPigment = hexToLinearRgb(getUnderlyingPigmentHex(state.effectiveBaseLevel));
-  const goldenHighlight = mixRgb(state.targetLinear, [1, 0.86, 0.58], 0.24);
-  const undertoneScale = (request.bleachState ?? 'pre') === 'post' ? 0.15 : 1;
-  const bleach = request.bleachState ?? 'pre';
-  const overreach = Math.max(0, request.preset.targetLevel - state.effectiveBaseLevel);
-  const preMute = bleach === 'pre' && state.constrained ? clamp01(overreach * 0.18) : 0;
+  const meanLuminance = Math.max(analysis.meanLuminance, 1e-4);
+  const count = Math.min(hairMask.alphaMask.length, pixels.length / 4);
 
-  for (let i = 0; i < hairMask.alphaMask.length; i++) {
+  for (let i = 0; i < count; i++) {
     const alpha = clamp01(hairMask.alphaMask[i]);
     if (alpha <= 0.001) continue;
-
     const idx = i * 4;
-    const y = Math.floor(i / hairMask.width);
-    const source = rgbToLinearRgb(
-      pixels[idx],
-      pixels[idx + 1],
-      pixels[idx + 2],
-    );
+    const source = rgbToLinearRgb(pixels[idx], pixels[idx + 1], pixels[idx + 2]);
     const sourceLuminance = relativeLuminance(source);
-    const normalizedLuminance = sourceLuminance / meanLuminance;
-    const coreAlpha = clamp01(hairMask.coreMask[i]);
-    const fringeAlpha = clamp01(hairMask.fringeMask[i]);
-    const shadowWeight = clamp01((state.analysis.meanLuminance - sourceLuminance) / meanLuminance);
-    const highlightWeight = sourceLuminance >= state.analysis.p95Luminance
-      ? clamp01((sourceLuminance - state.analysis.p95Luminance) / Math.max(0.02, 1 - state.analysis.p95Luminance))
-      : 0;
-    const rootWeight = clamp01((maskBounds.top + maskHeight * 0.38 - y) / Math.max(1, maskHeight * 0.38)) * clamp01(alpha * 1.2);
-    const strandVariation = deterministicVariation(i) * 0.05;
-    const isHighlight = sourceLuminance >= state.analysis.p95Luminance;
-    let desiredLuminance = clamp01(state.resolvedRefL * normalizedLuminance);
-    if (isHighlight) {
-      desiredLuminance = mix(
-        desiredLuminance,
-        clamp01(sourceLuminance),
-        clamp01(1 - request.preset.highlightBlend * 0.6),
-      );
-    }
-    let modeBase = buildModeBaseColor(source, desiredLuminance, request, state);
-    modeBase = mixRgb(modeBase, goldenHighlight, highlightWeight * 0.12 * undertoneScale);
-    modeBase = mixRgb(modeBase, warmPigment, shadowWeight * 0.14 * undertoneScale);
-    if (fringeAlpha > 0) {
-      modeBase = desaturateRgb(modeBase, fringeAlpha * 0.3);
-    }
+    const shadowWeight = clamp01((meanLuminance - sourceLuminance) / meanLuminance);
+    const highlightWeight = clamp01((sourceLuminance - meanLuminance)
+      / Math.max(0.02, analysis.p95Luminance - meanLuminance));
+    let desiredLuminance = clamp01(state.resolvedRefL * sourceLuminance / meanLuminance);
+    if (!state.canLighten) desiredLuminance = Math.min(sourceLuminance, desiredLuminance);
+    desiredLuminance = mix(desiredLuminance, sourceLuminance, highlightWeight * 0.8);
 
-    if (preMute > 0) {
-      modeBase = desaturateRgb(modeBase, preMute * 0.8);
-      modeBase = mixRgb(modeBase, warmPigment, preMute * 0.4);
-    }
+    const target = withLuminance(state.targetLinear, desiredLuminance);
+    // Retain the observed base when it has not been replaced by an explicit hypothetical base.
+    const retainedBase = state.assumedBase ? 0
+      : Math.min(0.8, 0.25 + (state.constrained ? state.requestedLift * 0.08 : 0));
+    let modeBase = mixRgb(target, withLuminance(source, desiredLuminance), retainedBase);
+    const fringe = clamp01(hairMask.fringeMask[i]);
+    if (fringe > 0) modeBase = desaturateRgb(modeBase, fringe * 0.25);
 
     let blendAlpha = alpha * state.strength;
-    if (request.preset.mode === 'deposit') blendAlpha *= 0.92;
-    if (request.preset.mode === 'tone') blendAlpha *= 0.78;
-    if (request.preset.mode === 'lift') blendAlpha *= 0.88;
-    if ((request.bleachState ?? 'pre') === 'post') blendAlpha = alpha * state.strength;
-
-    if (isHighlight) {
-      blendAlpha *= request.preset.highlightBlend * 0.5;
+    blendAlpha *= mix(0.7, 1, clamp01(hairMask.coreMask[i]));
+    blendAlpha *= 1 - shadowWeight * 0.4;
+    blendAlpha *= 1 - highlightWeight * 0.85;
+    if (fringe > 0) blendAlpha *= mix(0.25, 0.12, fringe);
+    const rendered = mixRgb(source, modeBase, clamp01(blendAlpha));
+    let [r, g, b] = linearRgbToRgb(rendered);
+    if (!state.canLighten) {
+      // Also avoid an apparent encoded-brightness increase from a hue-only change.
+      const originalBrightness = 0.2126 * pixels[idx] + 0.7152 * pixels[idx + 1] + 0.0722 * pixels[idx + 2];
+      const renderedBrightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      if (renderedBrightness > originalBrightness) {
+        const scale = originalBrightness / renderedBrightness;
+        [r, g, b] = [Math.round(r * scale), Math.round(g * scale), Math.round(b * scale)];
+      }
     }
-
-    const fringeBlendScale = mix(0.12, 0.26, fringeAlpha);
-    const coreBlendScale = mix(0.7, 1, coreAlpha);
-    blendAlpha *= coreBlendScale;
-    if (fringeAlpha > 0) {
-      blendAlpha *= fringeBlendScale;
-    }
-    blendAlpha *= 1 - shadowWeight * 0.28;
-    blendAlpha *= 1 - rootWeight * 0.2;
-    blendAlpha = clamp01(blendAlpha * (1 + strandVariation));
-
-    const next = mixRgb(source, modeBase, clamp01(blendAlpha));
-    let shaded = next;
-
-    if (shadowWeight > 0) {
-      shaded = mixRgb(shaded, mixRgb(source, warmPigment, 0.18), shadowWeight * 0.22);
-    }
-
-    if (rootWeight > 0) {
-      shaded = mixRgb(shaded, source, rootWeight * 0.22);
-    }
-
-    if (fringeAlpha > 0) {
-      shaded = mixRgb(shaded, source, fringeAlpha * 0.62);
-      shaded = desaturateRgb(shaded, fringeAlpha * 0.34);
-    }
-
-    if (highlightWeight > 0) {
-      shaded = withLuminance(
-        mixRgb(shaded, goldenHighlight, highlightWeight * 0.18),
-        mix(relativeLuminance(shaded), sourceLuminance, highlightWeight * 0.55),
-      );
-    }
-
-    const [r, g, b] = linearRgbToRgb(shaded);
-
     pixels[idx] = r;
     pixels[idx + 1] = g;
     pixels[idx + 2] = b;
   }
-
-  return {
-    analysis: state.analysis,
-    effectiveBaseLevel: state.effectiveBaseLevel,
-    achievedLevel: state.achievedLevel,
-    constrained: state.constrained,
-    expectedResultNotice: state.expectedResultNotice,
-  };
+  return state;
 }

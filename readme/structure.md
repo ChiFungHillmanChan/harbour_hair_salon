@@ -16,16 +16,18 @@ This document tracks the architectural structure of the Harbour Hair Salon proje
 
 ### Try-Color (Virtual Hair Color Try-On)
 - `src/app/[locale]/try-color/page.tsx` — Server page with metadata
-- `src/app/[locale]/try-color/TryColorClient.tsx` — Main client orchestrator. Modes: `upload` (photo) and `video`; live camera is retained but disabled behind the `ENABLE_LIVE_CAMERA = false` flag. Holds the `bleachState` ('pre'/'post') state and threads it into every recolor request via `buildRecolorRequest`.
+- `src/app/[locale]/try-color/TryColorClient.tsx` — Main client orchestrator. Modes: `upload` (photo) and `video`; live camera is retained but disabled behind `ENABLE_LIVE_CAMERA = false`. Memoizes the shared `HairConsultation` recolor request, paints photos after canvas mount, clears stale media analysis and receives photo/video result context.
 - `src/components/try-color/CameraView.tsx` — Camera feed (currently flag-disabled, code retained)
-- `src/components/try-color/VideoTryOn.tsx` — Video-clip try-on: uploads a short clip, extracts/segments frames (`segmentStill`), recolors each frame with the engine, and plays them back with scrub + download-still. Guardrails: `VIDEO_MAX_SECONDS`, `VIDEO_MAX_DIM`, `VIDEO_TARGET_FPS`, `VIDEO_MAX_FRAMES`, `VIDEO_MAX_FILE_BYTES`, plus a slow-device fallback.
-- `src/components/try-color/PreviewCanvas.tsx` — Preview surface for upload mode
+- `src/components/try-color/VideoTryOn.tsx` — Video-clip try-on: uploads a short clip, extracts/segments frames (`segmentStill`), recolors source copies, reports current-frame analysis via `onContextChange`, and plays with scrub + download-still. Replacement/unmount invalidates pending extraction. Guardrails: `VIDEO_MAX_SECONDS`, `VIDEO_MAX_DIM`, `VIDEO_TARGET_FPS`, `VIDEO_MAX_FRAMES`, `VIDEO_MAX_FILE_BYTES`, plus a slow-device fallback.
+- `src/components/try-color/PreviewCanvas.tsx` — Photo preview/download surface; contains the full image without cropping hair.
 - `src/components/try-color/segmentation.worker.ts` — Worker: MediaPipe segmentation (used by the flag-disabled live path)
 - `src/components/try-color/HairSegmentation.ts` — Singleton ImageSegmenter + `segmentStill()` for photos and video frames
-- `src/components/try-color/colorMath.ts` — Recolor engine. `bleachState` master mode: **漂前 ('pre')** = deposit-only (base-dominated, vivid shades mute on dark hair, warm-pigment bleed, lift capped); **漂後上色 ('post')** = pre-bleached canvas, target shown vivid/true via luminance (gray-level) mapping, original colour ignored. Key fns: `resolveRecolorContext`, `buildModeBaseColor`, `applyRecolorToImageDataWithAlpha`, `analyzeHair`.
-- `src/components/try-color/constants.ts` — `BleachState` type, `RecolorRequest`, preset colors, hair-level/underlying-pigment tables, MediaPipe + video constants
-- `src/components/try-color/ColorPalette.tsx` — Color swatches, custom picker, intensity slider, and the 漂前/漂後 method toggle
-- `src/components/try-color/UploadDropzone.tsx` — Photo upload flow and validation
+- `src/components/try-color/colorMath.ts` — `analyzeHair` samples hair interiors with trimmed statistics, exposure/support checks, D65 Lab and approximate photographic zones. `resolveRecolorContext` models deposit/permanent/prelighten scenarios with history restrictions and translated notice codes; `applyRecolorToImageDataWithAlpha` preserves source texture and exact zero-strength identity. These are uncalibrated visual heuristics, not salon outcome guarantees.
+- `src/components/try-color/constants.ts` — `HairConsultation`, `RecolorRequest`, quality/notice types and illustrative shade provenance. Generic preview levels stay separate from manufacturer scales; presets/custom colours share an sRGB derivation with continuous rendering luminance. MediaPipe/video constants remain here.
+- `src/components/try-color/ColorPalette.tsx` — Shade selection, visual strength, service/history/white-hair/base controls, quality/range/zone summaries and bilingual capture guidance.
+- `src/components/try-color/tressCalibration.ts` — Validated offline real-tress measurement schema and `deltaE2000` for like-for-like colour differences. `scripts/validate-hair-calibration.ts` checks a supplied JSON dataset without publishing it; `readme/try-color-calibration.md` documents source research, collection and independent validation. No measured manufacturer records are bundled.
+- `src/components/try-color/UploadDropzone.tsx` — Photo validation/decoding; replacement or unmount cancels pending callbacks and releases object URLs.
+- `next.config.ts` / `src/app/lib/try-color-media.test.ts` — Shared CSP permits same-origin and local `blob:` media so video works after direct or soft navigation.
 - `src/components/try-color/ResultActions.tsx` — Download button
 
 ### Colour Booking Gate (Consultation & Patch Test)

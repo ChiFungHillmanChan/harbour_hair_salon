@@ -85,7 +85,7 @@ export const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>
     return (
       <canvas
         ref={canvasRef}
-        className="w-full h-full object-cover rounded-lg"
+        className="w-full h-full object-contain rounded-lg"
         style={{
           ...(mirrored && { transform: 'scaleX(-1)' }),
           ...(blendMode && { mixBlendMode: blendMode }),

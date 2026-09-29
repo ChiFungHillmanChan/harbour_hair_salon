@@ -5,7 +5,7 @@ import {
   segmentStill,
   type HairMaskData,
 } from '@/components/try-color/HairSegmentation';
-import { applyRecolorToImageDataWithAlpha } from '@/components/try-color/colorMath';
+import { applyRecolorToImageDataWithAlpha, type ResolvedRecolorContext } from '@/components/try-color/colorMath';
 import {
   SLOW_FRAME_THRESHOLD_MS,
   VIDEO_MAX_DIM,
@@ -19,8 +19,9 @@ import { useT } from '@/i18n/client';
 import { rich } from '@/i18n/rich';
 
 interface VideoTryOnProps {
-  /** Current recolour parameters from the parent (preset + strength + level + bleach). */
+  /** Stable request shared with the photo renderer. */
   request: RecolorRequest;
+  onContextChange: (context: ResolvedRecolorContext | null) => void;
 }
 
 /** A single decoded frame: SOURCE pixels + its hair mask. Never mutate `source`. */
@@ -79,7 +80,7 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export function VideoTryOn({ request }: VideoTryOnProps) {
+export function VideoTryOn({ request, onContextChange }: VideoTryOnProps) {
   const t = useT('tryColor');
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<VideoErrorCode | null>(null);
@@ -125,9 +126,10 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
       frame.source.width,
       frame.source.height,
     );
-    applyRecolorToImageDataWithAlpha(copy, frame.mask, requestRef.current);
+    const context = applyRecolorToImageDataWithAlpha(copy, frame.mask, requestRef.current);
     ctx.putImageData(copy, 0, 0);
-  }, []);
+    onContextChange(context);
+  }, [onContextChange]);
 
   // Re-render the visible frame whenever the recolour request changes.
   useEffect(() => {
@@ -178,7 +180,8 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
     setFrameCount(0);
     setProgress(0);
     setError(null);
-  }, [stopPlayback]);
+    onContextChange(null);
+  }, [stopPlayback, onContextChange]);
 
   const extractFrames = useCallback(
     async (file: File) => {
@@ -282,6 +285,9 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
 
   const handleFile = useCallback(
     (file: File) => {
+      // Also invalidate an extraction when its replacement file is invalid.
+      extractGenRef.current++;
+      resetState();
       setError(null);
       if (!file.type.startsWith('video/')) {
         setError('notVideo');
@@ -295,7 +301,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
       }
       void extractFrames(file);
     },
-    [extractFrames],
+    [extractFrames, resetState],
   );
 
   const handleScrub = useCallback(
@@ -326,7 +332,11 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
     );
   }, []);
 
-  useEffect(() => () => stopPlayback(), [stopPlayback]);
+  useEffect(() => () => {
+    extractGenRef.current++;
+    if (playRafRef.current !== null) cancelAnimationFrame(playRafRef.current);
+    framesRef.current = [];
+  }, []);
 
   const showDropzone = phase === 'idle' || phase === 'error';
 
@@ -338,15 +348,24 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
         </div>
       )}
 
-      <div className="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden border border-zinc-800 shadow-2xl shadow-black/50">
+      <div className={`relative w-full bg-black rounded-xl overflow-hidden border border-zinc-800 shadow-2xl shadow-black/50 ${phase === 'ready' ? 'aspect-[4/3]' : 'min-h-80'}`}>
         {showDropzone && (
           <div
-            className={`w-full h-full min-h-[280px] border border-dashed rounded-lg flex flex-col items-center justify-center gap-5 transition-all duration-300 cursor-pointer ${
+            role="button"
+            tabIndex={0}
+            aria-label={t('video.title')}
+            className={`w-full h-full min-h-80 border border-dashed rounded-lg flex flex-col items-center justify-center gap-5 px-4 py-6 text-center transition-all duration-300 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
               dragging
                 ? 'border-white/30 bg-white/5'
                 : 'border-zinc-700 hover:border-zinc-500 bg-zinc-900/50'
             }`}
             onClick={() => inputRef.current?.click()}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                inputRef.current?.click();
+              }
+            }}
             onDragOver={(e) => {
               e.preventDefault();
               setDragging(true);
@@ -419,7 +438,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
             ref={canvasRef}
             width={dimensions.width || undefined}
             height={dimensions.height || undefined}
-            className="w-full h-full object-cover rounded-lg"
+            className="w-full h-full object-contain rounded-lg"
           />
         )}
       </div>
@@ -450,7 +469,7 @@ export function VideoTryOn({ request }: VideoTryOnProps) {
               max={frameCount - 1}
               value={currentFrame}
               onChange={(e) => handleScrub(Number(e.target.value))}
-              className="flex-1 accent-white"
+              className="h-11 min-w-0 flex-1 accent-white"
               aria-label={t('video.scrub')}
             />
             <span className="text-zinc-500 text-xs tabular-nums w-16 text-right">

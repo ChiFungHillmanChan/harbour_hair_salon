@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { CameraView } from '@/components/try-color/CameraView';
 import { UploadDropzone } from '@/components/try-color/UploadDropzone';
@@ -18,12 +18,13 @@ import {
 import {
   PRESET_COLORS,
   DEFAULT_INTENSITY,
+  DEFAULT_CONSULTATION,
   LIVE_FRAME_MAX_DIM,
   LIVE_TARGET_FPS,
   SLOW_FRAME_THRESHOLD_MS,
   SLOW_FRAME_WINDOW,
   WARMUP_FRAMES,
-  type BleachState,
+  type HairConsultation,
   type HairAnalysis,
   type HairLevel,
   type HairLevelMode,
@@ -117,14 +118,14 @@ function buildRecolorRequest(
   previewStrength: number,
   baseLevelMode: HairLevelMode,
   manualBaseLevel: HairLevel,
-  bleachState: BleachState,
+  consultation: HairConsultation,
 ): RecolorRequest {
   return {
     preset,
     previewStrength,
     baseLevelMode,
     manualBaseLevel: baseLevelMode === 'manual' ? manualBaseLevel : undefined,
-    bleachState,
+    consultation,
   };
 }
 
@@ -135,7 +136,7 @@ export default function TryColorClient() {
   const [previewStrength, setPreviewStrength] = useState(DEFAULT_INTENSITY);
   const [baseLevelMode, setBaseLevelMode] = useState<HairLevelMode>('auto');
   const [manualBaseLevel, setManualBaseLevel] = useState<HairLevel>(5);
-  const [bleachState, setBleachState] = useState<BleachState>('pre');
+  const [consultation, setConsultation] = useState<HairConsultation>(DEFAULT_CONSULTATION);
   const [hairAnalysis, setHairAnalysis] = useState<HairAnalysis | null>(null);
   const [recolorContext, setRecolorContext] = useState<ResolvedRecolorContext | null>(null);
   const [loading, setLoading] = useState(false);
@@ -144,6 +145,7 @@ export default function TryColorClient() {
   const [workerReady, setWorkerReady] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
   const [hasUploadedImage, setHasUploadedImage] = useState(false);
+  const [uploadRevision, setUploadRevision] = useState(0);
   const [liveProfile, setLiveProfile] = useState<LivePreviewProfile>({
     maxDim: LIVE_FRAME_MAX_DIM,
     targetFps: LIVE_TARGET_FPS,
@@ -153,7 +155,7 @@ export default function TryColorClient() {
   const previewRef = useRef<PreviewCanvasHandle>(null);
   const workerRef = useRef<Worker | null>(null);
   const requestRef = useRef<RecolorRequest>(
-    buildRecolorRequest(DEFAULT_SHADE, DEFAULT_INTENSITY, 'auto', 5, 'pre'),
+    buildRecolorRequest(DEFAULT_SHADE, DEFAULT_INTENSITY, 'auto', 5, DEFAULT_CONSULTATION),
   );
   const frameTimesRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
@@ -173,15 +175,25 @@ export default function TryColorClient() {
   } | null>(null);
   const uploadGenRef = useRef(0);
 
-  useEffect(() => {
-    requestRef.current = buildRecolorRequest(
+  const recolorRequest = useMemo(
+    () => buildRecolorRequest(
       selectedShade,
       previewStrength,
       baseLevelMode,
       manualBaseLevel,
-      bleachState,
-    );
-  }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel, bleachState]);
+      consultation,
+    ),
+    [selectedShade, previewStrength, baseLevelMode, manualBaseLevel, consultation],
+  );
+
+  useEffect(() => {
+    requestRef.current = recolorRequest;
+  }, [recolorRequest]);
+
+  const handleContextChange = useCallback((context: ResolvedRecolorContext | null) => {
+    setHairAnalysis(context?.analysis ?? null);
+    setRecolorContext(context);
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial sync with window size; new rule from eslint-config-next 16.2.10, pre-existing pattern
@@ -436,24 +448,10 @@ export default function TryColorClient() {
           height: source.height,
         };
 
-        const coloredData = new ImageData(
-          new Uint8ClampedArray(originalImageData.data),
-          source.width,
-          source.height,
-        );
-        const nextContext = applyRecolorToImageDataWithAlpha(
-          coloredData,
-          hairMask,
-          requestRef.current,
-        );
-
-        if (gen !== uploadGenRef.current) return;
-
         setDimensions({ width: source.width, height: source.height });
+        setUploadRevision((revision) => revision + 1);
         setHasUploadedImage(true);
-        setHairAnalysis(nextContext.analysis);
-        setRecolorContext(nextContext);
-        previewRef.current?.drawImageData(coloredData, source.width, source.height);
+        // The effect below paints after PreviewCanvas has mounted.
       } catch (err) {
         if (gen !== uploadGenRef.current) return;
         setError(t('errors.imageFailed'));
@@ -468,7 +466,7 @@ export default function TryColorClient() {
   );
 
   useEffect(() => {
-    if (mode !== 'upload' || !uploadDataRef.current) return;
+    if (mode !== 'upload' || !hasUploadedImage || !uploadDataRef.current) return;
 
     const rafId = requestAnimationFrame(() => {
       if (!uploadDataRef.current) return;
@@ -481,7 +479,7 @@ export default function TryColorClient() {
       const nextContext = applyRecolorToImageDataWithAlpha(
         coloredData,
         hairMask,
-        requestRef.current,
+        recolorRequest,
       );
       setHairAnalysis(nextContext.analysis);
       setRecolorContext(nextContext);
@@ -489,7 +487,7 @@ export default function TryColorClient() {
     });
 
     return () => cancelAnimationFrame(rafId);
-  }, [selectedShade, previewStrength, baseLevelMode, manualBaseLevel, bleachState, mode]);
+  }, [recolorRequest, hasUploadedImage, uploadRevision, mode]);
 
   const startCamera = () => {
     setError(null);
@@ -498,6 +496,9 @@ export default function TryColorClient() {
   };
 
   const startUpload = () => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    uploadGenRef.current++;
+    setLoading(false);
     cleanupCameraState();
     setError(null);
     setMode('upload');
@@ -508,6 +509,9 @@ export default function TryColorClient() {
   };
 
   const startVideo = () => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    uploadGenRef.current++;
+    setLoading(false);
     cleanupCameraState();
     setError(null);
     setMode('video');
@@ -553,7 +557,9 @@ export default function TryColorClient() {
     );
   }, [mode]);
 
-  const detectedBaseLevel = hairAnalysis?.estimatedBaseLevel ?? null;
+  const detectedBaseLevel = hairAnalysis?.quality === 'unusable'
+    ? null
+    : hairAnalysis?.estimatedBaseLevel ?? null;
   const effectiveBaseLevel =
     recolorContext?.effectiveBaseLevel ??
     (baseLevelMode === 'manual' ? manualBaseLevel : detectedBaseLevel);
@@ -653,6 +659,8 @@ export default function TryColorClient() {
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => {
+              window.scrollTo({ top: 0, behavior: 'instant' });
+              uploadGenRef.current++;
               cleanupCameraState();
               setMode('landing');
               setError(null);
@@ -661,7 +669,7 @@ export default function TryColorClient() {
               setHairAnalysis(null);
               setRecolorContext(null);
             }}
-            className="text-zinc-400 hover:text-white text-sm flex items-center gap-2 transition-colors"
+            className="min-h-11 text-zinc-400 hover:text-white text-sm flex items-center gap-2 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -696,16 +704,11 @@ export default function TryColorClient() {
         {/* Preview area (camera / photo). Video mode renders its own preview. */}
         {mode === 'video' ? (
           <VideoTryOn
-            request={buildRecolorRequest(
-              selectedShade,
-              previewStrength,
-              baseLevelMode,
-              manualBaseLevel,
-              bleachState,
-            )}
+            request={recolorRequest}
+            onContextChange={handleContextChange}
           />
         ) : (
-          <div className="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden border border-zinc-800 shadow-2xl shadow-black/50">
+          <div className={`relative w-full bg-black rounded-xl overflow-hidden border border-zinc-800 shadow-2xl shadow-black/50 ${mode === 'upload' && !hasUploadedImage ? 'min-h-80' : 'aspect-[4/3]'}`}>
             {mode === 'camera' && (
               <>
                 <CameraView
@@ -753,12 +756,14 @@ export default function TryColorClient() {
             detectedBaseLevel={detectedBaseLevel}
             effectiveBaseLevel={effectiveBaseLevel}
             expectedResultNotice={expectedResultNotice}
-            bleachState={bleachState}
+            consultation={consultation}
+            analysis={hairAnalysis}
+            notices={recolorContext?.notices ?? []}
             onShadeChange={handleShadeChange}
             onPreviewStrengthChange={setPreviewStrength}
             onBaseLevelModeChange={handleBaseLevelModeChange}
             onManualBaseLevelChange={handleManualBaseLevelChange}
-            onBleachStateChange={setBleachState}
+            onConsultationChange={setConsultation}
           />
         </div>
 
@@ -772,18 +777,18 @@ export default function TryColorClient() {
         )}
 
         {/* Mode switch */}
-        <div className="flex justify-center gap-6 pb-6">
+        <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 pb-6">
           {mode === 'camera' ? (
             <button
               onClick={startUpload}
-              className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+              className="min-h-11 px-2 text-zinc-400 hover:text-zinc-300 text-sm transition-colors"
             >
               {t('workspace.uploadPhotoInstead')}
             </button>
           ) : mode === 'video' ? (
             <button
               onClick={startUpload}
-              className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+              className="min-h-11 px-2 text-zinc-400 hover:text-zinc-300 text-sm transition-colors"
             >
               {t('workspace.uploadPhotoInstead')}
             </button>
@@ -792,24 +797,27 @@ export default function TryColorClient() {
               {hasUploadedImage && (
                 <button
                   onClick={() => {
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                    uploadGenRef.current++;
                     setHasUploadedImage(false);
                     uploadDataRef.current = null;
+                    handleContextChange(null);
                   }}
-                  className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+                  className="min-h-11 px-2 text-zinc-400 hover:text-zinc-300 text-sm transition-colors"
                 >
                   {t('workspace.changePhoto')}
                 </button>
               )}
               <button
                 onClick={startVideo}
-                className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+                className="min-h-11 px-2 text-zinc-400 hover:text-zinc-300 text-sm transition-colors"
               >
                 {t('workspace.uploadVideoInstead')}
               </button>
               {ENABLE_LIVE_CAMERA && (
                 <button
                   onClick={startCamera}
-                  className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+                  className="min-h-11 px-2 text-zinc-400 hover:text-zinc-300 text-sm transition-colors"
                 >
                   {t('workspace.useCameraInstead')}
                 </button>

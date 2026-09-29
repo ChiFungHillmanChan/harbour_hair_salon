@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '@/i18n/client';
 import { rich } from '@/i18n/rich';
 
@@ -30,10 +30,25 @@ function resizeImage(img: HTMLImageElement): HTMLCanvasElement {
 export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
   const t = useT('tryColor');
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingLoadRef = useRef<{ image: HTMLImageElement; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  const cancelPendingLoad = useCallback(() => {
+    const pending = pendingLoadRef.current;
+    if (!pending) return;
+    pendingLoadRef.current = null;
+    pending.image.onload = null;
+    pending.image.onerror = null;
+    pending.image.src = '';
+    URL.revokeObjectURL(pending.url);
+  }, []);
+
+  useEffect(() => cancelPendingLoad, [cancelPendingLoad]);
+
   const processFile = (file: File) => {
+    // A replacement invalidates the previous decode even if it fails validation.
+    cancelPendingLoad();
     setError(null);
 
     if (!ACCEPTED_TYPES.includes(file.type)) {
@@ -47,7 +62,15 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
 
     const objectUrl = URL.createObjectURL(file);
     const img = new Image();
+    const pending = { image: img, url: objectUrl };
+    pendingLoadRef.current = pending;
     img.onload = () => {
+      if (pendingLoadRef.current !== pending) return;
+      // Release cancellation ownership before the parent can unmount us. Its
+      // asynchronous segmentation still needs this successfully decoded image.
+      pendingLoadRef.current = null;
+      img.onload = null;
+      img.onerror = null;
       try {
         if (img.width > MAX_SIZE || img.height > MAX_SIZE) {
           onImageLoaded(resizeImage(img));
@@ -59,7 +82,8 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
       }
     };
     img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
+      if (pendingLoadRef.current !== pending) return;
+      cancelPendingLoad();
       setError(t('upload.unreadable'));
     };
     img.src = objectUrl;
@@ -74,12 +98,21 @@ export function UploadDropzone({ onImageLoaded }: UploadDropzoneProps) {
 
   return (
     <div
-      className={`w-full h-full min-h-[280px] border border-dashed rounded-lg flex flex-col items-center justify-center gap-5 transition-all duration-300 cursor-pointer ${
+      role="button"
+      tabIndex={0}
+      aria-label={t('upload.title')}
+      className={`w-full h-full min-h-80 border border-dashed rounded-lg flex flex-col items-center justify-center gap-5 px-4 py-6 text-center transition-all duration-300 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
         dragging
           ? 'border-white/30 bg-white/5'
           : 'border-zinc-700 hover:border-zinc-500 bg-zinc-900/50'
       }`}
       onClick={() => inputRef.current?.click()}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          inputRef.current?.click();
+        }
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);
