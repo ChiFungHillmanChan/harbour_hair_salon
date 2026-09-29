@@ -18,13 +18,13 @@ The build compiles Tailwind utilities, bundles Three.js and embeds the reference
 - Orbit and zoom the dollhouse; see an overhead plan; enter at eye level.
 - Walk with WASD / arrow keys or touch controls; drag to look. Basic collision prevents passing through walls and major furniture; eye height follows the two steps up to the styling floor.
 - Visit reception, styling, wash and colour zones; take a guided tour.
-- Change floor, wall and chair finishes; adjust daylight; reset to the original palette.
+- Explore the fixed photo-based finishes; adjust daylight and reset the view.
 - Inspect the real source photographs and save a PNG of the model.
 - Toggle the eye for a model-only view; press it again (or Escape) to restore controls.
 
 ## Design and evidence
 
-The model keeps the defining charcoal tiled floor, white walls, halo mirrors, hydraulic chairs, white-striped reception desk, wash basins, privacy screen, high window, product shelves and rolled towels. The calligraphy is reproduced as a texture from the salon photo, not transcribed.
+The model keeps the defining dark speckled tiled floor, white walls, halo mirrors, hydraulic chairs, pale fluted reception desk, wash basins, privacy screen, high window, product shelves and rolled towels. The calligraphy is reproduced as a texture from the salon photo, not transcribed. Material choices are removed; the floor, walls and furniture retain the actual salon palette.
 
 The owner's layout corrections reserve approximately 80% of the wash/colour section for the service area and 20% for the side aisle. Reception has a gently inset entrance, giving the salon a stepped rather than rectangular footprint. The latest entrance photographs supersede the earlier 10/20/30 sketch: the inset is smaller and the glazed reception side continues all the way to the wash divider, where one glass return meets the straight main wall. The former projecting glass pocket is removed; a compact circular clothes rail stands just inside this single step. The wall behind the rail is solid white; glazing remains only along reception and at the short corner return. The high horizontal wall strips are removed. The smaller toilet is recessed behind a longer flat, continuous white reception screen without a projecting return, with the staff exit kept clear. A compact sink sits directly beside the WC on its wash-divider side, recessed to the same front line and facing the aisle in the same direction as the toilet door.
 
@@ -32,9 +32,11 @@ Three sideways wash stations follow the divider. The latest close-up photographs
 
 The transverse colour counter has open cubbies on both faces, with visible gaps between towels, bottles and colour stock. A taller open tower terminates its wall end. Only the side aisle has two steps; the rest of that edge is occupied by the colour bar. Looking from the styling floor toward reception, the steps and glass step with its circular coat rack are on the left. A landing connects the stair to the central styling aisle. The reception frontage has pale vertical ribs over narrow dark grooves, with a dark countertop and a pale edge.
 
+New close-up references refine the entrance to frameless, lightly tinted glass with small chrome patch hinges, a long pull handle and staggered reflective/frosted rectangles. Reception has pale grey ribs over dark grooves, a light stone top, wooden-coloured Harbour Hair sign, leaflets and a ceramic bowl. The WC has a white six-panel moulded door and round chrome knob, without an invented WC plaque. Beside it is a charcoal cupboard with an oak worktop, a round inset steel basin, pale tiled splashback, shallow wood-edged upper storage and colour bottles. The sink bay is widened to an estimated 80 cm; reception, WC and the entrance move forward together by 35 cm to preserve the existing staff gap. The wash, styling and public aisle positions remain unchanged.
+
 The room dimensions, 18 cm step rises, toilet footprint and glazing projection are visual estimates. Source photographs are retained unchanged, including photographs showing two basins; the model keeps the three stations specified by the owner. The toilet interior is illustrative; its position, white door and full-height enclosure are based on the supplied references. Furniture is modelled from the photographs rather than a manufacturer’s measured specification.
 
-Hidden spaces and exact measurements are deliberately not claimed. The material alternatives and daylight settings are design explorations, not recorded salon conditions.
+Hidden spaces and exact measurements are deliberately not claimed. Daylight settings are visual explorations, not recorded salon conditions.
 
 Sources checked 29 September 2026:
 - https://www.harbourhair.co.uk/contact

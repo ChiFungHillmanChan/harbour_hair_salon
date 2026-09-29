@@ -25,11 +25,11 @@ test('the compact right staircase has two risers and no phantom service-zone tre
 });
 
 test('the compact entrance connects around the divider to the steps and rear styling aisle', () => {
-  assertWalkableRoute([[1.78, 8.65], [1.78, 4.5], [2, 4.5], [2, 0.45], [0.3, 0.45], [0.3, -4.6]]);
+  assertWalkableRoute([[1.78, 9], [1.78, 4.5], [2, 4.5], [2, 0.45], [0.3, 0.45], [0.3, -4.6]]);
 });
 
 test('staff can pass between the WC and reception into the standing strip', () => {
-  assertWalkableRoute([[1.78, 7.7], [-2.23, 7.7], [-2.23, 8.72]]);
+  assertWalkableRoute([[1.78, 8.05], [-2.23, 8.05], [-2.23, 9.07]]);
 });
 
 test('the main aisle and reception visitor area remain open after reducing the room', () => {
@@ -44,9 +44,9 @@ test('the main aisle and reception visitor area remain open after reducing the r
 });
 
 test('the compact desk is solid while staff can stand behind it', () => {
-  assert.equal(canWalkAt(-1.94, 8.72), false, 'back of the desk');
-  assert.equal(canWalkAt(-1.06, 8.72), false, 'customer-facing edge');
-  assert.equal(canWalkAt(-2.23, 8.72), true, 'staff standing strip');
+  assert.equal(canWalkAt(-1.94, 9.07), false, 'back of the desk');
+  assert.equal(canWalkAt(-1.06, 9.07), false, 'customer-facing edge');
+  assert.equal(canWalkAt(-2.23, 9.07), true, 'staff standing strip');
 });
 
 test('the glass return keeps visitors out of the front-right cutout', () => {
@@ -59,7 +59,7 @@ test('the glass return keeps visitors out of the front-right cutout', () => {
 
 test('zone viewpoints land on clear floor at the correct eye height', () => {
   for (const [zone, x, z, eyeY] of [
-    ['welcome', 1.78, 8.65, 1.62], ['wash', 2.05, 3.75, 1.62],
+    ['welcome', 1.78, 9, 1.62], ['wash', 2.05, 3.75, 1.62],
     ['colour', 0.3, -1.1, 1.98], ['styling', 0.25, -2.8, 1.98],
   ]) {
     assert.equal(canWalkAt(x, z), true, `${zone} viewpoint`);
@@ -116,7 +116,7 @@ test('the recessed WC is screened from reception while its side approach stays o
   assert.equal(canWalkAt(-1.7, 6.7), false, 'enclosed WC');
   assert.equal(canWalkAt(-1.14, 6.85), false, 'recessed WC door clearance');
   assert.equal(canWalkAt(-1.12, 6.85), true, 'approach to recessed door');
-  assert.equal(canWalkAt(-0.75, 7.35), false, 'long white wall facing reception');
+  assert.equal(canWalkAt(-0.75, 7.7), false, 'long white wall facing reception');
   assert.equal(canWalkAt(-0.35, 7.1), true, 'the projecting return has been removed');
   assert.equal(canWalkAt(-0.6, 7.05), true, 'standing space behind the flat white wall');
   assertWalkableRoute([[1.78, 6.7], [-0.75, 6.7], [-0.95, 6.85]]);
@@ -127,7 +127,8 @@ test('the sink beside the WC leaves a shared aisle-facing approach clear', () =>
   assert.equal(canWalkAt(-1.14, 6.06), false, 'clearance at the aisle-facing sink front');
   assert.equal(canWalkAt(-1.12, 6.06), true, 'approach outside the sink front');
   assert.equal(canWalkAt(-0.75, 6.15), true, 'former projecting sink footprint is clear');
-  assertWalkableRoute([[1.78, 6.06], [-0.95, 6.06], [-0.95, 6.85]]);
+  assert.equal(canWalkAt(-1.58, 6.5), false, 'wider sink worktop remains solid');
+  assertWalkableRoute([[1.78, 6.2], [-0.95, 6.2], [-0.95, 7.2]]);
 });
 
 test('the round coat rack blocks its radius while allowing diagonal passage', () => {
@@ -139,10 +140,10 @@ test('the round coat rack blocks its radius while allowing diagonal passage', ()
 });
 
 test('visitors stay inside the compact outer walls', () => {
-  for (const [x, z] of [[-2.35, 8.65], [2.35, 3.75], [0, -5.79], [0, 9.39], [0, -6.1], [0, 9.7]]) {
+  for (const [x, z] of [[-2.35, 8.65], [2.35, 3.75], [0, -5.79], [0, 9.74], [0, -6.1], [0, 10.05]]) {
     assert.equal(canWalkAt(x, z), false, `outside room at (${x}, ${z})`);
   }
   assert.equal(canWalkAt(2.34, 3.75), true);
   assert.equal(canWalkAt(0, -5.77), true);
-  assert.equal(canWalkAt(0, 9.37), true);
+  assert.equal(canWalkAt(0, 9.72), true);
 });

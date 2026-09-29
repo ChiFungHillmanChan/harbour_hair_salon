@@ -20,7 +20,7 @@ function setCleanView(enabled) {
   all('[data-studio-ui]').forEach((element) => { element.inert = state.cleanView; });
   const button = $('[data-action="labels"]');
   button.setAttribute('aria-pressed', String(state.cleanView));
-  button.title = state.cleanView ? 'Show design controls and labels' : 'Hide design controls and labels';
+  button.title = state.cleanView ? 'Show viewing controls and labels' : 'Hide viewing controls and labels';
   $('[data-clean-eye-slash]').classList.toggle('hidden', !state.cleanView);
   emit('labels', { visible: !state.cleanView && state.labels });
 }
@@ -74,13 +74,6 @@ function updateTour(playing) {
   $('[data-tour-label]').textContent = state.tour ? 'Pause the tour' : 'Take a little tour';
 }
 
-function selectFinish(surface, value) {
-  const button = all('[data-surface]').find((item) => item.dataset.surface === surface && item.dataset.finish === value);
-  if (!button) return;
-  all(`[data-surface="${surface}"]`).forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
-  $(`[data-finish-label="${surface}"]`).textContent = button.dataset.finishName;
-}
-
 function restorePanels() {
   $('#design-home').append($('#design-panel'));
   $('#atmosphere-home').append($('#atmosphere-panel'));
@@ -116,10 +109,6 @@ document.addEventListener('click', (event) => {
   } else if (button.dataset.light !== undefined) {
     updateLight(button.dataset.light);
     emit('light', { value: state.light });
-  } else if (button.dataset.surface) {
-    const { surface, finish } = button.dataset;
-    selectFinish(surface, finish);
-    emit('finish', { surface, value: finish });
   } else if (button.dataset.close) {
     document.getElementById(button.dataset.close).close();
   } else {
@@ -144,9 +133,8 @@ document.addEventListener('click', (event) => {
         updateTour(false);
         state.labels = true;
         setCleanView(false);
-        ['floor', 'walls', 'chairs'].forEach((surface) => selectFinish(surface, 'original'));
         emit('reset');
-        announce('Back to the original salon.');
+        announce('View and lighting reset.');
         break;
       case 'capture':
         emit('capture');
