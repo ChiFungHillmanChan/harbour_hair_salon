@@ -14,7 +14,7 @@ import { quoteForNewBooking } from './pricing/quote-service';
 import { quoteMatches, serializeQuote, type PriceQuote, type QuoteExpectation } from './pricing/quote';
 import { penceToDecimalString } from './pricing/money';
 import type { Locale } from '@/i18n/config';
-import { bookingCoverageEndsAt, isWithinBookingHorizon } from './booking-horizon';
+import { bookingCoverageEndsAt, isBookableDateWindow, isWithinBookingHorizon } from './booking-horizon';
 import { buildBookingDays, type BookingDay, type WorkingHours } from './booking-days';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { getTreatwellApiConfiguration, initialTreatwellSyncStatus } from './treatwell-api';
@@ -277,8 +277,11 @@ export async function getAvailableSlotsUnion(
  * of those) — so a visit costs the same few queries however many days it shows.
  */
 export async function getBookingDays(stylistId: string, dates: string[], serviceDuration: number): Promise<BookingDay[]> {
-  if (dates.length === 0) return [];
   const now = new Date();
+  // The reads below span min..max of `dates`; an unbounded range is a whole-
+  // calendar scan. The action already refuses these; this keeps any other
+  // caller from reaching the database with one either.
+  if (!isBookableDateWindow(dates, now)) return [];
   const ordered = [...dates].sort();
   const window = {
     start: salonDayWindow(resolveSalonDateTime(ordered[0], '12:00').utc).start,
@@ -299,10 +302,19 @@ export async function getBookingDays(stylistId: string, dates: string[], service
       loadExternalBusy(prisma, stylistIds, window),
     ]);
 
+  // Append in place: copying each list per row made grouping quadratic.
   const hoursByStylist = new Map<string, WorkingHours[]>();
-  for (const row of rows) hoursByStylist.set(row.stylistId, [...(hoursByStylist.get(row.stylistId) ?? []), row]);
+  for (const row of rows) {
+    const list = hoursByStylist.get(row.stylistId);
+    if (list) list.push(row);
+    else hoursByStylist.set(row.stylistId, [row]);
+  }
   const busyByStylist = new Map<string, BookedInterval[]>();
-  const addBusy = (id: string, interval: BookedInterval) => busyByStylist.set(id, [...(busyByStylist.get(id) ?? []), interval]);
+  const addBusy = (id: string, interval: BookedInterval) => {
+    const list = busyByStylist.get(id);
+    if (list) list.push(interval);
+    else busyByStylist.set(id, [interval]);
+  };
   // Frozen booking duration wins over the live service duration (see getAvailableSlots).
   for (const appt of appointments) addBusy(appt.stylistId, { start: new Date(appt.date), durationMin: appt.durationAtBooking ?? appt.service.duration });
   for (const block of externalBlocks) addBusy(block.stylistId, toBookedInterval(block));

@@ -8,8 +8,9 @@ before(() => mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-01T09:0
 after(() => mock.timers.reset());
 
 type Where = Record<string, unknown>;
-function fixture(options: { enabled?: boolean; fail?: boolean } = {}) {
+function fixture(options: { enabled?: boolean; fail?: boolean; limited?: boolean } = {}) {
   const calls: { model: string; where: Where }[] = [];
+  const limiterKeys: string[] = [];
   const hours = [
     { stylistId: 'funky', dayOfWeek: 2, startTime: '10:15', endTime: '19:00' },
     { stylistId: 'lox', dayOfWeek: 2, startTime: '10:15', endTime: '19:00' },
@@ -36,12 +37,16 @@ function fixture(options: { enabled?: boolean; fail?: boolean } = {}) {
     '@/app/lib/booking-maintenance': readiness,
     '@/app/services/notification-outbox-service': {},
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
-    '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true } },
+    '@/app/lib/rate-limit': {
+      bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true },
+      availabilityLimiter: { check: async (key: string) => { limiterKeys.push(key); return !options.limited; } },
+    },
     '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/cache': { revalidatePath: () => undefined },
+    'next/headers': { headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.7, 10.0.0.1' }) },
     'next/server': { after: (callback: () => unknown) => callback() },
   });
-  return { service, actions, calls };
+  return { service, actions, calls, limiterKeys };
 }
 
 const FOURTEEN = Array.from({ length: 14 }, (_, i) => new Date(Date.UTC(2026, 9, 1 + i)).toISOString().slice(0, 10));
@@ -92,4 +97,54 @@ test('the action shows nothing while online booking is switched off', async () =
 test('a lookup failure is reported as a failure, not as an unavailable fortnight', async () => {
   const f = fixture({ fail: true });
   assert.deepEqual(await f.actions.fetchBookingDays('funky', ['2026-10-06'], 60), { ok: false });
+});
+
+test('a whole-history range is refused before the limiter or the database', async () => {
+  const f = fixture();
+  for (const dates of [
+    ['1900-01-01', '9999-12-31'],
+    ['2026-10-01', '2026-10-15'], // two dates, fifteen days apart
+    ['2027-06-01'], // past the bookable horizon
+    ['2026-09-29'], // two days before the salon's today
+  ]) {
+    assert.deepEqual(await f.actions.fetchBookingDays('funky', dates, 60), { ok: true, days: [] });
+  }
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.limiterKeys.length, 0);
+});
+
+test('the service refuses an unbounded range too, whoever calls it', async () => {
+  const f = fixture();
+  assert.deepEqual(await f.service.getBookingDays(ANY_STYLIST_ID, ['1900-01-01', '9999-12-31'], 60), []);
+  assert.equal(f.calls.length, 0);
+});
+
+test('a limited address gets the could-not-load answer without a query', async () => {
+  const f = fixture({ limited: true });
+  assert.deepEqual(await f.actions.fetchBookingDays('funky', FOURTEEN, 60), { ok: false });
+  assert.deepEqual(await f.actions.fetchSlots('funky', '2026-10-06', 60), { ok: false });
+  assert.equal(f.calls.length, 0);
+  // Keyed by the client address Vercel puts first, not a proxy behind it.
+  assert.deepEqual(f.limiterKeys, ['203.0.113.7', '203.0.113.7']);
+});
+
+test('single-day time lookups keep to the same window', async () => {
+  const f = fixture();
+  assert.deepEqual(await f.actions.fetchSlots('funky', '9999-12-31', 60), { ok: true, slots: [] });
+  assert.deepEqual(await f.actions.fetchSlots('funky', '1900-01-01', 60), { ok: true, slots: [] });
+  const form = new FormData();
+  form.set('stylistId', 'funky'); form.set('date', '9999-12-31'); form.set('serviceDuration', '60');
+  assert.ok('error' in await f.actions.getAvailableSlotsAction(undefined, form));
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.limiterKeys.length, 0);
+});
+
+test('the wizard strip, including a visitor a day either side of London, still loads', async () => {
+  const f = fixture();
+  const strip = (start: number) => Array.from({ length: 14 }, (_, i) => new Date(Date.UTC(2026, 9, start + i)).toISOString().slice(0, 10));
+  for (const dates of [FOURTEEN, strip(0), strip(2)]) {
+    const result = await f.actions.fetchBookingDays('funky', dates, 60);
+    assert.equal(result.ok, true);
+    assert.equal(result.ok && result.days.length, 14);
+  }
 });
