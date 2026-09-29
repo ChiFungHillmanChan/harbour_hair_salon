@@ -9,6 +9,7 @@ import Link from '@/i18n/link';
 import { fetchBookingDays, submitBooking, type ClientQuote } from '@/app/actions/booking';
 import type { BookingDay } from '@/app/services/booking-days';
 import { DayChip, TimeSlotGrid, UnavailableDayBlock } from './DayAvailability';
+import { reconcileSelection } from './reconcile-selection';
 import { ANY_STYLIST_ID, BOOKING_DAYS_MAX } from '@/app/lib/booking-constants';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
@@ -139,9 +140,13 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
           if (cancelled) return;
           if (result.ok) {
             setBookingDays(result.days);
-            // A chosen time that is no longer free (e.g. after a refused booking) is dropped.
-            const chosenDay = result.days.find((day) => day.date === dayString);
-            setSelectedTime((time) => (time && !chosenDay?.slots.some((slot) => slot.available && slot.time === time) ? null : time));
+            // A chosen time that is no longer free (e.g. after a refused booking)
+            // is dropped, and a customer on the confirm step goes back to the
+            // times. The captured time/step are current: no time can be picked
+            // while the times are loading, and every day click clears the time.
+            const next = reconcileSelection(result.days, dayString, selectedTime, step);
+            if (next.time !== selectedTime) setSelectedTime(next.time);
+            if (next.step !== step) setStep(next.step);
           } else {
             setBookingDays([]);
             setSlotLoadFailed(true);
@@ -774,7 +779,7 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
              </button>
              <button
                type="submit"
-               disabled={isLoading || (colourGate !== null && !colourGate.eligible)}
+               disabled={isLoading || !selectedTime || (colourGate !== null && !colourGate.eligible)}
                className="bg-zinc-900 text-white px-8 py-3.5 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-black disabled:opacity-70 disabled:cursor-not-allowed shadow-md transition-all transform hover:-translate-y-0.5"
              >
                {isLoading ? (
