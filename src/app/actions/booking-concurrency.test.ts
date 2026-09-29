@@ -38,6 +38,8 @@ function fixture(options: {
   calendarReady?: boolean;
   onFeedRefresh?: () => void;
   trace?: string[];
+  /** Which reschedule allowance is spent: the customer's, or this appointment's. */
+  rescheduleSpent?: 'user' | 'appointment';
 } & NotificationTimingHooks = {}) {
   const originalDate = options.currentDate ?? new Date('2099-09-14T12:00:00Z');
   const appointment = {
@@ -56,6 +58,9 @@ function fixture(options: {
   let stagedEvents: Event[] = [];
   let transactionActive = false;
   let dispatches = 0;
+  let transactions = 0;
+  let writes = 0;
+  const limiterKeys: string[] = [];
   let externallyCommitted: Partial<typeof appointment> = {};
   let reads = 0;
   const applyData = (data: Record<string, unknown>) => {
@@ -85,6 +90,7 @@ function fixture(options: {
       }] : [])].filter((row) => matches(row, where)),
       update: async ({ data }: { data: Record<string, unknown> }) => { applyData(data); return structuredClone(appointment); },
       updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        writes++;
         if (!matches(appointment, where)) return { count: 0 };
         applyData(data); return { count: 1 };
       },
@@ -109,6 +115,7 @@ function fixture(options: {
     ...tx,
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       const before = structuredClone(appointment);
+      transactions++;
       transactionActive = true;
       try {
         const result = await fn(tx);
@@ -163,7 +170,10 @@ function fixture(options: {
     '@/app/services/booking-service': service,
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'ADMIN' }) },
     '@/app/lib/booking-maintenance': bookingReadiness,
-    '@/app/lib/rate-limit': {},
+    '@/app/lib/rate-limit': {
+      rescheduleLimiter: { check: async (key: string) => { limiterKeys.push(key); return options.rescheduleSpent !== 'user'; } },
+      appointmentRescheduleLimiter: { check: async (key: string) => { limiterKeys.push(key); return options.rescheduleSpent !== 'appointment'; } },
+    },
     '@/app/services/site-settings-service': {},
     '@/app/actions/admin-services': {},
     '@/app/services/notification-outbox-service': queue,
@@ -194,7 +204,10 @@ function fixture(options: {
   };
   const actions = loadServerModule<typeof import('./booking')>('src/app/actions/booking.ts', dependencies);
   const admin = loadServerModule<typeof import('./admin')>('src/app/actions/admin.ts', dependencies);
-  return { appointment, originalDate, messages, events, dispatches: () => dispatches, actions, admin };
+  return {
+    appointment, originalDate, messages, events, dispatches: () => dispatches, actions, admin,
+    transactions: () => transactions, writes: () => writes, limiterKeys,
+  };
 }
 
 for (const operation of ['cancel', 'reschedule', 'approve', 'decline'] as const) {
@@ -214,6 +227,55 @@ test('rescheduling a frozen 60-minute booking cannot overlap a booking 45 minute
   assert.equal(result.success, false);
   assert.equal(appointment.date.getTime(), originalDate.getTime());
   assert.equal(messages.length, 0);
+});
+
+test('rescheduling to the time a booking already has sends nothing, however often', async () => {
+  // 12:00Z on 14 September is 13:00 in London (BST): the booking's own time.
+  let feedInvalidations = 0;
+  const f = fixture({ onFeedInvalidated: () => { feedInvalidations++; } });
+  for (let attempt = 0; attempt < 8; attempt++) {
+    assert.deepEqual(await f.actions.rescheduleAppointment(f.appointment.id, '2099-09-14', '13:00'), { success: true });
+  }
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+  assert.equal(f.appointment.notificationVersion, 0);
+  assert.equal(f.appointment.reminderSent, true, 'the reminder is not re-armed either');
+  assert.equal(f.writes(), 0);
+  assert.equal(f.transactions(), 0);
+  assert.equal(f.events.length, 0);
+  assert.equal(f.dispatches(), 0);
+  assert.equal(f.messages.length, 0);
+  assert.equal(feedInvalidations, 0);
+  assert.deepEqual(f.limiterKeys, [], 'a no-op spends no reschedule allowance');
+});
+
+for (const spent of ['user', 'appointment'] as const) {
+  test(`a spent ${spent} reschedule allowance refuses the move before any transaction`, async () => {
+    const f = fixture({ rescheduleSpent: spent });
+    const result = await f.actions.rescheduleAppointment(f.appointment.id, '2099-09-15', '10:00');
+    assert.equal(result.success, false);
+    assert.equal('code' in result && result.code, 'TOO_MANY_RESCHEDULES');
+    assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+    assert.equal(f.transactions(), 0);
+    assert.equal(f.writes(), 0);
+    assert.equal(f.messages.length, 0);
+    assert.deepEqual(f.limiterKeys, spent === 'user' ? ['user:user-1'] : ['user:user-1', 'appt:appointment-1']);
+  });
+}
+
+test('a time the salon refuses spends no reschedule allowance', async () => {
+  // Closes at 10:30, so a 60-minute booking at 10:00 would over-run.
+  const f = fixture({ hoursEnd: '10:30' });
+  const result = await f.actions.rescheduleAppointment(f.appointment.id, '2099-09-15', '10:00');
+  assert.equal('code' in result && result.code, 'OUTSIDE_HOURS');
+  assert.deepEqual(f.limiterKeys, [], 'only a move that can actually happen is counted');
+});
+
+test("another customer's booking cannot spend its reschedule allowance", async () => {
+  const f = fixture();
+  f.appointment.userId = 'someone-else';
+  const result = await f.actions.rescheduleAppointment(f.appointment.id, '2099-09-15', '10:00');
+  assert.equal('code' in result && result.code, 'APPOINTMENT_NOT_FOUND');
+  assert.deepEqual(f.limiterKeys, []);
 });
 
 test('rescheduling must fit the entire frozen duration before closing', async () => {
@@ -316,8 +378,10 @@ test('admin approval rejects an internal booking that now overlaps the pending r
 });
 
 test('rescheduling cannot overlap an imported external booking', async () => {
+  // 13:30 BST (12:30Z) runs into the synced 12:15Z–13:00Z block. (13:00 is the
+  // booking's own time, which is now a no-op rather than a move.)
   const { actions, appointment, messages } = fixture({ externalConflict: true });
-  assert.equal((await actions.rescheduleAppointment(appointment.id, '2099-09-14', '13:00')).success, false);
+  assert.equal((await actions.rescheduleAppointment(appointment.id, '2099-09-14', '13:30')).success, false);
   assert.equal(messages.length, 0);
 });
 

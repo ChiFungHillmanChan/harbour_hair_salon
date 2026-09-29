@@ -44,6 +44,7 @@ const errors: Localized<Messages['errors']> = {
     RESCHEDULE_TOO_LATE: '預約前 24 小時內不能改期',
     RESCHEDULE_PAST: '不能改期至已過去的時間',
     RESCHEDULE_FAILED: '未能改期，請再試一次。',
+    TOO_MANY_RESCHEDULES: '此預約最近已多次改期，請稍後再試或致電本店。',
     NOT_AUTHORISED: '沒有權限',
     ADMIN_UPDATE_FAILED: '未能更新此預約，請再試一次。',
     ADMIN_CREATE_FAILED: '未能建立此預約，請再試一次。',

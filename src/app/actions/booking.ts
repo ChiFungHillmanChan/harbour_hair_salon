@@ -17,10 +17,12 @@ import { after } from 'next/server';
 import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
-import { bookingLimiter } from '@/app/lib/rate-limit';
+import { appointmentRescheduleLimiter, availabilityLimiter, bookingLimiter, rescheduleLimiter } from '@/app/lib/rate-limit';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
 import { isBookingEnabled, assertOnlineBookingReady } from '@/app/lib/booking-maintenance';
+import { isBookableDateWindow } from '@/app/services/booking-horizon';
 import { revalidateAllLocales } from '@/i18n/revalidate';
+import { headers } from 'next/headers';
 
 // bookingLimiter curbs calendar-blockade abuse. It comes from lib/rate-limit.ts,
 // which falls back to in-process limiting when Upstash is unconfigured. (The
@@ -30,6 +32,12 @@ import { revalidateAllLocales } from '@/i18n/revalidate';
 /** A failed action result in the caller's language. */
 function failure(locale: Locale, code: BookingErrorCode) {
   return { success: false as const, code, error: bookingErrorText(locale, code) };
+}
+
+// The availability lookups need no session, so they are limited per address.
+async function availabilityAllowed(): Promise<boolean> {
+  const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  return availabilityLimiter.check(ip);
 }
 
 // serviceDuration is client-supplied. Bound it hard: an unvalidated negative or
@@ -109,8 +117,11 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
     serviceDuration,
   });
 
-  if (!validated.success) {
+  if (!validated.success || !isBookableDateWindow([validated.data.date])) {
     return { error: bookingErrorText(locale, 'INVALID_INPUT') };
+  }
+  if (!(await availabilityAllowed())) {
+    return { error: bookingErrorText(locale, 'TOO_MANY_ATTEMPTS') };
   }
 
   try {
@@ -145,8 +156,11 @@ export async function fetchSlots(
   // SERVICE_DURATION note above) — this path has no Zod wrapper of its own.
   // `date` is the salon-local calendar day (YYYY-MM-DD) the customer saw.
   const duration = SERVICE_DURATION.safeParse(serviceDuration);
-  if (!duration.success || !isValidSalonDate(date)) {
+  if (!duration.success || !isBookableDateWindow([date])) {
     return { ok: true, slots: [] };
+  }
+  if (!(await availabilityAllowed())) {
+    return { ok: false };
   }
   try {
     const slots =
@@ -164,16 +178,10 @@ export async function fetchSlots(
 
 export type FetchBookingDaysResult = { ok: true; days: BookingDay[] } | { ok: false };
 
-/** isValidSalonDate checks the shape only; "2026-02-30" would roll over to 2 March. */
-function isCalendarDate(date: unknown): date is string {
-  if (typeof date !== 'string' || !isValidSalonDate(date)) return false;
-  const ms = Date.parse(`${date}T12:00:00Z`);
-  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === date;
-}
-
 /**
  * The booking page's whole date strip in one request: each day's status, hours
- * and every time (taken ones greyed). Same gate and input rules as fetchSlots.
+ * and every time (taken ones greyed). Same gate and input rules as fetchSlots:
+ * real calendar days, inside the bookable window, at most a fortnight apart.
  */
 export async function fetchBookingDays(
   stylistId: string,
@@ -185,9 +193,12 @@ export async function fetchBookingDays(
   }
   const duration = SERVICE_DURATION.safeParse(serviceDuration);
   const validDates = Array.isArray(dates) && dates.length > 0 && dates.length <= BOOKING_DAYS_MAX &&
-    dates.every(isCalendarDate);
+    isBookableDateWindow(dates);
   if (!duration.success || typeof stylistId !== 'string' || !stylistId || !validDates) {
     return { ok: true, days: [] };
+  }
+  if (!(await availabilityAllowed())) {
+    return { ok: false };
   }
   try {
     return { ok: true, days: await getBookingDays(stylistId, [...new Set(dates)], duration.data) };
@@ -556,6 +567,14 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
     return failure(locale, 'RESCHEDULE_PAST');
   }
 
+  // Moving a booking to the time it already has changes nothing, so it must
+  // not bump the notification version: each bump is a separate email to the
+  // customer and the salon, and resubmitting the same time was a way to send
+  // as many as anyone liked.
+  if (newDate.getTime() === appointment.date.getTime()) {
+    return { success: true };
+  }
+
   // Validate the new time falls within stylist availability for this day
   const duration = appointment.durationAtBooking ?? appointment.service.duration;
   const hoursCheck = await checkStylistHours(appointment.stylistId, salon, duration);
@@ -574,6 +593,14 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
             ? 'PATCH_TEST_EXPIRED'
             : 'PATCH_TEST_REQUIRED');
     }
+  }
+
+  // Real moves email both sides, so they are limited. Checked after ownership
+  // (nobody can spend another customer's allowance) and after every check that
+  // can refuse the new time, so trying dates that are refused never uses it up.
+  if (!(await rescheduleLimiter.check(`user:${session.userId}`)) ||
+      !(await appointmentRescheduleLimiter.check(`appt:${appointmentId}`))) {
+    return failure(locale, 'TOO_MANY_RESCHEDULES');
   }
 
   try {

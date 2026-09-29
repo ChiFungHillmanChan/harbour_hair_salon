@@ -90,7 +90,10 @@ function fixture(options: { hours?: Hours; existing?: { date: Date; durationMin:
     '@/app/lib/booking-maintenance': bookingReadiness,
     '@/app/services/notification-outbox-service': queue,
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
-    '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true } },
+    '@/app/lib/rate-limit': {
+      bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true },
+      rescheduleLimiter: { check: async () => true }, appointmentRescheduleLimiter: { check: async () => true },
+    },
     '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/server': { after: (callback: () => unknown) => callback() },
     'next/cache': { revalidatePath: () => undefined },

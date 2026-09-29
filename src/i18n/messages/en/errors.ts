@@ -49,6 +49,7 @@ const errors = {
     RESCHEDULE_TOO_LATE: 'Cannot reschedule within 24 hours of appointment',
     RESCHEDULE_PAST: 'Cannot reschedule to a time in the past',
     RESCHEDULE_FAILED: 'Reschedule failed. Please try again.',
+    TOO_MANY_RESCHEDULES: 'This appointment has been moved several times recently. Please try again later or call the salon.',
     NOT_AUTHORISED: 'Not authorised',
     ADMIN_UPDATE_FAILED: 'Could not update this appointment. Please try again.',
     ADMIN_CREATE_FAILED: 'Could not create this booking. Please try again.',
