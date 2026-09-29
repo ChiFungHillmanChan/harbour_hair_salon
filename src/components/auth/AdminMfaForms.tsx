@@ -45,7 +45,7 @@ const clearSetupDrafts = () => SETUP_KEYS.forEach(clearDraft);
 
 type Enrollment = { secret: string; uri: string };
 
-export function AdminMfaSetupForm({ requiresPassword, enrolled = false }: { requiresPassword: boolean; enrolled?: boolean }) {
+export function AdminMfaSetupForm({ requiresPassword, enrolled = false, notEnabled = false }: { requiresPassword: boolean; enrolled?: boolean; notEnabled?: boolean }) {
   const t = useT('auth');
   const pathname = usePathname() ?? '/';
   const startFormRef = usePreservedForm(`${SETUP_DRAFT}:password`);
@@ -80,6 +80,10 @@ export function AdminMfaSetupForm({ requiresPassword, enrolled = false }: { requ
   </div>;
   if (enrolled) return <div className="space-y-5">
     <p className="text-sm text-zinc-700">{t('mfa.setup.alreadyEnabled')}</p>
+    <Link href="/admin" onClick={clearSetupDrafts} className={`${buttonClass} block text-center`}>{t('mfa.setup.continueToAdmin')}</Link>
+  </div>;
+  if (notEnabled) return <div className="space-y-5">
+    <p className="text-sm text-zinc-700">{t('mfa.setup.notEnabled')}</p>
     <Link href="/admin" onClick={clearSetupDrafts} className={`${buttonClass} block text-center`}>{t('mfa.setup.continueToAdmin')}</Link>
   </div>;
   return <div className="space-y-6">

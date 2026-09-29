@@ -7,8 +7,10 @@ import { loadServerModule } from '../../test/load-server-module';
 test('offline bootstrap atomically revokes existing sessions, preserves MFA and audits without credentials', async () => {
   let upsert: Record<string, unknown> = {};
   const events: Record<string, unknown>[] = [];
+  const revoked: unknown[] = [];
   const tx = {
     user: { upsert: async (args: Record<string, unknown>) => { upsert = args; return { id: 'bootstrap-admin' }; } },
+    passwordResetToken: { deleteMany: async ({ where }: { where: unknown }) => { revoked.push(where); return { count: 0 }; } },
     auditEvent: { create: async ({ data }: { data: Record<string, unknown> }) => { events.push(data); return { id: 'audit-bootstrap' }; } },
   };
   const db = { $transaction: async (run: (client: typeof tx) => Promise<unknown>) => run(tx) } as unknown as PrismaClient;
@@ -19,6 +21,7 @@ test('offline bootstrap atomically revokes existing sessions, preserves MFA and 
   assert.deepEqual(upsert.where, { email: 'admin@example.invalid' });
   assert.deepEqual(upsert.update, { name: 'Bootstrap Admin', password: 'fixture-password-hash', role: 'ADMIN', sessionVersion: { increment: 1 } });
   assert.deepEqual(upsert.create, { name: 'Bootstrap Admin', email: 'admin@example.invalid', password: 'fixture-password-hash', role: 'ADMIN' });
+  assert.deepEqual(revoked, [{ userId: 'bootstrap-admin', usedAt: null }]);
   assert.deepEqual(events, [{ actorUserId: 'ops-first-admin', action: 'ADMIN.BOOTSTRAPPED', targetType: 'User', targetId: 'bootstrap-admin', metadataJson: '{"ticket":"CHANGE-123"}' }]);
 });
 

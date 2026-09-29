@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { fitsBcryptLimit } from '../lib/password';
 
 function resetFixture(expireDuringHash = false, failPasswordWrite = false) {
   const record = { id: 'token-1', userId: 'user-1', expiresAt: new Date(Date.now() + 60_000), usedAt: null as Date | null };
@@ -40,7 +41,7 @@ function resetFixture(expireDuringHash = false, failPasswordWrite = false) {
     '@/app/lib/prisma': db,
     'next/headers': { headers: async () => new Headers() },
     '@/app/lib/rate-limit': { passwordResetLimiter: { check: async () => true } },
-    '@/app/lib/password': { hashPassword: async (password: string) => {
+    '@/app/lib/password': { fitsBcryptLimit, hashPassword: async (password: string) => {
       if (expireDuringHash) record.expiresAt = new Date(0);
       return `hash:${password}`;
     } },

@@ -55,7 +55,7 @@ const adminOps = {
       EMAIL_INVALID: 'Please enter a valid email',
       EMAIL_TOO_LONG: 'Email must be at most 254 characters',
       PASSWORD_TOO_SHORT: 'Password must be at least 8 characters',
-      PASSWORD_TOO_LONG: 'Password must be at most 128 characters',
+      PASSWORD_TOO_LONG: 'Password must be at most 72 characters (accented letters and non-Latin characters count as more than one)',
       EMAIL_TAKEN: 'Email already exists',
       CREATE_FAILED: 'Failed to create admin user. Please try again.',
       DELETE_SELF: 'You cannot delete your own account.',

@@ -9,7 +9,7 @@ import { clearDraft, usePreservedForm } from '@/i18n/draft-store';
 import PasswordVisibilityToggle from '@/components/auth/PasswordVisibilityToggle';
 import GoogleAuthButton from '@/components/auth/GoogleAuthButton';
 
-const GOOGLE_ERRORS = ['google_unavailable', 'google_cancelled', 'google_already_linked', 'google_failed'] as const;
+const GOOGLE_ERRORS = ['google_unavailable', 'google_cancelled', 'google_already_linked', 'google_email_unverified', 'google_admin_link', 'google_failed'] as const;
 type GoogleError = (typeof GOOGLE_ERRORS)[number];
 const isGoogleError = (code: string | null): code is GoogleError => GOOGLE_ERRORS.includes(code as GoogleError);
 

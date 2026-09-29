@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { fitsBcryptLimit } from '../lib/password';
 
 for (const providers of [[], [{ provider: 'google' }]]) {
   test(`registration cannot take over a passwordless existing account with ${providers.length} linked providers`, async () => {
@@ -12,7 +13,7 @@ for (const providers of [[], [{ provider: 'google' }]]) {
         update: async () => { writes++; },
         create: async () => { writes++; return { id: 'new-user' }; },
       } },
-      '@/app/lib/password': { hashPassword: async () => 'fixture-hash' },
+      '@/app/lib/password': { fitsBcryptLimit, hashPassword: async () => 'fixture-hash' },
       '@/app/lib/session': { createSession: async () => { sessions++; } },
       '@/app/lib/admin-mfa': {},
       '@/app/lib/audit': {},
@@ -44,7 +45,11 @@ test('a passwordless guest receives an ownership-proof reset link without creati
       $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
     },
     'next/headers': { headers: async () => new Headers() },
-    '@/app/lib/rate-limit': { passwordResetLimiter: { check: async () => true } },
+    '@/app/lib/rate-limit': {
+      passwordResetLimiter: { check: async () => true },
+      passwordResetAccountLimiter: { check: async () => true },
+      accountRateLimitKey: (email: string) => email,
+    },
     '@/app/services/email-service': { sendPasswordReset: async (_user: unknown, token: string) => { sentToken = token; } },
   });
   const form = new FormData();
@@ -69,7 +74,11 @@ test('administrator password login issues a full session without a second factor
     '@/app/lib/audit': { appendAuditEvent: async () => {} },
     'next/headers': { headers: async () => new Headers() },
     'next/navigation': { redirect: (path: string) => { throw new Error(path); } },
-    '@/app/lib/rate-limit': { loginLimiter: { check: async () => true } },
+    '@/app/lib/rate-limit': {
+      loginLimiter: { check: async () => true },
+      loginAccountLimiter: { check: async () => true },
+      accountRateLimitKey: (email: string) => email,
+    },
   });
   const form = new FormData(); form.set('email', 'admin@example.invalid'); form.set('password', 'fixture-password');
   await assert.rejects(login(undefined, form), /^Error: \/admin$/, 'an admin lands on the board, not an MFA screen');

@@ -3,8 +3,8 @@
 import { z } from 'zod';
 import { headers } from 'next/headers';
 import prisma from '@/app/lib/prisma';
-import { hashPassword } from '@/app/lib/password';
-import { passwordResetLimiter } from '@/app/lib/rate-limit';
+import { fitsBcryptLimit, hashPassword } from '@/app/lib/password';
+import { accountRateLimitKey, passwordResetAccountLimiter, passwordResetLimiter } from '@/app/lib/rate-limit';
 import { sendPasswordReset } from '@/app/services/email-service';
 import { appendAuditEvent } from '@/app/lib/audit';
 import {
@@ -35,7 +35,7 @@ const requestSchema = z.object({
 const resetSchema = z
   .object({
     token: z.string().min(1, 'INVALID_RESET_LINK').max(200, 'INVALID_RESET_LINK'),
-    password: z.string().min(8, 'PASSWORD_TOO_SHORT').max(128, 'PASSWORD_TOO_LONG'),
+    password: z.string().min(8, 'PASSWORD_TOO_SHORT').refine(fitsBcryptLimit, { message: 'PASSWORD_TOO_LONG' }),
     confirmPassword: z.string().max(128, 'PASSWORD_TOO_LONG'),
   })
   .refine((d) => d.password === d.confirmPassword, {
@@ -72,6 +72,15 @@ export async function requestPasswordReset(
   const parsed = requestSchema.safeParse({ email: formData.get('email') });
   if (!parsed.success) {
     return { status: 'error', message: issueText(t, parsed.error.issues) };
+  }
+
+  // Each request emails the account and retires its previous link, so the
+  // per-IP bucket alone let requests from many addresses flood one mailbox and
+  // keep breaking its owner's link. Past the per-account budget, answer exactly
+  // as if a link was sent (for every address alike) and send nothing: the
+  // newest link already in the inbox still works.
+  if (!(await passwordResetAccountLimiter.check(accountRateLimitKey(parsed.data.email)))) {
+    return { status: 'sent' };
   }
 
   const user = await prisma.user.findUnique({

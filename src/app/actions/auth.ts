@@ -3,11 +3,11 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
-import { hashPassword, verifyPassword } from '@/app/lib/password';
+import { fitsBcryptLimit, hashPassword, verifyPassword } from '@/app/lib/password';
 import { createSession, deleteSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { loginLimiter, registerLimiter } from '@/app/lib/rate-limit';
+import { accountRateLimitKey, loginAccountLimiter, loginLimiter, registerLimiter } from '@/app/lib/rate-limit';
 import { postSignInPath } from '@/app/lib/post-auth-redirect';
 import { decideRegistration } from '@/app/lib/register-gate';
 import { appendAuditEvent } from '@/app/lib/audit';
@@ -31,8 +31,9 @@ const loginSchema = z.object({
 const registerSchema = z.object({
   name: z.string().min(2, 'NAME_TOO_SHORT').max(100, 'NAME_TOO_LONG'),
   email: z.string().email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
-  // 8 minimum, matching the admin-user schema in actions/admin.ts.
-  password: z.string().min(8, 'PASSWORD_TOO_SHORT').max(128, 'PASSWORD_TOO_LONG'),
+  // 8 minimum, matching the admin-user schema in actions/admin.ts. The upper
+  // bound is bcrypt's 72 bytes (see lib/password.ts).
+  password: z.string().min(8, 'PASSWORD_TOO_SHORT').refine(fitsBcryptLimit, { message: 'PASSWORD_TOO_LONG' }),
   phone: z.string().max(20, 'PHONE_TOO_LONG').optional(),
 });
 
@@ -58,6 +59,13 @@ export async function login(prevState: unknown, formData: FormData) {
 
   const { password } = result.data;
   const email = result.data.email.trim().toLowerCase();
+
+  // The per-IP bucket above cannot see guesses at one account spread across
+  // many addresses; this one can. Checked before the lookup, for every
+  // address alike, so it says nothing about which accounts exist.
+  if (!(await loginAccountLimiter.check(accountRateLimitKey(email)))) {
+    return { error: t('errors.LOGIN_RATE_LIMITED') };
+  }
 
   const user = await prisma.user.findUnique({
     where: { email },

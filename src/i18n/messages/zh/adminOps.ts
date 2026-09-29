@@ -54,7 +54,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       EMAIL_INVALID: '請輸入有效的電郵地址',
       EMAIL_TOO_LONG: '電郵地址不可超過 254 個字元',
       PASSWORD_TOO_SHORT: '密碼最少須有 8 個字元',
-      PASSWORD_TOO_LONG: '密碼不可超過 128 個字元',
+      PASSWORD_TOO_LONG: '密碼不可超過 72 個英文字元（中文字、帶重音的字母及特殊符號各佔多於一個字元位）',
       EMAIL_TAKEN: '此電郵地址已被使用',
       CREATE_FAILED: '未能建立管理員帳戶，請再試一次。',
       DELETE_SELF: '你不能刪除自己的帳戶。',

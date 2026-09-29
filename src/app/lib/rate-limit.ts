@@ -1,4 +1,5 @@
 import 'server-only';
+import { createHash } from 'node:crypto';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { SlidingWindow } from '@/app/lib/sliding-window';
@@ -126,6 +127,19 @@ export function createRateLimiter(
 // Values preserve the limits each call site used before this module existed.
 
 export const loginLimiter = createRateLimiter({ prefix: 'rl:login', limit: 5, windowSeconds: 15 * 60 });
+// Per-ACCOUNT buckets, checked alongside the per-IP ones. Keyed by IP alone,
+// an attacker with many addresses gets a fresh budget for the same account
+// from each of them. Anyone can spend an account's budget, so the windows stay
+// short: once guessing stops, the owner waits minutes, and there is no lock
+// that needs an administrator to lift. Google sign-in is not counted here.
+export const loginAccountLimiter = createRateLimiter({ prefix: 'rl:login-acct', limit: 10, windowSeconds: 15 * 60 });
+export const passwordResetAccountLimiter = createRateLimiter({ prefix: 'rl:pwreset-acct', limit: 3, windowSeconds: 60 * 60 });
+
+/** Bucket key for an account, so Redis keys never carry the address itself. */
+export function accountRateLimitKey(email: string): string {
+  return createHash('sha256').update(email.trim().toLowerCase()).digest('hex').slice(0, 32);
+}
+
 export const registerLimiter = createRateLimiter({ prefix: 'rl:register', limit: 5, windowSeconds: 15 * 60 });
 export const bookingLimiter = createRateLimiter({ prefix: 'rl:booking', limit: 6, windowSeconds: 60 * 60 });
 export const discountLimiter = createRateLimiter({ prefix: 'rl:discount', limit: 10, windowSeconds: 15 * 60 });
