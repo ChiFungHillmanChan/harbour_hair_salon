@@ -54,5 +54,5 @@ test('no page, API, asset or standard well-known file the site serves is ever de
     // A future blog post may well mention these words; only real file paths are blocked.
     '/blog/wp-admin-alternatives', '/blog/why-we-left-php', '/blog/environment-friendly-colour',
   ];
-  for (const path of allowed) assert.deepEqual(deniedBy(path).map((route) => route.src), [], `${path} must stay reachable`);
+  for (const path of allowed) assert.deepEqual(deniedBy(path), [], `${path} must stay reachable`);
 });
