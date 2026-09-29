@@ -71,6 +71,11 @@ const booking: Localized<Messages['booking']> = {
     noneAvailable: '暫無可預約時段',
     noneAvailableHelp: '請選擇其他日期或髮型師。',
     selectedAt: '{date} {time}',
+    unavailable: '不可預約',
+    dayUnavailableLabel: '{date}，不可預約',
+    slotUnavailableLabel: '{time}，不可預約',
+    unavailableHelp: '{name} 當日不可預約，請選擇其他日子。',
+    unavailableHelpAnyone: '當日沒有髮型師可供預約，請選擇其他日子。',
   },
   confirm: {
     summary: '預約摘要',

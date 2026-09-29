@@ -271,3 +271,12 @@ Requirements: `docs/superpowers/plans/2026-09-28-treatwell-pricing-bilingual-imp
 - Readiness codes: `treatwell-sync-coverage.ts` returns `issues` (codes) alongside English `blockers`; `operations-readiness.ts` checks carry `code`/`params`; `opening-hours.ts` `validateWeek` refusals carry `code`. Wording lives in `adminOps.readiness.*` / `adminSchedule.openingHours.errors.*`.
 - `register-gate.ts` returns a `code` (`ALREADY_REGISTERED` | `USE_GOOGLE`) with its English `error`.
 
+### Stylist "Unavailable" days and Fresha echo guard (2026-09-29)
+Plan: `docs/superpowers/plans/2026-09-29-stylist-unavailable-blocks.md`. Days off are entered in Fresha only (a whole-day blocked time the salon calls "Pause"); it arrives as a synced `ExternalBusyBlock` — no schema change.
+- `src/app/services/scheduling.ts` — `buildSlotGridForWindow` (every future start time, taken ones `available: false`); `buildSlotsForWindow` is its free subset.
+- `src/app/services/booking-days.ts` — pure `buildBookingDays` → `BookingDay { date, status: 'OPEN' | 'UNAVAILABLE', hours, slots }`. A day with no bookable time is UNAVAILABLE whatever the reason (the public page never says why); for "Anyone" a time is free when any rostered stylist is.
+- `getBookingDays(stylistId | ANY, dates, duration)` (booking-service) — 14 days in exactly three queries; `fetchBookingDays` (actions/booking) — gated like `fetchSlots`, refuses impossible dates (`2026-02-30`).
+- `assertAppointmentSlotAvailable(…, { ignoreOwnEcho })` — admin Confirm only: a synced block with exactly the booking's own start and end (Fresha re-exporting what it imported from our feed) is not a clash; anything else still is.
+- `src/components/booking/DayAvailability.tsx` — `DayChip` (greyed "Unavailable" date, still tappable), `UnavailableDayBlock` (big hatched block), `TimeSlotGrid` (taken times greyed and disabled). `BookingWizard` loads the fortnight once per stylist/service and reloads after a refused booking.
+- `src/app/lib/calendar-busy-display.ts` — `salonWorkingWindow`, `isWholeDayBlock`; `calendarBusyLabel(…, wholeDay)`. Admin Day/Week grids and the mobile agenda show a block covering the stylist's hours (or the salon's, if they are off in our rota) as a hatched "Unavailable" block; Fresha stays in its detail.
+

@@ -6,7 +6,9 @@ import type { ClientOffering, PriceListEntry } from '@/app/services/pricing/publ
 import { format, addDays, startOfToday } from 'date-fns';
 import { useState, useEffect, useMemo } from 'react';
 import Link from '@/i18n/link';
-import { fetchSlots, submitBooking, type ClientQuote } from '@/app/actions/booking';
+import { fetchBookingDays, submitBooking, type ClientQuote } from '@/app/actions/booking';
+import type { BookingDay } from '@/app/services/booking-days';
+import { DayChip, TimeSlotGrid, UnavailableDayBlock } from './DayAvailability';
 import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
@@ -83,7 +85,12 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
   // see it and confirm again. Keyed by service so a different choice drops it.
   const [repricedQuote, setRepricedQuote] = useDraftState<ClientQuote | null>(`${DRAFT}:reprice`, null);
 
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [bookingDays, setBookingDays] = useState<BookingDay[]>([]);
+  // Separate from isLoading (the submit button): a reload after a refused
+  // booking must not make the button show "Processing…" again.
+  const [daysLoading, setDaysLoading] = useState(false);
+  // Bumped after a booking attempt is refused so the fortnight is re-read.
+  const [daysVersion, setDaysVersion] = useState(0);
   // True when the last slot lookup failed (vs a genuinely empty day) — lets us
   // show "couldn't load times" instead of implying the salon is fully booked.
   const [slotLoadFailed, setSlotLoadFailed] = useState(false);
@@ -116,38 +123,47 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
   };
 
   const dayString = selectedDay;
+  const days = useMemo(() => Array.from({ length: 14 }, (_, offset) => format(addDays(startOfToday(), offset), 'yyyy-MM-dd')), []);
 
-  // Fetch slots when stylist or date changes
+  // One request per stylist/service fills the whole date strip and every day's
+  // times; changing the day is then instant and costs no extra database work.
   useEffect(() => {
-    if (selectedStylist && dayString && selectedService) {
+    if (selectedStylist && selectedService) {
       let cancelled = false;
-      const loadSlots = async () => {
-        setIsLoading(true);
+      const loadDays = async () => {
+        setDaysLoading(true);
         setSlotLoadFailed(false);
         try {
-          const result = await fetchSlots(selectedStylist.id, dayString, selectedService.duration);
+          const result = await fetchBookingDays(selectedStylist.id, days, selectedService.duration);
           // Ignore a response that arrived after the inputs changed (out-of-order guard)
           if (cancelled) return;
           if (result.ok) {
-            setAvailableSlots(result.slots.filter(s => s.available).map(s => s.time));
+            setBookingDays(result.days);
+            // A chosen time that is no longer free (e.g. after a refused booking) is dropped.
+            const chosenDay = result.days.find((day) => day.date === dayString);
+            setSelectedTime((time) => (time && !chosenDay?.slots.some((slot) => slot.available && slot.time === time) ? null : time));
           } else {
-            setAvailableSlots([]);
+            setBookingDays([]);
             setSlotLoadFailed(true);
           }
         } catch {
           if (cancelled) return;
-          setAvailableSlots([]);
+          setBookingDays([]);
           setSlotLoadFailed(true);
         } finally {
-          if (!cancelled) setIsLoading(false);
+          if (!cancelled) setDaysLoading(false);
         }
       };
-      loadSlots();
+      loadDays();
       return () => { cancelled = true; };
     }
     // selectedStylist is derived from its id each render; the id is the dependency.
+    // The day is deliberately not one: every day arrives in the same response.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStylistId, dayString, selectedService]);
+  }, [selectedStylistId, selectedService, days, daysVersion]);
+
+  const dayInfo = bookingDays.find((day) => day.date === dayString) ?? null;
+  const isUnavailable = (day: string) => bookingDays.find((entry) => entry.date === day)?.status === 'UNAVAILABLE';
 
   // Check colour patch-test eligibility whenever a colour service + date is selected
   useEffect(() => {
@@ -202,6 +218,8 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
         setBookingError(t('confirm.priceChanged'));
       } else {
         setBookingError(result.error || t('confirm.bookingFailed'));
+        // The time may have just been taken: re-read the fortnight.
+        setDaysVersion((version) => version + 1);
       }
     } catch {
       // A rejected action (dropped connection, DB error) must not leave the
@@ -246,22 +264,6 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
     setStep('STYLIST');
   };
 
-  // Helper to group slots by time of day
-  const getGroupedSlots = () => {
-    const morning: string[] = [];
-    const afternoon: string[] = [];
-    const evening: string[] = [];
-
-    availableSlots.forEach(time => {
-      const hour = parseInt(time.split(':')[0]);
-      if (hour < 12) morning.push(time);
-      else if (hour < 17) afternoon.push(time);
-      else evening.push(time);
-    });
-
-    return { morning, afternoon, evening };
-  };
-
   const renderStepIndicator = () => (
     <div className="flex justify-center mb-8 space-x-2" aria-hidden="true">
       {STEPS.map((s, idx) => (
@@ -277,9 +279,6 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
     </div>
   );
 
-  const groupedSlots = getGroupedSlots();
-  const hasAnySlots = availableSlots.length > 0;
-  const days = Array.from({ length: 14 }, (_, offset) => format(addDays(startOfToday(), offset), 'yyyy-MM-dd'));
   const dayLabel = (day: string, options: Intl.DateTimeFormatOptions) => formatCalendarDay(locale, day, options);
 
   const priceSource = activeQuote ?? (selectedService ? {
@@ -619,35 +618,18 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
               </h3>
               <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200">
                 <div className="flex lg:flex-col space-x-3 lg:space-x-0 lg:space-y-3 overflow-x-auto lg:overflow-visible snap-x snap-mandatory lg:snap-none pb-4 lg:pb-0 scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent">
-                  {days.map((day) => {
-                    const isSelected = day === selectedDay;
-                    return (
-                      <button
-                        type="button"
-                        key={day}
-                        onClick={() => { setSelectedDay(day); setSelectedTime(null); }}
-                        aria-pressed={isSelected}
-                        aria-label={dayLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}
-                        className={`flex-shrink-0 snap-start w-20 lg:w-full p-3 rounded-lg border flex lg:flex-row flex-col items-center lg:justify-between justify-center transition-all ${
-                          isSelected
-                            ? 'border-zinc-900 bg-zinc-900 text-white shadow-md'
-                            : 'border-zinc-200 hover:border-zinc-400 hover:bg-white bg-white text-zinc-700'
-                        }`}
-                      >
-                        <div className="text-center lg:text-left">
-                          <span className={`text-xs uppercase font-bold block ${isSelected ? 'text-zinc-300' : 'text-zinc-500'}`}>
-                            {dayLabel(day, { weekday: 'short' })}
-                          </span>
-                          <span className="text-lg font-bold block leading-tight">
-                            {Number(day.slice(8, 10))}
-                          </span>
-                        </div>
-                        <span className="text-xs text-zinc-400">
-                          {dayLabel(day, { month: 'short' })}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  {days.map((day) => (
+                    <DayChip
+                      key={day}
+                      weekday={dayLabel(day, { weekday: 'short' })}
+                      dayOfMonth={Number(day.slice(8, 10))}
+                      month={dayLabel(day, { month: 'short' })}
+                      fullLabel={dayLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}
+                      selected={day === selectedDay}
+                      unavailable={!daysLoading && isUnavailable(day)}
+                      onSelect={() => { setSelectedDay(day); setSelectedTime(null); }}
+                    />
+                  ))}
                 </div>
               </div>
             </div>
@@ -661,29 +643,15 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
                 {t('date.availableTimes')}
               </h3>
 
-              {isLoading ? (
+              {daysLoading ? (
                 <div className="flex flex-col items-center justify-center h-64 text-zinc-500 text-sm bg-zinc-50 rounded-xl border border-zinc-100" role="status">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900 mb-3" aria-hidden="true"></div>
                   {t('date.checking')}
                 </div>
-              ) : hasAnySlots ? (
-                <div className="space-y-6 animate-in fade-in duration-500">
-                  {([['morning', groupedSlots.morning], ['afternoon', groupedSlots.afternoon], ['evening', groupedSlots.evening]] as const).map(([period, slots]) => slots.length > 0 && (
-                    <div key={period}>
-                      <h4 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-3 border-b border-zinc-100 pb-1">{t(`date.${period}`)}</h4>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                        {slots.map(time => (
-                          <TimeSlotButton
-                            key={time}
-                            time={time}
-                            isSelected={selectedTime === time}
-                            onClick={() => setSelectedTime(time)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              ) : dayInfo?.status === 'OPEN' ? (
+                <TimeSlotGrid slots={dayInfo.slots} selectedTime={selectedTime} onSelect={setSelectedTime} />
+              ) : dayInfo?.status === 'UNAVAILABLE' && !slotLoadFailed ? (
+                <UnavailableDayBlock hours={dayInfo.hours} stylistName={selectedStylistId === ANY_STYLIST_ID ? null : selectedStylist?.name ?? null} />
               ) : (
                 <div className="flex flex-col items-center justify-center h-64 text-zinc-600 bg-zinc-50 rounded-xl border border-zinc-200 border-dashed text-center p-6">
                   <svg className="w-12 h-12 text-zinc-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -820,26 +788,6 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
         </form>
       )}
     </div>
-  );
-}
-
-function TimeSlotButton({ time, isSelected, onClick }: { time: string; isSelected: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={isSelected}
-      className={`min-h-[44px] py-3 px-2 text-sm font-medium border rounded-lg transition-all relative overflow-hidden ${
-        isSelected
-          ? 'bg-zinc-900 text-white border-zinc-900 shadow-md z-10'
-          : 'border-zinc-200 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 bg-white hover:bg-zinc-50'
-      }`}
-    >
-      {isSelected && (
-        <div className="absolute inset-0 bg-white/10 animate-pulse" aria-hidden="true"></div>
-      )}
-      {time}
-    </button>
   );
 }
 
