@@ -575,13 +575,6 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
     return { success: true };
   }
 
-  // Real moves also email both sides. Checked only after ownership, so nobody
-  // can spend another customer's allowance.
-  if (!(await rescheduleLimiter.check(`user:${session.userId}`)) ||
-      !(await appointmentRescheduleLimiter.check(`appt:${appointmentId}`))) {
-    return failure(locale, 'TOO_MANY_RESCHEDULES');
-  }
-
   // Validate the new time falls within stylist availability for this day
   const duration = appointment.durationAtBooking ?? appointment.service.duration;
   const hoursCheck = await checkStylistHours(appointment.stylistId, salon, duration);
@@ -600,6 +593,14 @@ export async function rescheduleAppointment(appointmentId: string, dateStr: stri
             ? 'PATCH_TEST_EXPIRED'
             : 'PATCH_TEST_REQUIRED');
     }
+  }
+
+  // Real moves email both sides, so they are limited. Checked after ownership
+  // (nobody can spend another customer's allowance) and after every check that
+  // can refuse the new time, so trying dates that are refused never uses it up.
+  if (!(await rescheduleLimiter.check(`user:${session.userId}`)) ||
+      !(await appointmentRescheduleLimiter.check(`appt:${appointmentId}`))) {
+    return failure(locale, 'TOO_MANY_RESCHEDULES');
   }
 
   try {

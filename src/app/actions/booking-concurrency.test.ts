@@ -262,6 +262,14 @@ for (const spent of ['user', 'appointment'] as const) {
   });
 }
 
+test('a time the salon refuses spends no reschedule allowance', async () => {
+  // Closes at 10:30, so a 60-minute booking at 10:00 would over-run.
+  const f = fixture({ hoursEnd: '10:30' });
+  const result = await f.actions.rescheduleAppointment(f.appointment.id, '2099-09-15', '10:00');
+  assert.equal('code' in result && result.code, 'OUTSIDE_HOURS');
+  assert.deepEqual(f.limiterKeys, [], 'only a move that can actually happen is counted');
+});
+
 test("another customer's booking cannot spend its reschedule allowance", async () => {
   const f = fixture();
   f.appointment.userId = 'someone-else';
