@@ -1,0 +1,48 @@
+{
+  "name": "Block vulnerability-scanner probes",
+  "description": "Deny WordPress, server-script (.php/.asp/.jsp/.cgi), PHP-info and secret-dotfile (.env/.git) probes. This site serves none of these paths.",
+  "active": true,
+  "conditionGroup": [
+    {
+      "conditions": [
+        {
+          "type": "path",
+          "op": "re",
+          "value": "^/(?:.*/)?(?:wp-admin|wp-login|wp-content|wp-includes|wp-json|wp-config|xmlrpc)(?:[/.].*)?$"
+        }
+      ]
+    },
+    {
+      "conditions": [
+        {
+          "type": "path",
+          "op": "re",
+          "value": "^/.*\\.(?:php\\d?|phtml|asp|aspx|jsp|cgi)(?:/.*)?$"
+        }
+      ]
+    },
+    {
+      "conditions": [
+        {
+          "type": "path",
+          "op": "re",
+          "value": "^/(?:.*/)?(?:phpinfo|php_info|_profiler)(?:[/.].*)?$"
+        }
+      ]
+    },
+    {
+      "conditions": [
+        {
+          "type": "path",
+          "op": "re",
+          "value": "^/(?:.*/)?\\.(?:env|git|svn|hg|aws|ssh|htaccess|htpasswd|DS_Store)(?:[/.].*)?$"
+        }
+      ]
+    }
+  ],
+  "action": {
+    "mitigate": {
+      "action": "deny"
+    }
+  }
+}

@@ -4,24 +4,29 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Free Vercel WAF deny rules in vercel.json (`routes` + `mitigate`). They stop
- * vulnerability scanners before a function runs: blocked requests cost no CDN
- * requests, no function time and never reach Neon. Rules here must only ever
- * match paths this site does not serve — a wrong pattern would 403 real pages
- * — so this test pins both sides.
+ * The free Vercel WAF custom rule in infra/vercel-firewall/ (applied to the
+ * project firewall with the CLI — see the README there). It stops
+ * vulnerability scanners before a function runs: denied requests cost no CDN
+ * requests, no function time and never reach Neon. It must only ever match
+ * paths this site does not serve — a wrong pattern would 403 real pages — so
+ * this test pins both sides.
  *
  * `blocked` are real probes from the production 404 log (2026-09-26…29).
  */
-type Route = { src: string; mitigate?: { action: string }; dest?: string };
+type Condition = { type: string; op: string; value: string };
+type Rule = { active: boolean; conditionGroup: { conditions: Condition[] }[]; action: { mitigate: { action: string } } };
 
-const routes: Route[] = JSON.parse(readFileSync(join(process.cwd(), 'vercel.json'), 'utf8')).routes ?? [];
-const deniedBy = (path: string) => routes.filter((route) => new RegExp(route.src).test(path));
+const rule: Rule = JSON.parse(readFileSync(join(process.cwd(), 'infra/vercel-firewall/block-scanner-probes.json'), 'utf8'));
+const patterns = rule.conditionGroup.flatMap((group) => group.conditions.map((condition) => condition.value));
+const deniedBy = (path: string) => patterns.filter((pattern) => new RegExp(pattern).test(path));
 
-test('every firewall route only denies, and never rewrites or redirects real traffic', () => {
-  assert.ok(routes.length > 0);
-  for (const route of routes) {
-    assert.deepEqual(Object.keys(route).sort(), ['mitigate', 'src'], route.src);
-    assert.equal(route.mitigate?.action, 'deny', route.src);
+test('the rule only denies, by path pattern alone', () => {
+  assert.equal(rule.active, true);
+  assert.equal(rule.action.mitigate.action, 'deny');
+  for (const group of rule.conditionGroup) {
+    // One condition per OR group: each pattern stands alone.
+    assert.equal(group.conditions.length, 1);
+    assert.deepEqual([group.conditions[0].type, group.conditions[0].op], ['path', 're']);
   }
 });
 
