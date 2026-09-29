@@ -71,7 +71,6 @@ export async function assertAppointmentSlotAvailable(
   appointment: Pick<Appointment, 'id' | 'stylistId' | 'durationAtBooking'> & { service: Pick<Service, 'duration'> },
   date: Date,
   loadedBlocking?: BookedInterval[],
-  options: { ignoreOwnEcho?: boolean } = {},
 ) {
   const duration = appointment.durationAtBooking ?? appointment.service.duration;
   if (!isWithinBookingHorizon(date, duration)) {
@@ -102,17 +101,13 @@ export async function assertAppointmentSlotAvailable(
       }),
       loadExternalBusy(tx, [appointment.stylistId], window),
     ]);
-    // Our busy feed publishes this booking to Fresha. A marketplace that
-    // re-exports what it imported hands it back as a synced block with exactly
-    // this booking's start and end. Only when confirming an existing booking at
-    // its own time may that copy be ignored — anything else is a real clash.
-    const ownEnd = date.getTime() + duration * 60_000;
-    const isOwnEcho = (row: { start: Date; end: Date }) =>
-      Boolean(options.ignoreOwnEcho && appointment.id) &&
-      row.start.getTime() === date.getTime() && row.end.getTime() === ownEnd;
+    // Every synced block is a real clash, even one with exactly this booking's
+    // times: Fresha imports our busy feed as "Imported event" blocked time but
+    // never re-exports it (verified 2026-09-29), so no copy of our own booking
+    // comes back. Re-verify before linking a calendar that might echo.
     blocking = [
       ...existing.map((row) => ({ start: row.date, durationMin: row.durationAtBooking ?? row.service.duration })),
-      ...external.filter((row) => !isOwnEcho(row)).map(toBookedInterval),
+      ...external.map(toBookedInterval),
     ];
   }
   if (hasConflict(date, duration, blocking)) throw new SlotUnavailableError();
