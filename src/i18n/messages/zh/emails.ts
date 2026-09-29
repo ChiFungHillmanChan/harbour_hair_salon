@@ -115,6 +115,16 @@ const emails: Localized<Messages['emails']> = {
     cta: '打開排程',
     footnote: '呢封通知只係俾店舖同事睇，入面有客人嘅聯絡資料。',
   },
+  emailVerification: {
+    subject: '確認你的電郵地址 — Harbour Hair Salon',
+    preview: '確認電郵地址後，即可於 Harbour Hair Salon 網上預約',
+    eyebrow: '確認電郵地址',
+    title: '確認你的電郵地址',
+    intro: '多謝你建立 Harbour Hair Salon 帳戶。請確認這是你的電郵地址，確認後即可網上預約。',
+    cta: '確認電郵地址',
+    expiry: '此連結會於 {hours} 小時後失效。',
+    ignore: '如你沒有在本店建立帳戶，請忽略此電郵。',
+  },
   passwordReset: {
     subject: '重設密碼 — Harbour Hair Salon',
     preview: '重設你的 Harbour Hair Salon 密碼',

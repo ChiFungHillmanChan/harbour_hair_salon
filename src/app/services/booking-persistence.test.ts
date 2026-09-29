@@ -51,7 +51,7 @@ function bookingFixture(
       },
     },
     externalBusyBlock: { findMany: async () => { externalReads++; return []; } },
-    user: { update: async () => ({}) },
+    user: { update: async () => ({}), findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }) },
     discountCode: {
       findUnique: async () => ({ ...code }),
       update: async () => { code.usedCount++; return code; },

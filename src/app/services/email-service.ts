@@ -14,6 +14,8 @@ import {
   type EmailContent,
   type LegacyEmailAppointment,
 } from './email-content';
+import { emailVerificationContent } from './email-content';
+import { createEmailVerificationToken, EMAIL_VERIFICATION_TTL_HOURS } from '@/app/lib/email-verification';
 
 export type { AppointmentEmailKind, AppointmentEmailOptions } from './email-content';
 
@@ -90,6 +92,16 @@ export async function sendPreparedEmail(email: PreparedEmail, idempotencyKey?: s
   if (!response.ok) throw new Error(`Email provider HTTP ${response.status}`);
   const result = await response.json();
   if (!result || typeof result.id !== 'string') throw new Error('Email provider returned an invalid response');
+}
+
+/**
+ * A fresh link proving the account receives mail at its address, in the
+ * language of the page that asked. Never queued: it is re-sent on request.
+ */
+export async function sendEmailVerification(user: { id: string; email: string; name: string | null }, locale: Locale = DEFAULT_LOCALE): Promise<void> {
+  const token = await createEmailVerificationToken(user, locale);
+  const content = emailVerificationContent(user, token, EMAIL_VERIFICATION_TTL_HOURS, locale);
+  await sendPreparedEmail(await prepareEmail(user.email, content));
 }
 
 /**

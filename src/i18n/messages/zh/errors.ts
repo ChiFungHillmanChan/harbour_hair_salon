@@ -30,6 +30,7 @@ const errors: Localized<Messages['errors']> = {
     INVALID_DATE_TIME: '日期或時間無效',
     SLOTS_FAILED: '未能載入可預約時段',
     TOO_MANY_BOOKINGS: '預約嘗試次數過多，請稍後再試。',
+    EMAIL_NOT_VERIFIED: '網上預約前請先確認你的電郵地址。請按我們寄給你的連結，或重新載入預約頁面索取新連結。',
     TOO_MANY_ATTEMPTS: '嘗試次數過多，請稍後再試。',
     BOOKING_FAILED: '未能建立預約',
     PAST_TIME: '不能預約已過去的時間',

@@ -12,6 +12,8 @@ import { postSignInPath } from '@/app/lib/post-auth-redirect';
 import { isRecognisedLoginDevice, rememberLoginDevice } from '@/app/lib/login-device';
 import { decideRegistration } from '@/app/lib/register-gate';
 import { appendAuditEvent } from '@/app/lib/audit';
+import { after } from 'next/server';
+import { sendEmailVerification } from '@/app/services/email-service';
 import { getActionT, localizedPath } from '@/i18n/request';
 
 function getClientIp(headersList: Headers): string {
@@ -153,6 +155,16 @@ export async function register(prevState: unknown, formData: FormData) {
   }
 
   await createSession(user.id, user.role, user.sessionVersion);
+  // Booking needs a proven address (lib/email-verification.ts). Sent after the
+  // response so a slow provider never holds up sign-up; the booking page can
+  // send another.
+  after(async () => {
+    try {
+      await sendEmailVerification(user, t.locale);
+    } catch (error) {
+      console.error('Verification email failed:', error);
+    }
+  });
   redirect(redirectTo);
 }
 

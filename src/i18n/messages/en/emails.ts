@@ -115,6 +115,16 @@ const emails = {
     cta: 'Open the schedule',
     footnote: 'This alert is for salon staff only and includes the customer’s contact details.',
   },
+  emailVerification: {
+    subject: 'Confirm your email address — Harbour Hair Salon',
+    preview: 'Confirm your email address to book online at Harbour Hair Salon',
+    eyebrow: 'Confirm your email',
+    title: 'Confirm your email address',
+    intro: 'Thank you for creating a Harbour Hair Salon account. Please confirm that this is your email address so you can book appointments online.',
+    cta: 'Confirm email address',
+    expiry: 'This link expires in {hours} hours.',
+    ignore: 'If you did not create an account with us, you can ignore this email.',
+  },
   passwordReset: {
     subject: 'Reset your password — Harbour Hair Salon',
     preview: 'Reset your Harbour Hair Salon password',

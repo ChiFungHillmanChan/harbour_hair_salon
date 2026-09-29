@@ -3,6 +3,7 @@
 import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getBookingDays, getValidPatchTest, runSerializableWithRetry, assertAppointmentSlotAvailable } from '@/app/services/booking-service';
 import type { BookingDay } from '@/app/services/booking-days';
 import { revalidatePath } from 'next/cache';
+import { EMAIL_VERIFICATION_SELECT, hasVerifiedEmail } from '@/app/lib/email-verification';
 import { evaluateBookingGates, type PatchTestGateReason } from '@/app/services/booking-gates';
 import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, SALON_TIME_RE, SALON_DATE_RE, type SalonDateTime } from '@/app/services/salon-time';
 import { BookingError, bookingErrorText, describeBookingError, type BookingErrorCode } from '@/app/services/booking-errors';
@@ -279,6 +280,14 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
   // any lookup, so the code is neither applied nor counted.
   if (validData.discountCode?.trim()) {
     return failure(locale, 'DISCOUNTS_PAUSED');
+  }
+
+  // A request holds a real slot and emails the address on the account, and
+  // registering needs no mailbox: without this, throwaway accounts could each
+  // hold their full allowance of slots. See lib/email-verification.ts.
+  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: EMAIL_VERIFICATION_SELECT });
+  if (!account || !hasVerifiedEmail(account)) {
+    return failure(locale, 'EMAIL_NOT_VERIFIED');
   }
 
   // Per-user rate limit. Degrades to in-process limiting on a Redis outage or
