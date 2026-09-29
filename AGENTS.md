@@ -91,6 +91,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - **readme/structure.md**: Check before creating new functions/components to avoid duplication.
 - **Online booking is LOCKED closed in production until Square deposits are wired** (`SQUARE_DEPOSITS_WIRED = false` in `src/app/lib/online-booking-lock.ts`; every production build, fails closed). The Square code is foundation only. Flip it only in the change that takes the deposit in `submitBooking`.
 - **Neon bills compute time, not queries** — read CLAUDE.md "Neon compute budget" before adding a cron, a dynamic public page or a timed cache expiry. `/blog` reads `?page=` and is therefore dynamic; it serves from the Data Cache (`BLOG_POSTS_TAG`).
+- **Never return a fallback from inside `unstable_cache`** — it caches the fallback (site settings did, on Neon cold starts). Throw out of the cached function and fall back outside it.
 - **Preview deployments use the OLD production database copy** (us-east-1, real customer data from before 2026-09-16). Apply new migrations to it too, or every PR's preview build fails.
 
 ## Security guardrails (2026-09-29 audit — keep them)

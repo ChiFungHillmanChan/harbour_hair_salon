@@ -113,6 +113,11 @@ Rules that follow from this:
   cards now come from one Data Cache entry per language (`BLOG_POSTS_TAG` in
   `blog-service.ts`, dropped by every blog/translation publish). Any new
   dynamic public page must do the same or stay off the database.
+- **Never return a fallback from inside a cached function.** `unstable_cache`
+  stores whatever the callback returns, so a `catch { return DEFAULTS }` inside it
+  caches the fallback for the whole revalidate period. Site settings did exactly
+  that on every Neon cold-start hiccup (up to an hour of default content, fixed
+  in PR #57). Let the read throw out of the cache and fall back outside it.
 - **Preview deployments use the OLD production database** (`ep-muddy-violet…`,
   us-east-1, project `neon-beige-river`): a stale copy of real customer data from
   before the 2026-09-16 London move. It is NOT disposable. Apply new migrations
