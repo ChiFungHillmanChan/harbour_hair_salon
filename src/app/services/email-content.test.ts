@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appointmentEmailContent, describeEmailPrice, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
+import { appointmentEmailContent, describeEmailPrice, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
 
 const appointment: EmailAppointment = {
   id: 'appointment-ABCDEFGH',
@@ -56,4 +56,14 @@ test('password reset mail links to the reset page in the requesting language', (
   const en = passwordResetContent({ name: 'Ada' }, 'abc', 60, 'en-GB');
   assert.match(en.cta!.href, /\/auth\/reset-password\?token=abc$/);
   assert.doesNotMatch(en.cta!.href, /zh-hk/);
+});
+
+test('the unsubscribe confirmation carries its link and says nothing changes without it', () => {
+  const href = 'https://www.harbourhair.co.uk/zh-hk/unsubscribe?token=abc.def';
+  const zh = marketingUnsubscribeContent(href, 30, 'zh-HK');
+  assert.equal(zh.cta?.href, href);
+  assert.match(renderPlainText(zh), /30 日內有效/);
+  const en = marketingUnsubscribeContent('https://example.test/unsubscribe?token=x', 30, 'en-GB');
+  assert.match(en.subject, /unsubscribe/i);
+  assert.match(renderPlainText(en), /ignore this email — nothing will change/);
 });

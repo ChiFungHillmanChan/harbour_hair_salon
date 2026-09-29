@@ -125,6 +125,16 @@ const emails = {
     expiry: 'This link expires in {minutes} minutes and can be used once.',
     ignore: 'If you did not ask for this, you can ignore this email — your password will not change.',
   },
+  marketingUnsubscribe: {
+    subject: 'Confirm you want to unsubscribe — Harbour Hair Salon',
+    preview: 'One click to stop Harbour Hair Salon marketing emails',
+    eyebrow: 'Marketing emails',
+    title: 'Confirm you want to unsubscribe',
+    intro: 'Someone asked us to stop sending Harbour Hair Salon marketing emails to this address. Use the button below to confirm. Booking and account emails are not affected.',
+    cta: 'Unsubscribe',
+    expiry: 'This link works for {days} days.',
+    ignore: 'If you did not ask for this, ignore this email — nothing will change.',
+  },
 } satisfies MessageTree;
 
 export default emails;

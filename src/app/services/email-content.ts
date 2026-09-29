@@ -215,6 +215,29 @@ export function passwordResetContent(user: { name: string | null }, token: strin
   };
 }
 
+/**
+ * Sent when someone asks to stop marketing mail for this address. Nothing
+ * changes until the link is used, so a stranger who types the address in
+ * achieves nothing but this one email.
+ */
+export function marketingUnsubscribeContent(confirmUrl: string, expiresInDays: number, locale: Locale): EmailContent {
+  const t = translator(locale, 'emails');
+  return {
+    locale,
+    palette: 'ink',
+    subject: t('marketingUnsubscribe.subject'),
+    preview: t('marketingUnsubscribe.preview'),
+    eyebrow: t('marketingUnsubscribe.eyebrow'),
+    title: t('marketingUnsubscribe.title'),
+    greeting: t('common.greetingNoName'),
+    intro: t('marketingUnsubscribe.intro'),
+    details: [],
+    cta: { label: t('marketingUnsubscribe.cta'), href: confirmUrl },
+    footnotes: [t('marketingUnsubscribe.expiry', { days: expiresInDays }), t('marketingUnsubscribe.ignore')],
+    address: t('common.address'),
+  };
+}
+
 /** The plain-text part: same words as the HTML, one fact per line. */
 export function renderPlainText(content: EmailContent): string {
   const t = translator(content.locale, 'emails');
