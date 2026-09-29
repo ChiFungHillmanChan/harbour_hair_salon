@@ -9,7 +9,7 @@ import Link from '@/i18n/link';
 import { fetchBookingDays, submitBooking, type ClientQuote } from '@/app/actions/booking';
 import type { BookingDay } from '@/app/services/booking-days';
 import { DayChip, TimeSlotGrid, UnavailableDayBlock } from './DayAvailability';
-import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX } from '@/app/lib/booking-constants';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
 import { useDraftState, clearDraft } from '@/i18n/draft-store';
@@ -123,7 +123,7 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
   };
 
   const dayString = selectedDay;
-  const days = useMemo(() => Array.from({ length: 14 }, (_, offset) => format(addDays(startOfToday(), offset), 'yyyy-MM-dd')), []);
+  const days = useMemo(() => Array.from({ length: BOOKING_DAYS_MAX }, (_, offset) => format(addDays(startOfToday(), offset), 'yyyy-MM-dd')), []);
 
   // One request per stylist/service fills the whole date strip and every day's
   // times; changing the day is then instant and costs no extra database work.

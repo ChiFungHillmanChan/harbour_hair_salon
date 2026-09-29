@@ -10,7 +10,7 @@ import { PriceChangedError } from '@/app/services/booking-service';
 import { getActionLocale } from '@/i18n/request';
 import type { Locale } from '@/i18n/config';
 import type { PriceQuote } from '@/app/services/pricing/quote';
-import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX } from '@/app/lib/booking-constants';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { verifySession } from '@/app/lib/session';
 import { after } from 'next/server';
@@ -162,7 +162,6 @@ export async function fetchSlots(
   }
 }
 
-export const BOOKING_DAYS_MAX = 14;
 export type FetchBookingDaysResult = { ok: true; days: BookingDay[] } | { ok: false };
 
 /** isValidSalonDate checks the shape only; "2026-02-30" would roll over to 2 March. */
