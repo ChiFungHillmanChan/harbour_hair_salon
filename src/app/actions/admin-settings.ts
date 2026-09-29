@@ -11,6 +11,7 @@ import { checkOperationsBookingReadiness } from '@/app/services/operations-readi
 import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
 import { LOCALES } from '@/i18n/config';
 import { getActionT } from '@/i18n/request';
+import { BLOG_POSTS_TAG } from '@/app/services/blog-service';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -139,6 +140,10 @@ export async function updateSiteSettings(
   }
 
   updateTag('site-settings');
+  // Saving settings is the documented "refresh the public site" step after a
+  // direct database edit or content import (bilingual rollout runbook). The
+  // blog list lives in its own Data Cache entry, so drop it here too.
+  updateTag(BLOG_POSTS_TAG);
   revalidatePath('/', 'layout');
   revalidatePath('/sitemap.xml');
   // Opening or closing booking must take effect immediately on the pages that
