@@ -1,6 +1,7 @@
 'use server';
 
-import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getValidPatchTest, runSerializableWithRetry, assertAppointmentSlotAvailable } from '@/app/services/booking-service';
+import { createBooking, createBookingForFirstAvailable, getAvailableSlots, getAvailableSlotsUnion, getBookingDays, getValidPatchTest, runSerializableWithRetry, assertAppointmentSlotAvailable } from '@/app/services/booking-service';
+import type { BookingDay } from '@/app/services/booking-days';
 import { revalidatePath } from 'next/cache';
 import { evaluateBookingGates, type PatchTestGateReason } from '@/app/services/booking-gates';
 import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, SALON_TIME_RE, SALON_DATE_RE, type SalonDateTime } from '@/app/services/salon-time';
@@ -157,6 +158,43 @@ export async function fetchSlots(
     // A lookup failure is NOT "no availability" — return a distinct result so the
     // UI can say "couldn't load" instead of silently implying the day is full.
     console.error('fetchSlots failed', { stylistId, date, duration: duration.data }, error);
+    return { ok: false };
+  }
+}
+
+export const BOOKING_DAYS_MAX = 14;
+export type FetchBookingDaysResult = { ok: true; days: BookingDay[] } | { ok: false };
+
+/** isValidSalonDate checks the shape only; "2026-02-30" would roll over to 2 March. */
+function isCalendarDate(date: unknown): date is string {
+  if (typeof date !== 'string' || !isValidSalonDate(date)) return false;
+  const ms = Date.parse(`${date}T12:00:00Z`);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === date;
+}
+
+/**
+ * The booking page's whole date strip in one request: each day's status, hours
+ * and every time (taken ones greyed). Same gate and input rules as fetchSlots.
+ */
+export async function fetchBookingDays(
+  stylistId: string,
+  dates: string[],
+  serviceDuration: number,
+): Promise<FetchBookingDaysResult> {
+  if (!(await isBookingEnabled())) {
+    return { ok: true, days: [] };
+  }
+  const duration = SERVICE_DURATION.safeParse(serviceDuration);
+  const validDates = Array.isArray(dates) && dates.length > 0 && dates.length <= BOOKING_DAYS_MAX &&
+    dates.every(isCalendarDate);
+  if (!duration.success || typeof stylistId !== 'string' || !stylistId || !validDates) {
+    return { ok: true, days: [] };
+  }
+  try {
+    return { ok: true, days: await getBookingDays(stylistId, [...new Set(dates)], duration.data) };
+  } catch (error) {
+    // A lookup failure is NOT "unavailable" — the page says "couldn't load" instead.
+    console.error('fetchBookingDays failed', { stylistId, days: dates.length, duration: duration.data }, error);
     return { ok: false };
   }
 }
