@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { headers } from 'next/headers';
+import { after } from 'next/server';
 import { Resend } from 'resend';
 import { createRateLimiter } from '@/app/lib/rate-limit';
 import { verifyUnsubscribeToken } from '@/app/lib/unsubscribe-token';
@@ -54,7 +55,8 @@ const unsubEmailLimiter = createRateLimiter({ prefix: 'rl:unsub-email', limit: 2
  * This no longer touches the mailing list: it used to unsubscribe whatever
  * address was typed in, so anyone who knew an email could switch someone
  * else's marketing off. The answer is the same whether or not the address is
- * on the list, so the form cannot be used to find out who is subscribed.
+ * on the list — same words, same speed — so the form cannot be used to find
+ * out who is subscribed.
  */
 export async function unsubscribeFromMarketing(
   _prev: UnsubscribeState,
@@ -84,20 +86,24 @@ export async function unsubscribeFromMarketing(
   // and sends nothing, so the answer never depends on whether the address is listed.
   if (!(await unsubEmailLimiter.check(emailKey(email)))) return sent;
 
-  try {
-    const contact = await resend.contacts.get({ email, audienceId });
-    if (contact.error) {
-      // Never subscribed: already not receiving marketing, and no contact is created.
-      if (isNotFound(contact.error)) return sent;
-      throw new Error(contact.error.message ?? String(contact.error));
+  // Looked up and sent after the response. Waiting for the email only when the
+  // address is listed made that answer measurably slower (and a failed send
+  // visible), which told anyone timing the form who is subscribed.
+  after(async () => {
+    try {
+      const contact = await resend.contacts.get({ email, audienceId });
+      if (contact.error) {
+        // Never subscribed: already not receiving marketing, and no contact is created.
+        if (isNotFound(contact.error)) return;
+        throw new Error(contact.error.message ?? String(contact.error));
+      }
+      if (contact.data.unsubscribed) return;
+      // In the language of the page that asked for it.
+      await sendMarketingUnsubscribeConfirmation(email, t.locale);
+    } catch (error) {
+      console.error('Marketing unsubscribe request failed:', error);
     }
-    if (contact.data.unsubscribed) return sent;
-    // In the language of the page that asked for it.
-    await sendMarketingUnsubscribeConfirmation(email, t.locale);
-  } catch (error) {
-    console.error('Marketing unsubscribe request failed:', error);
-    return { status: 'error', message: t('unsubscribe.results.FAILED') };
-  }
+  });
 
   return sent;
 }

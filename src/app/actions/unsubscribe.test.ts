@@ -16,6 +16,8 @@ function setup(options: { contact?: Contact; allow?: (prefix: string, key: strin
   const sent: string[] = [];
   const limiterKeys: string[] = [];
   const contact = options.contact ?? 'missing';
+  // Work handed to after() runs once the response is gone; tests wait for it.
+  const pending: Promise<unknown>[] = [];
   class Resend {
     contacts = {
       get: async (query: unknown) => {
@@ -34,6 +36,7 @@ function setup(options: { contact?: Contact; allow?: (prefix: string, key: strin
   }
   const actions = loadServerModule<typeof import('./unsubscribe')>('src/app/actions/unsubscribe.ts', {
     'next/headers': { headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.9' }) },
+    'next/server': { after: (callback: () => Promise<unknown>) => { pending.push(Promise.resolve().then(callback)); } },
     resend: { Resend },
     '@/app/lib/rate-limit': {
       createRateLimiter: ({ prefix }: { prefix: string }) => ({
@@ -46,7 +49,8 @@ function setup(options: { contact?: Contact; allow?: (prefix: string, key: strin
     },
     '@/i18n/request': { getActionT: async (namespace: 'legal') => translator('en-GB', namespace) },
   });
-  return { actions, updates, lookups, sent, limiterKeys };
+  const settle = () => Promise.all(pending);
+  return { actions, updates, lookups, sent, limiterKeys, settle };
 }
 
 const t = translator('en-GB', 'legal');
@@ -68,6 +72,8 @@ test('the email form sends one confirmation link to a subscribed address and nev
   const f = setup({ contact: { unsubscribed: false } });
   const result = await f.actions.unsubscribeFromMarketing({ status: 'idle' }, emailForm(' Customer@Example.com '));
   assert.deepEqual(result, LINK_SENT);
+  assert.deepEqual(f.sent, [], 'the answer does not wait for the lookup or the email');
+  await f.settle();
   assert.deepEqual(f.sent, ['customer@example.com']);
   assert.deepEqual(f.lookups, [{ email: 'customer@example.com', audienceId: 'audience-fixture' }]);
   assert.equal(f.updates.length, 0, 'typing an address in must not unsubscribe it');
@@ -78,6 +84,7 @@ for (const [label, contact] of [['an unknown', 'missing'], ['an already unsubscr
     const f = setup({ contact });
     const result = await f.actions.unsubscribeFromMarketing({ status: 'idle' }, emailForm('someone@example.com'));
     assert.deepEqual(result, LINK_SENT, 'the answer must not reveal whether the address is on the list');
+    await f.settle();
     assert.deepEqual(f.sent, []);
     assert.equal(f.updates.length, 0);
   });
@@ -87,11 +94,26 @@ test('the per-address limit sends nothing, asks the provider nothing, and answer
   const f = setup({ contact: { unsubscribed: false }, allow: (prefix) => prefix !== 'rl:unsub-email' });
   const result = await f.actions.unsubscribeFromMarketing({ status: 'idle' }, emailForm('customer@example.com'));
   assert.deepEqual(result, LINK_SENT);
+  await f.settle();
   assert.deepEqual(f.sent, []);
   assert.deepEqual(f.lookups, []);
   const emailKey = f.limiterKeys.find((key) => key.startsWith('rl:unsub-email|'));
   assert.ok(emailKey);
   assert.doesNotMatch(emailKey, /@/, 'the address itself is never a rate-limit key');
+});
+
+test('a provider failure on a listed address gives the same answer as an unlisted one', async () => {
+  const f = setup({ contact: { unsubscribed: false } });
+  const failing = loadServerModule<typeof import('./unsubscribe')>('src/app/actions/unsubscribe.ts', {
+    'next/headers': { headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.10' }) },
+    'next/server': { after: () => {} },
+    resend: { Resend: class { contacts = { get: async () => { throw new Error('provider down'); } }; } },
+    '@/app/lib/rate-limit': { createRateLimiter: () => ({ backend: () => 'memory', check: async () => true }) },
+    '@/app/services/email-service': { sendMarketingUnsubscribeConfirmation: async () => {} },
+    '@/i18n/request': { getActionT: async (namespace: 'legal') => translator('en-GB', namespace) },
+  });
+  assert.deepEqual(await failing.unsubscribeFromMarketing({ status: 'idle' }, emailForm('customer@example.com')), LINK_SENT);
+  assert.deepEqual(await f.actions.unsubscribeFromMarketing({ status: 'idle' }, emailForm('nobody@example.com')), LINK_SENT);
 });
 
 test('the per-IP limit refuses before any lookup', async () => {
