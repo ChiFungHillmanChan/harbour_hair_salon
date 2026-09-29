@@ -211,7 +211,7 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `src/app/services/admin-calendar-data.ts` — authorized calendar DAL: one annual aggregate, selected period DTOs, day roster/busy data and cursor-paged all-date pending queue.
 - `src/app/services/housekeeping-service.ts`, `/api/cron/housekeeping` — independent bounded retention and expired-notification-lease recovery; opt-in `HOUSEKEEPING_ENABLED`, daily03:15UTC.
 - `src/components/admin/KioskSessions.tsx` — per-device/all-device revocation controls from registered safe session metadata.
-- `blog-service.ts` — bounded public/admin summary pages, `getPublishedPostSlugs`, `getRelatedPublishedPosts`; full article getters retain request deduplication.
+- `blog-service.ts` — public list cards served from ONE Data Cache entry per language (`BLOG_POSTS_TAG` = `blog-posts`, dropped by `admin-blog.ts` and `admin-content.ts` publishes; 24h safety-net expiry) so `/blog?page=…` never queries Neon per visit; bounded admin summary pages, `getPublishedPostSlugs`, `getRelatedPublishedPosts`; full article getters retain request deduplication.
 - `category-content-service.ts` — thin category listing, cached detail and batched `getRelatedCategories`; `app/stylists/slug.ts` — indexed/cached detail, `getStylistSlugs`, `getRelatedStylists` with safe projections.
 - `prisma/seed-safety.ts` — explicit opt-in and canonical local disposable target validation before destructive seeding.
 - `prisma/rotate-mfa-key.ts`, `prisma/reset-admin-mfa.ts`, `prisma/create-admin.ts` — explicitly confirmed operator maintenance; `mfa-maintenance.ts` includes `bootstrapAdminOffline`, factor reset and key rotation; no web endpoint bypasses MFA.
