@@ -484,7 +484,7 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
         const readiness = await checkCalendarBookingReadiness(tx);
         if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
         // Imported bookings or opening hours may have changed since the request.
-        await assertAppointmentSlotAvailable(tx, current, current.date);
+        await assertAppointmentSlotAvailable(tx, current, current.date, undefined, { ignoreOwnEcho: true });
       }
 
       const data: Prisma.AppointmentUpdateManyMutationInput = {
