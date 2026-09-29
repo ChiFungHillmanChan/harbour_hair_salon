@@ -79,7 +79,7 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
           <input
             type="checkbox"
             name="bookingEnabled"
-            defaultChecked={settings.bookingEnabled}
+            defaultChecked={settings.bookingEnabled && !bookingLockedForPayments}
             disabled={bookingLockedForPayments}
             className="mt-1 h-5 w-5 rounded border-zinc-300 text-zinc-900 focus:ring-2 focus:ring-zinc-900 disabled:opacity-50"
           />
