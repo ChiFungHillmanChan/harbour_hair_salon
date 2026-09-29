@@ -135,6 +135,16 @@ const emails: Localized<Messages['emails']> = {
     expiry: '此連結會於 {minutes} 分鐘後失效，並只可使用一次。',
     ignore: '如非你本人提出，請忽略此電郵，你的密碼不會改變。',
   },
+  marketingUnsubscribe: {
+    subject: '確認取消訂閱 — Harbour Hair Salon',
+    preview: '按一下即可停止接收 Harbour Hair Salon 推廣電郵',
+    eyebrow: '推廣電郵',
+    title: '確認取消訂閱',
+    intro: '有人要求我們停止向此電郵地址發送 Harbour Hair Salon 推廣電郵。請按下方按鈕確認。預約及帳戶電郵不受影響。',
+    cta: '取消訂閱',
+    expiry: '此連結於 {days} 日內有效。',
+    ignore: '如非你本人提出，請忽略此電郵，一切維持不變。',
+  },
 };
 
 export default emails;

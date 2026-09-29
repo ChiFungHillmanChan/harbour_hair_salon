@@ -2,9 +2,11 @@ import 'server-only';
 import { render } from '@react-email/components';
 import { EmailFrame } from '@/components/emails/EmailFrame';
 import { RESET_TOKEN_TTL_MS } from '@/app/lib/password-reset';
+import { createUnsubscribeUrl, UNSUBSCRIBE_TOKEN_TTL_DAYS } from '@/app/lib/unsubscribe-token';
 import { DEFAULT_LOCALE, type Locale } from '@/i18n/config';
 import {
   appointmentEmailContent,
+  marketingUnsubscribeContent,
   passwordResetContent,
   renderPlainText,
   toEmailAppointment,
@@ -111,4 +113,13 @@ export async function sendEmailVerification(user: { id: string; email: string; n
 export async function sendPasswordReset(user: { email: string; name: string | null }, token: string, locale: Locale = DEFAULT_LOCALE): Promise<void> {
   const content = passwordResetContent(user, token, Math.round(RESET_TOKEN_TTL_MS / 60_000), locale);
   await sendPreparedEmail(await prepareEmail(user.email, content));
+}
+
+/**
+ * The only way the public unsubscribe form changes the marketing list: a
+ * signed link to the address itself. Like reset links, never queued.
+ */
+export async function sendMarketingUnsubscribeConfirmation(email: string, locale: Locale = DEFAULT_LOCALE): Promise<void> {
+  const content = marketingUnsubscribeContent(await createUnsubscribeUrl(email, locale), UNSUBSCRIBE_TOKEN_TTL_DAYS, locale);
+  await sendPreparedEmail(await prepareEmail(email, content));
 }
