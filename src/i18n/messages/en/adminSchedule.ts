@@ -81,6 +81,9 @@ const adminSchedule = {
     detail: '{provider} · {stylist} · {range} (London time). Last imported {synced}. Manage this time in {provider}.',
     agendaImported: '{stylist} · Imported busy time',
     agendaSynced: 'Last imported {synced} · London time',
+    unavailable: 'Unavailable',
+    unavailableDetail: '{stylist} is unavailable · {range} (London time), imported from {provider}. Last imported {synced}. Manage this time in {provider}.',
+    agendaUnavailable: '{stylist} · Unavailable all day',
   },
   clash: {
     bookingTitle: 'This booking clashes:',

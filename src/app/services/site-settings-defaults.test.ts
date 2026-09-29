@@ -44,13 +44,13 @@ test('the migration adds the column defaulting to false', () => {
   assert.match(sql, /ADD COLUMN\s+"bookingEnabled"\s+BOOLEAN NOT NULL DEFAULT false/i);
 });
 
-test('all four booking entry points gate on isBookingEnabled', () => {
+test('all five booking entry points gate on isBookingEnabled', () => {
   const actions = readFileSync(join(root, 'app/actions/booking.ts'), 'utf8');
   const guards = actions.match(/if \(!\(await isBookingEnabled\(\)\)\)/g) ?? [];
   assert.equal(
     guards.length,
-    4,
-    'getAvailableSlotsAction, fetchSlots, submitBooking and rescheduleAppointment must each gate',
+    5,
+    'getAvailableSlotsAction, fetchSlots, fetchBookingDays, submitBooking and rescheduleAppointment must each gate',
   );
   // The old compile-time constant must be fully gone from the gating path.
   assert.doesNotMatch(actions, /if \(BOOKING_MAINTENANCE\)/);

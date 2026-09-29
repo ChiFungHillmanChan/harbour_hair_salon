@@ -64,7 +64,55 @@ for (const view of ['Day', 'Week'] as const) {
     const after = render(view, 'FRESHA', '2026-10-24T23:00:00Z', '2026-10-26T00:00:00Z', '2026-10-26');
     assert.ok(!after.some(node => node.props.role === 'note'));
   });
+  test(`${view} calendar labels a whole-day Fresha block "Unavailable", keeping Fresha in the detail`, () => {
+    // An all-day export on Tue 6 Oct 2026 (BST): London midnight to midnight.
+    const nodes = render(view, 'FRESHA', '2026-10-05T23:00:00Z', '2026-10-06T23:00:00Z', '2026-10-06');
+    assert.ok(nodes.some(node => node.props.children === 'Unavailable'), 'the block reads Unavailable');
+    const note = nodes.find(node => node.props.role === 'note')!;
+    assert.match(String(note.props['aria-label']), /Funky is unavailable/);
+    assert.match(String(note.props['aria-label']), /Fresha/);
+  });
+  test(`${view} calendar keeps a short Fresha block labelled Fresha`, () => {
+    const nodes = render(view, 'FRESHA', '2026-10-23T13:00:00Z', '2026-10-23T13:15:00Z');
+    assert.ok(!nodes.some(node => node.props.children === 'Unavailable'));
+    assert.ok(nodes.some(node => node.props.children === 'Fresha'));
+  });
 }
+
+test('Day calendar: a 10:00–20:30 Pause for a stylist off in our rota is Unavailable against the salon’s hours', () => {
+  const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(
+    'src/components/admin/ScheduleDayGrid.tsx', { react: hooks, '@/i18n/client': i18nClient },
+  );
+  const nodes = elements(grid.ScheduleDayGrid({
+    day: new Date('2026-10-06T12:00:00Z'),
+    stylists: [
+      { id: 'funky', name: 'Funky', calendarColor: null, availability: null },
+      { id: 'lox', name: 'Lox', calendarColor: null, availability: { startTime: '10:15', endTime: '19:00' } },
+    ],
+    appointments: [],
+    busyBlocks: [{ id: 'pause', stylistId: 'funky', source: 'FRESHA', start: '2026-10-06T09:00:00Z', end: '2026-10-06T19:30:00Z', lastSyncAt: '2026-09-20T00:00:00Z' }],
+  }));
+  const note = nodes.find(node => node.props.role === 'note')!;
+  assert.match(String(note.props['aria-label']), /Funky is unavailable · 10:00–20:30/);
+});
+
+test('Week calendar: a Pause covering the stylist’s own hours is Unavailable; a lunch block is not', () => {
+  const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(
+    'src/components/admin/ScheduleWeekGrid.tsx', { react: hooks, '@/i18n/client': i18nClient },
+  );
+  const nodes = elements(grid.ScheduleWeekGrid({
+    day: new Date('2026-10-06T12:00:00Z'), dayKeys: ['2026-10-06'], todayKey: '2026-10-06',
+    stylists: [{ id: 'ivan', name: 'Ivan', calendarColor: null, availability: null, availabilityByWeekday: { 2: { startTime: '10:00', endTime: '19:30' } } }],
+    appointments: [],
+    busyBlocks: [
+      { id: 'pause', stylistId: 'ivan', source: 'FRESHA', start: '2026-10-06T09:00:00Z', end: '2026-10-06T19:30:00Z', lastSyncAt: '2026-09-20T00:00:00Z' },
+      { id: 'lunch', stylistId: 'ivan', source: 'FRESHA', start: '2026-10-06T12:00:00Z', end: '2026-10-06T13:00:00Z', lastSyncAt: '2026-09-20T00:00:00Z' },
+    ],
+  }));
+  const labels = nodes.filter(node => node.props.role === 'note').map(node => String(node.props['aria-label']));
+  assert.ok(labels.some(label => /Ivan is unavailable · 10:00–20:30/.test(label)));
+  assert.ok(labels.some(label => /^Fresha · Ivan · 13:00–14:00/.test(label)));
+});
 
 for (const view of ['day', 'week']) {
   test(`mobile ${view} agenda includes external time even without website appointments`, () => {
@@ -100,6 +148,38 @@ for (const view of ['day', 'week']) {
     assert.match(String(notes[0].props['aria-label']), /Treatwell · Funky · 14:00–15:00/);
   });
 }
+
+test('mobile day agenda says a stylist on a whole-day Fresha block is unavailable all day', () => {
+  const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
+    'src/components/admin/ScheduleCalendar.tsx', {
+      react: { ...hooks, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+      '@/i18n/navigation': navigation,
+      '@/i18n/client': i18nClient,
+      '@/i18n/draft-store': draftStore(hooks.useState),
+      './ScheduleDayGrid': { ScheduleDayGrid: () => null },
+      './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
+      './AppointmentDialog': { AppointmentDialog: () => null },
+      '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
+    },
+  );
+  const rendered = calendar.ScheduleCalendar({
+    dateStr: '2026-10-06', view: 'day', appointments: [], pendingAppointments: [],
+    stylists: [{ id: 's1', name: 'Funky', calendarColor: null, availabilities: [{ dayOfWeek: 2, startTime: '10:15', endTime: '19:00', isOff: false }] }],
+    busyBlocks: [{ id: 'pause', stylistId: 's1', source: 'FRESHA', start: '2026-10-06T09:00:00Z', end: '2026-10-06T19:30:00Z', lastSyncAt: '2026-09-20T00:00:00Z' }],
+  });
+  function expand(node: unknown): Element[] {
+    if (Array.isArray(node)) return node.flatMap(expand);
+    if (!node || typeof node !== 'object' || !('props' in node)) return [];
+    const element = node as Element;
+    if (typeof element.type === 'function') return expand(element.type(element.props));
+    return [element, ...expand(element.props.children)];
+  }
+  const mobile = elements(rendered).find(node => node.props.className === 'sm:hidden');
+  assert.ok(mobile);
+  const texts = expand(mobile).flatMap((node) => [node.props.children].flat().filter((child) => typeof child === 'string'));
+  assert.ok(texts.includes('Funky · Unavailable all day'));
+  assert.ok(texts.includes('Unavailable'));
+});
 
 for (const view of ['day', 'week', 'month']) {
   test(`${view} agenda opens the existing booking editor without changing the appointment`, () => {

@@ -71,6 +71,11 @@ const booking = {
     noneAvailable: 'No appointments available',
     noneAvailableHelp: 'Please try selecting a different date or stylist.',
     selectedAt: '{date} at {time}',
+    unavailable: 'Unavailable',
+    dayUnavailableLabel: '{date}, unavailable',
+    slotUnavailableLabel: '{time}, unavailable',
+    unavailableHelp: '{name} isn’t available on this day. Please choose another day.',
+    unavailableHelpAnyone: 'No stylist is available on this day. Please choose another day.',
   },
   confirm: {
     summary: 'Booking Summary',

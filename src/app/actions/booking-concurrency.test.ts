@@ -29,6 +29,8 @@ function fixture(options: {
   hoursEnd?: string;
   conflictingBooking?: boolean;
   externalConflict?: boolean;
+  /** A synced Fresha booking with exactly this appointment's start and end. */
+  externalSameTime?: boolean;
   currentDate?: Date;
   changeAfterRead?: 'cancel' | 'reschedule' | 'confirm';
   failEnqueue?: boolean;
@@ -88,9 +90,10 @@ function fixture(options: {
       },
     },
     availability: { findFirst: async () => ({ startTime: '09:00', endTime: options.hoursEnd ?? '18:00', isOff: false }) },
-    externalBusyBlock: { findMany: async () => options.externalConflict ? [{
-      stylistId: 'stylist-1', start: new Date('2099-09-14T12:15:00Z'), end: new Date('2099-09-14T13:00:00Z'),
-    }] : [] },
+    externalBusyBlock: { findMany: async () => [
+      ...(options.externalConflict ? [{ stylistId: 'stylist-1', start: new Date('2099-09-14T12:15:00Z'), end: new Date('2099-09-14T13:00:00Z') }] : []),
+      ...(options.externalSameTime ? [{ stylistId: 'stylist-1', start: new Date(originalDate), end: new Date(originalDate.getTime() + 60 * 60_000) }] : []),
+    ] },
     notificationDelivery: {
       findUnique: async ({ where }: { where: { eventKey: string } }) => [...events, ...stagedEvents].find((event) => event.eventKey === where.eventKey) ?? null,
       upsert: async ({ create }: { create: Omit<Event, 'id'> }) => {
@@ -252,6 +255,16 @@ test('admin approval cannot revive a request cancelled after its initial read', 
 
 test('admin approval checks new external busy blocks before confirming', async () => {
   const { admin, appointment, messages } = fixture({ status: 'PENDING', externalConflict: true });
+  assert.equal((await admin.updateAppointmentStatus(appointment.id, 'CONFIRMED')).success, false);
+  assert.equal(appointment.status, 'PENDING');
+  assert.equal(messages.length, 0);
+});
+
+// Fresha never re-exports the busy feed it imports from us (verified live
+// 2026-09-29), so a synced block at exactly the request's time is a real Fresha
+// booking made before our feed reached Fresha — approving would double-book.
+test('admin approval is refused by a Fresha booking at exactly the same time', async () => {
+  const { admin, appointment, messages } = fixture({ status: 'PENDING', externalSameTime: true });
   assert.equal((await admin.updateAppointmentStatus(appointment.id, 'CONFIRMED')).success, false);
   assert.equal(appointment.status, 'PENDING');
   assert.equal(messages.length, 0);

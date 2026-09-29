@@ -14,7 +14,7 @@ import { salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
 import { describeClash } from '@/app/lib/describe-clash';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
 import type { GridAppointment, GridBusyBlock, GridStylist, MoveResult } from './ScheduleDayGrid';
-import { calendarBusyForDay, calendarBusyLabel } from '@/app/lib/calendar-busy-display';
+import { calendarBusyForDay, calendarBusyLabel, isWholeDayBlock, salonWorkingWindow } from '@/app/lib/calendar-busy-display';
 import { useT } from '@/i18n/client';
 import { formatCalendarDay } from '@/i18n/dates';
 
@@ -401,6 +401,7 @@ export function ScheduleWeekGrid({
             const to = eh * 60 + em;
             return span ? { from: Math.min(span.from, from), to: Math.max(span.to, to) } : { from, to };
           }, null);
+          const salonWindow = salonWorkingWindow(stylists.map((stylist) => stylist.availabilityByWeekday[weekday]));
 
           return (
             <div
@@ -436,7 +437,9 @@ export function ScheduleWeekGrid({
               {/* Synced busy time — visible, never draggable */}
               {dayBusy.map((block) => {
                 const { startMin, endMin } = block;
-                const label = calendarBusyLabel(block, stylistById.get(block.stylistId)?.name ?? t('appointment.stylistFallback'), startMin, endMin, t);
+                const owner = stylistById.get(block.stylistId);
+                const wholeDay = isWholeDayBlock(block, owner?.availabilityByWeekday[weekday] ?? salonWindow);
+                const label = calendarBusyLabel(block, owner?.name ?? t('appointment.stylistFallback'), startMin, endMin, t, wholeDay);
                 return (
                   <div
                     key={block.id}
@@ -445,7 +448,11 @@ export function ScheduleWeekGrid({
                     aria-label={label.detail}
                     title={label.detail}
                     onClick={(event) => event.stopPropagation()}
-                    className="absolute overflow-hidden rounded border border-zinc-300 border-l-2 border-l-zinc-500 bg-zinc-100 px-0.5 text-[9px] leading-3 text-zinc-700 focus-visible:outline-2 focus-visible:outline-[#174F7F]"
+                    className={`absolute overflow-hidden rounded border px-0.5 leading-3 focus-visible:outline-2 focus-visible:outline-[#174F7F] ${
+                      wholeDay
+                        ? 'border-zinc-400 border-l-2 border-l-zinc-600 bg-[repeating-linear-gradient(135deg,var(--color-zinc-200)_0_6px,var(--color-zinc-100)_6px_12px)] text-[10px] text-zinc-800'
+                        : 'border-zinc-300 border-l-2 border-l-zinc-500 bg-zinc-100 text-[9px] text-zinc-700'
+                    }`}
                     style={{
                       top: minutesToOffset(startMin, bounds.startMin, PX_PER_MINUTE),
                       height: Math.max(14, (endMin - startMin) * PX_PER_MINUTE),

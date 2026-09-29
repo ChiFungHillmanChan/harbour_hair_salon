@@ -15,6 +15,8 @@ import { quoteMatches, serializeQuote, type PriceQuote, type QuoteExpectation } 
 import { penceToDecimalString } from './pricing/money';
 import type { Locale } from '@/i18n/config';
 import { bookingCoverageEndsAt, isWithinBookingHorizon } from './booking-horizon';
+import { buildBookingDays, type BookingDay, type WorkingHours } from './booking-days';
+import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
 import { getTreatwellApiConfiguration, initialTreatwellSyncStatus } from './treatwell-api';
 
 /**
@@ -99,6 +101,10 @@ export async function assertAppointmentSlotAvailable(
       }),
       loadExternalBusy(tx, [appointment.stylistId], window),
     ]);
+    // Every synced block is a real clash, even one with exactly this booking's
+    // times: Fresha imports our busy feed as "Imported event" blocked time but
+    // never re-exports it (verified 2026-09-29), so no copy of our own booking
+    // comes back. Re-verify before linking a calendar that might echo.
     blocking = [
       ...existing.map((row) => ({ start: row.date, durationMin: row.durationAtBooking ?? row.service.duration })),
       ...external.map(toBookedInterval),
@@ -262,6 +268,49 @@ export async function getAvailableSlotsUnion(
   return Array.from(times)
     .sort()
     .map((time) => ({ time, available: true }));
+}
+
+/**
+ * Up to two weeks of the booking page's date strip and time grid for one
+ * stylist or "Anyone". Three batched reads cover the whole range — working
+ * hours, appointments and synced busy blocks (a Fresha "Pause" arrives as one
+ * of those) — so a visit costs the same few queries however many days it shows.
+ */
+export async function getBookingDays(stylistId: string, dates: string[], serviceDuration: number): Promise<BookingDay[]> {
+  if (dates.length === 0) return [];
+  const now = new Date();
+  const ordered = [...dates].sort();
+  const window = {
+    start: salonDayWindow(resolveSalonDateTime(ordered[0], '12:00').utc).start,
+    end: salonDayWindow(resolveSalonDateTime(ordered[ordered.length - 1], '12:00').utc).end,
+  };
+  const rows = await prisma.availability.findMany({
+    where: { isOff: false, stylist: { isActive: true }, ...(stylistId === ANY_STYLIST_ID ? {} : { stylistId }) },
+    select: { stylistId: true, dayOfWeek: true, startTime: true, endTime: true },
+  });
+  const stylistIds = [...new Set(rows.map((row) => row.stylistId))];
+  const [appointments, externalBlocks] = stylistIds.length === 0
+    ? [[], []]
+    : await Promise.all([
+      prisma.appointment.findMany({
+        where: { stylistId: { in: stylistIds }, date: { gte: window.start, lte: window.end }, status: { not: 'CANCELLED' } },
+        select: slotAppointmentSelect,
+      }),
+      loadExternalBusy(prisma, stylistIds, window),
+    ]);
+
+  const hoursByStylist = new Map<string, WorkingHours[]>();
+  for (const row of rows) hoursByStylist.set(row.stylistId, [...(hoursByStylist.get(row.stylistId) ?? []), row]);
+  const busyByStylist = new Map<string, BookedInterval[]>();
+  const addBusy = (id: string, interval: BookedInterval) => busyByStylist.set(id, [...(busyByStylist.get(id) ?? []), interval]);
+  // Frozen booking duration wins over the live service duration (see getAvailableSlots).
+  for (const appt of appointments) addBusy(appt.stylistId, { start: new Date(appt.date), durationMin: appt.durationAtBooking ?? appt.service.duration });
+  for (const block of externalBlocks) addBusy(block.stylistId, toBookedInterval(block));
+
+  return buildBookingDays({
+    dates, duration: serviceDuration, now, hoursByStylist, busyByStylist,
+    bookable: (start, duration) => isWithinBookingHorizon(start, duration, now),
+  });
 }
 
 /**
