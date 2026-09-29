@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { overlaps, hasConflict, firstFreeStylist } from './scheduling';
-import { buildSlotsForWindow } from './scheduling';
+import { buildSlotsForWindow, buildSlotGridForWindow } from './scheduling';
 import { resolveSalonDateTime } from './salon-time';
 
 const at = (iso: string) => new Date(iso);
@@ -97,4 +97,37 @@ test('buildSlotsForWindow — a service that finishes exactly at closing is stil
   const now = new Date('2026-06-01T00:00:00Z');
   const times = buildSlotsForWindow('2026-07-10', { startTime: '09:00', endTime: '10:00' }, [], 60, now).map((s) => s.time);
   assert.deepEqual(times, ['09:00'], '09:00 + 60min = 10:00 exactly fills the window and must be the sole offered slot');
+});
+
+test('buildSlotGridForWindow — keeps taken times, flagged unavailable, in order', () => {
+  const dateStr = '2026-07-01';
+  const now = new Date('2026-06-01T00:00:00Z');
+  const booked = [{ start: resolveSalonDateTime(dateStr, '10:00').utc, durationMin: 60 }];
+  const grid = buildSlotGridForWindow(dateStr, { startTime: '09:00', endTime: '12:00' }, booked, 30, now);
+  assert.deepEqual(grid, [
+    { time: '09:00', available: true },
+    { time: '09:30', available: true },
+    { time: '10:00', available: false },
+    { time: '10:30', available: false },
+    { time: '11:00', available: true },
+    { time: '11:30', available: true },
+  ]);
+});
+
+test('buildSlotGridForWindow — still hides past times entirely', () => {
+  const dateStr = '2026-07-01';
+  const now = resolveSalonDateTime(dateStr, '10:00').utc;
+  const grid = buildSlotGridForWindow(dateStr, { startTime: '09:00', endTime: '11:00' }, [], 30, now);
+  assert.deepEqual(grid.map((slot) => slot.time), ['10:30']);
+});
+
+test('buildSlotsForWindow — is exactly the free part of the grid', () => {
+  const dateStr = '2026-07-01';
+  const now = new Date('2026-06-01T00:00:00Z');
+  const booked = [{ start: resolveSalonDateTime(dateStr, '10:00').utc, durationMin: 60 }];
+  const hours = { startTime: '09:00', endTime: '12:00' };
+  assert.deepEqual(
+    buildSlotsForWindow(dateStr, hours, booked, 30, now),
+    buildSlotGridForWindow(dateStr, hours, booked, 30, now).filter((slot) => slot.available),
+  );
 });

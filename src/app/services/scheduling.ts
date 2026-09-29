@@ -49,13 +49,15 @@ export function firstFreeStylist(
 export type TimeSlot = { time: string; available: boolean };
 
 /**
- * Build bookable slot start-times for one availability window on a salon-local
- * calendar date (YYYY-MM-DD). Each slot's absolute instant is derived with
- * resolveSalonDateTime so it matches how appointments are STORED (BST/GMT correct
- * and host-timezone independent — never construct slot instants with host-local
- * date-fns startOfDay/setHours). `now` is injected: slots at or before it are hidden.
+ * Every start time one availability window offers on a salon-local calendar
+ * date (YYYY-MM-DD), each flagged free or taken, so the booking page can show a
+ * taken time greyed out instead of hiding it. Each slot's absolute instant is
+ * derived with resolveSalonDateTime so it matches how appointments are STORED
+ * (BST/GMT correct and host-timezone independent — never construct slot
+ * instants with host-local date-fns startOfDay/setHours). `now` is injected:
+ * slots at or before it are omitted, not flagged.
  */
-export function buildSlotsForWindow(
+export function buildSlotGridForWindow(
   dateStr: string,
   availability: { startTime: string; endTime: string },
   booked: BookedInterval[],
@@ -72,9 +74,18 @@ export function buildSlotsForWindow(
     const label = `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
     const slotStart = resolveSalonDateTime(dateStr, label).utc;
     if (slotStart <= now) continue; // hide past slots (same-day)
-    if (!hasConflict(slotStart, serviceDuration, booked)) {
-      slots.push({ time: label, available: true });
-    }
+    slots.push({ time: label, available: !hasConflict(slotStart, serviceDuration, booked) });
   }
   return slots;
+}
+
+/** The bookable subset of buildSlotGridForWindow (what the conflict check will accept). */
+export function buildSlotsForWindow(
+  dateStr: string,
+  availability: { startTime: string; endTime: string },
+  booked: BookedInterval[],
+  serviceDuration: number,
+  now: Date,
+): TimeSlot[] {
+  return buildSlotGridForWindow(dateStr, availability, booked, serviceDuration, now).filter((slot) => slot.available);
 }
