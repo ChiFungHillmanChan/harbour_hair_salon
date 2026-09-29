@@ -14,12 +14,20 @@
  * switch booking on. Customers keep booking by phone and on the marketplaces.
  *
  * Set this to true only in the change that takes the deposit in the booking
- * flow. Local, CI and preview runs are not locked, so the booking flow itself
- * stays testable (they are not VERCEL_ENV=production).
+ * flow.
  */
 export const SQUARE_DEPOSITS_WIRED = false;
 
-/** Read at call time, never at module load (project convention). */
+/**
+ * Fails closed: EVERY production build is locked (Next.js always runs with
+ * NODE_ENV=production there), whether or not Vercel exposes VERCEL_ENV at
+ * runtime — a lock that depended on that project setting would open silently
+ * if it were ever switched off. Only an explicit Vercel preview is exempt.
+ * Development, unit tests and the CI integration scripts are not production
+ * builds, so the booking flow itself stays testable. Read at call time, never
+ * at module load (project convention).
+ */
 export function isOnlineBookingLockedForPayments(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
-  return !SQUARE_DEPOSITS_WIRED && env.VERCEL_ENV === 'production';
+  if (SQUARE_DEPOSITS_WIRED) return false;
+  return env.NODE_ENV === 'production' && env.VERCEL_ENV !== 'preview';
 }

@@ -109,8 +109,10 @@ test('closing booking works even while every readiness check is failing', async 
 });
 
 test('production refuses to switch online booking on until Square deposits are wired, but other settings still save', async () => {
-  const previous = process.env.VERCEL_ENV;
-  process.env.VERCEL_ENV = 'production';
+  const env = process.env as Record<string, string | undefined>;
+  const previous = { node: env.NODE_ENV, vercel: env.VERCEL_ENV };
+  env.NODE_ENV = 'production';
+  env.VERCEL_ENV = 'production';
   try {
     const f = fixture();
     f.form.set('bookingEnabled', 'on');
@@ -126,7 +128,9 @@ test('production refuses to switch online booking on until Square deposits are w
     assert.equal((await g.actions.updateSiteSettings({ status: 'idle' }, g.form)).status, 'success');
     assert.equal(g.saved.phone, '09876543210');
   } finally {
-    if (previous === undefined) delete process.env.VERCEL_ENV;
-    else process.env.VERCEL_ENV = previous;
+    for (const [key, value] of [['NODE_ENV', previous.node], ['VERCEL_ENV', previous.vercel]] as const) {
+      if (value === undefined) delete env[key];
+      else env[key] = value;
+    }
   }
 });
