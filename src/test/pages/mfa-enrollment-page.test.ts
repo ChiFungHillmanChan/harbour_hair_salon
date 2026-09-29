@@ -39,7 +39,7 @@ test('enrollment cookie mutations keep the setup page mounted for one-time recov
   });
   const SetupForm = () => null;
   const page = loadServerModule<typeof import('../../app/[locale]/auth/mfa/setup/page')>('src/app/[locale]/auth/mfa/setup/page.tsx', {
-    'next/navigation': { redirect }, '@/app/lib/admin-mfa': challenge, '@/app/lib/session': session,
+    'next/navigation': { redirect }, '@/app/lib/admin-mfa': challenge, '@/app/lib/session': session, '@/app/lib/prisma': db,
     '@/components/auth/AdminMfaForms': { AdminMfaSetupForm: SetupForm },
     '@/i18n/server': { getLocale: async () => 'en-GB', getT: async (namespace: Namespace) => translator('en-GB', namespace) },
   });
@@ -58,4 +58,13 @@ test('enrollment cookie mutations keep the setup page mounted for one-time recov
   const form = rendered.props.children.props.children[1];
   assert.equal(form.type, SetupForm);
   assert.equal(form.props.enrolled, true);
+  assert.equal(form.props.notEnabled, false);
+
+  // A full session for an administrator WITHOUT a factor must not be told it
+  // is enabled (sign-in is password-only, so this is the normal case).
+  Object.assign(user, { mfaEnabledAt: null, mfaSecretEncrypted: null });
+  const withoutFactor = await page.default();
+  const plainForm = withoutFactor.props.children.props.children[1];
+  assert.equal(plainForm.props.enrolled, false);
+  assert.equal(plainForm.props.notEnabled, true);
 });

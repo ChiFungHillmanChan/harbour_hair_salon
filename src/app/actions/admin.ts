@@ -8,7 +8,7 @@ import { verifySession } from '@/app/lib/session';
 import { revalidatePath, updateTag } from 'next/cache';
 import { after } from 'next/server';
 import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
-import { hashPassword } from '@/app/lib/password';
+import { fitsBcryptLimit, hashPassword } from '@/app/lib/password';
 import { z } from 'zod';
 import { revalidateCategoryPages } from '@/app/actions/admin-services';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
@@ -58,7 +58,7 @@ export type AdminUserActionState = { error?: string; success?: boolean };
 const adminUserSchema = z.object({
   name: z.string('NAME_TOO_SHORT').min(2, 'NAME_TOO_SHORT').max(100, 'NAME_TOO_LONG'),
   email: z.string('EMAIL_INVALID').email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
-  password: z.string('PASSWORD_TOO_SHORT').min(8, 'PASSWORD_TOO_SHORT').max(128, 'PASSWORD_TOO_LONG'),
+  password: z.string('PASSWORD_TOO_SHORT').min(8, 'PASSWORD_TOO_SHORT').refine(fitsBcryptLimit, { message: 'PASSWORD_TOO_LONG' }),
 });
 
 async function requireAdmin() {
@@ -534,7 +534,7 @@ export async function resetUserPassword(userId: string, newPassword: string) {
     return { error: await adminUserError('PASSWORD_TOO_SHORT') };
   }
 
-  if (newPassword.length > 128) {
+  if (!fitsBcryptLimit(newPassword)) {
     return { error: await adminUserError('PASSWORD_TOO_LONG') };
   }
 
@@ -555,6 +555,11 @@ export async function resetUserPassword(userId: string, newPassword: string) {
       // Keep the existing MFA factor. Password recovery cannot bypass it.
       data: { password: hashedPassword, sessionVersion: { increment: 1 } },
     });
+    // An emailed reset link issued before this change must not outlive it: it
+    // would let whoever holds it overwrite the password just set (e.g. while
+    // recovering a compromised account). Same transaction, so a failed reset
+    // leaves the links alone and a racing redemption finds nothing to claim.
+    await tx.passwordResetToken.deleteMany({ where: { userId, usedAt: null } });
     await appendAuditEvent({ actorUserId: session.userId, action: 'ADMIN.PASSWORD_RESET', targetType: 'User', targetId: userId }, tx);
   });
 

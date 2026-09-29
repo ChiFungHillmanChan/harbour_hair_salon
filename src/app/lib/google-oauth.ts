@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHash, randomBytes } from 'node:crypto';
-import { createRemoteJWKSet, jwtVerify, SignJWT } from 'jose';
+import { createRemoteJWKSet, jwtVerify, SignJWT, type JWTPayload } from 'jose';
 import { sanitizeRedirect } from '@/app/lib/redirect';
 import { isParseableUrl } from '@/app/lib/site-url';
 import { normalizeLocale, type Locale } from '@/i18n/config';
@@ -29,7 +29,58 @@ export type GoogleProfile = {
   id: string;
   email: string;
   name: string | null;
+  /**
+   * Whether Google is the authority for `email` — see
+   * isGoogleAuthoritativeEmail. When it is not, `email_verified` only says the
+   * address was confirmed once, possibly for a previous owner.
+   */
+  emailAuthoritative: boolean;
 };
+
+/**
+ * Google's own rule for when a verified `email` proves the signer controls the
+ * address TODAY: a Gmail address, or a Google Workspace account (the `hd`
+ * claim). A Google account can also be registered on any third-party address;
+ * Google verified it at sign-up, but that mailbox may since have changed hands
+ * while `email_verified` stays true.
+ * https://developers.google.com/identity/gsi/web/guides/verify-google-id-token
+ */
+export function isGoogleAuthoritativeEmail(email: string, hostedDomain: unknown): boolean {
+  const domain = email.slice(email.lastIndexOf('@') + 1).toLowerCase();
+  // googlemail.com is Gmail's older UK domain, still used by some accounts.
+  if (domain === 'gmail.com' || domain === 'googlemail.com') return true;
+  return typeof hostedDomain === 'string' && hostedDomain.trim().length > 0;
+}
+
+export type GoogleSignInRefusal = 'google_email_unverified' | 'google_admin_link';
+
+export type GoogleLinkDecision =
+  | { kind: 'CREATE' }
+  | { kind: 'LINK'; clearPassword: boolean }
+  | { kind: 'REFUSE'; code: GoogleSignInRefusal };
+
+/**
+ * What a first Google sign-in (no account linked to this Google id yet) may do.
+ * An already linked Google id never reaches here: it signs in by `sub`.
+ *
+ *  - Google not authoritative for the address → refuse outright. Linking would
+ *    hand an existing account to whoever holds a stale Google identity, and
+ *    creating one would leave that identity inside an account the real owner
+ *    later recovers by email.
+ *  - Existing administrator → refuse. Staff accounts are never taken over by an
+ *    email match; they sign in with their password.
+ *  - Existing customer → link, destroying a password that may have been planted
+ *    by someone who pre-registered the address (the owner has just proved it).
+ */
+export function decideGoogleLink(
+  profile: Pick<GoogleProfile, 'emailAuthoritative'>,
+  existing: { role: string; hasPassword: boolean } | null,
+): GoogleLinkDecision {
+  if (!profile.emailAuthoritative) return { kind: 'REFUSE', code: 'google_email_unverified' };
+  if (!existing) return { kind: 'CREATE' };
+  if (existing.role !== 'USER') return { kind: 'REFUSE', code: 'google_admin_link' };
+  return { kind: 'LINK', clearPassword: existing.hasPassword };
+}
 
 function getSessionKey() {
   const secret = process.env.SESSION_SECRET;
@@ -172,15 +223,21 @@ export async function verifyGoogleIdToken(idToken: string, nonce: string): Promi
     audience: clientId,
     issuer: ['https://accounts.google.com', 'accounts.google.com'],
   });
+  return googleProfileFromClaims(payload, nonce);
+}
 
+/** The profile in an ID token whose signature, audience and issuer are already checked. */
+export function googleProfileFromClaims(payload: JWTPayload, nonce: string): GoogleProfile {
   if (payload.nonce !== nonce || !payload.sub || typeof payload.email !== 'string' || payload.email_verified !== true) {
     throw new Error('Google did not return a verified identity');
   }
 
+  const email = payload.email.trim().toLowerCase();
   return {
     id: payload.sub,
-    email: payload.email.trim().toLowerCase(),
+    email,
     name: typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : null,
+    emailAuthoritative: isGoogleAuthoritativeEmail(email, payload.hd),
   };
 }
 

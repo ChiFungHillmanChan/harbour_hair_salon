@@ -97,6 +97,8 @@ export async function bootstrapAdminOffline(db: PrismaClient, input: {
       update: { name, password: hashed, role: 'ADMIN', sessionVersion: { increment: 1 } },
       select: { id: true },
     });
+    // A reset link emailed before this must not overwrite the password just set.
+    await tx.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
     await appendAuditEvent({ actorUserId: operatorId, action: 'ADMIN.BOOTSTRAPPED', targetType: 'User', targetId: user.id, metadata: { ticket } }, tx);
     return user.id;
   });
