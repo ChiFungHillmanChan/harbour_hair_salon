@@ -121,13 +121,16 @@ Rules that follow from this:
   caches the fallback for the whole revalidate period. Site settings did exactly
   that on every Neon cold-start hiccup (up to an hour of default content, fixed
   in PR #57). Let the read throw out of the cache and fall back outside it.
-- **Preview deployments use the OLD production database** (`ep-muddy-violet…`,
-  us-east-1, project `neon-beige-river`): a stale copy of real customer data from
-  before the 2026-09-16 London move. It is NOT disposable. Apply new migrations
-  to it too (`prisma migrate deploy` with the preview env) or every PR's
-  "Deploy Preview" fails, as it did from #47 until it was migrated on
-  2026-09-29. Repointing Preview at a Neon branch of the London project is the
-  intended fix.
+- **Preview deployments have their own London database** since 2026-09-30:
+  Neon project `harbour-hair-preview-lhr` (`aged-glitter-18950253`, PG 18,
+  eu-west-2), provisioned through the Vercel Marketplace (`PREVIEWDB_*` vars) with
+  its own password and its own free CU-hours — preview code cannot reach
+  production. It holds an **exact copy of production taken 2026-09-30, including
+  real customer data**: treat it like production. Previews never migrate, so
+  apply every new migration to it too (`prisma migrate deploy` with the preview
+  env) or every PR's "Deploy Preview" fails. Refresh the copy with a PostgreSQL 18
+  `pg_dump` of production restored into it. The old us-east-1 project
+  (`neon-beige-river`) is kept, unused, by owner decision.
 - `infra/aws/treatwell-sync/` is a **dormant** EventBridge→Lambda fallback for
   the same endpoint. Do not deploy it; see its README.
 
