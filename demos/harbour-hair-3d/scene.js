@@ -677,9 +677,9 @@ function start() {
   const isUI=target=>target instanceof Element&&!!target.closest('button,input,select,textarea,a,dialog');
   window.addEventListener('keydown',event=>{if(mode!=='walk'||isUI(event.target)||document.querySelector('dialog[open]'))return;if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code)){event.preventDefault();keys.add(event.code);if(tourPlaying)stopTour();requestRender();}if(event.code==='Escape'){stopTour();setMode('dollhouse');}});
   window.addEventListener('keyup',event=>keys.delete(event.code));window.addEventListener('blur',()=>{keys.clear();touchMoves.clear();drag=null;});
-  canvas.addEventListener('pointerdown',event=>{if(mode!=='walk')return;if(tourPlaying)stopTour();drag={x:event.clientX,y:event.clientY,id:event.pointerId};canvas.setPointerCapture(event.pointerId);canvas.style.cursor='grabbing';});
-  canvas.addEventListener('pointermove',event=>{if(!drag||mode!=='walk')return;yaw-=(event.clientX-drag.x)*.004;pitch=clamp(pitch-(event.clientY-drag.y)*.003,-1.05,1.05);drag.x=event.clientX;drag.y=event.clientY;requestMotionRender();});
-  const release=()=>{drag=null;canvas.style.cursor='grab';};canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
+  canvas.addEventListener('pointerdown',event=>{if(mode!=='walk'||drag)return;if(tourPlaying)stopTour();drag={x:event.clientX,y:event.clientY,id:event.pointerId};canvas.setPointerCapture(event.pointerId);canvas.style.cursor='grabbing';});
+  canvas.addEventListener('pointermove',event=>{if(!drag||event.pointerId!==drag.id||mode!=='walk')return;yaw-=(event.clientX-drag.x)*.004;pitch=clamp(pitch-(event.clientY-drag.y)*.003,-1.05,1.05);drag.x=event.clientX;drag.y=event.clientY;requestMotionRender();});
+  const release=event=>{if(!drag||event.pointerId!==drag.id)return;drag=null;canvas.style.cursor='grab';};canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);canvas.addEventListener('lostpointercapture',release);
   controls.addEventListener('start',()=>{tween=null;if(tourPlaying)stopTour();});
   controls.addEventListener('change',requestMotionRender);
   const resizeObserver=new ResizeObserver(size);resizeObserver.observe(canvas);
