@@ -1,9 +1,10 @@
 import SocialLinks from '@/components/layout/SocialLinks';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { getT } from '@/i18n/server';
+import Link from '@/i18n/link';
 
 export default async function VisitFollowBlock() {
-  const [settings, t] = await Promise.all([getSiteSettings(), getT('home')]);
+  const [settings, t, tl] = await Promise.all([getSiteSettings(), getT('home'), getT('local')]);
   return (
     <section className="bg-zinc-50 py-16">
       <div className="mx-auto max-w-4xl px-6 text-center">
@@ -15,6 +16,9 @@ export default async function VisitFollowBlock() {
           <SocialLinks settings={settings} />
         </div>
         <div className="flex flex-wrap justify-center gap-4">
+          <Link href="/hair-salon-leeds-city-centre" className="inline-flex min-h-11 items-center border border-zinc-900 px-6 py-3 text-sm font-semibold hover:bg-zinc-900 hover:text-white transition-colors">
+            {tl('links.guide')}
+          </Link>
           {settings.treatwellUrl && (
             <a
               href={settings.treatwellUrl}

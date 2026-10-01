@@ -30,10 +30,11 @@ export async function FooterPromotions() {
 }
 
 export async function Footer() {
-  const [hasOffers, settings, t] = await Promise.all([
+  const [hasOffers, settings, t, tl] = await Promise.all([
     hasActiveOffers(),
     getSiteSettings(),
     getT('common'),
+    getT('local'),
   ]);
   const phoneDisplay = settings.phone.trim() || '07831 830898';
 
@@ -57,6 +58,8 @@ export async function Footer() {
             <h4 className="text-sm uppercase tracking-widest font-bold mb-6 text-zinc-300">{t('footer.quickLinks')}</h4>
             <ul className="space-y-3 text-sm text-zinc-400">
               <li><Link href="/services" className="hover:text-white transition-colors">{t('footer.servicesPricing')}</Link></li>
+              <li><Link href="/about" className="hover:text-white transition-colors">{t('nav.about')}</Link></li>
+              <li><Link href="/hair-salon-leeds-city-centre" className="hover:text-white transition-colors">{tl('links.guide')}</Link></li>
               {hasOffers && (
                 <li><Link href="/offers" className="hover:text-white transition-colors">{t('footer.specialOffers')}</Link></li>
               )}

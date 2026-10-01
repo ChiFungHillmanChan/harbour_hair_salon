@@ -2,10 +2,10 @@ import type { Localized, Messages } from '../types';
 
 const services: Localized<Messages['services']> = {
   meta: {
-    title: '列斯髮型服務與價目',
-    description: 'Harbour Hair Salon（列斯市中心）完整服務價目，包括剪髮、染髮、電髮及護理，列明一般價及 NHS 價，可網上預約。',
+    title: '列斯剪髮、染髮及電髮服務與價目',
+    description: '列斯 Central Arcade 香港培訓髮型師提供剪髮、手掃染、染髮、電髮及護理。查看價目，選擇適合你的預約方式。',
     ogTitle: '服務與價目｜Harbour Hair Salon 列斯',
-    ogDescription: '剪髮、染髮、電髮及護理完整價目，列明一般價及 NHS 價，可網上預約。',
+    ogDescription: '香港培訓髮型師提供剪髮、手掃染、染髮、電髮及護理，查看列斯市中心本店的價目及預約方式。',
   },
   hero: {
     titleStart: '服務與',

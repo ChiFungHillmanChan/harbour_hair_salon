@@ -2,10 +2,10 @@ import type { Localized, Messages } from '../types';
 
 const home: Localized<Messages['home']> = {
   meta: {
-    title: 'Harbour Hair Salon 列斯｜列斯市中心專業髮型屋',
+    title: 'Harbour Hair Salon 列斯｜香港培訓髮型師',
     description: '於列斯 Central Arcade 的 Harbour Hair Salon 預約，由香港培訓的髮型師提供剪髮、染髮、電髮及修容服務。',
     ogTitle: 'Harbour Hair Salon｜列斯專業髮型屋',
-    ogDescription: '列斯市中心的專業髮型屋，今日即可網上預約。',
+    ogDescription: '由香港培訓的髮型師於列斯市中心提供剪髮、染髮及電髮服務。了解服務後，可致電或透過預約平台安排時間。',
   },
   page: {
     faqTitle: '常見問題解答',
@@ -19,7 +19,14 @@ const home: Localized<Messages['home']> = {
     defaultSubtitle: '由香港培訓的髮型師為你度身打造剪髮、染髮及修容服務，每次預約都精準細緻、講究手藝。',
     imageAlt: 'Harbour Hair Salon 位於列斯 Central Arcade 的店內環境',
     bookAppointment: '預約服務',
-    viewServices: '查看服務',
+    viewServices: '查看服務及價目',
+  },
+  booking: {
+    title: '預約到店',
+    withPartners: '致電我們，或於預約平台選擇服務及時間。',
+    phoneOnly: '致電我們，選擇服務並安排預約時間。',
+    call: '致電 {phone}',
+    bookOn: '於 {name} 預約',
   },
   socialProof: {
     label: '顧客評價',

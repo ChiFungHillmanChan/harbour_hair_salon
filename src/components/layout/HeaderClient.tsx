@@ -86,7 +86,7 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
           <Link href="/#team" className="hover:text-zinc-300 transition-colors duration-300">{t('nav.team')}</Link>
           <Link href="/contact" className="hover:text-zinc-300 transition-colors duration-300">{t('nav.contact')}</Link>
           <Link href="/try-color" className="hover:text-zinc-300 transition-colors duration-300">{t('nav.tryColor')}</Link>
-          <Link href="/3d" prefetch={false} aria-current={businessPath === '/3d' ? 'page' : undefined} className="hover:text-zinc-300 transition-colors duration-300 aria-[current=page]:text-sky-200">{t('nav.threeD')}</Link>
+          <Link href="/about" aria-current={businessPath === '/about' ? 'page' : undefined} className="hover:text-zinc-300 transition-colors duration-300 aria-[current=page]:underline aria-[current=page]:underline-offset-8">{t('nav.about')}</Link>
 
           {role === undefined ? (
             // Pre-hydration placeholder: reserves the slot without flashing

@@ -7,10 +7,11 @@ import SalonGallery from '@/components/contact/SalonGallery';
 import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL } from '@/app/lib/site-url';
 import SocialLinks from '@/components/layout/SocialLinks';
-import { getSiteSettings } from '@/app/services/site-settings-service';
+import { getSiteSettings, buildSameAsArray } from '@/app/services/site-settings-service';
 import { toTelHref } from '@/app/lib/phone';
 import { jsonLdScript } from '@/app/lib/json-ld';
-import { PUBLIC_OPENING_HOURS, dayKey, formatRange, openingHoursSpecification } from '@/app/lib/opening-hours-public';
+import { buildHairSalonSchema } from '@/app/lib/hair-salon-schema';
+import { PUBLIC_OPENING_HOURS, dayKey, formatRange } from '@/app/lib/opening-hours-public';
 import { getLocale, getT } from '@/i18n/server';
 import { alternatesFor, ogLocale } from '@/i18n/metadata';
 import { localizeHref } from '@/i18n/paths';
@@ -32,15 +33,15 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ContactPage() {
   const locale = await getLocale();
-  const [contactFaqs, settings, t, tc] = await Promise.all([
+  const [contactFaqs, settings, t, tc, tl] = await Promise.all([
     getFaqsByKey('contact', locale),
     getSiteSettings(),
     getT('contact'),
     getT('common'),
+    getT('local'),
   ]);
   const phoneDisplay = settings.phone.trim() || '07831 830898';
   const phoneHref = toTelHref(phoneDisplay);
-  const phoneE164 = phoneHref.replace(/^tel:/, '');
   const url = (path: string) => `${SITE_URL}${localizeHref(locale, path) === '/' ? '' : localizeHref(locale, path)}`;
   return (
     <div className="min-h-screen bg-white">
@@ -80,27 +81,11 @@ export default async function ContactPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: jsonLdScript({
-            '@context': 'https://schema.org',
-            '@type': 'HairSalon',
-            name: 'Harbour Hair Salon',
-            url: SITE_URL,
-            telephone: phoneE164,
-            address: {
-              '@type': 'PostalAddress',
-              streetAddress: 'Upper Floor, Unit 15 Central Arcade, Central Rd',
-              addressLocality: 'Leeds',
-              addressRegion: 'West Yorkshire',
-              postalCode: 'LS1 6DX',
-              addressCountry: 'GB',
-            },
-            geo: {
-              '@type': 'GeoCoordinates',
-              latitude: 53.7965911,
-              longitude: -1.5416801,
-            },
-            openingHoursSpecification: openingHoursSpecification(),
-          }),
+          __html: jsonLdScript(buildHairSalonSchema(settings, {
+            locale,
+            description: t('meta.description'),
+            sameAs: buildSameAsArray(settings),
+          })),
         }}
       />
 
@@ -121,6 +106,9 @@ export default async function ContactPage() {
                   {t('location.note')}
                 </p>
               </address>
+              <Link href="/hair-salon-leeds-city-centre" className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4 hover:text-zinc-600">
+                {tl('links.guide')}
+              </Link>
             </div>
 
             {/* Contact & Social */}

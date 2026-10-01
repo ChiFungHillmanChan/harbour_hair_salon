@@ -37,6 +37,7 @@ test('the server-rendered homepage owns its booking promotion without reading a 
     '@/app/services/pricing/public-catalog': { getPublicCatalog: async () => ({ services: [], offerings: [], categories: [] }) },
     '@/app/stylists/slug': { getAllStylistsWithSlug: async () => [] },
     '@/components/home/Hero': { Hero: component },
+    '@/components/home/BookingQuickLinks': { BookingQuickLinks: component },
     '@/components/home/ServiceMenu': { ServiceMenu: component },
     '@/components/home/StylistShowcase': { StylistShowcase: component },
     '@/components/home/SocialProofBar': { SocialProofBar: component },

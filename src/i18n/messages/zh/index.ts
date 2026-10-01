@@ -8,6 +8,7 @@ import services from './services';
 import stylists from './stylists';
 import offers from './offers';
 import contact from './contact';
+import local from './local';
 import reviews from './reviews';
 import blog from './blog';
 import tryColor from './tryColor';
@@ -35,6 +36,7 @@ export const zh: Localized<Messages> = {
   stylists,
   offers,
   contact,
+  local,
   reviews,
   blog,
   tryColor,

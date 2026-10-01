@@ -55,3 +55,13 @@ test('static sitemap entries do not invent modification dates from generation ti
   const entries = await fixture().default();
   assert.equal(entries.find((entry) => entry.url.endsWith('/try-color'))?.lastModified, undefined);
 });
+
+test('the local guide and About replace the standalone tour in both language sitemaps', async () => {
+  const entries = await fixture().default();
+  const urls = entries.map((entry) => entry.url);
+  for (const prefix of ['', '/zh-hk']) {
+    assert.ok(urls.includes(`https://salon.example${prefix}/about`));
+    assert.ok(urls.includes(`https://salon.example${prefix}/hair-salon-leeds-city-centre`));
+    assert.ok(!urls.includes(`https://salon.example${prefix}/3d`));
+  }
+});

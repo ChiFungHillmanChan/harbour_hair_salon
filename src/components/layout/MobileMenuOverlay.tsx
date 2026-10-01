@@ -109,12 +109,11 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
             {t('nav.tryColor')}
           </Link>
           <Link
-            href="/3d"
-            prefetch={false}
+            href="/about"
             className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
-            {t('nav.threeD')}
+            {t('nav.about')}
           </Link>
 
           <div className="border-t border-zinc-800 my-4 w-full"></div>

@@ -6,10 +6,10 @@ import type { MessageTree } from '../../format';
  */
 const home = {
   meta: {
-    title: 'Harbour Hair Salon Leeds | Expert Hair Styling in Leeds City Centre',
+    title: 'Harbour Hair Salon Leeds | Hong Kong Trained Stylists',
     description: 'Book your appointment at Harbour Hair Salon, Central Arcade, Leeds. Expert cuts, colours, perms and grooming by Hong Kong trained stylists.',
     ogTitle: 'Harbour Hair Salon | Expert Hair Styling in Leeds',
-    ogDescription: 'Professional hair salon in Leeds city centre. Book online today.',
+    ogDescription: 'Hong Kong trained hair stylists in Leeds city centre. Explore cuts, colour and perms, then book by phone or through our booking partners.',
   },
   page: {
     faqTitle: 'Your questions, answered',
@@ -23,7 +23,14 @@ const home = {
     defaultSubtitle: 'Tailored cuts, colours and grooming by Hong Kong trained stylists. Precision and artistry in every appointment.',
     imageAlt: 'Harbour Hair Salon interior in Leeds Central Arcade',
     bookAppointment: 'Book Appointment',
-    viewServices: 'View Services',
+    viewServices: 'Explore services & prices',
+  },
+  booking: {
+    title: 'Book your visit',
+    withPartners: 'Call us, or choose a service and time with a booking partner.',
+    phoneOnly: 'Call us to choose your service and appointment time.',
+    call: 'Call {phone}',
+    bookOn: 'Book on {name}',
   },
   socialProof: {
     label: 'Customer reviews',

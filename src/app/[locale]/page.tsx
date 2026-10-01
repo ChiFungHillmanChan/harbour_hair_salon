@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import { Hero } from '@/components/home/Hero';
+import { BookingQuickLinks } from '@/components/home/BookingQuickLinks';
 import { ServiceMenu } from '@/components/home/ServiceMenu';
 import { StylistShowcase } from '@/components/home/StylistShowcase';
 import { SocialProofBar } from '@/components/home/SocialProofBar';
@@ -14,9 +15,8 @@ import {
   buildSameAsArray,
 } from '@/app/services/site-settings-service';
 import { getFaqsByKey } from '@/app/services/faq-service';
-import { SITE_URL } from '@/app/lib/site-url';
 import VisitFollowBlock from '@/components/home/VisitFollowBlock';
-import { openingHoursSpecification } from '@/app/lib/opening-hours-public';
+import { buildHairSalonSchema } from '@/app/lib/hair-salon-schema';
 import { FooterPromotions } from '@/components/layout/Layout';
 import { getPublicCatalog, type PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { getAllStylistsWithSlug } from '@/app/stylists/slug';
@@ -91,9 +91,7 @@ async function getFeaturedEntries(locale: Locale): Promise<PriceListEntry[]> {
     used.add(entryId(entry));
     featured.push(entry);
   }
-  // Display cheapest first so visitors see an approachable entry point.
-  const lowest = (entry: PriceListEntry) => Math.min(...(entry.kind === 'offering' ? entry.options : [entry.service]).filter((o) => o.priceType !== 'NHS').map((o) => o.amountPence));
-  return featured.sort((a, b) => lowest(a) - lowest(b));
+  return featured;
 }
 
 async function getStylists(locale: Locale) {
@@ -116,53 +114,11 @@ export default async function Home() {
     getFaqsByKey('home', locale),
   ]);
 
-  const phoneDigits = settings.phone.replace(/\D/g, '');
-  const telephoneE164 = phoneDigits.startsWith('0')
-    ? `+44${phoneDigits.slice(1)}`
-    : phoneDigits.startsWith('44')
-      ? `+${phoneDigits}`
-      : `+${phoneDigits}`;
-
-  const hairSalonSchema: Record<string, unknown> = {
-    '@context': 'https://schema.org',
-    '@type': 'HairSalon',
-    name: 'Harbour Hair Salon',
-    url: SITE_URL,
-    image: `${SITE_URL}/images/og-image.png`,
+  const hairSalonSchema = buildHairSalonSchema(settings, {
+    locale,
     description: t('page.schemaDescription'),
-    inLanguage: locale,
-    address: {
-      '@type': 'PostalAddress',
-      streetAddress: 'Upper Floor, Unit 15 Central Arcade, Central Rd',
-      addressLocality: 'Leeds',
-      addressRegion: 'West Yorkshire',
-      postalCode: 'LS1 6DX',
-      addressCountry: 'GB',
-    },
-    geo: {
-      '@type': 'GeoCoordinates',
-      latitude: 53.7965911,
-      longitude: -1.5416801,
-    },
-    telephone: telephoneE164,
-    priceRange: '$$',
-    currenciesAccepted: 'GBP',
-    paymentAccepted: 'Cash, Credit Card',
-    areaServed: { '@type': 'City', name: 'Leeds' },
     sameAs: buildSameAsArray(settings),
-    openingHoursSpecification: openingHoursSpecification(),
-    knowsLanguage: ['en', 'zh-yue'],
-  };
-
-  if (aggregateRating.count > 0) {
-    hairSalonSchema.aggregateRating = {
-      '@type': 'AggregateRating',
-      ratingValue: aggregateRating.average,
-      reviewCount: aggregateRating.count,
-      bestRating: 5,
-      worstRating: 1,
-    };
-  }
+  });
 
   return (
     <ClientMessages namespaces={['pricing']} sections={{ home: ['hero', 'stylists'], services: ['menu'] }}>
@@ -176,6 +132,7 @@ export default async function Home() {
         titleLine1={hero.heroTitleLine1}
         titleLine2={hero.heroTitleLine2}
         subtitle={hero.heroSubtitle}
+        bookingActions={<BookingQuickLinks settings={settings} />}
       />
       <SocialProofBar average={aggregateRating.average} count={aggregateRating.count} />
       <TrustBar treatwellUrl={settings.treatwellUrl} googleBusinessUrl={settings.googleBusinessUrl} />

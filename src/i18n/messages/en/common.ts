@@ -22,7 +22,7 @@ const common = {
     team: 'Team',
     contact: 'Contact',
     tryColor: 'Try Color',
-    threeD: '3D',
+    about: 'About',
     signIn: 'Sign In',
     signOut: 'Sign Out',
     signingOut: 'Signing out…',

@@ -2,10 +2,10 @@ import type { MessageTree } from '../../format';
 
 const services = {
   meta: {
-    title: 'Hair Services & Pricing in Leeds',
-    description: 'Full menu of haircuts, colouring, perms and treatments at Harbour Hair Salon, Leeds city centre, with standard and NHS prices. Book online.',
+    title: 'Haircuts, Colour & Perms in Leeds | Prices',
+    description: 'Explore cuts, balayage, colour, perms and treatments by Hong Kong trained stylists in Leeds Central Arcade. See prices and choose how to book.',
     ogTitle: 'Hair Services & Pricing | Harbour Hair Salon Leeds',
-    ogDescription: 'Full menu of haircuts, colouring, perms and treatments, with standard and NHS prices. Book online.',
+    ogDescription: 'Cuts, balayage, colour, perms and treatments by Hong Kong trained stylists. See prices and booking options at our Leeds city centre salon.',
   },
   hero: {
     titleStart: 'Services &',
