@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { loadServerModule } from '../src/test/load-server-module';
 import { resolveSalonDateTime, salonDateKey } from '../src/app/services/salon-time';
+import { CALENDAR_FRESHNESS_MINUTES } from '../src/app/services/treatwell-sync-coverage';
 import type { AppointmentEmailKind, PreparedEmail } from '../src/app/services/email-service';
 
 async function main() {
@@ -265,6 +266,9 @@ async function main() {
     const failed = await syncCalendarFeeds({ db, connectionId: channel.id, fetchFeed: async () => { throw new Error('Synthetic disconnected feed'); } });
     assert.equal(failed[0].ok, false);
     assert.deepEqual(await db.externalBusyBlock.findMany({ orderBy: { externalUid: 'asc' } }), beforeFailure, 'Failed imports must preserve the exact last-known busy rows');
+    assert.equal((await checkCalendarBookingReadiness(db)).ready, true, 'One failed import must not close booking while the last success is fresh');
+    // Three missed imports later the last success is stale, and booking must close.
+    await db.calendarConnection.update({ where: { id: channel.id }, data: { lastSuccessAt: new Date(Date.now() - (CALENDAR_FRESHNESS_MINUTES + 1) * 60_000) } });
     assert.equal((await checkCalendarBookingReadiness(db)).ready, false);
     assert.equal(await slotAvailable(bookingDay, '11:00'), false);
     await assert.rejects(create(day(17), '10:00'), /Online booking is closed/);
@@ -280,7 +284,7 @@ async function main() {
     assert.equal(await slotAvailable(bookingDay, '14:00'), true);
     assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: 'CANCELLATION' } }), 1);
     assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, status: 'SENT', payloadJson: '{}' } }), 5);
-    console.log('PASS: approval rechecks newly imported Fresha conflicts; failed import preserves blocks and closes new bookings; cancellation remains available and removes its outbound event.');
+    console.log('PASS: approval rechecks newly imported Fresha conflicts; failed import preserves blocks, keeps booking open while fresh and closes it once stale; cancellation remains available and removes its outbound event.');
 
     // Reconciliation also frees old times when the provider moves/removes events.
     const movedSource = { ...sourceEvent, start: instant(bookingDay, '12:00'), end: instant(bookingDay, '13:00') };

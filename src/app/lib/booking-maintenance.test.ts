@@ -139,3 +139,67 @@ test('production stays closed until Square deposits are wired, even with a fully
     }
   }
 });
+
+/**
+ * Next's Data Cache with the property that matters here: only a callback that
+ * RETURNS is stored; one that throws stores nothing and is re-run next time.
+ */
+function bookingOpenCacheFixture(settings: { bookingEnabled: boolean }) {
+  let reachable = false;
+  const store = new Map<string, unknown>();
+  const db = {
+    siteSettings: { findUnique: async () => {
+      if (!reachable) throw new Error("Can't reach database server");
+      return { ...settings, phone: '01234' };
+    } },
+    calendarConnection: { count: async () => 0 },
+  };
+  const maintenance = loadServerModule<typeof import('./booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
+    '@/app/lib/prisma': db,
+    '@/app/services/integration-readiness': { checkCalendarBookingReadiness: async () => ({ ready: true, blockers: [] }) },
+    '@/app/services/operations-readiness': { checkOperationsRuntimeReadiness: async () => ({ ready: true, blockers: [] }) },
+    'next/cache': {
+      unstable_cache: (read: () => Promise<unknown>, keyParts: string[]) => async () => {
+        const key = keyParts.join('/');
+        if (!store.has(key)) store.set(key, await read());
+        return store.get(key);
+      },
+    },
+  });
+  return { maintenance, store, reach: () => { reachable = true; } };
+}
+
+async function withOpenBookingEnv(run: () => Promise<void>) {
+  const previous = { notifications: process.env.NOTIFICATIONS_ENABLED, calendar: process.env.CALENDAR_SYNC_ENABLED };
+  const errors = console.error;
+  console.error = () => {};
+  try {
+    process.env.NOTIFICATIONS_ENABLED = 'true';
+    process.env.CALENDAR_SYNC_ENABLED = 'true';
+    await run();
+  } finally {
+    console.error = errors;
+    if (previous.notifications === undefined) delete process.env.NOTIFICATIONS_ENABLED; else process.env.NOTIFICATIONS_ENABLED = previous.notifications;
+    if (previous.calendar === undefined) delete process.env.CALENDAR_SYNC_ENABLED; else process.env.CALENDAR_SYNC_ENABLED = previous.calendar;
+  }
+}
+
+test('an unreachable database closes booking for that request only and is never cached as "closed"', async () => {
+  await withOpenBookingEnv(async () => {
+    const f = bookingOpenCacheFixture({ bookingEnabled: true });
+    assert.equal(await f.maintenance.isBookingEnabled(), false, 'a failed read still fails closed…');
+    assert.equal(f.store.size, 0, '…but nothing is stored for other visitors');
+    f.reach();
+    assert.equal(await f.maintenance.isBookingEnabled(), true, 'the very next request sees booking open');
+    assert.equal(f.store.get('booking-open'), true);
+  });
+});
+
+test('a genuinely closed salon is still cached, so closed pages do not query the database on every view', async () => {
+  await withOpenBookingEnv(async () => {
+    const f = bookingOpenCacheFixture({ bookingEnabled: false });
+    f.reach();
+    assert.equal(await f.maintenance.isBookingEnabled(), false);
+    assert.equal(f.store.get('booking-open'), false, 'the MAINTENANCE answer is stored');
+  });
+});
