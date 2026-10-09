@@ -159,20 +159,20 @@ test('the "Anyone" path cannot be used to reach a closed day', async () => {
   assert.equal(stored.length, 0);
 });
 
-test('rescheduling cannot move a confirmed booking outside working hours', async () => {
+test('requesting a reschedule outside working hours is refused', async () => {
   const { actions, stored } = fixture({ hours: { startTime: '10:00', endTime: '18:00' } });
 
-  const result = await actions.rescheduleAppointment('appt-1', DATE_STR, '19:30');
+  const result = await actions.requestReschedule('appt-1', DATE_STR, '19:30');
 
   assert.equal(result.success, false);
   assert.match(result.error!, /outside business hours/);
   assert.equal(stored.length, 0, 'a refused reschedule must not touch the row');
 });
 
-test('rescheduling cannot move a confirmed booking onto a closed day', async () => {
+test('requesting a reschedule onto a closed day is refused', async () => {
   const { actions, stored } = fixture({ hours: null });
 
-  const result = await actions.rescheduleAppointment('appt-1', DATE_STR, '11:00');
+  const result = await actions.requestReschedule('appt-1', DATE_STR, '11:00');
 
   assert.equal(result.success, false);
   assert.match(result.error!, /not available on this day/);

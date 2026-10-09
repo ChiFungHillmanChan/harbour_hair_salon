@@ -14,6 +14,8 @@ import type { PriceQuote } from '@/app/services/pricing/quote';
 import { ANY_STYLIST_ID, BOOKING_DAYS_MAX } from '@/app/lib/booking-constants';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { verifySession } from '@/app/lib/session';
+import { appendAuditEvent } from '@/app/lib/audit';
+import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
 import { after } from 'next/server';
 import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import { z } from 'zod';
@@ -481,7 +483,7 @@ export async function cancelAppointment(appointmentId: string) {
     await runSerializableWithRetry(async (tx) => {
       const changed = await tx.appointment.updateMany({
         where: { id: appointmentId, userId: session.userId, status: appointment.status, date: appointment.date, updatedAt: appointment.updatedAt },
-        data: { status: 'CANCELLED', treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 } },
+        data: { status: 'CANCELLED', rescheduleRequestedDate: null, rescheduleRequestedAt: null, treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 } },
       });
       if (changed.count !== 1) throw new BookingError('STALE');
       const cancelled = await tx.appointment.findUnique({ where: { id: appointmentId }, include: { user: true, stylist: true, service: true } });
@@ -524,135 +526,118 @@ export async function checkColourEligibility(serviceId: string, dateStr: string)
   };
 }
 
-export async function rescheduleAppointment(appointmentId: string, dateStr: string, time: string) {
-  // Rescheduling books a new slot, so it is blocked during maintenance too.
-  // (Cancellation stays available — see cancelAppointment.)
+const requestInclude = {
+  user: { select: { email: true, name: true, phone: true } },
+  stylist: { select: { name: true } },
+  service: true,
+} as const;
+
+/**
+ * A customer asks to move a CONFIRMED booking. Nothing moves: the original time
+ * stays booked until staff approve (admin.ts decideRescheduleRequest), and the
+ * requested time is checked now but not held. One open request per booking; a
+ * new time replaces it.
+ */
+export async function requestReschedule(appointmentId: string, dateStr: string, time: string) {
   const locale = await getActionLocale();
-  if (!(await isBookingEnabled())) {
-    return failure(locale, 'MAINTENANCE');
-  }
+  // A request books nothing yet, but it is still online booking: closed with it.
+  if (!(await isBookingEnabled())) return failure(locale, 'MAINTENANCE');
 
   const session = await verifySession();
+  if (!isValidSalonDate(dateStr) || !isValidSalonTime(time)) return failure(locale, 'INVALID_DATE_TIME');
 
-  // Reject malformed date/time before any DB work (no Zod schema on this path).
-  if (!isValidSalonDate(dateStr) || !isValidSalonTime(time)) {
-    return failure(locale, 'INVALID_DATE_TIME');
-  }
+  const appointment = await prisma.appointment.findUnique({ where: { id: appointmentId }, include: requestInclude });
+  if (!appointment || appointment.userId !== session.userId) return failure(locale, 'APPOINTMENT_NOT_FOUND');
+  if (appointment.status !== 'CONFIRMED') return failure(locale, 'RESCHEDULE_ONLY_CONFIRMED');
+  if ((appointment.date.getTime() - Date.now()) / 3_600_000 < 24) return failure(locale, 'RESCHEDULE_TOO_LATE');
 
-  const appointment = await prisma.appointment.findUnique({
-    where: { id: appointmentId },
-    include: {
-      user: { select: { email: true, name: true } },
-      stylist: { select: { name: true, treatwellExternalId: true } },
-      service: true,
-    },
-  });
-
-  if (!appointment || appointment.userId !== session.userId) {
-    return failure(locale, 'APPOINTMENT_NOT_FOUND');
-  }
-
-  if (appointment.status !== 'CONFIRMED') {
-    return failure(locale, 'RESCHEDULE_ONLY_CONFIRMED');
-  }
-
-  const hoursUntil = (appointment.date.getTime() - Date.now()) / (1000 * 60 * 60);
-  if (hoursUntil < 24) {
-    return failure(locale, 'RESCHEDULE_TOO_LATE');
-  }
-
-  // Resolve the new salon wall-clock time to the correct absolute UTC instant
-  // (handles BST/GMT) — the create path did this but reschedule previously did not.
   const salon = resolveSalonDateTime(dateStr, time);
   const newDate = salon.utc;
+  if (Number.isNaN(newDate.getTime())) return failure(locale, 'INVALID_DATE_TIME');
+  if (newDate <= new Date()) return failure(locale, 'RESCHEDULE_PAST');
+  // It would lapse at once: staff could never approve it.
+  if (isRescheduleRequestExpired(newDate)) return failure(locale, 'RESCHEDULE_REQUEST_TOO_SOON');
 
-  // Defensive: reject an unparseable instant before it reaches the DB.
-  if (Number.isNaN(newDate.getTime())) {
-    return failure(locale, 'INVALID_DATE_TIME');
+  // Asking for the time it already has, or the time already asked for, changes
+  // nothing and sends nothing (each real request emails the customer and the salon).
+  if (newDate.getTime() === appointment.date.getTime() || newDate.getTime() === appointment.rescheduleRequestedDate?.getTime()) {
+    return { success: true as const };
   }
 
-  // Prevent rescheduling into the past
-  if (newDate <= new Date()) {
-    return failure(locale, 'RESCHEDULE_PAST');
-  }
-
-  // Moving a booking to the time it already has changes nothing, so it must
-  // not bump the notification version: each bump is a separate email to the
-  // customer and the salon, and resubmitting the same time was a way to send
-  // as many as anyone liked.
-  if (newDate.getTime() === appointment.date.getTime()) {
-    return { success: true };
-  }
-
-  // Validate the new time falls within stylist availability for this day
   const duration = appointment.durationAtBooking ?? appointment.service.duration;
   const hoursCheck = await checkStylistHours(appointment.stylistId, salon, duration);
-  if (!hoursCheck.ok) {
-    return failure(locale, hoursCheck.code);
-  }
+  if (!hoursCheck.ok) return failure(locale, hoursCheck.code);
 
-  // Re-validate the colour patch-test gate against the NEW date.
   if (appointment.service.requiresPatchTest) {
     const eligibility = await getValidPatchTest(session.userId, newDate);
     if (!eligibility.ok) {
       return failure(locale,
-        eligibility.reason === 'too_soon'
-          ? 'PATCH_TEST_TOO_SOON'
-          : eligibility.reason === 'expired'
-            ? 'PATCH_TEST_EXPIRED'
-            : 'PATCH_TEST_REQUIRED');
+        eligibility.reason === 'too_soon' ? 'PATCH_TEST_TOO_SOON'
+          : eligibility.reason === 'expired' ? 'PATCH_TEST_EXPIRED' : 'PATCH_TEST_REQUIRED');
     }
   }
 
-  // Real moves email both sides, so they are limited. Checked after ownership
-  // (nobody can spend another customer's allowance) and after every check that
-  // can refuse the new time, so trying dates that are refused never uses it up.
+  // Each request emails the customer and the salon, so requests are limited.
+  // Checked after ownership and every refusal above, so refused times spend no allowance.
   if (!(await rescheduleLimiter.check(`user:${session.userId}`)) ||
       !(await appointmentRescheduleLimiter.check(`appt:${appointmentId}`))) {
     return failure(locale, 'TOO_MANY_RESCHEDULES');
   }
 
   try {
-    const oldDate = appointment.date;
-
-    const updated = await runSerializableWithRetry(async (tx) => {
+    const requestedAt = new Date();
+    await runSerializableWithRetry(async (tx) => {
       await assertOnlineBookingReady(tx);
+      // Refuse a time that is already taken; it is not held after this.
       await assertAppointmentSlotAvailable(tx, appointment, newDate);
-
-      const treatwellApi = getTreatwellApiConfiguration();
-      const treatwellSyncStatus = changedTreatwellSyncStatus({
-        apiReady: treatwellApi.enabled && treatwellApi.configured,
-        treatwellBookingId: appointment.treatwellBookingId,
-        stylistExternalId: appointment.stylist.treatwellExternalId,
-        serviceExternalId: appointment.service.treatwellExternalId,
-      });
-
       const changed = await tx.appointment.updateMany({
-        where: { id: appointmentId, userId: session.userId, status: 'CONFIRMED', date: appointment.date, updatedAt: appointment.updatedAt },
-        data: { date: newDate, reminderSent: false, treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 } },
+        where: { id: appointmentId, userId: session.userId, status: 'CONFIRMED', date: appointment.date, updatedAt: appointment.updatedAt, rescheduleRequestedAt: appointment.rescheduleRequestedAt },
+        data: { rescheduleRequestedDate: newDate, rescheduleRequestedAt: requestedAt },
       });
-      if (changed.count !== 1) throw new BookingError('STALE');
-      const rescheduled = await tx.appointment.findUnique({
-        where: { id: appointmentId },
-        include: {
-          user: { select: { email: true, name: true } },
-          stylist: { select: { name: true, treatwellExternalId: true } },
-          service: true,
-        },
-      });
-      if (!rescheduled) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      await enqueueAppointmentNotification(tx, 'RESCHEDULE', rescheduled, { oldDate });
-      return rescheduled;
+      if (changed.count !== 1) throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
+      await enqueueAppointmentNotification(tx, 'RESCHEDULE_REQUEST_RECEIVED', appointment, { requestedDate: newDate, requestedAt });
+      await enqueueAppointmentNotification(tx, 'SALON_RESCHEDULE_ALERT', appointment, { requestedDate: newDate, requestedAt });
+      await appendAuditEvent({
+        actorUserId: session.userId,
+        action: appointment.rescheduleRequestedAt ? 'APPOINTMENT.RESCHEDULE_REPLACED' : 'APPOINTMENT.RESCHEDULE_REQUESTED',
+        targetType: 'Appointment', targetId: appointmentId,
+        metadata: { from: appointment.date.toISOString(), to: newDate.toISOString() },
+      }, tx);
     });
-
-    invalidateStylistIcalFeed();
-    after(() => dispatchAppointmentNotifications(updated.id));
+    after(() => dispatchAppointmentNotifications(appointmentId));
     revalidateAllLocales(revalidatePath, '/appointments');
     revalidateAllLocales(revalidatePath, '/admin');
-    revalidateAllLocales(revalidatePath, '/book');
-    return { success: true };
+    return { success: true as const };
   } catch (error) {
-    console.error('Reschedule failed:', error);
-    return { success: false, error: describeBookingError(error, locale, 'RESCHEDULE_FAILED') };
+    if (!(error instanceof BookingError)) console.error('Reschedule request failed:', error);
+    return { success: false as const, code: error instanceof BookingError ? error.code : undefined, error: describeBookingError(error, locale, 'RESCHEDULE_FAILED') };
   }
+}
+
+/** The customer takes back an open request. No email; allowed while booking is closed. */
+export async function withdrawRescheduleRequest(appointmentId: string) {
+  const locale = await getActionLocale();
+  const session = await verifySession();
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    select: { id: true, userId: true, status: true, date: true, rescheduleRequestedAt: true },
+  });
+  if (!appointment || appointment.userId !== session.userId) return failure(locale, 'APPOINTMENT_NOT_FOUND');
+  if (!appointment.rescheduleRequestedAt) return failure(locale, 'RESCHEDULE_REQUEST_CHANGED');
+  try {
+    await runSerializableWithRetry(async (tx) => {
+      const changed = await tx.appointment.updateMany({
+        where: { id: appointmentId, userId: session.userId, status: appointment.status, date: appointment.date, rescheduleRequestedAt: appointment.rescheduleRequestedAt },
+        data: { rescheduleRequestedDate: null, rescheduleRequestedAt: null },
+      });
+      if (changed.count !== 1) throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
+      await appendAuditEvent({ actorUserId: session.userId, action: 'APPOINTMENT.RESCHEDULE_WITHDRAWN', targetType: 'Appointment', targetId: appointmentId }, tx);
+    });
+  } catch (error) {
+    if (!(error instanceof BookingError)) console.error('Withdrawing a reschedule request failed:', error);
+    return { success: false as const, code: error instanceof BookingError ? error.code : undefined, error: describeBookingError(error, locale, 'RESCHEDULE_FAILED') };
+  }
+  revalidateAllLocales(revalidatePath, '/appointments');
+  revalidateAllLocales(revalidatePath, '/admin');
+  return { success: true as const };
 }

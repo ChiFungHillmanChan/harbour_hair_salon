@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchSlots, rescheduleAppointment } from '@/app/actions/booking';
+import { fetchSlots, requestReschedule } from '@/app/actions/booking';
 import type { TimeSlot } from '@/app/services/booking-service';
 import { resolveSalonDateTime } from '@/app/services/salon-time';
 import { useLocale, useT } from '@/i18n/client';
@@ -102,7 +102,7 @@ export function RescheduleModal({
     try {
       // Pass the salon-local date + time as plain strings; the server resolves them
       // to the correct UTC instant in the salon timezone (Europe/London).
-      const result = await rescheduleAppointment(appointmentId, selectedDate, selectedSlot);
+      const result = await requestReschedule(appointmentId, selectedDate, selectedSlot);
       if (result.success) {
         close();
       } else {
