@@ -663,7 +663,10 @@ test('hours edited after the request make approval fail with OUTSIDE_HOURS and l
   const f = fixture({ openRequest: OPEN_REQUEST, hoursEnd: '09:30' });
   const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
   assert.equal(result.success, false);
-  assert.ok(f.appointment.rescheduleRequestedAt);
+  assert.equal(!result.success && result.error, 'Selected time is outside business hours');
+  assert.equal(f.appointment.rescheduleRequestedAt?.toISOString(), OPEN_REQUEST.requestedAt.toISOString(), 'staff can still decline it');
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+  assert.equal(f.events.length, 0);
 });
 
 test('a decision on a request that has since changed is refused', async () => {
@@ -725,5 +728,8 @@ test('the colour patch-test rule is re-checked against the requested date on app
   const f = fixture({ openRequest: OPEN_REQUEST, requiresPatchTest: true, patchTestDate: new Date('2099-09-14T12:00:00Z') });
   const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
   assert.equal(result.success, false);
+  assert.equal(!result.success && result.error, 'Your patch test must be at least 48 hours before a colour appointment.');
+  assert.equal(f.appointment.rescheduleRequestedAt?.toISOString(), OPEN_REQUEST.requestedAt.toISOString(), 'staff can still decline it');
   assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+  assert.equal(f.events.length, 0);
 });
