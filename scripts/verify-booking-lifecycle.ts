@@ -314,6 +314,27 @@ async function main() {
     }
     console.log(`race wins: ${JSON.stringify(raceWins)}`);
 
+    // Deterministic, non-concurrent: approval has fully committed, so a late withdraw must lose.
+    {
+      const target = day(42);
+      const rescheduleNotices = () => db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: 'RESCHEDULE' } });
+      const noticesBefore = await rescheduleNotices();
+      await assertActionSuccess(await fixedCustomer.requestReschedule(appointment.id, target, '10:00'));
+      const open = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      const approved = await fixedAdmin.decideRescheduleRequest(appointment.id, 'APPROVE', open.rescheduleRequestedAt!.toISOString());
+      await assertActionSuccess(approved);
+      const late = await fixedCustomer.withdrawRescheduleRequest(appointment.id);
+      while (afterResponse.length) await afterResponse.shift()!();
+      assert.equal(late.success, false, JSON.stringify(late));
+      assert.match((late as { error?: string }).error ?? '', /has changed|refresh/i, JSON.stringify(late));
+      assert.doesNotMatch((late as { error?: string }).error ?? '', /not found/i);
+      const after = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      assert.equal(after.date.getTime(), instant(target, '10:00').getTime());
+      assert.equal(after.rescheduleRequestedAt, null);
+      assert.equal(after.rescheduleRequestedDate, null);
+      assert.equal(await rescheduleNotices(), noticesBefore + 1);
+    }
+
     console.log('PASS: real create → admin confirm → customer reschedule; duplicate/ownership/status guards, idempotent confirmation, audit and notification writes, frozen price/duration, and moved outbound ICS.');
 
     const closeAppointment = await db.appointment.create({ data: { id: 'lifecycle-within-24h', userId: ids.customer, stylistId: ids.stylist, serviceId: ids.service,
