@@ -134,6 +134,16 @@ async function main() {
     const adminActions = loadServerModule<typeof import('../src/app/actions/admin')>('src/app/actions/admin.ts', {
       ...actionDependencies, '@/app/actions/admin-services': adminServices,
     });
+    // The race below needs two actions in flight at once, so these instances read
+    // a FIXED session instead of the shared mutable `session` variable.
+    const fixedCustomer = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
+      ...actionDependencies, '@/app/lib/session': { verifySession: async () => ({ userId: ids.customer, role: 'USER' }) },
+      '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited },
+    });
+    const fixedAdmin = loadServerModule<typeof import('../src/app/actions/admin')>('src/app/actions/admin.ts', {
+      ...actionDependencies, '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
+      '@/app/actions/admin-services': adminServices,
+    });
     const { syncCalendarFeeds } = await import('../src/app/services/calendar-sync-service');
     const { checkCalendarBookingReadiness } = await import('../src/app/services/integration-readiness');
     const { runOperationsDiagnostics } = await import('../src/app/services/operations-readiness');
@@ -265,18 +275,44 @@ async function main() {
     const declined = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
     assert.equal(declined.date.getTime(), before.date.getTime());
     assert.equal(declined.rescheduleRequestedAt, null);
+    assert.ok(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: 'RESCHEDULE_DECLINED' } }) >= 1, 'Declining queues a RESCHEDULE_DECLINED notice');
 
-    // Approve racing withdraw: exactly one wins.
-    await assertActionSuccess(await customerActions.requestReschedule(appointment.id, day(17), '10:00'));
-    const racing = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
-    const withdrawing = customerActions.withdrawRescheduleRequest(appointment.id);
-    session = { userId: ids.admin, role: 'ADMIN' };
-    const outcomes = await Promise.all([
-      adminActions.decideRescheduleRequest(appointment.id, 'APPROVE', racing.rescheduleRequestedAt!.toISOString()),
-      withdrawing,
-    ]);
-    session = { userId: ids.customer, role: 'USER' };
-    assert.equal(outcomes.filter((outcome) => outcome.success).length, 1);
+    // Approve racing withdraw, three times, with a fixed session per side so both really run
+    // concurrently. Exactly one wins, the loser reports a concurrency reason, and the final
+    // state matches the winner.
+    const raceWins = { approve: 0, withdraw: 0 };
+    for (let round = 0; round < 3; round += 1) {
+      const target = day(21 + round * 7);
+      const preRace = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      const rescheduleNotices = () => db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: 'RESCHEDULE' } });
+      const noticesBefore = await rescheduleNotices();
+      const asked = await fixedCustomer.requestReschedule(appointment.id, target, '10:00');
+      await assertActionSuccess(asked);
+      const racing = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      const requestedAt = racing.rescheduleRequestedAt!;
+      const [approve, withdraw] = await Promise.all([
+        fixedAdmin.decideRescheduleRequest(appointment.id, 'APPROVE', requestedAt.toISOString()),
+        fixedCustomer.withdrawRescheduleRequest(appointment.id),
+      ]);
+      while (afterResponse.length) await afterResponse.shift()!();
+      assert.equal([approve, withdraw].filter((outcome) => outcome.success).length, 1, JSON.stringify({ approve, withdraw }));
+      const loser = approve.success ? withdraw : approve;
+      assert.match((loser as { error?: string }).error ?? '', /has changed|refresh/i, JSON.stringify(loser));
+      assert.doesNotMatch((loser as { error?: string }).error ?? '', /not found/i);
+      const after = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      assert.equal(after.rescheduleRequestedAt, null);
+      assert.equal(after.rescheduleRequestedDate, null);
+      if (approve.success) {
+        raceWins.approve += 1;
+        assert.equal(after.date.getTime(), instant(target, '10:00').getTime());
+        assert.equal(await rescheduleNotices(), noticesBefore + 1);
+      } else {
+        raceWins.withdraw += 1;
+        assert.equal(after.date.getTime(), preRace.date.getTime());
+        assert.equal(await rescheduleNotices(), noticesBefore, 'A withdrawn request must not send a moved notice');
+      }
+    }
+    console.log(`race wins: ${JSON.stringify(raceWins)}`);
 
     console.log('PASS: real create → admin confirm → customer reschedule; duplicate/ownership/status guards, idempotent confirmation, audit and notification writes, frozen price/duration, and moved outbound ICS.');
 
@@ -330,6 +366,8 @@ async function main() {
     // Every sent notice (the original five plus the reschedule-request scenarios') has its payload scrubbed.
     const sentCount = await db.notificationDelivery.count({ where: { appointmentId: appointment.id, status: 'SENT' } });
     assert.ok(sentCount >= 5);
+    const sentKinds = new Set((await db.notificationDelivery.findMany({ where: { appointmentId: appointment.id, status: 'SENT' }, select: { kind: true } })).map(row => row.kind));
+    for (const kind of ['RESCHEDULE_REQUEST_RECEIVED', 'SALON_RESCHEDULE_ALERT', 'RESCHEDULE_DECLINED']) assert.ok(sentKinds.has(kind), `${kind} was sent`);
     assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, status: 'SENT', payloadJson: '{}' } }), sentCount);
     console.log('PASS: approval rechecks newly imported Fresha conflicts; failed import preserves blocks, keeps booking open while fresh and closes it once stale; cancellation remains available and removes its outbound event.');
 
