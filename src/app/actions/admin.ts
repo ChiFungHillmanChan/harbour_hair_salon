@@ -15,7 +15,8 @@ import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
 import { APPROVAL_REFRESH_MINUTES, refreshStylistCalendarFeeds } from '@/app/services/calendar-sync-service';
-import { assertAppointmentSlotAvailable, runSerializableWithRetry } from '@/app/services/booking-service';
+import { assertAppointmentSlotAvailable, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
+import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
 import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
 import { getActionLocale } from '@/i18n/request';
 import { translator } from '@/i18n/messages';
@@ -493,6 +494,8 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
 
       const data: Prisma.AppointmentUpdateManyMutationInput = {
         status,
+        // A cancelled or completed booking has nothing left to move.
+        ...(status !== 'CONFIRMED' ? { rescheduleRequestedDate: null, rescheduleRequestedAt: null } : {}),
         notificationVersion: { increment: 1 },
       };
       if (status === 'CANCELLED') {
@@ -528,6 +531,103 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
   revalidateAllLocales(revalidatePath, '/appointments');
   revalidateAllLocales(revalidatePath, '/book');
   return { success: true };
+}
+
+/**
+ * Staff answer a customer's reschedule request (booking.ts requestReschedule).
+ * APPROVE re-imports this stylist's Fresha feeds, then re-checks the requested
+ * time exactly as a new booking's approval does before moving the booking.
+ * DECLINE leaves the booking untouched. Not gated by the online-booking lock.
+ */
+export async function decideRescheduleRequest(appointmentId: string, decision: 'APPROVE' | 'DECLINE', requestedAt: string) {
+  const locale = await getActionLocale();
+  const session = await verifySession();
+  if (session.role !== 'ADMIN') return { success: false as const, error: bookingErrorText(locale, 'NOT_AUTHORISED') };
+  if (decision !== 'APPROVE' && decision !== 'DECLINE') {
+    return { success: false as const, error: translator(locale, 'adminSchedule')('errors.INVALID_STATUS') };
+  }
+  const expected = new Date(requestedAt);
+  if (Number.isNaN(expected.getTime())) return { success: false as const, error: bookingErrorText(locale, 'RESCHEDULE_REQUEST_CHANGED') };
+  const include = {
+    user: { select: { email: true, name: true, phone: true } },
+    stylist: { select: { name: true, treatwellExternalId: true } },
+    service: { select: { id: true, name: true, price: true, duration: true, treatwellExternalId: true, requiresPatchTest: true } },
+  } as const;
+  try {
+    if (decision === 'APPROVE') {
+      // Network I/O stays outside the serializable transaction below.
+      const target = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { stylistId: true } });
+      if (target) await refreshStylistCalendarFeeds(target.stylistId, { maxAgeMinutes: APPROVAL_REFRESH_MINUTES });
+    }
+    const moved = await runSerializableWithRetry(async (tx) => {
+      const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
+      if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
+      const requested = current.rescheduleRequestedDate;
+      if (current.status !== 'CONFIRMED' || !requested || current.rescheduleRequestedAt?.getTime() !== expected.getTime()) {
+        throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
+      }
+      const guard = { id: appointmentId, status: 'CONFIRMED', date: current.date, rescheduleRequestedAt: current.rescheduleRequestedAt };
+      const audit = (action: string) => appendAuditEvent({
+        actorUserId: session.userId, action, targetType: 'Appointment', targetId: appointmentId,
+        metadata: { from: current.date.toISOString(), to: requested.toISOString() },
+      }, tx);
+
+      if (decision === 'DECLINE') {
+        const cleared = await tx.appointment.updateMany({ where: guard, data: { rescheduleRequestedDate: null, rescheduleRequestedAt: null } });
+        if (cleared.count !== 1) throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
+        await enqueueAppointmentNotification(tx, 'RESCHEDULE_DECLINED', current, { requestedDate: requested, requestedAt: expected });
+        await audit('APPOINTMENT.RESCHEDULE_DECLINED');
+        return false;
+      }
+
+      if (isRescheduleRequestExpired(requested)) throw new BookingError('RESCHEDULE_REQUEST_EXPIRED');
+      const readiness = await checkCalendarBookingReadiness(tx);
+      if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
+      if (current.service.requiresPatchTest) {
+        const eligibility = await getValidPatchTest(current.userId, requested);
+        if (!eligibility.ok) {
+          throw new BookingError(eligibility.reason === 'too_soon' ? 'PATCH_TEST_TOO_SOON'
+            : eligibility.reason === 'expired' ? 'PATCH_TEST_EXPIRED' : 'PATCH_TEST_REQUIRED');
+        }
+      }
+      try {
+        await assertAppointmentSlotAvailable(tx, current, requested);
+      } catch (error) {
+        if (error instanceof BookingError && error.code === 'SLOT_UNAVAILABLE') throw new BookingError('RESCHEDULE_SLOT_TAKEN');
+        throw error;
+      }
+      const api = getTreatwellApiConfiguration();
+      const treatwellSyncStatus = changedTreatwellSyncStatus({
+        apiReady: api.enabled && api.configured,
+        treatwellBookingId: current.treatwellBookingId,
+        stylistExternalId: current.stylist.treatwellExternalId,
+        serviceExternalId: current.service.treatwellExternalId,
+      });
+      const changed = await tx.appointment.updateMany({
+        where: guard,
+        data: {
+          date: requested, rescheduleRequestedDate: null, rescheduleRequestedAt: null, reminderSent: false,
+          treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 },
+        },
+      });
+      if (changed.count !== 1) throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
+      const updated = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
+      if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
+      await enqueueAppointmentNotification(tx, 'RESCHEDULE', updated, { oldDate: current.date });
+      await audit('APPOINTMENT.RESCHEDULE_APPROVED');
+      return true;
+    });
+    // Finish the action's cache invalidation before external email delivery.
+    if (moved) invalidateStylistIcalFeed();
+    after(() => dispatchAppointmentNotifications(appointmentId));
+  } catch (error) {
+    if (!(error instanceof BookingError)) console.error('Reschedule decision failed:', error);
+    return { success: false as const, error: describeBookingError(error, locale, 'ADMIN_UPDATE_FAILED') };
+  }
+  revalidateAllLocales(revalidatePath, '/admin');
+  revalidateAllLocales(revalidatePath, '/appointments');
+  revalidateAllLocales(revalidatePath, '/book');
+  return { success: true as const };
 }
 
 export async function resetUserPassword(userId: string, newPassword: string) {

@@ -607,3 +607,102 @@ test('cancelling a booking also clears its open request', async () => {
   assert.equal(f.appointment.status, 'CANCELLED');
   assert.equal(f.appointment.rescheduleRequestedAt, null);
 });
+
+const OPEN_REQUEST = { requestedDate: new Date('2099-09-15T09:00:00Z'), requestedAt: new Date('2099-09-01T11:00:00Z') };
+
+test('approval moves the booking to the requested time, keeps frozen price/duration and bumps the version once', async () => {
+  const f = fixture({ openRequest: OPEN_REQUEST });
+  assert.deepEqual(await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString()), { success: true });
+  assert.equal(f.appointment.date.toISOString(), '2099-09-15T09:00:00.000Z');
+  assert.equal(f.appointment.rescheduleRequestedAt, null);
+  assert.equal(f.appointment.rescheduleRequestedDate, null);
+  assert.equal(f.appointment.reminderSent, false);
+  assert.equal(f.appointment.notificationVersion, 1);
+  assert.equal(f.events.length, 1);
+  assert.equal(f.events[0].eventKey, 'appointment/appointment-1/1/RESCHEDULE');
+  const payload = JSON.parse(f.events[0].payloadJson);
+  assert.equal(payload.options.oldDate, '2099-09-14T12:00:00.000Z');
+  assert.equal(payload.appointment.price.amountPence, 8000);
+  assert.equal(payload.appointment.service.duration, 60);
+});
+
+test('approval refreshes the stylist\'s Fresha feeds before the readiness check', async () => {
+  const trace: string[] = [];
+  const f = fixture({ openRequest: OPEN_REQUEST, trace });
+  assert.equal((await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString())).success, true);
+  assert.deepEqual(trace, ['refresh', 'readiness']);
+});
+
+test('approve updates the busy feed before waiting for email delivery', async () => {
+  await assertFeedInvalidatesBeforeDelivery((hooks) => {
+    const f = fixture({ ...hooks, openRequest: OPEN_REQUEST });
+    return f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
+  });
+});
+
+test('a requested slot taken since the request keeps the request open and tells staff', async () => {
+  const f = fixture({ openRequest: OPEN_REQUEST, conflictingBooking: true });
+  const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
+  assert.equal(result.success, false);
+  assert.match(String(!result.success && result.error), /no longer free/);
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+  assert.ok(f.appointment.rescheduleRequestedAt, 'staff can still decline it');
+  assert.equal(f.events.length, 0);
+});
+
+test('hours edited after the request make approval fail with OUTSIDE_HOURS and leave the request open', async () => {
+  const f = fixture({ openRequest: OPEN_REQUEST, hoursEnd: '09:30' });
+  const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
+  assert.equal(result.success, false);
+  assert.ok(f.appointment.rescheduleRequestedAt);
+});
+
+test('a decision on a request that has since changed is refused', async () => {
+  const f = fixture({ openRequest: OPEN_REQUEST });
+  const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', '2099-09-01T10:00:00.000Z');
+  assert.equal(result.success, false);
+  assert.match(String(!result.success && result.error), /changed/);
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+});
+
+test('an expired request cannot be approved', async () => {
+  const expired = { requestedDate: new Date('2099-09-02T09:00:00Z'), requestedAt: new Date('2099-08-30T11:00:00Z') };
+  const f = fixture({ openRequest: expired });
+  const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', expired.requestedAt.toISOString());
+  assert.equal(result.success, false);
+  assert.match(String(!result.success && result.error), /expired/);
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+});
+
+test('decline keeps the original time, clears the request and emails the customer', async () => {
+  const f = fixture({ openRequest: OPEN_REQUEST });
+  assert.deepEqual(await f.admin.decideRescheduleRequest(f.appointment.id, 'DECLINE', OPEN_REQUEST.requestedAt.toISOString()), { success: true });
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+  assert.equal(f.appointment.rescheduleRequestedAt, null);
+  assert.equal(f.appointment.notificationVersion, 0);
+  assert.deepEqual(f.events.map((event) => event.kind), ['RESCHEDULE_DECLINED']);
+});
+
+test('only admins can decide a reschedule request', async () => {
+  const f = fixture({ openRequest: OPEN_REQUEST, role: 'USER' });
+  const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
+  assert.equal(result.success, false);
+  assert.ok(f.appointment.rescheduleRequestedAt);
+  assert.equal(f.transactions(), 0);
+});
+
+for (const status of ['CANCELLED', 'COMPLETED'] as const) {
+  test(`staff marking a booking ${status} also clears its open request`, async () => {
+    const f = fixture({ openRequest: OPEN_REQUEST });
+    assert.equal((await f.admin.updateAppointmentStatus(f.appointment.id, status)).success, true);
+    assert.equal(f.appointment.rescheduleRequestedAt, null);
+    assert.equal(f.events.some((event) => event.kind === 'RESCHEDULE_DECLINED' || event.kind === 'RESCHEDULE_LAPSED'), false);
+  });
+}
+
+test('the colour patch-test rule is re-checked against the requested date on approval', async () => {
+  const f = fixture({ openRequest: OPEN_REQUEST, requiresPatchTest: true, patchTestDate: new Date('2099-09-14T12:00:00Z') });
+  const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
+  assert.equal(result.success, false);
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+});
