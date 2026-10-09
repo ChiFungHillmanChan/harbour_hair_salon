@@ -13,7 +13,7 @@ test('a generated token and configured URL do not prove either direction works',
   assert.equal(result.safeToEnableOnlineBooking, false);
   assert.equal(result.missingInbound, 1); assert.equal(result.missingOutbound, 1);
 });
-test('fresh successful empty feeds count, stale feeds and latest failures block readiness', () => {
+test('fresh successful empty feeds count and stale feeds block readiness', () => {
   const row = stylist();
   assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, true);
   row.calendarConnections[0].lastSuccessAt = new Date(now.getTime() - (CALENDAR_FRESHNESS_MINUTES + 1) * 60_000);
@@ -21,8 +21,22 @@ test('fresh successful empty feeds count, stale feeds and latest failures block 
   // The boundary itself still counts, so the window is inclusive of an exactly-on-time feed.
   row.calendarConnections[0].lastSuccessAt = new Date(now.getTime() - CALENDAR_FRESHNESS_MINUTES * 60_000);
   assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, true);
-  row.calendarConnections[0].lastSuccessAt = now; row.calendarConnections[0].lastError = 'HTTP 503';
-  assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, false);
+});
+test('one failed import does not close booking while the last success is still fresh', () => {
+  // A slow or rate-limited marketplace run is routine; it must count like a
+  // skipped run, not close booking for the whole salon until the next tick.
+  const row = stylist();
+  row.calendarConnections[0].lastSuccessAt = new Date(now.getTime() - 35 * 60_000);
+  row.calendarConnections[0].lastError = 'Calendar feed returned HTTP 503.';
+  assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, true);
+});
+test('a feed that keeps failing still closes booking once its last success is stale', () => {
+  const row = stylist();
+  row.calendarConnections[0].lastSuccessAt = new Date(now.getTime() - (CALENDAR_FRESHNESS_MINUTES + 1) * 60_000);
+  row.calendarConnections[0].lastError = 'Calendar feed timed out.';
+  const result = evaluateSyncCoverage({ stylists: [row], now });
+  assert.equal(result.safeToEnableOnlineBooking, false);
+  assert.equal(result.missingInbound, 1);
 });
 test('activity is explicit and independent of public links and stale stored feed URLs', () => {
   const row = stylist(); row.calendarConnections[0].receivesBookings = false;

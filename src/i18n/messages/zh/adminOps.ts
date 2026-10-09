@@ -238,7 +238,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       NO_STYLISTS: '尚未設定任何髮型師。',
       HOURS_INVALID: '營業時間不完整或無效。',
       PROVIDER_UNSUPPORTED: '不支援此平台。',
-      INBOUND_NOT_FRESH: '請啟用並成功測試其匯入來源；最近一次成功同步須在 {minutes} 分鐘內，而且最近一次嘗試不可失敗。',
+      INBOUND_NOT_FRESH: '請啟用並成功測試其匯入來源；最近一次成功同步須在 {minutes} 分鐘內。',
       OUTBOUND_UNCONFIRMED: '請確認已在該平台日曆訂閱相應的網站忙碌時段來源，並已檢查。',
     },
     labels: {

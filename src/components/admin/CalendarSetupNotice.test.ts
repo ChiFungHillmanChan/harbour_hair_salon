@@ -92,7 +92,7 @@ test('on a Chinese page the labels are translated while the generated checks sta
 
 test('coded checks are translated and grouped by stylist and platform; unknown codes fall back to the generated text', async () => {
   const blockers = [
-    'Ava / FRESHA: enable and successfully test its inbound feed; the last success must be within 90 minutes and its latest attempt must not have failed.',
+    'Ava / FRESHA: enable and successfully test its inbound feed; the last success must be within 90 minutes.',
     'Ava: opening hours are incomplete or invalid.',
     'Ben / FRESHA: something new.',
   ];
@@ -106,7 +106,7 @@ test('coded checks are translated and grouped by stylist and platform; unknown c
   assert.deepEqual(nodes.filter((node) => node.type === 'h3').map(text), ['Ava / FRESHA', 'Ava', 'Ben / FRESHA']);
   const checks = nodes.filter((node) => node.type === 'li');
   assert.deepEqual(checks.map(text), [
-    '請啟用並成功測試其匯入來源；最近一次成功同步須在 90 分鐘內，而且最近一次嘗試不可失敗。',
+    '請啟用並成功測試其匯入來源；最近一次成功同步須在 90 分鐘內。',
     '營業時間不完整或無效。',
     'something new.',
   ], 'the heading already names the stylist and platform');

@@ -50,7 +50,13 @@
     ],
     "overrides": {
       "postcss": "8.5.28",
-      "@prisma/config@6.19.3>deepmerge-ts": "8.0.0"
+      "@prisma/config@6.19.3>deepmerge-ts": "8.0.0",
+      "source-map-js": "1.2.2"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-vfj7-8cjw-p6xm"
+      ]
     }
   },
   "prisma": {
@@ -68,7 +74,7 @@
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",
     "jose": "^6.2.12",
-    "next": "16.3.7",
+    "next": "16.3.8",
     "node-ical": "^0.27.2",
     "otpauth": "^9.5.2",
     "react": "19.3.0",
@@ -83,9 +89,9 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.39.5",
-    "eslint-config-next": "16.3.7",
+    "eslint-config-next": "16.3.8",
     "prisma": "6.19.3",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3"

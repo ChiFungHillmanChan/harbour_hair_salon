@@ -250,7 +250,7 @@ const adminOps = {
       NO_STYLISTS: 'No stylists are set up yet.',
       HOURS_INVALID: 'Opening hours are incomplete or invalid.',
       PROVIDER_UNSUPPORTED: 'This provider is not supported.',
-      INBOUND_NOT_FRESH: 'Enable and successfully test its inbound feed; the last success must be within {minutes} minutes and its latest attempt must not have failed.',
+      INBOUND_NOT_FRESH: 'Enable and successfully test its inbound feed; the last success must be within {minutes} minutes.',
       OUTBOUND_UNCONFIRMED: 'Confirm that its matching website busy feed has been subscribed to and checked in the provider calendar.',
     },
     labels: {

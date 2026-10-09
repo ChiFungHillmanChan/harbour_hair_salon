@@ -14,6 +14,9 @@ import { validateWeek } from './opening-hours';
  * and occasionally rate-limited, so one late run is routine rather than
  * exceptional. 90 minutes is three 30-minute ticks — exactly the 3x minimum a
  * test enforces, so do not shorten it or slow the cron without raising it.
+ * A failed attempt counts exactly like a skipped one: only the age of the last
+ * success decides. The failure stays visible to admins as `lastError` on
+ * Integrations, and changing a feed URL clears `lastSuccessAt`.
  * Closed-hours imports deliberately pause; do not exempt overnight data from
  * freshness checks, since marketplaces can still accept bookings overnight.
  *
@@ -70,9 +73,9 @@ export function evaluateSyncCoverage(input: { stylists: CoverageStylist[]; now?:
         continue;
       }
       if (!connection.inboundEnabled || !connection.inboundUrl?.trim() || !connection.lastSuccessAt ||
-          connection.lastSuccessAt < cutoff || connection.lastSuccessAt > now || connection.lastError) {
+          connection.lastSuccessAt < cutoff || connection.lastSuccessAt > now) {
         missingInbound++;
-        block(`${label}: enable and successfully test its inbound feed; the last success must be within ${CALENDAR_FRESHNESS_MINUTES} minutes and its latest attempt must not have failed.`,
+        block(`${label}: enable and successfully test its inbound feed; the last success must be within ${CALENDAR_FRESHNESS_MINUTES} minutes.`,
           { code: 'INBOUND_NOT_FRESH', params: { ...params, minutes: CALENDAR_FRESHNESS_MINUTES } });
       }
       if (!stylist.icalToken || !connection.outboundConfirmedAt) {

@@ -84,8 +84,14 @@ export async function assertOnlineBookingReady(db: Prisma.TransactionClient) {
  */
 const readBookingOpen = unstable_cache(
   async (): Promise<boolean> => {
+    // Only a real "closed" answer is cached. A Neon cold-start or pool error is
+    // rethrown, so a failed revalidation keeps serving the last good answer
+    // instead of closing booking for everyone (CLAUDE.md: never cache a fallback).
     try { await assertOnlineBookingReady(prisma); return true; }
-    catch { return false; }
+    catch (error) {
+      if (error instanceof BookingError) return false;
+      throw error;
+    }
   },
   ['booking-open'],
   { revalidate: 60, tags: ['site-settings'] },
@@ -96,5 +102,11 @@ export async function isBookingEnabled(): Promise<boolean> {
   // Check before cache hits too: an earlier deployment may have cached `true`.
   if (isOnlineBookingLockedForPayments()) return false;
   if (process.env.NOTIFICATIONS_ENABLED !== 'true') return false;
-  return readBookingOpen();
+  try {
+    return await readBookingOpen();
+  } catch (error) {
+    // Fail closed for this request only; nothing is cached.
+    console.error('Failed to read booking availability:', error);
+    return false;
+  }
 }
