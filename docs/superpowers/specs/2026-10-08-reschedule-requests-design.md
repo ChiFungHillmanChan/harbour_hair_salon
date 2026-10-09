@@ -30,7 +30,7 @@ self-service.
 | D3 | Unanswered requests | **Lapse automatically** once the requested time is < 24 h away; customer gets one email. |
 | D4 | Customer actions while waiting | **Withdraw or replace**; one open request per booking. |
 | D5 | Storage | **Two nullable fields on `Appointment`.** No new table, no new status. |
-| D6 | Fresha refresh before staff approval | Refresh the stylist's feeds if older than **5 minutes** — for reschedule approvals **and** new-booking approvals (today: 30 minutes). |
+| D6 | Fresha refresh before staff approval | Refresh the stylist's feeds if older than **5 minutes**, then every stylist's feeds older than 30 minutes (as today) — for reschedule approvals **and** new-booking approvals. *(Amended 2026-10-09; see §8.)* |
 
 Rejected: holding the requested slot (needs slot/feed changes everywhere);
 releasing the original (a decline would lose the customer's booking); a
@@ -166,7 +166,7 @@ online-booking lock (consistent with all admin actions).
 
 **APPROVE**
 
-1. Outside the transaction: `refreshStylistCalendarFeeds(stylistId, { maxAgeMinutes: 5 })`
+1. Outside the transaction: `refreshCalendarFeedsBeforeApproval(stylistId)`
    (see §8). Never throws.
 2. Serializable transaction:
    - row is CONFIRMED and `rescheduleRequestedAt` equals `requestedAt` → else
@@ -220,23 +220,38 @@ existing version/date check:
 
 ## 8. Fresha refresh before approval (D6)
 
-New helper in `calendar-sync-service.ts`:
+*Amended 2026-10-09 (final review).* The first version of this section
+replaced the all-stylist refresh with a target-stylist-only one. That broke
+approvals outside staff hours: `checkCalendarBookingReadiness` requires
+**every** active receiving stylist's feed to have succeeded within 90 minutes,
+and the scheduled import pauses outside staff hours, so any evening Confirm or
+Approve failed `CALENDAR_SETUP_NEEDED` once another stylist's feed went stale.
+
+One helper in `calendar-sync-service.ts`, the only one both approval paths call:
 
 ```ts
-refreshStylistCalendarFeeds(stylistId: string, opts: { maxAgeMinutes: number; now?: Date })
+refreshCalendarFeedsBeforeApproval(stylistId: string, opts?: { now?: Date; db?; fetchFeed? })
 ```
 
-Same contract as `refreshStaleCalendarFeeds` (respects `CALENDAR_SYNC_ENABLED`,
-never throws), but limited to one stylist's connections and using
-`staleBefore = now - maxAgeMinutes`. `syncCalendarFeeds` gains an optional
-`stylistId` filter. Used with `maxAgeMinutes: 5` by:
+It checks `CALENDAR_SYNC_ENABLED` before any database read, never throws, and
+returns the concatenated results of:
+
+1. `syncCalendarFeeds({ stylistId, staleBefore: now - APPROVAL_REFRESH_MINUTES })`
+   (5 minutes) — the approved stylist's recent Fresha sales;
+2. `syncCalendarFeeds({ staleBefore: now - CALENDAR_POLL_MINUTES })` (30 minutes,
+   all stylists) — the old `refreshStaleCalendarFeeds` predicate (never
+   succeeded, older than the cutoff, or last attempt failed), which keeps the
+   all-stylist freshness gate passable.
+
+`syncCalendarFeeds` gains an optional `stylistId` filter. Callers:
 
 - `decideRescheduleRequest` APPROVE;
-- `updateAppointmentStatus(…, 'CONFIRMED')` for new PENDING bookings (replacing
-  today's all-stylist 30-minute `refreshStaleCalendarFeeds()` call there).
+- `updateAppointmentStatus(…, 'CONFIRMED')` for new PENDING bookings.
 
-Cost: at most one Fresha fetch per approval (≤ 8 s timeout); the admin's request
-already wakes Neon, so no extra wake.
+Cost: one Fresha fetch for the approved stylist when its feed is over 5 minutes
+old, plus one per other feed only when that feed is over 30 minutes old (in
+staff hours the half-hourly import keeps them fresher than that). Each fetch has
+an 8 s timeout; the admin's request already wakes Neon, so no extra wake.
 
 ## 9. Automatic lapse
 
@@ -291,8 +306,8 @@ reads happen inside the transaction):
   stays open + `RESCHEDULE_SLOT_TAKEN`; stale `requestedAt` →
   `RESCHEDULE_REQUEST_CHANGED`; expired → `RESCHEDULE_REQUEST_EXPIRED`; decline →
   date unchanged, `RESCHEDULE_DECLINED` queued; non-admin refused.
-- `refreshStylistCalendarFeeds`: only that stylist's connections; 5-minute
-  threshold; kill-switch; never throws. `updateAppointmentStatus` confirm uses it.
+- `refreshCalendarFeedsBeforeApproval`: that stylist's connections at 5 minutes,
+  then every stylist's at 30; kill-switch; never throws. Both approval paths use it.
 - `isCurrent`: table-driven over the four new kinds × (open, replaced, withdrawn,
   approved, cancelled).
 - Lapse: only < 24 h requests; idempotent on re-run; kill-switch before any DB call.

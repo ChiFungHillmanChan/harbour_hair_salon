@@ -37,7 +37,7 @@ function fixture(options: {
   failEnqueue?: boolean;
   onlineReady?: boolean;
   calendarReady?: boolean;
-  onFeedRefresh?: (stylistId: string, maxAgeMinutes: number) => void;
+  onFeedRefresh?: (stylistId: string) => void;
   trace?: string[];
   /** Which reschedule allowance is spent: the customer's, or this appointment's. */
   rescheduleSpent?: 'user' | 'appointment';
@@ -212,11 +212,11 @@ function fixture(options: {
       },
     },
     '@/app/services/calendar-sync-service': {
-      APPROVAL_REFRESH_MINUTES: 5,
-      refreshStylistCalendarFeeds: async (stylistId: string, opts: { maxAgeMinutes: number }) => {
+      refreshCalendarFeedsBeforeApproval: async (...args: unknown[]) => {
         assert.equal(transactionActive, false, 'marketplace feeds must not be fetched inside the transaction');
+        assert.equal(args.length, 1, 'approval paths pass only the stylist; the thresholds live in the helper');
         options.trace?.push('refresh');
-        options.onFeedRefresh?.(stylistId, opts.maxAgeMinutes);
+        options.onFeedRefresh?.(args[0] as string);
         return [];
       },
     },
@@ -502,11 +502,11 @@ test('cancellation remains available while online booking and calendar readiness
   assert.equal(admin.messages.length, 1);
 });
 
-test('approving a new booking refreshes only its stylist\'s feeds older than five minutes', async () => {
-  const refreshed: [string, number][] = [];
-  const f = fixture({ status: 'PENDING', onFeedRefresh: (stylistId, maxAgeMinutes) => refreshed.push([stylistId, maxAgeMinutes]) });
+test('approving a new booking runs the shared pre-approval refresh for its stylist', async () => {
+  const refreshed: string[] = [];
+  const f = fixture({ status: 'PENDING', onFeedRefresh: (stylistId) => refreshed.push(stylistId) });
   assert.equal((await f.admin.updateAppointmentStatus(f.appointment.id, 'CONFIRMED')).success, true);
-  assert.deepEqual(refreshed, [['stylist-1', 5]]);
+  assert.deepEqual(refreshed, ['stylist-1']);
 });
 
 test('a request leaves the booking confirmed at its original time and emails the customer and the salon', async () => {
@@ -628,9 +628,18 @@ test('approval moves the booking to the requested time, keeps frozen price/durat
 
 test('approval refreshes the stylist\'s Fresha feeds before the readiness check', async () => {
   const trace: string[] = [];
-  const f = fixture({ openRequest: OPEN_REQUEST, trace });
+  const refreshed: string[] = [];
+  const f = fixture({ openRequest: OPEN_REQUEST, trace, onFeedRefresh: (stylistId) => refreshed.push(stylistId) });
   assert.equal((await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString())).success, true);
   assert.deepEqual(trace, ['refresh', 'readiness']);
+  assert.deepEqual(refreshed, ['stylist-1'], 'the same shared helper as new-booking approval');
+});
+
+test('declining a request fetches no marketplace feeds', async () => {
+  const trace: string[] = [];
+  const f = fixture({ openRequest: OPEN_REQUEST, trace });
+  assert.equal((await f.admin.decideRescheduleRequest(f.appointment.id, 'DECLINE', OPEN_REQUEST.requestedAt.toISOString())).success, true);
+  assert.deepEqual(trace, []);
 });
 
 test('approve updates the busy feed before waiting for email delivery', async () => {

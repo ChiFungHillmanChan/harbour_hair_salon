@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CalendarConnection, PrismaClient } from '@prisma/client';
-import { refreshStylistCalendarFeeds, syncCalendarFeeds } from './calendar-sync-service';
+import { refreshCalendarFeedsBeforeApproval, syncCalendarFeeds } from './calendar-sync-service';
 const now = new Date('2026-09-11T12:00:00Z');
 const empty = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR';
 const busy = empty.replace('END:VCALENDAR', 'BEGIN:VEVENT\r\nUID:shared-uid\r\nDTSTART:20260912T100000Z\r\nDTEND:20260912T110000Z\r\nEND:VEVENT\r\nEND:VCALENDAR');
@@ -9,13 +9,20 @@ function connection(id = 'c1', stylistId = 's1', provider = 'TREATWELL'): Calend
   return { id, stylistId, provider, receivesBookings: true, inboundEnabled: true, inboundUrl: 'https://example.com/private?token=secret', outboundConfirmedAt: now, lastAttemptAt: null, lastSuccessAt: null, lastError: null, lockToken: null, lockedUntil: null, createdAt: now, updatedAt: now };
 }
 type Block = { source: string; stylistId: string; externalUid: string; start: Date; end: Date; lastSyncAt: Date };
+type StalePart = { lastSuccessAt?: null | { lt: Date }; lastError?: { not: null } };
+/** The `staleBefore` predicate: never succeeded, succeeded before the cutoff, or last attempt failed. */
+function isStale(row: CalendarConnection, parts?: StalePart[]): boolean {
+  if (!parts) return true;
+  return parts.some((part) => ('lastSuccessAt' in part && (part.lastSuccessAt === null ? row.lastSuccessAt === null : row.lastSuccessAt !== null && row.lastSuccessAt < part.lastSuccessAt!.lt))
+    || ('lastError' in part && row.lastError !== null));
+}
 function fakeDb(rows = [connection()]) {
   const blocks: Block[] = [];
   const predicates: Record<string, unknown>[] = [];
   const writes = { individual: 0, batches: [] as number[], failBatch: false };
   const db = {
     calendarConnection: {
-      findMany: async ({ where }: { where: Record<string, unknown> }) => rows.filter((row) => row.inboundEnabled && row.inboundUrl && (!where.id || row.id === where.id) && (!where.provider || typeof where.provider !== 'string' || row.provider === where.provider)).map((row) => ({ ...row })),
+      findMany: async ({ where }: { where: Record<string, unknown> }) => rows.filter((row) => row.inboundEnabled && row.inboundUrl && (!where.id || row.id === where.id) && (!where.stylistId || row.stylistId === where.stylistId) && (!where.provider || typeof where.provider !== 'string' || row.provider === where.provider) && isStale(row, where.OR as StalePart[] | undefined)).map((row) => ({ ...row })),
       updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Partial<CalendarConnection> }) => {
         predicates.push(where);
         const row = rows.find((item) => item.id === where.id);
@@ -144,26 +151,53 @@ async function withCalendarSync<T>(value: string | undefined, run: () => Promise
   }
 }
 
-test('approval refresh re-imports only that stylist\'s feeds older than five minutes or whose last attempt failed', async () => {
+const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+
+test('approval refresh checks the target stylist at five minutes, then every stylist at one poll interval', async () => {
   const queries: Record<string, unknown>[] = [];
   const db = { calendarConnection: { findMany: async ({ where }: { where: Record<string, unknown> }) => { queries.push(where); return []; } } };
-  await withCalendarSync('true', () => refreshStylistCalendarFeeds('s1', { db: db as unknown as PrismaClient, now }));
-  assert.equal(queries.length, 1);
+  await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: db as unknown as PrismaClient, now }));
+  assert.equal(queries.length, 2);
   assert.equal(queries[0].stylistId, 's1');
   assert.deepEqual(queries[0].OR, [
     { lastSuccessAt: null },
     { lastSuccessAt: { lt: new Date('2026-09-11T11:55:00Z') } },
     { lastError: { not: null } },
   ]);
+  assert.equal('stylistId' in queries[1], false, 'the second pass covers every active stylist');
+  assert.deepEqual(queries[1].OR, [
+    { lastSuccessAt: null },
+    { lastSuccessAt: { lt: new Date('2026-09-11T11:30:00Z') } },
+    { lastError: { not: null } },
+  ]);
+});
+
+// The readiness gate needs EVERY receiving stylist's feed fresh within 90
+// minutes. Outside staff hours the scheduled import is paused, so refreshing
+// only the target stylist would fail any evening Confirm with CALENDAR_SETUP_NEEDED.
+test('approval refresh also re-imports another stylist\'s feed that is past the poll interval', async () => {
+  const state = fakeDb([{ ...connection('c1', 's1', 'FRESHA'), lastSuccessAt: minutesAgo(10) }, { ...connection('c2', 's2', 'FRESHA'), lastSuccessAt: minutesAgo(120) }]);
+  const results = await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: state.db, now, fetchFeed: async () => empty }));
+  assert.deepEqual(results.map((result) => [result.connectionId, result.ok]), [['c1', true], ['c2', true]]);
+  assert.deepEqual(state.rows.map((row) => row.lastSuccessAt?.toISOString()), [now.toISOString(), now.toISOString()]);
+});
+
+test('approval refresh leaves another stylist\'s feed alone while it is within the poll interval', async () => {
+  const state = fakeDb([{ ...connection('c1', 's1', 'FRESHA'), lastSuccessAt: minutesAgo(10) }, { ...connection('c2', 's2', 'FRESHA'), lastSuccessAt: minutesAgo(10) }]);
+  let fetches = 0;
+  const results = await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: state.db, now, fetchFeed: async () => { fetches++; return empty; } }));
+  assert.deepEqual(results.map((result) => result.connectionId), ['c1']);
+  assert.equal(fetches, 1);
+  assert.equal(state.rows[1].lastSuccessAt?.toISOString(), minutesAgo(10).toISOString());
 });
 
 test('approval refresh respects the kill-switch and never throws', async () => {
   let reads = 0;
   const db = { calendarConnection: { findMany: async () => { reads++; throw new Error('database unavailable'); } } };
   for (const flag of [undefined, 'false']) {
-    assert.deepEqual(await withCalendarSync(flag, () => refreshStylistCalendarFeeds('s1', { db: db as unknown as PrismaClient, now })), []);
+    assert.deepEqual(await withCalendarSync(flag, () => refreshCalendarFeedsBeforeApproval('s1', { db: db as unknown as PrismaClient, now })), []);
   }
   assert.equal(reads, 0, 'a disabled sync must not touch the database');
-  assert.deepEqual(await withCalendarSync('true', () => refreshStylistCalendarFeeds('s1', { db: db as unknown as PrismaClient, now })), []);
-  assert.equal(reads, 1);
+  assert.deepEqual(await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: db as unknown as PrismaClient, now })), []);
+  assert.equal(reads, 1, 'a failed read ends the refresh; the readiness check that follows reports it');
 });

@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { CalendarFeedError, CALENDAR_WINDOW_DAYS, parseCalendarBusyIntervals } from './calendar-ical';
 import { fetchCalendarFeed, MAX_CALENDAR_FEED_BYTES, validateCalendarFeedUrl } from './calendar-feed-url';
 import { CALENDAR_PROVIDERS, type CalendarProvider } from './treatwell-sync-coverage';
+import { CALENDAR_POLL_MINUTES } from './calendar-sync-window';
 
 export type CalendarSyncResult = {
   connectionId: string; stylistId: string; provider: string;
@@ -113,29 +114,38 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
   return results;
 }
 
-/** How old a feed may be before a staff approval re-imports it first. */
+/** How old the approved stylist's feeds may be before a staff approval re-imports them first. */
 export const APPROVAL_REFRESH_MINUTES = 5;
 
 /**
- * Re-import one stylist's marketplace feeds before staff confirm a booking or a
- * reschedule into that stylist's diary. The scheduled import runs every 30
- * minutes and pauses outside staff hours, so without this a Fresha sale made
- * since the last tick would not be seen. Feeds refreshed within
- * `maxAgeMinutes` are skipped. The admin's own request already wakes Neon, so
- * this adds no separate wake. Respects the CALENDAR_SYNC_ENABLED kill-switch
- * and never throws: a failed import is reported by the readiness check that
- * follows.
+ * The one refresh both staff approval paths run (a new booking's Confirm and a
+ * reschedule request's Approve), outside their transactions and before the
+ * readiness check:
+ *
+ * 1. the approved stylist's feeds older than APPROVAL_REFRESH_MINUTES, so a
+ *    Fresha sale made since the last half-hourly import is seen;
+ * 2. then every stylist's feeds older than one poll interval (or failing), as
+ *    the old all-stylist refresh did. The readiness gate needs EVERY receiving
+ *    stylist's feed fresh within 90 minutes, and the scheduled import pauses
+ *    outside staff hours, so refreshing only the approved stylist would fail an
+ *    evening approval with CALENDAR_SETUP_NEEDED.
+ *
+ * The admin's own request already wakes Neon, so this adds no separate wake.
+ * The CALENDAR_SYNC_ENABLED kill-switch is checked before any database read.
+ * Never throws: a failed import is reported by the readiness check that follows.
  */
-export async function refreshStylistCalendarFeeds(
+export async function refreshCalendarFeedsBeforeApproval(
   stylistId: string,
-  opts: Omit<CalendarSyncDependencies, 'staleBefore' | 'stylistId'> & { maxAgeMinutes?: number } = {},
+  opts: Omit<CalendarSyncDependencies, 'staleBefore' | 'stylistId'> = {},
 ): Promise<CalendarSyncResult[]> {
   if (process.env.CALENDAR_SYNC_ENABLED !== 'true') return [];
-  const { maxAgeMinutes = APPROVAL_REFRESH_MINUTES, ...deps } = opts;
-  const now = deps.now ?? new Date();
+  const now = (opts.now ?? new Date()).getTime();
+  const results: CalendarSyncResult[] = [];
   try {
-    return await syncCalendarFeeds({ ...deps, stylistId, staleBefore: new Date(now.getTime() - maxAgeMinutes * 60_000) });
+    results.push(...await syncCalendarFeeds({ ...opts, stylistId, staleBefore: new Date(now - APPROVAL_REFRESH_MINUTES * 60_000) }));
+    results.push(...await syncCalendarFeeds({ ...opts, staleBefore: new Date(now - CALENDAR_POLL_MINUTES * 60_000) }));
   } catch {
-    return [];
+    // Reported by the readiness check that follows.
   }
+  return results;
 }

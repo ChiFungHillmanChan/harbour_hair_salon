@@ -14,7 +14,7 @@ import { revalidateCategoryPages } from '@/app/actions/admin-services';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
-import { APPROVAL_REFRESH_MINUTES, refreshStylistCalendarFeeds } from '@/app/services/calendar-sync-service';
+import { refreshCalendarFeedsBeforeApproval } from '@/app/services/calendar-sync-service';
 import { assertAppointmentSlotAvailable, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
 import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
 import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
@@ -462,12 +462,12 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
   }
   try {
     // Network I/O stays outside the serializable transaction below. Re-import
-    // this stylist's feeds older than five minutes: the scheduled import pauses
-    // outside staff hours, so without this an evening confirmation fails the
-    // calendar-freshness check until the next morning.
+    // this stylist's recent Fresha sales, and any stylist's feed the paused
+    // out-of-hours import has let go stale, or an evening confirmation fails
+    // the all-stylist calendar-freshness check until the next morning.
     if (status === 'CONFIRMED') {
       const target = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { stylistId: true } });
-      if (target) await refreshStylistCalendarFeeds(target.stylistId, { maxAgeMinutes: APPROVAL_REFRESH_MINUTES });
+      if (target) await refreshCalendarFeedsBeforeApproval(target.stylistId);
     }
     const { appointment, changed } = await runSerializableWithRetry(async (tx) => {
       const include = {
@@ -535,9 +535,10 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
 
 /**
  * Staff answer a customer's reschedule request (booking.ts requestReschedule).
- * APPROVE re-imports this stylist's Fresha feeds, then re-checks the requested
- * time exactly as a new booking's approval does before moving the booking.
- * DECLINE leaves the booking untouched. Not gated by the online-booking lock.
+ * APPROVE runs the same pre-approval Fresha refresh as a new booking's
+ * approval, then re-checks the requested time exactly as that approval does
+ * before moving the booking. DECLINE leaves the booking untouched. Not gated by
+ * the online-booking lock.
  */
 export async function decideRescheduleRequest(appointmentId: string, decision: 'APPROVE' | 'DECLINE', requestedAt: string) {
   const locale = await getActionLocale();
@@ -555,9 +556,10 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
   } as const;
   try {
     if (decision === 'APPROVE') {
-      // Network I/O stays outside the serializable transaction below.
+      // Network I/O stays outside the serializable transaction below (same
+      // refresh as a new booking's approval; see refreshCalendarFeedsBeforeApproval).
       const target = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { stylistId: true } });
-      if (target) await refreshStylistCalendarFeeds(target.stylistId, { maxAgeMinutes: APPROVAL_REFRESH_MINUTES });
+      if (target) await refreshCalendarFeedsBeforeApproval(target.stylistId);
     }
     const moved = await runSerializableWithRetry(async (tx) => {
       const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
