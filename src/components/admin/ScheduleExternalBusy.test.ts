@@ -268,3 +268,39 @@ test('an appointment whose price was never recorded says so instead of showing t
   assert.ok(texts.some((text) => /NHS price applied · VAT excluded · May be adjusted after consultation/.test(text)));
   assert.ok(!texts.some((text) => /£0\.00/.test(text)), 'an unknown amount is never shown as zero');
 });
+
+test('a reschedule request row shows when it was asked and a tel: link for the customer', () => {
+  const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
+    'src/components/admin/ScheduleCalendar.tsx', {
+      react: { ...hooks, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+      '@/i18n/navigation': navigation,
+      '@/i18n/client': i18nClient,
+      '@/i18n/draft-store': draftStore(hooks.useState),
+      './ScheduleDayGrid': { ScheduleDayGrid: () => null },
+      './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
+      './AppointmentDialog': { AppointmentDialog: () => null },
+      './RescheduleRequestActions': { RescheduleRequestActions: () => null },
+      '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
+    },
+  );
+  const rendered = calendar.ScheduleCalendar({
+    dateStr: '2026-10-23', view: 'day', pendingAppointments: [], busyBlocks: [], appointments: [],
+    stylists: [{ id: 's1', name: 'Funky', calendarColor: null, availabilities: [] }],
+    rescheduleRequests: [{ id: 'r1', date: '2026-10-30T10:00:00Z', requestedDate: '2026-11-02T10:00:00Z', requestedAt: '2026-10-20T09:30:00Z', expired: false,
+      user: { name: 'Ben', phone: '07000 000000' }, stylist: { name: 'Lox' }, service: { name: 'Colour' } }],
+  });
+  function expand(node: unknown): Element[] {
+    if (Array.isArray(node)) return node.flatMap(expand);
+    if (!node || typeof node !== 'object' || !('props' in node)) return [];
+    const element = node as Element;
+    if (typeof element.type === 'function') return expand(element.type(element.props));
+    return [element, ...expand(element.props.children)];
+  }
+  const text = (node: unknown): string => Array.isArray(node) ? node.map(text).join('')
+    : typeof node === 'string' || typeof node === 'number' ? String(node)
+    : node && typeof node === 'object' && 'props' in node ? text((node as Element).props.children) : '';
+  const all = expand(rendered);
+  assert.match(text(rendered), /asked .*20 October.*10:30/i, 'the absolute ask time is shown');
+  const tel = all.find((node) => node.type === 'a' && node.props.href === 'tel:07000 000000');
+  assert.ok(tel, 'the customer phone is a tel: link');
+});

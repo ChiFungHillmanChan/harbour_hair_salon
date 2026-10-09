@@ -132,5 +132,6 @@ test('the board lists open reschedule requests by request age and counts only un
   assert.deepEqual(data.rescheduleRequests.map((row) => [row.id, row.expired]), [['r2', true], ['r1', false]]);
   assert.equal(data.rescheduleRequestCount, 1, 'an expired request is listed but not counted');
   assert.equal(data.rescheduleRequests[0].requestedDate, '2099-09-02T09:00:00.000Z');
+  assert.equal(data.rescheduleRequests[1].user.phone, '07000 000000', 'the phone is carried so staff can call the customer');
   assert.equal(data.rescheduleRequests[1].requestedAt, '2099-09-01T10:00:00.000Z');
 });

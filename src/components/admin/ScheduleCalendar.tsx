@@ -561,8 +561,12 @@ export function ScheduleCalendar({
                   <div>
                     <p className="text-sm font-medium text-zinc-900">
                       {t('rescheduleRequests.item', { customer: request.user.name ?? t('appointment.customerFallback'), service: request.service.name, stylist: request.stylist.name })}
+                      {request.user.phone && <> · <a href={`tel:${request.user.phone}`} className="underline">{request.user.phone}</a></>}
                     </p>
-                    <p className="text-sm text-zinc-700">{t('rescheduleRequests.move', { from, to })}</p>
+                    <p className="text-sm text-zinc-700">
+                      {t('rescheduleRequests.move', { from, to })}{' '}
+                      <span className="text-zinc-500">({t('rescheduleRequests.asked', { when: `${formatSalonLongDate(locale, new Date(request.requestedAt))} ${formatSalonClock(locale, new Date(request.requestedAt))}` })})</span>
+                    </p>
                     {request.expired && <p className="text-xs font-medium uppercase text-zinc-500">{t('rescheduleRequests.expired')}</p>}
                   </div>
                   <RescheduleRequestActions appointmentId={request.id} requestedAt={request.requestedAt} expired={request.expired} onDone={() => router.refresh()} />
