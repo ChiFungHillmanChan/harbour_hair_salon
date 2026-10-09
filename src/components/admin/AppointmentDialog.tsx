@@ -7,6 +7,9 @@ import { describeClash } from '@/app/lib/describe-clash';
 import { describeBoardPrice, type BoardPrice } from '@/app/lib/board-price';
 import { MIN_DURATION_MINUTES } from '@/app/lib/calendar-geometry';
 import { formatGBP } from '@/app/services/pricing/money';
+import { RescheduleRequestActions } from './RescheduleRequestActions';
+import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
+import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useLocale, useT } from '@/i18n/client';
 import { DEFAULT_LOCALE, HTML_LANG, LOCALE_LABEL, LOCALES, isLocale, type Locale } from '@/i18n/config';
 import { clearDraft, useDraftState } from '@/i18n/draft-store';
@@ -48,6 +51,9 @@ export type DialogTarget =
       updatedAt: string;
       /** The price recorded on the appointment — never re-derived from today's list. */
       price: BoardPrice;
+      /** An open customer reschedule request (ISO instants), if any. */
+      rescheduleRequestedDate: string | null;
+      rescheduleRequestedAt: string | null;
     };
 
 /**
@@ -401,6 +407,16 @@ export function AppointmentDialog({
                 </>
               )}
             </fieldset>
+          )}
+
+          {target.mode === 'edit' && target.rescheduleRequestedDate && target.rescheduleRequestedAt && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <p>{t('rescheduleRequests.dialogNote', { to: `${formatSalonLongDate(locale, new Date(target.rescheduleRequestedDate))} ${formatSalonClock(locale, new Date(target.rescheduleRequestedDate))}` })}</p>
+              <div className="mt-2">
+                <RescheduleRequestActions appointmentId={target.appointmentId} requestedAt={target.rescheduleRequestedAt}
+                  expired={isRescheduleRequestExpired(target.rescheduleRequestedDate)} onDone={saved} />
+              </div>
+            </div>
           )}
 
           <div>

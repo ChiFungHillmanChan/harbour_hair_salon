@@ -8,6 +8,7 @@ import { resolveSalonDateTime } from './salon-time';
 import { getTreatwellSyncCoverage } from './integration-readiness';
 import { recordedPrice } from './pricing/recorded-price';
 import { toPence } from './pricing/money';
+import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
 import type { BoardPrice } from '@/app/lib/board-price';
 
 // The service's CURRENT price is deliberately not selected: an appointment
@@ -15,6 +16,7 @@ import type { BoardPrice } from '@/app/lib/board-price';
 export const calendarAppointmentSelect = {
   id: true, date: true, status: true, stylistId: true, serviceId: true, updatedAt: true,
   durationAtBooking: true, priceAtBooking: true, quoteJson: true, notes: true,
+  rescheduleRequestedDate: true, rescheduleRequestedAt: true,
   user: { select: { id: true, name: true, email: true } },
   stylist: { select: { name: true, calendarColor: true } },
   service: { select: { name: true, duration: true, calendarColor: true } },
@@ -34,6 +36,8 @@ export function serializeCalendarAppointment(row: CalendarRow, includeContact = 
     id: row.id, date: row.date.toISOString(), status: row.status, stylistId: row.stylistId,
     serviceId: row.serviceId, updatedAt: row.updatedAt.toISOString(),
     durationAtBooking: row.durationAtBooking, notes: row.notes,
+    rescheduleRequestedDate: row.rescheduleRequestedDate?.toISOString() ?? null,
+    rescheduleRequestedAt: row.rescheduleRequestedAt?.toISOString() ?? null,
     price: boardPrice(row),
     user: { id: row.user.id, name: row.user.name, email: includeContact ? row.user.email : null },
     stylist: row.stylist,
@@ -69,6 +73,13 @@ const pendingSelect = {
 type PendingRow = Prisma.AppointmentGetPayload<{ select: typeof pendingSelect }>;
 export type PendingAppointment = Omit<PendingRow, 'date'> & { date: string };
 
+const rescheduleRequestSelect = {
+  id: true, date: true, rescheduleRequestedDate: true, rescheduleRequestedAt: true,
+  user: { select: { name: true, phone: true } },
+  stylist: { select: { name: true } },
+  service: { select: { name: true } },
+} satisfies Prisma.AppointmentSelect;
+
 /** One aggregate statement, twelve London month boundaries, no per-booking payload. */
 async function yearCounts(year: number) {
   const bounds = Array.from({ length: 13 }, (_, month) =>
@@ -96,7 +107,7 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
   const { dateStr, view, range } = resolveAdminCalendarRange(query, now);
   const todayRange = resolveAdminCalendarRange({ view: 'day' }, now).range;
   const cursor = dateCursor(query.pending);
-  const [appointments, todayStats, syncCoverage, stylists, busyBlocks, pendingRows, pendingCount, monthCounts, services] = await Promise.all([
+  const [appointments, todayStats, syncCoverage, stylists, busyBlocks, pendingRows, pendingCount, monthCounts, services, rescheduleRows] = await Promise.all([
     view === 'year' ? Promise.resolve([]) : prisma.appointment.findMany({
       where: { date: range },
       select: { ...calendarAppointmentSelect, user: { select: { id: true, name: true, email: view === 'day' } } },
@@ -124,6 +135,10 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
       select: dialogServiceSelect,
     }),
+    prisma.appointment.findMany({
+      where: { status: 'CONFIRMED', rescheduleRequestedDate: { not: null } },
+      select: rescheduleRequestSelect, orderBy: [{ rescheduleRequestedAt: 'asc' }, { id: 'asc' }], take: 50,
+    }),
   ]);
   const page = pendingRows.slice(0, 25);
   return {
@@ -135,5 +150,14 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     pendingAppointments: page.map((row) => ({ ...row, date: row.date.toISOString() })),
     pendingNext: pendingRows.length > 25 ? encodeDateCursor(page[page.length - 1]) : null,
     pendingHasPrevious: Boolean(cursor),
+    rescheduleRequests: rescheduleRows.filter((row) => row.rescheduleRequestedDate && row.rescheduleRequestedAt).map((row) => ({
+      id: row.id, date: row.date.toISOString(),
+      requestedDate: row.rescheduleRequestedDate!.toISOString(), requestedAt: row.rescheduleRequestedAt!.toISOString(),
+      expired: isRescheduleRequestExpired(row.rescheduleRequestedDate!, now),
+      user: row.user, stylist: row.stylist, service: row.service,
+    })),
+    rescheduleRequestCount: rescheduleRows.filter((row) => row.rescheduleRequestedDate && !isRescheduleRequestExpired(row.rescheduleRequestedDate, now)).length,
   };
 }
+
+export type RescheduleRequestRow = Awaited<ReturnType<typeof getAdminCalendarData>>['rescheduleRequests'][number];

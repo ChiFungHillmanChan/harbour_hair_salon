@@ -4,7 +4,8 @@ import { useEffect, useTransition } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { ScheduleWeekGrid, type WeekStylist } from './ScheduleWeekGrid';
 import { AppointmentDialog, type DialogService, type DialogTarget } from './AppointmentDialog';
-import type { CalendarAppointment, PendingAppointment } from '@/app/services/admin-calendar-data';
+import type { CalendarAppointment, PendingAppointment, RescheduleRequestRow } from '@/app/services/admin-calendar-data';
+import { RescheduleRequestActions } from './RescheduleRequestActions';
 import { ScheduleDayGrid, type GridAppointment, type GridBusyBlock, type GridStylist } from './ScheduleDayGrid';
 import { resolveCalendarColor } from '@/app/lib/calendar-colors';
 import { formatSalonTime, resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
@@ -319,6 +320,7 @@ export function ScheduleCalendar({
   view,
   appointments,
   pendingAppointments,
+  rescheduleRequests,
   stylists,
   busyBlocks,
   services = [],
@@ -331,6 +333,7 @@ export function ScheduleCalendar({
   view: CalendarView;
   appointments: AppointmentWithDetails[];
   pendingAppointments: PendingAppointment[];
+  rescheduleRequests: RescheduleRequestRow[];
   stylists: RosterStylist[];
   busyBlocks: BusyBlockRow[];
   services?: DialogService[];
@@ -437,6 +440,7 @@ export function ScheduleCalendar({
       serviceName: appt.service.name,
       serviceColor: appt.service.calendarColor,
       updatedAt: new Date(appt.updatedAt).toISOString(),
+      moveRequested: Boolean(appt.rescheduleRequestedAt),
     }));
   const weekKeys = weekDayKeys(dateStr);
   const weekAppointments: GridAppointment[] = appointments.map((appt) => ({
@@ -449,6 +453,7 @@ export function ScheduleCalendar({
     serviceName: appt.service.name,
     serviceColor: appt.service.calendarColor,
     updatedAt: new Date(appt.updatedAt).toISOString(),
+    moveRequested: Boolean(appt.rescheduleRequestedAt),
   }));
   const weekStylists: WeekStylist[] = stylists.map((stylist) => ({
     id: stylist.id,
@@ -480,6 +485,8 @@ export function ScheduleCalendar({
       status: appt.status,
       updatedAt: appt.updatedAt,
       price: appt.price,
+      rescheduleRequestedDate: appt.rescheduleRequestedDate,
+      rescheduleRequestedAt: appt.rescheduleRequestedAt,
     });
   };
   const closeDialog = () => setDialog(null);
@@ -540,6 +547,29 @@ export function ScheduleCalendar({
             {pendingHasPrevious && <button type="button" onClick={() => pendingPage()}>{t('pending.firstPage')}</button>}
             {pendingNext && <button type="button" onClick={() => pendingPage(pendingNext)}>{t('pending.nextPage')}</button>}
           </nav>}
+        </section>
+      )}
+      {rescheduleRequests.length > 0 && (
+        <section aria-label={t('rescheduleRequests.sectionLabel')} className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <h2 className="font-semibold text-amber-900">{t('rescheduleRequests.title')}</h2>
+          <div className="mt-3 max-h-80 overflow-y-auto divide-y divide-amber-200">
+            {rescheduleRequests.map((request) => {
+              const from = `${formatSalonLongDate(locale, new Date(request.date))} ${formatSalonClock(locale, new Date(request.date))}`;
+              const to = `${formatSalonLongDate(locale, new Date(request.requestedDate))} ${formatSalonClock(locale, new Date(request.requestedDate))}`;
+              return (
+                <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-zinc-900">
+                      {t('rescheduleRequests.item', { customer: request.user.name ?? t('appointment.customerFallback'), service: request.service.name, stylist: request.stylist.name })}
+                    </p>
+                    <p className="text-sm text-zinc-700">{t('rescheduleRequests.move', { from, to })}</p>
+                    {request.expired && <p className="text-xs font-medium uppercase text-zinc-500">{t('rescheduleRequests.expired')}</p>}
+                  </div>
+                  <RescheduleRequestActions appointmentId={request.id} requestedAt={request.requestedAt} expired={request.expired} onDone={() => router.refresh()} />
+                </div>
+              );
+            })}
+          </div>
         </section>
       )}
       {/* Toolbar */}

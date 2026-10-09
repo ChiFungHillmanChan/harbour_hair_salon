@@ -40,6 +40,8 @@ export type GridAppointment = {
   serviceColor: string | null;
   /** ISO instant, for the optimistic-concurrency guard. */
   updatedAt: string;
+  /** A customer has asked to move this booking (an open reschedule request). */
+  moveRequested?: boolean;
 };
 
 export type GridBusyBlock = CalendarBusyBlock;
@@ -507,6 +509,7 @@ export function ScheduleDayGrid({
                           {timeLabel(position.startMin)} {appt.customerName ?? t('appointment.customerFallback')}
                         </div>
                         <div className="truncate opacity-90">{appt.serviceName}</div>
+                        {appt.moveRequested && <div className="font-semibold uppercase">{t('rescheduleRequests.badge')}</div>}
                         <div className="opacity-80">{t('grid.minutes', { count: position.durationMin })}</div>
                       </div>
                       <div

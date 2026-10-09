@@ -125,12 +125,13 @@ for (const view of ['day', 'week']) {
         './ScheduleDayGrid': { ScheduleDayGrid: () => null },
         './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
         './AppointmentDialog': { AppointmentDialog: () => null },
+        './RescheduleRequestActions': { RescheduleRequestActions: () => null },
         '@/app/actions/admin-schedule': {},
         '@/app/actions/admin': {},
       },
     );
     const rendered = calendar.ScheduleCalendar({
-      dateStr: '2026-10-23', view, appointments: [], pendingAppointments: [],
+      dateStr: '2026-10-23', view, appointments: [], pendingAppointments: [], rescheduleRequests: [],
       stylists: [{ id: 's1', name: 'Funky', calendarColor: null, availabilities: [] }],
       busyBlocks: [{ id: 'imported', stylistId: 's1', source: 'TREATWELL', start: '2026-10-23T13:00:00Z', end: '2026-10-23T14:00:00Z', lastSyncAt: '2026-09-20T00:00:00Z' }],
     });
@@ -159,11 +160,12 @@ test('mobile day agenda says a stylist on a whole-day Fresha block is unavailabl
       './ScheduleDayGrid': { ScheduleDayGrid: () => null },
       './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
       './AppointmentDialog': { AppointmentDialog: () => null },
+      './RescheduleRequestActions': { RescheduleRequestActions: () => null },
       '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
     },
   );
   const rendered = calendar.ScheduleCalendar({
-    dateStr: '2026-10-06', view: 'day', appointments: [], pendingAppointments: [],
+    dateStr: '2026-10-06', view: 'day', appointments: [], pendingAppointments: [], rescheduleRequests: [],
     stylists: [{ id: 's1', name: 'Funky', calendarColor: null, availabilities: [{ dayOfWeek: 2, startTime: '10:15', endTime: '19:00', isOff: false }] }],
     busyBlocks: [{ id: 'pause', stylistId: 's1', source: 'FRESHA', start: '2026-10-06T09:00:00Z', end: '2026-10-06T19:30:00Z', lastSyncAt: '2026-09-20T00:00:00Z' }],
   });
@@ -194,16 +196,17 @@ for (const view of ['day', 'week', 'month']) {
         './ScheduleDayGrid': { ScheduleDayGrid: () => null },
         './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
         './AppointmentDialog': { AppointmentDialog: () => null },
+        './RescheduleRequestActions': { RescheduleRequestActions: () => null },
         '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
       },
     );
     const rendered = calendar.ScheduleCalendar({
-      dateStr: '2026-10-23', view, pendingAppointments: [], busyBlocks: [],
+      dateStr: '2026-10-23', view, pendingAppointments: [], rescheduleRequests: [], busyBlocks: [],
       stylists: [{ id: 's1', name: 'Funky', calendarColor: null, availabilities: [] }],
       appointments: [{ id: 'owned-booking', date: '2026-10-23T10:30:00Z', updatedAt: '2026-09-20T18:00:00Z',
         status: 'CANCELLED', stylistId: 's1', serviceId: 'service1', durationAtBooking: 15,
         price: { known: true, amountPence: 0, priceType: null, vatDisplay: null, priceNature: null },
-        notes: 'test note', user: { name: 'Test Customer' }, stylist: { name: 'Funky', calendarColor: null },
+        notes: 'test note', rescheduleRequestedDate: null, rescheduleRequestedAt: null, user: { name: 'Test Customer' }, stylist: { name: 'Funky', calendarColor: null },
         service: { name: 'Consultation', duration: 30, calendarColor: null } }],
     });
     function expand(node: unknown): Element[] {
@@ -220,7 +223,8 @@ for (const view of ['day', 'week', 'month']) {
     assert.deepEqual(updates.at(-1), { mode: 'edit', appointmentId: 'owned-booking', dateStr: '2026-10-23',
       time: '11:30', stylistId: 's1', serviceId: 'service1', durationMin: 15, notes: 'test note',
       customerName: 'Test Customer', status: 'CANCELLED', updatedAt: '2026-09-20T18:00:00Z',
-      price: { known: true, amountPence: 0, priceType: null, vatDisplay: null, priceNature: null } });
+      price: { known: true, amountPence: 0, priceType: null, vatDisplay: null, priceNature: null },
+      rescheduleRequestedDate: null, rescheduleRequestedAt: null });
   });
 }
 
@@ -234,6 +238,7 @@ test('an appointment whose price was never recorded says so instead of showing t
       './ScheduleDayGrid': { ScheduleDayGrid: () => null },
       './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
       './AppointmentDialog': { AppointmentDialog: () => null },
+      './RescheduleRequestActions': { RescheduleRequestActions: () => null },
       '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
     },
   );
@@ -243,7 +248,7 @@ test('an appointment whose price was never recorded says so instead of showing t
     stylist: { name: 'Funky', calendarColor: null }, service: { name: 'Blow Dry', duration: 45, calendarColor: null },
   });
   const rendered = calendar.ScheduleCalendar({
-    dateStr: '2026-10-23', view: 'day', pendingAppointments: [], busyBlocks: [],
+    dateStr: '2026-10-23', view: 'day', pendingAppointments: [], rescheduleRequests: [], busyBlocks: [],
     stylists: [{ id: 's1', name: 'Funky', calendarColor: null, availabilities: [] }],
     appointments: [
       appointment('legacy', { known: false }),

@@ -42,6 +42,7 @@ function dialog(target: DialogTarget, actions: Record<string, (input: Record<str
   const { AppointmentDialog } = loadServerModule<typeof import('./AppointmentDialog')>('src/components/admin/AppointmentDialog.tsx', {
     react: { useEffect: () => undefined, useRef: (value: unknown) => ({ current: value }), useState: (value: unknown) => [value, () => undefined] },
     '@/i18n/client': { useT: (namespace: Namespace) => translator('en-GB', namespace), useLocale: () => 'en-GB' },
+    './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     '@/i18n/draft-store': {
       clearDraft: (key: string) => store.delete(key),
       useDraftState: (key: string, initial: unknown) => {
@@ -112,6 +113,7 @@ test('editing a booking on a retired option keeps it visible, shows its recorded
   const target: DialogTarget = {
     mode: 'edit', appointmentId: 'appt-1', dateStr: '2099-09-15', time: '10:00', stylistId: 's1', serviceId: 'legacy',
     durationMin: 45, notes: '', customerName: 'Mei', status: 'CONFIRMED', updatedAt: '2099-09-01T00:00:00.000Z', price: { known: false },
+    rescheduleRequestedDate: null, rescheduleRequestedAt: null,
   };
   // Refused, so the dialog stays open (a successful save clears its draft).
   const { render, calls } = dialog(target, { edit: async () => ({ success: false, error: 'This appointment has changed. Please refresh and try again.' }) });
