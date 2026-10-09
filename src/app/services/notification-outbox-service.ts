@@ -4,7 +4,7 @@ import type { Appointment, Prisma, PrismaClient, Service, Stylist, User } from '
 import prisma from '@/app/lib/prisma';
 import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
 import { prepareAppointmentEmail, sendPreparedEmail, type AppointmentEmailKind, type AppointmentEmailOptions, type PreparedEmail } from './email-service';
-import type { EmailPrice } from './email-content';
+import { isSalonEmailKind, RESCHEDULE_REQUEST_EMAIL_KINDS, type EmailPrice } from './email-content';
 import { recordedPrice } from './pricing/recorded-price';
 import { DEFAULT_LOCALE, isLocale, localeOrDefault, type Locale } from '@/i18n/config';
 
@@ -40,12 +40,12 @@ type NotificationPayload = {
   locale?: Locale;
   email?: PreparedEmail;
   appointment?: SnapshotV1 | SnapshotV2;
-  options?: { salonPhone?: string; oldDate?: string };
+  options?: { salonPhone?: string; oldDate?: string; requestedDate?: string; requestedAt?: string };
 };
 
 /** The customer's language for their own mail; never the language of whoever triggered the event. */
 function eventLocale(kind: AppointmentEmailKind, appointment: NotificationAppointment, salonLocale: Locale): Locale {
-  return kind === 'SALON_ALERT' ? salonLocale : localeOrDefault(appointment.notificationLocale);
+  return isSalonEmailKind(kind) ? salonLocale : localeOrDefault(appointment.notificationLocale);
 }
 
 async function salonLocaleFrom(db: QueueDb): Promise<Locale> {
@@ -85,15 +85,20 @@ export async function enqueueAppointmentNotification(
   db: QueueDb,
   kind: AppointmentEmailKind,
   appointment: NotificationAppointment,
-  options: AppointmentEmailOptions = {},
+  options: AppointmentEmailOptions & { requestedAt?: Date } = {},
 ) {
   // Phone bookings have an unroutable identity, but may still alert the salon.
-  if (kind !== 'SALON_ALERT' && isPlaceholderEmail(appointment.user.email)) return null;
-  const eventKey = `appointment/${appointment.id}/${appointment.notificationVersion}/${kind}`;
+  if (!isSalonEmailKind(kind) && isPlaceholderEmail(appointment.user.email)) return null;
+  const forRequest = RESCHEDULE_REQUEST_EMAIL_KINDS.includes(kind);
+  if (forRequest && (!options.requestedAt || !options.requestedDate)) {
+    throw new Error(`${kind} requires requestedDate and requestedAt`);
+  }
+  // A replaced request is a different event: key request mail by the request.
+  const eventKey = `appointment/${appointment.id}/${appointment.notificationVersion}/${kind}${forRequest ? `/${options.requestedAt!.toISOString()}` : ''}`;
   // Fast path avoids regenerating a date-relative subject for an existing event.
   const existing = await db.notificationDelivery.findUnique({ where: { eventKey }, select: { id: true } });
   if (existing) return existing;
-  const locale = eventLocale(kind, appointment, kind === 'SALON_ALERT' ? await salonLocaleFrom(db) : DEFAULT_LOCALE);
+  const locale = eventLocale(kind, appointment, isSalonEmailKind(kind) ? await salonLocaleFrom(db) : DEFAULT_LOCALE);
   const snapshot: SnapshotV2 = {
     schema: 2,
     id: appointment.id,
@@ -106,7 +111,7 @@ export async function enqueueAppointmentNotification(
     price: emailPrice(appointment),
   };
   // Saving a booking/cancellation must not depend on email configuration or rendering.
-  const payload: NotificationPayload = { version: appointment.notificationVersion, date: appointment.date.toISOString(), locale, appointment: snapshot, options: { salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString() } };
+  const payload: NotificationPayload = { version: appointment.notificationVersion, date: appointment.date.toISOString(), locale, appointment: snapshot, options: { salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString(), requestedDate: options.requestedDate?.toISOString(), requestedAt: options.requestedAt?.toISOString() } };
   return db.notificationDelivery.upsert({
     where: { eventKey },
     create: { eventKey, appointmentId: appointment.id, kind, payloadJson: JSON.stringify(payload) },
@@ -117,8 +122,9 @@ export async function enqueueAppointmentNotification(
 
 async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string, payload: NotificationPayload, now: Date) {
   if (!appointmentId) return false;
-  const current = await db.appointment.findUnique({ where: { id: appointmentId }, select: { date: true, status: true, notificationVersion: true, review: { select: { id: true } } } });
+  const current = await db.appointment.findUnique({ where: { id: appointmentId }, select: { date: true, status: true, notificationVersion: true, rescheduleRequestedAt: true, review: { select: { id: true } } } });
   if (!current || current.notificationVersion !== payload.version || current.date.toISOString() !== payload.date) return false;
+  const thisRequestOpen = Boolean(payload.options?.requestedAt) && current.rescheduleRequestedAt?.toISOString() === payload.options?.requestedAt;
   switch (kind) {
     case 'CANCELLATION': return current.status === 'CANCELLED';
     case 'REQUEST_RECEIVED':
@@ -127,6 +133,14 @@ async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string
     case 'RESCHEDULE':
     case 'REMINDER': return current.status === 'CONFIRMED' && current.date > now;
     case 'REVIEW_REQUEST': return ['CONFIRMED', 'COMPLETED'].includes(current.status) && current.date < now && !current.review;
+    // Mail about an open request goes only while that same request is open.
+    case 'RESCHEDULE_REQUEST_RECEIVED':
+    case 'SALON_RESCHEDULE_ALERT':
+      return current.status === 'CONFIRMED' && thisRequestOpen && new Date(payload.options!.requestedDate!) > now;
+    // Mail about a closed request goes only while the original booking stands.
+    case 'RESCHEDULE_DECLINED':
+    case 'RESCHEDULE_LAPSED':
+      return current.status === 'CONFIRMED' && !thisRequestOpen && current.date > now;
     default: return false;
   }
 }
@@ -164,7 +178,7 @@ export async function dispatchPendingNotifications(options: { db?: PrismaClient;
       const payload = JSON.parse(row.payloadJson) as NotificationPayload;
       const placeholderRecipient = payload.email
         ? isPlaceholderEmail(payload.email.to)
-        : row.kind !== 'SALON_ALERT' && isPlaceholderEmail(payload.appointment?.user.email);
+        : !isSalonEmailKind(row.kind as AppointmentEmailKind) && isPlaceholderEmail(payload.appointment?.user.email);
       if (placeholderRecipient || !Number.isInteger(payload.version) || !(await isCurrent(db, row.appointmentId, row.kind, payload, now))) {
         await finish({ status: 'SKIPPED', lastError: null, payloadJson: '{}' });
         result.skipped++;
@@ -175,7 +189,7 @@ export async function dispatchPendingNotifications(options: { db?: PrismaClient;
         payload.email = await prepareAppointmentEmail(
           row.kind as AppointmentEmailKind,
           { ...payload.appointment, date: new Date(payload.appointment.date) },
-          { ...payload.options, oldDate: payload.options?.oldDate ? new Date(payload.options.oldDate) : undefined, now },
+          { ...payload.options, oldDate: payload.options?.oldDate ? new Date(payload.options.oldDate) : undefined, requestedDate: payload.options?.requestedDate ? new Date(payload.options.requestedDate) : undefined, now },
           // Schema-1 events have no language: English, as they were written.
           localeOrDefault(payload.locale),
         );
