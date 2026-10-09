@@ -14,6 +14,8 @@ interface RescheduleModalProps {
   serviceDuration: number;
   currentDate: string; // ISO string
   onClose: () => void;
+  /** Called once the request is sent, just before the dialog closes. */
+  onSent?: () => void;
 }
 
 export function RescheduleModal({
@@ -22,6 +24,7 @@ export function RescheduleModal({
   serviceDuration,
   currentDate,
   onClose,
+  onSent,
 }: RescheduleModalProps) {
   const t = useT('appointments');
   const locale = useLocale();
@@ -35,9 +38,11 @@ export function RescheduleModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const minDate = tomorrow.toISOString().split('T')[0];
+  // Two days ahead: the server refuses anything under 24 h, and the date
+  // picker cannot express "after 13:00 tomorrow".
+  const earliest = new Date();
+  earliest.setDate(earliest.getDate() + 2);
+  const minDate = earliest.toISOString().split('T')[0];
 
   function close() {
     clearDraft(`${draft}:date`);
@@ -104,6 +109,7 @@ export function RescheduleModal({
       // to the correct UTC instant in the salon timezone (Europe/London).
       const result = await requestReschedule(appointmentId, selectedDate, selectedSlot);
       if (result.success) {
+        onSent?.();
         close();
       } else {
         setError(result.error || t('reschedule.failed'));

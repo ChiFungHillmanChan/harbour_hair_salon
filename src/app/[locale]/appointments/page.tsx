@@ -3,6 +3,7 @@ import prisma from '@/app/lib/prisma';
 import { OG_BASE } from '@/app/lib/og-defaults';
 import { AppointmentCard, type BookedPrice } from '@/components/appointments/AppointmentCard';
 import { isBookingEnabled } from '@/app/lib/booking-maintenance';
+import { rescheduleRequestView } from '@/app/lib/reschedule-request';
 import { pageNumber } from '@/app/lib/pagination';
 import { recordedPrice } from '@/app/services/pricing/recorded-price';
 import { loadPublishedTranslations, overlay } from '@/app/services/content/translations';
@@ -37,6 +38,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
     stylist: { select: { name: true } },
     service: { select: { name: true, duration: true } },
     review: { select: { id: true } },
+    rescheduleRequestedDate: true, rescheduleRequestedAt: true,
   } as const;
   const [bookingEnabled, upcomingRows, pastRows] = await Promise.all([
     isBookingEnabled(),
@@ -76,6 +78,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
         },
         price,
         hasReview: Boolean(a.review),
+        request: rescheduleRequestView(a, now),
       };
     });
 
