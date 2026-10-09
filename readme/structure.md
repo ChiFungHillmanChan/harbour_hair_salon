@@ -34,12 +34,20 @@ This document tracks the architectural structure of the Harbour Hair Salon proje
 Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation & Patch Test (`Service.isPatchTest`) appointment ≥48h before and within 6 months of the colour date.
 - `src/app/services/patch-test-eligibility.ts` — Pure logic: `evaluatePatchTestEligibility(tests, colourDate)` → `{ ok, testDate, reason }`; constants `PATCH_TEST_MIN_LEAD_HOURS` (48), `PATCH_TEST_VALIDITY_DAYS` (183). Unit-tested in `patch-test-eligibility.test.ts`.
 - `src/app/services/booking-service.ts` — `getValidPatchTest(userId, colourDate)` queries the user's patch-test appointments and delegates to the pure function.
-- `src/app/actions/booking.ts` — `submitBooking` and `rescheduleAppointment` enforce the gate server-side; `checkColourEligibility(serviceId, dateIso)` powers the wizard UX. `rescheduleAppointment` answers a move to the booking's current instant as a no-op success (no version bump, no email), and caps real moves with `rescheduleLimiter` (5/h per customer) and `appointmentRescheduleLimiter` (3/24h per appointment) → `TOO_MANY_RESCHEDULES`.
+- `src/app/actions/booking.ts` — `submitBooking` and `requestReschedule` / `withdrawRescheduleRequest` enforce the gate server-side; `checkColourEligibility(serviceId, dateIso)` powers the wizard UX. `requestReschedule` answers a request for the booking's current (or already-requested) instant as a no-op success (no version bump, no email), and caps real requests with `rescheduleLimiter` (5/h per customer) and `appointmentRescheduleLimiter` (3/24h per appointment) → `TOO_MANY_RESCHEDULES`.
 - `src/components/booking/BookingWizard.tsx` — Shows a blocking gate panel + "book Consultation & Patch Test first" CTA at the CONFIRM step; disables submit when ineligible.
 - `src/app/actions/admin.ts` — `updateAppointmentStatus(appointmentId, status)` (admin-only) marks appointments COMPLETED — the signal that unlocks colour booking.
 - `src/components/admin/ScheduleCalendar.tsx` — "Mark completed" control on CONFIRMED appointments.
 - `src/components/admin/AppointmentDialog.tsx` — create/edit bookings; an explicit, confirmed "Cancel booking" action releases pending/confirmed bookings through the existing authenticated status action, audit trail, notification outbox and feed invalidation.
 - `src/components/admin/ServiceForm.tsx` + `src/app/actions/admin-services.ts` — manage `requiresPatchTest`/`isPatchTest` per service.
+
+### Customer Reschedule Requests
+A customer's move of a CONFIRMED booking is a request; the original time stays booked until staff decide.
+- `src/app/lib/reschedule-request.ts` — `RESCHEDULE_REQUEST_LEAD_HOURS` (24), `isRescheduleRequestExpired`, `rescheduleRequestView` (pure, client-safe).
+- `src/app/actions/booking.ts` — `requestReschedule(appointmentId, dateStr, time)`, `withdrawRescheduleRequest(appointmentId)`; `cancelAppointment` clears an open request.
+- `src/app/actions/admin.ts` — `decideRescheduleRequest(appointmentId, 'APPROVE' | 'DECLINE', requestedAt)`; approval first runs `refreshStylistCalendarFeeds` (feeds older than `APPROVAL_REFRESH_MINUTES` = 5), as does new-booking approval.
+- `src/app/services/reschedule-request-lapse.ts` — `lapseExpiredRescheduleRequests(now)`, run by the notifications cron.
+- Emails: `RESCHEDULE_REQUEST_RECEIVED`, `SALON_RESCHEDULE_ALERT`, `RESCHEDULE_DECLINED`, `RESCHEDULE_LAPSED` (keyed by the request's `requestedAt`).
 
 ### Opening Hours (Admin → Opening Hours)
 The hours the booking engine sells from. Before this, `Availability` was written only by `prisma/seed.ts` — production had no way to change it.
@@ -229,7 +237,7 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 ### Neon free-plan budget and deploy source (2026-09-22)
 - Neon Free = **100 CU-hours/project/month**; overrun suspends the database until next month. Compute is fixed at 0.25 CU with a 5-minute idle tail, so each separate wake costs ≥ ~0.02 CU-h. Measured 2026-09-18..21: ~3 CU-h/day (~90/month) — iCal feed cache expiry ~1.7, 15-minute calendar sync ~1.4, visitors/admin ~0.7.
 - Fixes: iCal events cache safety net 30 min → 24 h (token cache: tag-invalidated only); calendar-sync `*/15` → `*/30`; notifications `*/30` → `*/30 8-19` (UTC). `src/app/services/neon-compute-budget.test.ts` pins all three.
-- `refreshStaleCalendarFeeds()` (calendar-sync-service) — admin Confirm refreshes feeds older than one poll interval before the freshness check; Settings saves only run launch checks when turning booking ON.
+- `refreshStylistCalendarFeeds(stylistId, { maxAgeMinutes })` (calendar-sync-service) — admin Confirm (new bookings and reschedule requests) re-imports that stylist's feeds older than `APPROVAL_REFRESH_MINUTES` (5) before the freshness check; Settings saves only run launch checks when turning booking ON.
 - `scripts/production-build-guard.mjs` — first step of `vercel-build`; refuses production builds outside the GitHub Actions deploy job on `main`. `vercel.json` `git.deploymentEnabled: false` stops Vercel's own untested git builds.
 - Final review follow-ups (2026-09-22): the guard compares real paths (spaces/accents/`#` in the checkout path used to skip it silently) and refuses a Vercel build with no `VERCEL_ENV` (unknown target); it logs "`<env>` build allowed" so deploy logs prove it ran. Token cache: 7-day safety net, cleared on token rotation **and** stylist deletion — rotate feed secrets only via Admin → Integrations, never by SQL. Admin Confirm/Decline show "Checking calendars…" and cannot be double-submitted; the board refreshes a Back/Forward-restored payload after the next import (`payloadArrival`).
 

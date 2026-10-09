@@ -116,7 +116,15 @@ async function main() {
       'next/cache': nextCache,
       'next/server': { after: (callback: () => unknown | Promise<unknown>) => { afterResponse.push(callback); } },
     };
-    const customerActions = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', actionDependencies);
+    // The lifecycle makes more real requests for one booking than the production
+    // per-appointment/per-customer caps allow (and Redis is intentionally absent);
+    // those caps have their own tests, so lift just these two limiters here.
+    const realRateLimit = await import('../src/app/lib/rate-limit');
+    const unlimited = { check: async () => true };
+    const customerActions = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
+      ...actionDependencies,
+      '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited },
+    });
     // The loader replaces direct imports only. Keep admin.ts's category helper
     // real while also adapting its session/navigation imports outside Next.
     const adminServices = loadServerModule<typeof import('../src/app/actions/admin-services')>('src/app/actions/admin-services.ts', {
@@ -192,7 +200,7 @@ async function main() {
     const uid = `UID:${appointment.id}@harbourhair.co.uk`;
     assert.ok((await readFeed()).includes(uid), 'A pending website request must already block the outbound calendar');
     assert.equal(await slotAvailable(bookingDay, '10:00'), false);
-    assertActionError(await customerActions.rescheduleAppointment(appointment.id, bookingDay, '14:00'), /Only confirmed/);
+    assertActionError(await customerActions.requestReschedule(appointment.id, bookingDay, '14:00'), /Only confirmed/);
     assertActionError(await adminActions.updateAppointmentStatus(appointment.id, 'CONFIRMED'), /Not authorised/);
     session = { userId: ids.other, role: 'USER' };
     assertActionError(await customerActions.cancelAppointment(appointment.id), /not found/);
@@ -209,12 +217,17 @@ async function main() {
     // Live catalogue changes cannot shorten an existing reservation or its emails.
     await db.service.update({ where: { id: ids.service }, data: { price: 999, duration: 30 } });
     session = { userId: ids.other, role: 'USER' };
-    assertActionError(await customerActions.rescheduleAppointment(appointment.id, bookingDay, '14:00'), /not found/);
+    assertActionError(await customerActions.requestReschedule(appointment.id, bookingDay, '14:00'), /not found/);
     session = { userId: ids.customer, role: 'USER' };
-    assertActionError(await customerActions.rescheduleAppointment(appointment.id, bookingDay, '11:00'), /no longer available/);
+    assertActionError(await customerActions.requestReschedule(appointment.id, bookingDay, '11:00'), /no longer available/);
     assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } })).date.getTime(), appointment.date.getTime());
     const invalidationsBeforeMove = invalidatedTags.length;
-    await assertActionSuccess(await customerActions.rescheduleAppointment(appointment.id, bookingDay, '14:00'));
+    await assertActionSuccess(await customerActions.requestReschedule(appointment.id, bookingDay, '14:00'));
+    assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } })).date.getTime(), appointment.date.getTime(), 'A request leaves the booking at its original time');
+    session = { userId: ids.admin, role: 'ADMIN' };
+    const open = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    await assertActionSuccess(await adminActions.decideRescheduleRequest(appointment.id, 'APPROVE', open.rescheduleRequestedAt!.toISOString()));
+    session = { userId: ids.customer, role: 'USER' };
     const moved = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
     assert.equal(moved.notificationVersion, 2);
     assert.equal(moved.durationAtBooking, 60);
@@ -235,12 +248,42 @@ async function main() {
     assert.equal(movedPayload.options.oldDate, appointment.date.toISOString());
     assert.deepEqual(movedPayload.appointment.price, { known: true, amountPence: 10000, priceType: 'STANDARD', vatDisplay: 'UNSPECIFIED', priceNature: 'LISTED' }, 'The moved notice carries the frozen quote, not the new catalogue price');
     assert.equal(movedPayload.appointment.service.duration, 60);
+    // Request → withdraw.
+    await assertActionSuccess(await customerActions.requestReschedule(appointment.id, day(16), '10:00'));
+    await assertActionSuccess(await customerActions.withdrawRescheduleRequest(appointment.id));
+    assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } })).rescheduleRequestedAt, null);
+
+    // Request → a Fresha import now covers the requested time → approval refused → decline keeps the original.
+    const before = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    await assertActionSuccess(await customerActions.requestReschedule(appointment.id, day(16), '11:00'));
+    const requested = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    await syncCalendarFeeds({ db, connectionId: channel.id, fetchFeed: async () => icalFeed([sourceEvent, { uid: 'fresha-takes-it', start: instant(day(16), '11:00'), end: instant(day(16), '12:00') }]) });
+    session = { userId: ids.admin, role: 'ADMIN' };
+    assertActionError(await adminActions.decideRescheduleRequest(appointment.id, 'APPROVE', requested.rescheduleRequestedAt!.toISOString()), /no longer free/);
+    await assertActionSuccess(await adminActions.decideRescheduleRequest(appointment.id, 'DECLINE', requested.rescheduleRequestedAt!.toISOString()));
+    session = { userId: ids.customer, role: 'USER' };
+    const declined = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    assert.equal(declined.date.getTime(), before.date.getTime());
+    assert.equal(declined.rescheduleRequestedAt, null);
+
+    // Approve racing withdraw: exactly one wins.
+    await assertActionSuccess(await customerActions.requestReschedule(appointment.id, day(17), '10:00'));
+    const racing = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+    const withdrawing = customerActions.withdrawRescheduleRequest(appointment.id);
+    session = { userId: ids.admin, role: 'ADMIN' };
+    const outcomes = await Promise.all([
+      adminActions.decideRescheduleRequest(appointment.id, 'APPROVE', racing.rescheduleRequestedAt!.toISOString()),
+      withdrawing,
+    ]);
+    session = { userId: ids.customer, role: 'USER' };
+    assert.equal(outcomes.filter((outcome) => outcome.success).length, 1);
+
     console.log('PASS: real create → admin confirm → customer reschedule; duplicate/ownership/status guards, idempotent confirmation, audit and notification writes, frozen price/duration, and moved outbound ICS.');
 
     const closeAppointment = await db.appointment.create({ data: { id: 'lifecycle-within-24h', userId: ids.customer, stylistId: ids.stylist, serviceId: ids.service,
       date: new Date(Date.now() + 12 * 3600_000), status: 'CONFIRMED', durationAtBooking: 60, priceAtBooking: 100 } });
     assertActionError(await customerActions.cancelAppointment(closeAppointment.id), /Cannot cancel within 24 hours/);
-    assertActionError(await customerActions.rescheduleAppointment(closeAppointment.id, day(15), '10:00'), /Cannot reschedule within 24 hours/);
+    assertActionError(await customerActions.requestReschedule(closeAppointment.id, day(15), '10:00'), /Cannot reschedule within 24 hours/);
     assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: closeAppointment.id } })).status, 'CONFIRMED');
     assert.equal(await db.notificationDelivery.count({ where: { appointmentId: closeAppointment.id } }), 0);
     const closePending = await db.appointment.create({ data: { id: 'lifecycle-pending-within-24h', userId: ids.customer, stylistId: ids.stylist, serviceId: ids.service,
@@ -272,18 +315,22 @@ async function main() {
     assert.equal((await checkCalendarBookingReadiness(db)).ready, false);
     assert.equal(await slotAvailable(bookingDay, '11:00'), false);
     await assert.rejects(create(day(17), '10:00'), /Online booking is closed/);
-    assertActionError(await customerActions.rescheduleAppointment(appointment.id, bookingDay, '16:00'), /Online booking is closed/);
+    assertActionError(await customerActions.requestReschedule(appointment.id, bookingDay, '16:00'), /Online booking is closed/);
+    const versionBeforeCancel = (await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } })).notificationVersion;
     const invalidationsBeforeCancel = invalidatedTags.length;
     await assertActionSuccess(await customerActions.cancelAppointment(appointment.id));
     const cancelled = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
     assert.equal(cancelled.status, 'CANCELLED');
-    assert.equal(cancelled.notificationVersion, 3);
+    assert.equal(cancelled.notificationVersion, versionBeforeCancel + 1);
     assert.ok(invalidatedTags.slice(invalidationsBeforeCancel).includes('stylist-ical-feed'));
     assert.ok(!(await readFeed()).includes(uid), 'Cancellation removes the website reservation from outbound ICS even while new bookings are closed');
     assertActionError(await customerActions.cancelAppointment(appointment.id), /Only pending or confirmed/);
     assert.equal(await slotAvailable(bookingDay, '14:00'), true);
     assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: 'CANCELLATION' } }), 1);
-    assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, status: 'SENT', payloadJson: '{}' } }), 5);
+    // Every sent notice (the original five plus the reschedule-request scenarios') has its payload scrubbed.
+    const sentCount = await db.notificationDelivery.count({ where: { appointmentId: appointment.id, status: 'SENT' } });
+    assert.ok(sentCount >= 5);
+    assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, status: 'SENT', payloadJson: '{}' } }), sentCount);
     console.log('PASS: approval rechecks newly imported Fresha conflicts; failed import preserves blocks, keeps booking open while fresh and closes it once stale; cancellation remains available and removes its outbound event.');
 
     // Reconciliation also frees old times when the provider moves/removes events.

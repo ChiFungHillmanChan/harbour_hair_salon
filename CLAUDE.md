@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Harbour Hair Salon — a Next.js 16 booking website for a hair salon. Features public pages (home, services, booking, offers, contact), auth (signin/register), customer appointment management (view/cancel/reschedule), and an admin panel (users, offers, discounts, schedule calendar). Deployed on Vercel (Pro plan).
+Harbour Hair Salon — a Next.js 16 booking website for a hair salon. Features public pages (home, services, booking, offers, contact), auth (signin/register), customer appointment management (view/cancel/request a reschedule), and an admin panel (users, offers, discounts, schedule calendar). Deployed on Vercel (Pro plan).
 
 ## Commands
 
@@ -157,8 +157,8 @@ Rules that follow from this:
 - **Email service uses `import 'server-only'`** — not `'use server'` (internal functions, not client-callable).
 - **Booking requires authentication** — middleware redirects to signin with `?redirect=/book`.
 - **Online booking is LOCKED closed in production until Square deposits are wired.** The Square code (`lib/square-config.ts`, `lib/square-webhook.ts`, `services/square-gateway.ts`, `services/deposit-policy.ts`) is foundation only — nothing in the booking flow calls it. `SQUARE_DEPOSITS_WIRED = false` in `lib/online-booking-lock.ts` makes `assertOnlineBookingReady` / `isBookingEnabled` answer "closed" in every production build (fails closed; only an explicit Vercel preview is exempt) before any DB read, and Admin → Settings refuses to switch booking on. Flip it to `true` only in the change that takes the deposit in `submitBooking`. Dev, unit tests and CI integration scripts are not locked; a local `pnpm build && pnpm start` rehearsal IS.
-- **24-hour cancellation/reschedule policy** — enforced server-side in booking actions.
-- **Reschedule uses `$transaction` with Serializable isolation** — prevents double-booking race conditions.
+- **24-hour cancellation/reschedule policy** — enforced server-side in booking actions; a reschedule request's new time must also be ≥ 24 h away.
+- **Customer reschedules are staff-approved requests** (`requestReschedule` → `decideRescheduleRequest`); the booking stays CONFIRMED at its original time until approval, which refreshes the stylist's Fresha feeds and re-checks the slot in a Serializable transaction. Unanswered requests lapse 24 h before the requested time (notifications cron).
 - **Use regular `<img>` for external/CDN images**, `next/image` only for local `public/` assets.
 - **Tailwind CSS only** for styling. The brand is **monochrome black/white/grey** (client requirement) — never reintroduce the old blue `#174F7F` or gold.
 - **readme/structure.md**: Check before creating new functions/components to avoid duplication.
@@ -169,7 +169,7 @@ Rules that follow from this:
 - **Any code that sets a password** (admin reset, bootstrap, Google takeover defence, reset redemption) revokes that account's unused `PasswordResetToken`s in the same transaction. New passwords are capped at **72 UTF-8 bytes** (`fitsBcryptLimit`) — bcrypt ignores the rest.
 - **Rate limits** go through `lib/rate-limit.ts` and never fail open. Login and reset requests have per-IP *and* per-account buckets (keyed by `accountRateLimitKey`, a hash); a signed `login_device` cookie (`lib/login-device.ts`) lets a browser that signed in before skip the account bucket so strangers cannot lock the owner out.
 - **Self-service booking requires a confirmed email** (`hasVerifiedEmail`: `User.emailVerifiedAt` or a linked Google account).
-- **Public availability actions** refuse any date outside `isBookableDateWindow` *before* touching the database, and have a per-IP limiter. Rescheduling to the same time is a no-op; real reschedules are limited per customer and per appointment.
+- **Public availability actions** refuse any date outside `isBookableDateWindow` *before* touching the database, and have a per-IP limiter. Requesting the booking's current (or already-requested) time is a no-op; real requests are limited per customer and per appointment.
 - **Marketing unsubscribe** needs the signed emailed link (`lib/unsubscribe-token.ts`); the form never changes the list.
 - **Vercel Firewall:** the scanner-probe deny rule lives in the **project firewall**, versioned in `infra/vercel-firewall/` (apply with the CLI, see its README). **Never** put `routes` + `mitigate` in `vercel.json`: that deployment challenged *every* request, which Fresha's and Treatwell's iCal pollers cannot pass. Rate-limit rules are usage-billed — none are used.
 - **Spend Management:** intended as a US$10 on-demand budget with **email alerts only** (never pause production — the site would go offline). Set in the dashboard (Team → Settings → Billing).
