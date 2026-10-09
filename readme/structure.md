@@ -43,10 +43,10 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 
 ### Customer Reschedule Requests
 A customer's move of a CONFIRMED booking is a request; the original time stays booked until staff decide.
-- `src/app/lib/reschedule-request.ts` — `RESCHEDULE_REQUEST_LEAD_HOURS` (24), `isRescheduleRequestExpired`, `rescheduleRequestView` (pure, client-safe).
+- `src/app/lib/reschedule-request.ts` — `RESCHEDULE_REQUEST_LEAD_HOURS` (24), `isRescheduleRequestExpired`, `isRescheduleRequestMoot` (requested time < 24 h away **or** the original time has passed), `rescheduleRequestView` (pure, client-safe).
 - `src/app/actions/booking.ts` — `requestReschedule(appointmentId, dateStr, time)`, `withdrawRescheduleRequest(appointmentId)`; `cancelAppointment` clears an open request.
 - `src/app/actions/admin.ts` — `decideRescheduleRequest(appointmentId, 'APPROVE' | 'DECLINE', requestedAt)`; approval first runs `refreshCalendarFeedsBeforeApproval(stylistId)` (that stylist's feeds older than `APPROVAL_REFRESH_MINUTES` = 5, then every stylist's feeds older than `CALENDAR_POLL_MINUTES` = 30 or failing), exactly as new-booking approval does.
-- `src/app/services/reschedule-request-lapse.ts` — `lapseExpiredRescheduleRequests(now)`, run by the notifications cron.
+- `src/app/services/reschedule-request-lapse.ts` — `lapseExpiredRescheduleRequests(now)`, run by the notifications cron; also clears requests on bookings whose original time has passed (audited, no email).
 - Emails: `RESCHEDULE_REQUEST_RECEIVED`, `SALON_RESCHEDULE_ALERT`, `RESCHEDULE_DECLINED`, `RESCHEDULE_LAPSED` (keyed by the request's `requestedAt`).
 
 ### Opening Hours (Admin → Opening Hours)

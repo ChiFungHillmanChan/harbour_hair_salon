@@ -224,7 +224,7 @@ for (const view of ['day', 'week', 'month']) {
       time: '11:30', stylistId: 's1', serviceId: 'service1', durationMin: 15, notes: 'test note',
       customerName: 'Test Customer', status: 'CANCELLED', updatedAt: '2026-09-20T18:00:00Z',
       price: { known: true, amountPence: 0, priceType: null, vatDisplay: null, priceNature: null },
-      rescheduleRequestedDate: null, rescheduleRequestedAt: null });
+      date: '2026-10-23T10:30:00Z', rescheduleRequestedDate: null, rescheduleRequestedAt: null });
   });
 }
 

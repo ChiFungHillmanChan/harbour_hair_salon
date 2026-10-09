@@ -16,7 +16,7 @@ import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
 import { refreshCalendarFeedsBeforeApproval } from '@/app/services/calendar-sync-service';
 import { assertAppointmentSlotAvailable, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
-import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
+import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
 import { getActionLocale } from '@/i18n/request';
 import { translator } from '@/i18n/messages';
@@ -582,7 +582,9 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
         return false;
       }
 
-      if (isRescheduleRequestExpired(requested)) throw new BookingError('RESCHEDULE_REQUEST_EXPIRED');
+      // Too close to the requested time, or the original visit has already
+      // happened (moving it would email a "moved" notice for a past booking).
+      if (isRescheduleRequestMoot({ date: current.date, rescheduleRequestedDate: requested })) throw new BookingError('RESCHEDULE_REQUEST_EXPIRED');
       const readiness = await checkCalendarBookingReadiness(tx);
       if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
       if (current.service.requiresPatchTest) {

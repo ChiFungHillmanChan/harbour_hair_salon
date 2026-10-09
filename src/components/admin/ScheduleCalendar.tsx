@@ -485,6 +485,7 @@ export function ScheduleCalendar({
       status: appt.status,
       updatedAt: appt.updatedAt,
       price: appt.price,
+      date: appt.date,
       rescheduleRequestedDate: appt.rescheduleRequestedDate,
       rescheduleRequestedAt: appt.rescheduleRequestedAt,
     });

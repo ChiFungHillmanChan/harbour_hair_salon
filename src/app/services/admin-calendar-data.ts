@@ -8,7 +8,7 @@ import { resolveSalonDateTime } from './salon-time';
 import { getTreatwellSyncCoverage } from './integration-readiness';
 import { recordedPrice } from './pricing/recorded-price';
 import { toPence } from './pricing/money';
-import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
+import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import type { BoardPrice } from '@/app/lib/board-price';
 
 // The service's CURRENT price is deliberately not selected: an appointment
@@ -153,10 +153,11 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     rescheduleRequests: rescheduleRows.filter((row) => row.rescheduleRequestedDate && row.rescheduleRequestedAt).map((row) => ({
       id: row.id, date: row.date.toISOString(),
       requestedDate: row.rescheduleRequestedDate!.toISOString(), requestedAt: row.rescheduleRequestedAt!.toISOString(),
-      expired: isRescheduleRequestExpired(row.rescheduleRequestedDate!, now),
+      // Requested time under 24 h away, or the visit itself has already happened.
+      expired: isRescheduleRequestMoot({ date: row.date, rescheduleRequestedDate: row.rescheduleRequestedDate! }, now),
       user: row.user, stylist: row.stylist, service: row.service,
     })),
-    rescheduleRequestCount: rescheduleRows.filter((row) => row.rescheduleRequestedDate && !isRescheduleRequestExpired(row.rescheduleRequestedDate, now)).length,
+    rescheduleRequestCount: rescheduleRows.filter((row) => row.rescheduleRequestedDate && !isRescheduleRequestMoot({ date: row.date, rescheduleRequestedDate: row.rescheduleRequestedDate }, now)).length,
   };
 }
 

@@ -135,3 +135,25 @@ test('the board lists open reschedule requests by request age and counts only un
   assert.equal(data.rescheduleRequests[1].user.phone, '07000 000000', 'the phone is carried so staff can call the customer');
   assert.equal(data.rescheduleRequests[1].requestedAt, '2099-09-01T10:00:00.000Z');
 });
+
+test('a request on a booking whose original time has passed is listed as expired and not counted', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') });
+  const requests = [
+    // The visit was yesterday; the requested time is still days away.
+    { id: 'past', date: new Date('2099-08-31T09:00:00Z'), rescheduleRequestedDate: new Date('2099-09-10T09:00:00Z'), rescheduleRequestedAt: new Date('2099-08-29T10:00:00Z'),
+      user: { name: 'Amy', phone: null }, stylist: { name: 'Ivan' }, service: { name: 'Cut' } },
+    { id: 'open', date: new Date('2099-09-21T09:00:00Z'), rescheduleRequestedDate: new Date('2099-09-10T09:00:00Z'), rescheduleRequestedAt: new Date('2099-09-01T10:00:00Z'),
+      user: { name: 'Ben', phone: null }, stylist: { name: 'Lox' }, service: { name: 'Colour' } },
+  ];
+  const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
+    '@/app/lib/prisma': { __esModule: true, getDatabaseProvider: () => 'postgresql', default: { appointment: {
+      findMany: async (query: { where: Record<string, unknown> }) => ('rescheduleRequestedDate' in query.where ? requests : []),
+      groupBy: async () => [], count: async () => 0,
+    }, $queryRaw: async () => [{}] } },
+    '@/app/lib/session': { requireAdmin: async () => ({ role: 'ADMIN' }) },
+    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
+  });
+  const data = await getAdminCalendarData({ date: '2099-09-01', view: 'year' });
+  assert.deepEqual(data.rescheduleRequests.map((row) => [row.id, row.expired]), [['past', true], ['open', false]]);
+  assert.equal(data.rescheduleRequestCount, 1, 'a request on a visit that already happened needs no answer');
+});

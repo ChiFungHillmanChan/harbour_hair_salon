@@ -65,12 +65,15 @@ every `status`-based query keep seeing the original time.
 | Withdraw | customer | owner; open request | clear both fields |
 | Approve | staff | see §6 | `date := rescheduleRequestedDate`, clear fields |
 | Decline | staff | open request | clear fields |
-| Lapse | system (notifications cron) | `rescheduleRequestedDate < now + 24 h` | clear fields |
+| Lapse | system (notifications cron) | `rescheduleRequestedDate < now + 24 h`, or original `date < now` | clear fields |
 | Cancel booking | customer or staff | existing rules | also clear fields |
 
 **Expired is derived, not stored.** A request whose `rescheduleRequestedDate` is
 < 24 h away is treated as expired everywhere (cannot be approved, shows
 "expired") from that instant; the cron only does the clean-up and email.
+*(Amended 2026-10-09.)* A request is equally moot once the booking's
+**original** `date` has passed (`isRescheduleRequestMoot`): it shows as expired,
+is not counted, and approval is refused with `RESCHEDULE_REQUEST_EXPIRED`.
 
 **Concurrency.** Every transition runs in `runSerializableWithRetry` and writes
 with a conditional `updateMany` on
@@ -260,7 +263,10 @@ lock is claimed and before dispatch:
 
 ```ts
 const due = await db.appointment.findMany({
-  where: { status: 'CONFIRMED', rescheduleRequestedDate: { lt: addHours(now, 24) } },
+  where: { status: 'CONFIRMED', OR: [
+    { rescheduleRequestedDate: { lt: addHours(now, 24) } },
+    { date: { lt: now }, rescheduleRequestedDate: { not: null } }, // amended 2026-10-09
+  ] },
   select: { id: true, date: true, updatedAt: true, rescheduleRequestedDate: true, rescheduleRequestedAt: true },
   take: 50,
 });
@@ -271,7 +277,10 @@ cancel/reschedule paths pass to `enqueueAppointmentNotification` (user
 email/name/phone, stylist name, service id/name/price/duration) before enqueueing.
 
 For each: Serializable transaction → conditional clear (§4) → enqueue
-`RESCHEDULE_LAPSED` → audit `…_LAPSED`. Re-running is a no-op (the conditional
+`RESCHEDULE_LAPSED` → audit `…_LAPSED`. *(Amended 2026-10-09.)* A request whose
+original `date` has already passed is cleared and audited the same way, but no
+`RESCHEDULE_LAPSED` is queued (there is no point emailing about a visit that
+already happened). Re-running is a no-op (the conditional
 clear finds nothing). The route's `NOTIFICATIONS_ENABLED` kill-switch stays above
 the first DB call. No new cron and no extra Neon wake (same tick).
 

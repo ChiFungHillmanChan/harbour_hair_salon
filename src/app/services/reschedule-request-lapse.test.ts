@@ -9,11 +9,13 @@ type Hooks = {
   onFindUnique?: (id: string, rows: Row[]) => void;
   failEnqueueFor?: string;
 };
+/** Due: requested time under 24 h away, OR the booking's original time has passed with a request still open. */
+type DueWhere = { status: string; OR: ({ rescheduleRequestedDate: { lt: Date } } | { date: { lt: Date }; rescheduleRequestedDate: { not: null } })[] };
 type Row = { id: string; rescheduleRequestedDate: Date | null; rescheduleRequestedAt: Date | null; [key: string]: unknown };
 
-function fixture(rows: { id: string; requestedDate: Date | null; requestedAt: Date | null; status?: string }[], hooks: Hooks = {}) {
+function fixture(rows: { id: string; requestedDate: Date | null; requestedAt: Date | null; status?: string; date?: Date }[], hooks: Hooks = {}) {
   const appointments = rows.map((row) => ({
-    id: row.id, status: row.status ?? 'CONFIRMED', date: new Date('2099-09-14T12:00:00Z'), notificationVersion: 0,
+    id: row.id, status: row.status ?? 'CONFIRMED', date: row.date ?? new Date('2099-09-14T12:00:00Z'), notificationVersion: 0,
     rescheduleRequestedDate: row.requestedDate, rescheduleRequestedAt: row.requestedAt,
     priceAtBooking: null, durationAtBooking: 60, notes: null,
     user: { email: `${row.id}@example.test`, name: 'Amy', phone: null }, stylist: { name: 'Ivan' }, service: { name: 'Cut', duration: 60 },
@@ -22,8 +24,10 @@ function fixture(rows: { id: string; requestedDate: Date | null; requestedAt: Da
   const audits: string[] = [];
   const tx = {
     appointment: {
-      findMany: async ({ where }: { where: { status: string; rescheduleRequestedDate: { lt: Date } } }) =>
-        appointments.filter((row) => row.status === where.status && row.rescheduleRequestedDate && row.rescheduleRequestedDate < where.rescheduleRequestedDate.lt).map((row) => ({ id: row.id })),
+      findMany: async ({ where }: { where: DueWhere }) => appointments.filter((row) => row.status === where.status && where.OR.some((part) =>
+        'date' in part
+          ? row.date < part.date.lt && row.rescheduleRequestedDate !== null
+          : row.rescheduleRequestedDate !== null && row.rescheduleRequestedDate < part.rescheduleRequestedDate.lt)).map((row) => ({ id: row.id })),
       findUnique: async ({ where }: { where: { id: string } }) => {
         const found = structuredClone(appointments.find((row) => row.id === where.id) ?? null);
         hooks.onFindUnique?.(where.id, appointments as unknown as Row[]); // mutates AFTER the clone: the write then races
@@ -113,4 +117,21 @@ test('a row that throws is skipped and does not stop the rest', async (t) => {
   assert.deepEqual(f.enqueued.map((e) => e.id), ['fine']);
   assert.ok(f.appointments[0].rescheduleRequestedAt, 'the failed row stays due (its transaction rolled back)');
   assert.equal(f.appointments[1].rescheduleRequestedAt, null);
+});
+
+// A visit that already happened needs no answer and no email; the request is
+// only tidied away (and audited) so it stops showing anywhere.
+test('a request on a booking whose original time has passed is cleared and audited without an email', async () => {
+  const f = fixture([
+    { id: 'gone', date: new Date('2099-09-01T09:00:00Z'), requestedDate: new Date('2099-09-10T09:00:00Z'), requestedAt: new Date('2099-08-30T10:00:00Z') },
+    { id: 'soon', requestedDate: new Date('2099-09-02T11:00:00Z'), requestedAt: new Date('2099-08-30T11:00:00Z') },
+    { id: 'later', requestedDate: new Date('2099-09-10T09:00:00Z'), requestedAt: new Date('2099-08-31T10:00:00Z') },
+  ]);
+  assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(now), { lapsed: 2, failed: 0 });
+  assert.deepEqual(f.enqueued.map((event) => event.id), ['soon'], 'the booking still ahead is emailed; the past one is not');
+  assert.deepEqual(f.audits, ['APPOINTMENT.RESCHEDULE_LAPSED', 'APPOINTMENT.RESCHEDULE_LAPSED']);
+  assert.equal(f.appointments[0].rescheduleRequestedAt, null);
+  assert.equal(f.appointments[1].rescheduleRequestedAt, null);
+  assert.ok(f.appointments[2].rescheduleRequestedAt, 'a future booking with a request over 24 h away is untouched');
+  assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(now), { lapsed: 0, failed: 0 }, 're-running is a no-op');
 });

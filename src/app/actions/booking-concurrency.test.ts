@@ -683,6 +683,18 @@ test('an expired request cannot be approved', async () => {
   assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
 });
 
+test('a request on a booking whose original time has passed cannot be approved', async () => {
+  // The visit was an hour ago (mocked now 2099-09-01T12:00Z); the requested time is days away.
+  const f = fixture({ openRequest: OPEN_REQUEST, currentDate: new Date('2099-09-01T11:00:00Z') });
+  const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
+  assert.equal(result.success, false);
+  assert.match(String(!result.success && result.error), /expired/);
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+  assert.equal(f.appointment.rescheduleRequestedAt?.toISOString(), OPEN_REQUEST.requestedAt.toISOString(), 'the request is left for the lapse step');
+  assert.equal(f.appointment.notificationVersion, 0);
+  assert.equal(f.events.length, 0);
+});
+
 test('decline keeps the original time, clears the request and emails the customer', async () => {
   const f = fixture({ openRequest: OPEN_REQUEST });
   assert.deepEqual(await f.admin.decideRescheduleRequest(f.appointment.id, 'DECLINE', OPEN_REQUEST.requestedAt.toISOString()), { success: true });

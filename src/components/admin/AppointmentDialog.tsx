@@ -8,7 +8,7 @@ import { describeBoardPrice, type BoardPrice } from '@/app/lib/board-price';
 import { MIN_DURATION_MINUTES } from '@/app/lib/calendar-geometry';
 import { formatGBP } from '@/app/services/pricing/money';
 import { RescheduleRequestActions } from './RescheduleRequestActions';
-import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
+import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useLocale, useT } from '@/i18n/client';
 import { DEFAULT_LOCALE, HTML_LANG, LOCALE_LABEL, LOCALES, isLocale, type Locale } from '@/i18n/config';
@@ -51,6 +51,8 @@ export type DialogTarget =
       updatedAt: string;
       /** The price recorded on the appointment — never re-derived from today's list. */
       price: BoardPrice;
+      /** The booking's current start (ISO instant): a request on a past visit is moot. */
+      date: string;
       /** An open customer reschedule request (ISO instants), if any. */
       rescheduleRequestedDate: string | null;
       rescheduleRequestedAt: string | null;
@@ -414,7 +416,7 @@ export function AppointmentDialog({
               <p>{t('rescheduleRequests.dialogNote', { to: `${formatSalonLongDate(locale, new Date(target.rescheduleRequestedDate))} ${formatSalonClock(locale, new Date(target.rescheduleRequestedDate))}` })}</p>
               <div className="mt-2">
                 <RescheduleRequestActions appointmentId={target.appointmentId} requestedAt={target.rescheduleRequestedAt}
-                  expired={isRescheduleRequestExpired(target.rescheduleRequestedDate)} onDone={saved} />
+                  expired={isRescheduleRequestMoot({ date: target.date, rescheduleRequestedDate: target.rescheduleRequestedDate })} onDone={saved} />
               </div>
             </div>
           )}
