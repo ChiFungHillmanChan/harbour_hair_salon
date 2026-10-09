@@ -23,7 +23,7 @@ import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock'
 //     plus a link per marketplace the salon currently advertises (none of which
 //     is hardcoded — see marketplace-channels.ts), and is viewable without
 //     signing in
-//   - submitBooking / rescheduleAppointment refuse server-side, so the block
+//   - submitBooking / requestReschedule refuse server-side, so the block
 //     cannot be bypassed by calling the actions directly
 //   - slot-fetching actions return nothing
 //   - the Reschedule button in My Bookings is disabled
@@ -31,7 +31,7 @@ import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock'
 // Cancellation is deliberately NOT blocked — customers may always cancel an
 // existing appointment.
 
-// Returned by submitBooking / rescheduleAppointment, which have no business
+// Returned by submitBooking / requestReschedule, which have no business
 // knowing which marketplaces are live — that is settings data, and naming one
 // here is exactly what made the Treatwell link impossible to switch off.
 export const BOOKING_MAINTENANCE_MESSAGE =

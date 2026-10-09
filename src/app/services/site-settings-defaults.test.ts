@@ -50,7 +50,7 @@ test('all five booking entry points gate on isBookingEnabled', () => {
   assert.equal(
     guards.length,
     5,
-    'getAvailableSlotsAction, fetchSlots, fetchBookingDays, submitBooking and rescheduleAppointment must each gate',
+    'getAvailableSlotsAction, fetchSlots, fetchBookingDays, submitBooking and requestReschedule must each gate',
   );
   // The old compile-time constant must be fully gone from the gating path.
   assert.doesNotMatch(actions, /if \(BOOKING_MAINTENANCE\)/);

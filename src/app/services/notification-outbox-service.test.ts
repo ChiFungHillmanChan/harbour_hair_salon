@@ -269,3 +269,93 @@ test('a queued salon alert for a walk-in still reaches the salon', async () => {
   assert.equal(result.sent, 1);
   assert.equal(f.row.status, 'SENT');
 });
+
+function requestFixture(kind: string, state: { status: string; requestedAt: string | null; date?: string }) {
+  const now = new Date('2099-09-01T12:00:00Z');
+  const requestedAt = '2099-09-01T11:00:00.000Z';
+  // The queued payload and the booking agree on the date, so only the request rules decide.
+  const date = new Date(state.date ?? '2099-09-14T12:00:00Z').toISOString();
+  const row = {
+    id: 'job-r', eventKey: `appointment/a/0/${kind}/${requestedAt}`, kind, appointmentId: 'a', status: 'PENDING', attempts: 0,
+    firstAttemptAt: null as Date | null, nextAttemptAt: now, createdAt: now, lockedAt: null as Date | null, lockToken: null as string | null,
+    payloadJson: JSON.stringify({
+      version: 0, date, locale: 'en-GB',
+      appointment: { schema: 2, id: 'a', date, notes: null, user: { name: 'Amy', email: 'amy@example.test' }, stylist: { name: 'Ivan' }, service: { name: 'Cut', duration: 60 }, price: { known: false } },
+      options: { requestedDate: '2099-09-15T09:00:00.000Z', requestedAt },
+    }),
+  };
+  let sends = 0;
+  const prepared: unknown[] = [];
+  const db = {
+    notificationDelivery: {
+      findMany: async () => [row],
+      findUnique: async () => ({ ...row }),
+      updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        if (where.lockToken && where.lockToken !== row.lockToken) return { count: 0 };
+        const increment = data.attempts as { increment?: number } | undefined;
+        Object.assign(row, data, { attempts: row.attempts + (increment?.increment ?? 0) });
+        return { count: 1 };
+      },
+    },
+    appointment: {
+      findUnique: async () => ({ id: 'a', status: state.status, date: new Date(date), notificationVersion: 0, review: null, rescheduleRequestedAt: state.requestedAt ? new Date(state.requestedAt) : null }),
+      updateMany: async () => ({ count: 1 }),
+    },
+    $transaction: async (fn: (tx: unknown) => unknown) => fn(db),
+  };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': db,
+    './email-service': {
+      prepareAppointmentEmail: async (_kind: string, _appointment: unknown, options: unknown) => { prepared.push(options); return { from: 'Salon <b@example.com>', to: 'amy@example.test', subject: 'S', html: '<p>S</p>' }; },
+      sendPreparedEmail: async () => { sends++; },
+    },
+  });
+  return { service, db, row, now, sends: () => sends, prepared };
+}
+
+const OPEN = '2099-09-01T11:00:00.000Z';
+const OTHER = '2099-09-01T11:30:00.000Z';
+for (const [kind, state, expected] of [
+  ['RESCHEDULE_REQUEST_RECEIVED', { status: 'CONFIRMED', requestedAt: OPEN }, 'SENT'],
+  ['RESCHEDULE_REQUEST_RECEIVED', { status: 'CONFIRMED', requestedAt: OTHER }, 'SKIPPED'],
+  ['RESCHEDULE_REQUEST_RECEIVED', { status: 'CONFIRMED', requestedAt: null }, 'SKIPPED'],
+  ['SALON_RESCHEDULE_ALERT', { status: 'CONFIRMED', requestedAt: OPEN }, 'SENT'],
+  ['SALON_RESCHEDULE_ALERT', { status: 'CANCELLED', requestedAt: OPEN }, 'SKIPPED'],
+  ['RESCHEDULE_DECLINED', { status: 'CONFIRMED', requestedAt: null }, 'SENT'],
+  ['RESCHEDULE_DECLINED', { status: 'CONFIRMED', requestedAt: OTHER }, 'SENT'],
+  ['RESCHEDULE_DECLINED', { status: 'CONFIRMED', requestedAt: OPEN }, 'SKIPPED'],
+  ['RESCHEDULE_DECLINED', { status: 'CANCELLED', requestedAt: null }, 'SKIPPED'],
+  ['RESCHEDULE_LAPSED', { status: 'CONFIRMED', requestedAt: null }, 'SENT'],
+  ['RESCHEDULE_LAPSED', { status: 'CONFIRMED', requestedAt: null, date: '2099-08-31T12:00:00Z' }, 'SKIPPED'],
+] as const) {
+  test(`${kind} with request ${state.requestedAt ?? 'cleared'} on a ${state.status} booking is ${expected}`, async () => {
+    const f = requestFixture(kind, state);
+    await f.service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+    assert.equal(f.row.status, expected);
+    assert.equal(f.sends(), expected === 'SENT' ? 1 : 0);
+  });
+}
+
+test('a request email is prepared with its requested date', async () => {
+  const f = requestFixture('RESCHEDULE_REQUEST_RECEIVED', { status: 'CONFIRMED', requestedAt: OPEN });
+  await f.service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+  assert.equal((f.prepared[0] as { requestedDate: Date }).requestedDate.toISOString(), '2099-09-15T09:00:00.000Z');
+});
+
+test('request emails are keyed by the request, so a replacement queues new events', async () => {
+  const upserts: { eventKey: string }[] = [];
+  const db = {
+    notificationDelivery: { findUnique: async () => null, upsert: async ({ create }: { create: { eventKey: string } }) => { upserts.push(create); return { id: create.eventKey }; } },
+    appointment: {},
+  };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', { '@/app/lib/prisma': db, './email-service': {} });
+  const appointment = { id: 'a', date: new Date('2099-09-14T12:00:00Z'), priceAtBooking: null, durationAtBooking: 60, notificationVersion: 3, notes: null, user: { email: 'amy@example.test', name: 'Amy' }, stylist: { name: 'Ivan' }, service: { name: 'Cut', duration: 60 } };
+  const requestedDate = new Date('2099-09-15T09:00:00Z');
+  await service.enqueueAppointmentNotification(db as never, 'RESCHEDULE_REQUEST_RECEIVED', appointment, { requestedDate, requestedAt: new Date('2099-09-01T11:00:00Z') });
+  await service.enqueueAppointmentNotification(db as never, 'RESCHEDULE_REQUEST_RECEIVED', appointment, { requestedDate, requestedAt: new Date('2099-09-01T11:30:00Z') });
+  assert.deepEqual(upserts.map((event) => event.eventKey), [
+    'appointment/a/3/RESCHEDULE_REQUEST_RECEIVED/2099-09-01T11:00:00.000Z',
+    'appointment/a/3/RESCHEDULE_REQUEST_RECEIVED/2099-09-01T11:30:00.000Z',
+  ]);
+  await assert.rejects(service.enqueueAppointmentNotification(db as never, 'RESCHEDULE_DECLINED', appointment, { requestedDate }), /requestedAt/);
+});

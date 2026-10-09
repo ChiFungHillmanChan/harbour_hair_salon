@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchSlots, rescheduleAppointment } from '@/app/actions/booking';
+import { fetchSlots, requestReschedule } from '@/app/actions/booking';
 import type { TimeSlot } from '@/app/services/booking-service';
-import { resolveSalonDateTime } from '@/app/services/salon-time';
+import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import { useLocale, useT } from '@/i18n/client';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { clearDraft, useDraftState } from '@/i18n/draft-store';
@@ -14,6 +14,8 @@ interface RescheduleModalProps {
   serviceDuration: number;
   currentDate: string; // ISO string
   onClose: () => void;
+  /** Called once the request is sent, just before the dialog closes. */
+  onSent?: () => void;
 }
 
 export function RescheduleModal({
@@ -22,6 +24,7 @@ export function RescheduleModal({
   serviceDuration,
   currentDate,
   onClose,
+  onSent,
 }: RescheduleModalProps) {
   const t = useT('appointments');
   const locale = useLocale();
@@ -35,9 +38,9 @@ export function RescheduleModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const minDate = tomorrow.toISOString().split('T')[0];
+  // Two days ahead: the server refuses anything under 24 h, and the date
+  // picker cannot express "after 13:00 tomorrow".
+  const [minDate] = useState(() => salonDateKey(new Date(Date.now() + 2 * 86_400_000)));
 
   function close() {
     clearDraft(`${draft}:date`);
@@ -102,8 +105,9 @@ export function RescheduleModal({
     try {
       // Pass the salon-local date + time as plain strings; the server resolves them
       // to the correct UTC instant in the salon timezone (Europe/London).
-      const result = await rescheduleAppointment(appointmentId, selectedDate, selectedSlot);
+      const result = await requestReschedule(appointmentId, selectedDate, selectedSlot);
       if (result.success) {
+        onSent?.();
         close();
       } else {
         setError(result.error || t('reschedule.failed'));

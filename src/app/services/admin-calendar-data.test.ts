@@ -10,6 +10,7 @@ test('year calendar returns twelve aggregates without loading appointment detail
       count: async () => 0,
       groupBy: async () => [],
       findMany: async ({ where, take }: { where: { status?: string }; take?: number }) => {
+        if ('rescheduleRequestedDate' in where) return [];
         if (where.status !== 'PENDING') detailReads++;
         assert.ok(take && take <= 26, 'pending page must be bounded');
         return [];
@@ -45,7 +46,11 @@ test('pending cursor is bounded, deterministic and independent of selected calen
   const pending = Array.from({ length: 26 }, (_, i) => ({ id: `pending-${i.toString().padStart(2, '0')}`, date: new Date('2027-01-01T10:00:00Z'), status: 'PENDING', user: { name: 'Customer' }, stylist: { name: 'Stylist' }, service: { name: 'Cut' } }));
   const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
     '@/app/lib/prisma': { __esModule: true, getDatabaseProvider: () => 'postgresql', default: { appointment: {
-      findMany: async (query: Record<string, unknown>) => { calls.push(query); return pending; },
+      findMany: async (query: Record<string, unknown>) => {
+        if ((query.where as { status?: string }).status !== 'PENDING') return [];
+        calls.push(query);
+        return pending;
+      },
       groupBy: async () => [], count: async () => 26,
     }, $queryRaw: async () => [{}] } },
     '@/app/lib/session': { requireAdmin: async () => ({ role: 'ADMIN' }) },
@@ -98,4 +103,57 @@ test('the board carries each booking\'s recorded price and only bookable options
   assert.deepEqual(byId.get('quoted')?.price, { known: true, amountPence: 14200, priceType: 'NHS', vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION' });
   assert.ok(!('price' in (byId.get('legacy')?.service ?? {})), 'today\'s service price never reaches the board');
   assert.deepEqual(result.services.map((service) => [service.id, service.amountPence, service.isBookable]), [['open', 4000, true], ['retired', 3500, false]]);
+});
+
+test('the board lists open reschedule requests by request age and counts only unexpired ones', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') });
+  const requests = [
+    { id: 'r2', date: new Date('2099-09-20T09:00:00Z'), rescheduleRequestedDate: new Date('2099-09-02T09:00:00Z'), rescheduleRequestedAt: new Date('2099-08-30T10:00:00Z'),
+      user: { name: 'Amy', phone: null }, stylist: { name: 'Ivan' }, service: { name: 'Cut' } },
+    { id: 'r1', date: new Date('2099-09-21T09:00:00Z'), rescheduleRequestedDate: new Date('2099-09-10T09:00:00Z'), rescheduleRequestedAt: new Date('2099-09-01T10:00:00Z'),
+      user: { name: 'Ben', phone: '07000 000000' }, stylist: { name: 'Lox' }, service: { name: 'Colour' } },
+  ];
+  const queries: { where: Record<string, unknown>; orderBy: unknown; take: number }[] = [];
+  const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
+    '@/app/lib/prisma': { __esModule: true, getDatabaseProvider: () => 'postgresql', default: { appointment: {
+      findMany: async (query: { where: Record<string, unknown>; orderBy: unknown; take: number }) => {
+        if ('rescheduleRequestedDate' in query.where) { queries.push(query); return requests; }
+        return [];
+      },
+      groupBy: async () => [], count: async () => 0,
+    }, $queryRaw: async () => [{}] } },
+    '@/app/lib/session': { requireAdmin: async () => ({ role: 'ADMIN' }) },
+    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
+  });
+  const data = await getAdminCalendarData({ date: '2099-09-01', view: 'year' });
+  assert.deepEqual(queries[0].where, { status: 'CONFIRMED', rescheduleRequestedDate: { not: null } });
+  assert.deepEqual(queries[0].orderBy, [{ rescheduleRequestedAt: 'asc' }, { id: 'asc' }]);
+  assert.equal(queries[0].take, 50);
+  assert.deepEqual(data.rescheduleRequests.map((row) => [row.id, row.expired]), [['r2', true], ['r1', false]]);
+  assert.equal(data.rescheduleRequestCount, 1, 'an expired request is listed but not counted');
+  assert.equal(data.rescheduleRequests[0].requestedDate, '2099-09-02T09:00:00.000Z');
+  assert.equal(data.rescheduleRequests[1].user.phone, '07000 000000', 'the phone is carried so staff can call the customer');
+  assert.equal(data.rescheduleRequests[1].requestedAt, '2099-09-01T10:00:00.000Z');
+});
+
+test('a request on a booking whose original time has passed is listed as expired and not counted', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') });
+  const requests = [
+    // The visit was yesterday; the requested time is still days away.
+    { id: 'past', date: new Date('2099-08-31T09:00:00Z'), rescheduleRequestedDate: new Date('2099-09-10T09:00:00Z'), rescheduleRequestedAt: new Date('2099-08-29T10:00:00Z'),
+      user: { name: 'Amy', phone: null }, stylist: { name: 'Ivan' }, service: { name: 'Cut' } },
+    { id: 'open', date: new Date('2099-09-21T09:00:00Z'), rescheduleRequestedDate: new Date('2099-09-10T09:00:00Z'), rescheduleRequestedAt: new Date('2099-09-01T10:00:00Z'),
+      user: { name: 'Ben', phone: null }, stylist: { name: 'Lox' }, service: { name: 'Colour' } },
+  ];
+  const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
+    '@/app/lib/prisma': { __esModule: true, getDatabaseProvider: () => 'postgresql', default: { appointment: {
+      findMany: async (query: { where: Record<string, unknown> }) => ('rescheduleRequestedDate' in query.where ? requests : []),
+      groupBy: async () => [], count: async () => 0,
+    }, $queryRaw: async () => [{}] } },
+    '@/app/lib/session': { requireAdmin: async () => ({ role: 'ADMIN' }) },
+    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
+  });
+  const data = await getAdminCalendarData({ date: '2099-09-01', view: 'year' });
+  assert.deepEqual(data.rescheduleRequests.map((row) => [row.id, row.expired]), [['past', true], ['open', false]]);
+  assert.equal(data.rescheduleRequestCount, 1, 'a request on a visit that already happened needs no answer');
 });

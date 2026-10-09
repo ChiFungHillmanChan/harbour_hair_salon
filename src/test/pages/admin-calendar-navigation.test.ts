@@ -125,10 +125,11 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     './ScheduleDayGrid': { ScheduleDayGrid: () => null },
     './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
     './AppointmentDialog': { AppointmentDialog: () => null },
+    './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': { updateAppointmentStatus: async (id: string, status: string) => { statuses.push([id, status]); return { success: true }; } },
   });
-  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments: [], pendingAppointments, stylists: [], busyBlocks: [] }), urls, statuses };
+  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments: [], pendingAppointments, rescheduleRequests: [], stylists: [], busyBlocks: [] }), urls, statuses };
 }
 
 test('calendar arrows request another server-loaded month via the URL', () => {
@@ -199,10 +200,11 @@ test('the Chinese board translates its periods and controls but keeps language-f
     './ScheduleDayGrid': { ScheduleDayGrid: () => null },
     './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
     './AppointmentDialog': { AppointmentDialog: () => null },
+    './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': {},
   });
-  const rendered = calendar.ScheduleCalendar({ dateStr: '2026-12-01', view: 'month', appointments: [], pendingAppointments: [], stylists: [], busyBlocks: [] });
+  const rendered = calendar.ScheduleCalendar({ dateStr: '2026-12-01', view: 'month', appointments: [], pendingAppointments: [], rescheduleRequests: [], stylists: [], busyBlocks: [] });
   const nodes = elements(rendered);
   const periods = nodes.filter((element) => element.type === 'button' && element.props['aria-pressed'] !== undefined).map((element) => element.props.children);
   assert.deepEqual(periods, ['日', '週', '月', '年']);

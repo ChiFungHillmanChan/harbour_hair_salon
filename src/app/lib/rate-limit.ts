@@ -149,7 +149,7 @@ export const passwordResetLimiter = createRateLimiter({ prefix: 'rl:pwreset', li
 // The date strip and time lookups need no sign-in, and each call is three
 // database reads. Generous for a person paging weeks and switching stylists.
 export const availabilityLimiter = createRateLimiter({ prefix: 'rl:availability', limit: 120, windowSeconds: 10 * 60 });
-// Every reschedule emails the customer and the salon. Per customer, and per
+// Every reschedule request emails the customer and the salon. Per customer, and per
 // appointment so one booking cannot be bounced between two times all day.
 export const rescheduleLimiter = createRateLimiter({ prefix: 'rl:reschedule', limit: 5, windowSeconds: 60 * 60 });
 export const appointmentRescheduleLimiter = createRateLimiter({ prefix: 'rl:reschedule-appt', limit: 3, windowSeconds: 24 * 60 * 60 });

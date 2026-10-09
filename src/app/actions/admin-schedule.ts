@@ -213,6 +213,8 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
           ...(notes === undefined ? {} : { notes: notes.trim() || null }),
           // A reminder already sent describes the OLD time.
           ...(startMoved ? { reminderSent: false } : {}),
+          // Staff have moved it themselves: a customer's pending request is moot.
+          ...((startMoved || stylistChanged) ? { rescheduleRequestedDate: null, rescheduleRequestedAt: null } : {}),
           treatwellSyncStatus,
           treatwellSyncError: null,
           // A silent resize must not cancel an outstanding confirmation or

@@ -3,7 +3,8 @@
 import Link from '@/i18n/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { cancelAppointment } from '@/app/actions/booking';
+import { cancelAppointment, withdrawRescheduleRequest } from '@/app/actions/booking';
+import type { RescheduleRequestView } from '@/app/lib/reschedule-request';
 import type { PriceNature, PriceType, VatDisplay } from '@/app/services/pricing/policy';
 import { useFormatPrice } from '@/components/pricing/PriceParts';
 import { useLocale, useT } from '@/i18n/client';
@@ -32,6 +33,7 @@ type SerializedAppointment = {
   serviceId: string;
   price: BookedPrice;
   hasReview?: boolean;
+  request: RescheduleRequestView;
 };
 
 interface AppointmentCardProps {
@@ -54,6 +56,8 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
   // An open reschedule dialog stays open across a language switch.
   const [showReschedule, setShowReschedule] = useDraftState(`appointments:reschedule:${appointment.id}`, false);
   const [error, setError] = useState<string | null>(null);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [sent, setSent] = useState(false);
 
   const appointmentDate = new Date(appointment.date);
   const [isWithin24Hours] = useState(() => {
@@ -121,6 +125,26 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
     }
   }
 
+  async function handleWithdraw() {
+    if (!window.confirm(t('card.confirmWithdrawRequest'))) return;
+    setSent(false);
+    setWithdrawing(true);
+    setError(null);
+    try {
+      const result = await withdrawRescheduleRequest(appointment.id);
+      if (result.success) router.refresh(); else setError(result.error || t('card.unexpectedError'));
+    } catch {
+      setError(t('card.unexpectedError'));
+    } finally {
+      setWithdrawing(false);
+    }
+  }
+  const request = appointment.request;
+  const requestWhen = request.state === 'none' ? null : {
+    date: formatSalonLongDate(locale, new Date(request.requestedDate)),
+    time: formatSalonClock(locale, new Date(request.requestedDate)),
+  };
+
   return (
     <>
       <div className="bg-white rounded-lg shadow p-6">
@@ -156,7 +180,13 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
                     className="px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title={rescheduleTitle}
                   >
-                    {t('card.reschedule')}
+                    {request.state === 'open' ? t('card.changeRequest') : t('card.reschedule')}
+                  </button>
+                )}
+                {request.state === 'open' && (
+                  <button onClick={handleWithdraw} disabled={withdrawing}
+                    className="px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    {withdrawing ? t('card.withdrawingRequest') : t('card.withdrawRequest')}
                   </button>
                 )}
                 <button
@@ -201,6 +231,12 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             {t('card.maintenance')}
           </p>
         )}
+        {isUpcoming && requestWhen && (
+          <p className={`mt-3 text-xs ${request.state === 'open' ? 'text-amber-700' : 'text-zinc-500'}`}>
+            {t(request.state === 'open' ? 'card.requestOpen' : 'card.requestExpired', requestWhen)}
+          </p>
+        )}
+        {sent && request.state === 'open' && <p className="mt-3 text-xs text-zinc-700">{t('reschedule.sent')}</p>}
       </div>
 
       {showReschedule && (
@@ -209,6 +245,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
           stylistId={appointment.stylistId}
           serviceDuration={appointment.service.duration}
           currentDate={appointment.date}
+          onSent={() => setSent(true)}
           onClose={() => {
             setShowReschedule(false);
             router.refresh();

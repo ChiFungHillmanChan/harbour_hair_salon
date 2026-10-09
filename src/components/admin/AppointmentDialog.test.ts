@@ -42,6 +42,7 @@ function dialog(target: DialogTarget, actions: Record<string, (input: Record<str
   const { AppointmentDialog } = loadServerModule<typeof import('./AppointmentDialog')>('src/components/admin/AppointmentDialog.tsx', {
     react: { useEffect: () => undefined, useRef: (value: unknown) => ({ current: value }), useState: (value: unknown) => [value, () => undefined] },
     '@/i18n/client': { useT: (namespace: Namespace) => translator('en-GB', namespace), useLocale: () => 'en-GB' },
+    './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     '@/i18n/draft-store': {
       clearDraft: (key: string) => store.delete(key),
       useDraftState: (key: string, initial: unknown) => {
@@ -112,6 +113,7 @@ test('editing a booking on a retired option keeps it visible, shows its recorded
   const target: DialogTarget = {
     mode: 'edit', appointmentId: 'appt-1', dateStr: '2099-09-15', time: '10:00', stylistId: 's1', serviceId: 'legacy',
     durationMin: 45, notes: '', customerName: 'Mei', status: 'CONFIRMED', updatedAt: '2099-09-01T00:00:00.000Z', price: { known: false },
+    date: '2099-09-15T09:00:00.000Z', rescheduleRequestedDate: null, rescheduleRequestedAt: null,
   };
   // Refused, so the dialog stays open (a successful save clears its draft).
   const { render, calls } = dialog(target, { edit: async () => ({ success: false, error: 'This appointment has changed. Please refresh and try again.' }) });
@@ -130,4 +132,19 @@ test('editing a booking on a retired option keeps it visible, shows its recorded
   assert.match(text(nodes), /New price if you save£35\.00NHS price applied · VAT excluded/);
   await (submitButton(nodes).props.onClick as () => Promise<void>)();
   assert.deepEqual(calls[1].expectedQuote, { serviceId: 'blow-dry-nhs', priceVersion: 1, amountPence: 3500 });
+});
+
+test('the dialog offers no Approve once the booking\'s original time has passed', () => {
+  const base: DialogTarget = {
+    mode: 'edit', appointmentId: 'appt-1', dateStr: '2099-09-15', time: '10:00', stylistId: 's1', serviceId: 'blow-dry',
+    durationMin: 45, notes: '', customerName: 'Mei', status: 'CONFIRMED', updatedAt: '2099-09-01T00:00:00.000Z', price: { known: false },
+    date: '2099-09-15T09:00:00.000Z', rescheduleRequestedDate: '2099-09-20T09:00:00.000Z', rescheduleRequestedAt: '2099-09-01T10:00:00.000Z',
+  };
+  const expiredProp = (target: DialogTarget) => {
+    const actions = dialog(target, {}).render().find((node) => 'requestedAt' in node.props && 'expired' in node.props);
+    assert.ok(actions, 'the request controls are rendered');
+    return actions.props.expired;
+  };
+  assert.equal(expiredProp(base), false, 'original and requested time both ahead');
+  assert.equal(expiredProp({ ...base, dateStr: '2020-01-15', date: '2020-01-15T10:00:00.000Z' }), true, 'the visit already happened');
 });

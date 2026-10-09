@@ -35,7 +35,7 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
   ]);
   const { dateStr, view, appointments, pendingAppointments, pendingCount, pendingNext,
     pendingHasPrevious, monthCounts, periodCount, todayStats, syncCoverage, stylists, busyBlocks,
-    services } = calendar;
+    services, rescheduleRequests, rescheduleRequestCount } = calendar;
 
   const todayConfirmed = todayStats.find(s => s.status === 'CONFIRMED')?._count ?? 0;
   const todayCancelled = todayStats.find(s => s.status === 'CANCELLED')?._count ?? 0;
@@ -54,10 +54,14 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
       />
 
       {/* Quick stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <div className={`p-5 rounded-lg shadow border ${pendingCount > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-zinc-200'}`}>
           <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('stats.awaiting')}</p>
           <p className={`text-3xl font-bold mt-1 ${pendingCount > 0 ? 'text-amber-700' : 'text-zinc-900'}`}>{pendingCount}</p>
+        </div>
+        <div className={`p-5 rounded-lg shadow border ${rescheduleRequestCount > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-zinc-200'}`}>
+          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('rescheduleRequests.stat')}</p>
+          <p className={`text-3xl font-bold mt-1 ${rescheduleRequestCount > 0 ? 'text-amber-700' : 'text-zinc-900'}`}>{rescheduleRequestCount}</p>
         </div>
         <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
           <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('stats.today')}</p>
@@ -73,7 +77,7 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
         </div>
       </div>
 
-      <ScheduleCalendar loadedAt={calendar.loadedAt} dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} stylists={stylists} busyBlocks={busyBlocks} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} />
+      <ScheduleCalendar loadedAt={calendar.loadedAt} dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} rescheduleRequests={rescheduleRequests} stylists={stylists} busyBlocks={busyBlocks} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} />
     </>
   );
 }
@@ -81,8 +85,8 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
 function ScheduleSkeleton({ label }: { label: string }) {
   return (
     <div className="animate-pulse" aria-busy="true" aria-label={label}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="bg-white p-5 rounded-lg shadow border border-zinc-200">
             <div className="h-4 w-24 rounded bg-zinc-200" />
             <div className="mt-3 h-8 w-12 rounded bg-zinc-200" />

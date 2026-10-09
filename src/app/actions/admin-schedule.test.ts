@@ -30,6 +30,7 @@ function fixture(options: {
   status?: string;
   conflicting?: boolean;
   requiresPatchTest?: boolean;
+  openRequest?: boolean;
 } & NotificationTimingHooks = {}) {
   const appointment = {
     id: 'appt-1',
@@ -41,6 +42,8 @@ function fixture(options: {
     durationAtBooking: 60,
     priceAtBooking: 80,
     reminderSent: true,
+    rescheduleRequestedDate: (options.openRequest ? new Date('2099-09-20T09:00:00Z') : null) as Date | null,
+    rescheduleRequestedAt: (options.openRequest ? new Date('2099-09-01T11:00:00Z') : null) as Date | null,
     notificationVersion: 0,
     notes: null,
     updatedAt: ORIGINAL_UPDATED_AT,
@@ -164,6 +167,19 @@ const move = (overrides: Partial<Parameters<typeof import('./admin-schedule').mo
   overrideClashes: false,
   expectedUpdatedAt: ORIGINAL_UPDATED_AT.toISOString(),
   ...overrides,
+});
+
+test('a direct staff move clears any open customer reschedule request', async () => {
+  const { actions, appointment } = fixture({ openRequest: true });
+  assert.deepEqual(await actions.moveAppointmentByAdmin(move()), { success: true });
+  assert.equal(appointment.rescheduleRequestedAt, null);
+  assert.equal(appointment.rescheduleRequestedDate, null);
+});
+
+test('changing only the duration keeps an open customer request', async () => {
+  const { actions, appointment } = fixture({ openRequest: true });
+  assert.deepEqual(await actions.moveAppointmentByAdmin(move({ time: '10:00', durationMin: 90 })), { success: true });
+  assert.ok(appointment.rescheduleRequestedAt);
 });
 
 test('an admin move updates the busy feed before waiting for reschedule delivery', async () => {

@@ -6,8 +6,10 @@ const now = new Date('2026-09-11T12:00:00Z');
 before(() => mock.timers.enable({ apis: ['Date'], now }));
 after(() => mock.timers.reset());
 
-function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: string[] = []) {
+function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: string[] = [], lapseFails = false) {
+  let dispatchCalls = 0;
   const createdAt: Date[] = [];
+  let lapseCalls = 0;
   const existing = Array.from({ length: prefixSize }, (_, index) => {
     const id = `review-${String(index).padStart(5, '0')}`;
     return { id, status: 'COMPLETED', date: new Date('2026-09-02T12:00:00Z'), notificationVersion: 0, reviewRequestSent: false, reminderSent: true, review: null, notifications: [{ eventKey: `appointment/${id}/0/REVIEW_REQUEST`, kind: 'REVIEW_REQUEST', status: 'FAILED' }] };
@@ -59,6 +61,7 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: str
   };
   const service = loadServerModule<typeof import('./notification-cron-service')>('src/app/services/notification-cron-service.ts', {
     '@/app/lib/prisma': db,
+    './reschedule-request-lapse': { lapseExpiredRescheduleRequests: async () => { lapseCalls++; if (lapseFails) throw new Error('boom'); return { lapsed: 0, failed: 0 }; } },
     './notification-outbox-service': {
       enqueueAppointmentNotification: async (_db: unknown, kind: string, row: (typeof rows)[number]) => {
         // The real outbox writes nothing (returns null) for walk-in placeholder addresses.
@@ -72,10 +75,10 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: str
         }
         return { id: eventKey };
       },
-      dispatchPendingNotifications: async (options: { now?: Date }) => ({ sent: advanceOnEnqueue ? createdAt.filter((date) => date <= (options.now ?? new Date())).length : 0, failed: 0, skipped: 0, deferred: 0 }),
+      dispatchPendingNotifications: async (options: { now?: Date }) => (dispatchCalls++, { sent: advanceOnEnqueue ? createdAt.filter((date) => date <= (options.now ?? new Date())).length : 0, failed: 0, skipped: 0, deferred: 0 }),
     },
   });
-  return { service, queued, jobStates, rows, cleanupCalls };
+  return { service, queued, jobStates, rows, cleanupCalls, lapseCalls: () => lapseCalls, dispatchCalls: () => dispatchCalls };
 }
 
 test('terminal review notices do not keep an upcoming reminder out of the next run', async () => {
@@ -135,4 +138,18 @@ test('walk-in placeholder bookings are not counted as queued on every run', asyn
     const result = await f.service.runNotificationCron('notifications');
     assert.equal('queued' in result ? result.queued : undefined, run === 0 ? 1 : 0, `run ${run}`);
   }
+});
+
+test('each claimed cron run lapses stale reschedule requests once; a busy run does not', async () => {
+  const f = fixture(0);
+  await Promise.all([f.service.runNotificationCron('notifications'), f.service.runNotificationCron('reminders')]);
+  assert.equal(f.lapseCalls(), 1);
+});
+
+test('a failing lapse step never blocks discovery or delivery and is recorded', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const f = fixture(0, false, [], true);
+  const result = await f.service.runNotificationCron('notifications');
+  assert.equal(f.dispatchCalls(), 1);
+  assert.equal('lapseFailed' in result ? result.lapseFailed : undefined, 1);
 });

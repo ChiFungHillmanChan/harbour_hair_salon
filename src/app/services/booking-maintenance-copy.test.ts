@@ -16,7 +16,7 @@ test('no marketplace URL is hardcoded in the booking-maintenance module', () => 
 });
 
 test('the refusal message names no marketplace', () => {
-  // It is returned by submitBooking/rescheduleAppointment, which cannot know
+  // It is returned by submitBooking/requestReschedule, which cannot know
   // which marketplaces are live — that lives in settings.
   const source = readFileSync(join(root, 'app/lib/booking-maintenance.ts'), 'utf8');
   const message = source.match(/BOOKING_MAINTENANCE_MESSAGE\s*=\s*([\s\S]*?);/)?.[1] ?? '';
