@@ -36,7 +36,14 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
     enqueueCursors = readEnqueueCursors(worker?.lastResultJson);
     // Requests nobody answered in time: clear them and queue one email each
     // before this run's dispatch, so the email goes out in the same tick.
-    const lapsed = await lapseExpiredRescheduleRequests(now);
+    // A failing lapse must never block reminders, review requests or delivery.
+    let lapse = { lapsed: 0, failed: 0 };
+    try {
+      lapse = await lapseExpiredRescheduleRequests(now);
+    } catch (error) {
+      console.error('Reschedule-request lapse step failed:', error instanceof Error ? error.name : 'unknown');
+      lapse = { lapsed: 0, failed: 1 };
+    }
     const { start, end } = reviewWindow(now);
     let queued = 0;
     let scanned = 0;
@@ -78,7 +85,7 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
     }
     // Newly inserted rows become due after discovery began; use a fresh cutoff.
     const delivery = await dispatchPendingNotifications({ budgetMs: Math.max(0, 45_000 - (Date.now() - started)), limit: 30 });
-    const result = { queued, scanned, lapsed, ...delivery, deferred: delivery.deferred + deferred, durationMs: Date.now() - started };
+    const result = { queued, scanned, lapsed: lapse.lapsed, lapseFailed: lapse.failed, ...delivery, deferred: delivery.deferred + deferred, durationMs: Date.now() - started };
     await prisma.backgroundJobState.update({ where: { name }, data: {
       ...(delivery.failed ? { lastFailedAt: new Date(), lastError: 'Some notifications failed; inspect the notification queue.' } : { lastSucceededAt: new Date(), lastError: null }),
       lastResultJson: JSON.stringify(result),
