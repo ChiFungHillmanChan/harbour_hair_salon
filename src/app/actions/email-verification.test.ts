@@ -28,7 +28,12 @@ test('a verification link names its account, address and language, and nothing e
   const [head, body, signature] = token.split('.');
   const forgedBody = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, 'base64url').toString()), sub: 'admin-1' })).toString('base64url');
   assert.equal(await readEmailVerificationToken(`${head}.${forgedBody}.${signature}`), null);
-  assert.equal(await readEmailVerificationToken(`${head}.${body}.${signature.slice(0, -2)}xx`), null);
+  // A middle character: base64url's last character has unused low bits, so
+  // overwriting the tail can leave the signature bytes unchanged (~1 in 1,000 tokens).
+  const i = Math.floor(signature.length / 2);
+  const flipped = signature.slice(0, i) + (signature[i] === 'A' ? 'B' : 'A') + signature.slice(i + 1);
+  assert.notEqual(flipped, signature);
+  assert.equal(await readEmailVerificationToken(`${head}.${body}.${flipped}`), null);
 
   // Signed with the raw session secret (a session cookie's key) instead of the derived key.
   const sessionKeyed = await new SignJWT({ purpose: 'email-verification', email: 'client@example.invalid' })
