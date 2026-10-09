@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appointmentEmailContent, describeEmailPrice, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
+import { appointmentEmailContent, describeEmailPrice, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
 
 const appointment: EmailAppointment = {
   id: 'appointment-ABCDEFGH',
@@ -66,4 +66,45 @@ test('the unsubscribe confirmation carries its link and says nothing changes wit
   const en = marketingUnsubscribeContent('https://example.test/unsubscribe?token=x', 30, 'en-GB');
   assert.match(en.subject, /unsubscribe/i);
   assert.match(renderPlainText(en), /ignore this email — nothing will change/);
+});
+
+const requestAppointment = {
+  id: 'appointment-abcdefgh', date: new Date('2099-09-14T12:00:00Z'), notes: null,
+  user: { name: 'Amy', email: 'amy@example.test', phone: '07000 000000' },
+  stylist: { name: 'Ivan' },
+  service: { name: 'Cut & Blow-dry', duration: 60 },
+  price: { known: false } as const,
+};
+const requestedDate = new Date('2099-09-15T09:00:00Z');
+
+for (const locale of ['en-GB', 'zh-HK'] as const) {
+  test(`reschedule-request emails show the current and requested times (${locale})`, () => {
+    for (const kind of ['RESCHEDULE_REQUEST_RECEIVED', 'SALON_RESCHEDULE_ALERT', 'RESCHEDULE_DECLINED', 'RESCHEDULE_LAPSED'] as const) {
+      const content = appointmentEmailContent(kind, requestAppointment, locale, { requestedDate });
+      const text = JSON.stringify(content);
+      assert.ok(content.subject.length > 0, kind);
+      assert.match(text, /14/, `${kind} names the current date`);
+      assert.match(text, /15/, `${kind} names the requested date`);
+      assert.equal(content.greeting === null, kind === 'SALON_RESCHEDULE_ALERT', `${kind}: only staff mail has no greeting`);
+    }
+  });
+}
+
+test('the salon reschedule alert carries the customer contact details and links to the admin board', () => {
+  const content = appointmentEmailContent('SALON_RESCHEDULE_ALERT', requestAppointment, 'en-GB', { requestedDate });
+  const values = content.details.map((detail) => detail.value);
+  assert.ok(values.includes('Amy'));
+  assert.ok(values.includes('amy@example.test'));
+  assert.ok(values.includes('07000 000000'));
+  assert.match(content.cta?.href ?? '', /\/admin$/);
+});
+
+test('reschedule-request emails refuse to render without the requested date', () => {
+  assert.throws(() => appointmentEmailContent('RESCHEDULE_DECLINED', requestAppointment, 'en-GB', {}), /requested date/);
+});
+
+test('both salon alert kinds are staff mail', () => {
+  assert.equal(isSalonEmailKind('SALON_ALERT'), true);
+  assert.equal(isSalonEmailKind('SALON_RESCHEDULE_ALERT'), true);
+  assert.equal(isSalonEmailKind('RESCHEDULE_DECLINED'), false);
 });

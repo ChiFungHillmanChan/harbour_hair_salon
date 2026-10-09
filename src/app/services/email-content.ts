@@ -43,7 +43,16 @@ export function toEmailAppointment(input: LegacyEmailAppointment | EmailAppointm
   return { ...input, service: { name: input.service.name, duration: input.service.duration }, price };
 }
 
-export type AppointmentEmailKind = 'REQUEST_RECEIVED' | 'SALON_ALERT' | 'CONFIRMATION' | 'CANCELLATION' | 'RESCHEDULE' | 'REMINDER' | 'REVIEW_REQUEST';
+export type AppointmentEmailKind = 'REQUEST_RECEIVED' | 'SALON_ALERT' | 'CONFIRMATION' | 'CANCELLATION' | 'RESCHEDULE' | 'REMINDER' | 'REVIEW_REQUEST'
+  | 'RESCHEDULE_REQUEST_RECEIVED' | 'SALON_RESCHEDULE_ALERT' | 'RESCHEDULE_DECLINED' | 'RESCHEDULE_LAPSED';
+
+/** Kinds addressed to the salon (its address and language), never the customer. */
+export function isSalonEmailKind(kind: AppointmentEmailKind): boolean {
+  return kind === 'SALON_ALERT' || kind === 'SALON_RESCHEDULE_ALERT';
+}
+
+/** Kinds that belong to one reschedule request (keyed by its `requestedAt`). */
+export const RESCHEDULE_REQUEST_EMAIL_KINDS: readonly AppointmentEmailKind[] = ['RESCHEDULE_REQUEST_RECEIVED', 'SALON_RESCHEDULE_ALERT', 'RESCHEDULE_DECLINED', 'RESCHEDULE_LAPSED'];
 
 export type EmailContent = {
   locale: Locale;
@@ -76,7 +85,7 @@ export function describeEmailPrice(price: EmailPrice, locale: Locale): string {
   return parts.join(' · ');
 }
 
-export type AppointmentEmailOptions = { salonPhone?: string; oldDate?: Date; now?: Date };
+export type AppointmentEmailOptions = { salonPhone?: string; oldDate?: Date; requestedDate?: Date; now?: Date };
 
 /** The words of every appointment email, in one language, from one place (HTML and plain text share them). */
 export function appointmentEmailContent(
@@ -95,7 +104,7 @@ export function appointmentEmailContent(
   const duration = t('values.minutes', { count: appointment.service.duration });
   const price = describeEmailPrice(appointment.price, locale);
   const base = { locale, palette: 'ink' as const, greeting, footnotes: [] as string[], reference: t('common.reference', { reference }), address: t('common.address') };
-  const labels = (key: 'service' | 'stylist' | 'date' | 'time' | 'requestedDate' | 'requestedTime' | 'duration' | 'price' | 'previousDate', value: string) => ({ label: t(`labels.${key}`), value });
+  const labels = (key: 'service' | 'stylist' | 'date' | 'time' | 'requestedDate' | 'requestedTime' | 'duration' | 'price' | 'previousDate' | 'currentTime', value: string) => ({ label: t(`labels.${key}`), value });
 
   switch (kind) {
     case 'CONFIRMATION':
@@ -189,6 +198,45 @@ export function appointmentEmailContent(
         cta: { label: t('salonAlert.cta'), href: url(locale, '/admin') },
         footnotes: [t('salonAlert.footnote')],
         reference: t('common.referenceShort', { reference }),
+      };
+    }
+    case 'RESCHEDULE_REQUEST_RECEIVED':
+    case 'SALON_RESCHEDULE_ALERT':
+    case 'RESCHEDULE_DECLINED':
+    case 'RESCHEDULE_LAPSED': {
+      if (!options.requestedDate) throw new Error('Reschedule-request notification requires the requested date');
+      const requested = `${formatSalonLongDate(locale, options.requestedDate)} ${formatSalonClock(locale, options.requestedDate)}`;
+      const current = `${date} ${time}`;
+      if (kind === 'SALON_RESCHEDULE_ALERT') {
+        const customer = name || t('values.nameNotGiven');
+        return {
+          ...base,
+          greeting: null,
+          subject: t('salonRescheduleAlert.subject'),
+          preview: t('salonRescheduleAlert.preview', { customer, service, requested }),
+          eyebrow: t('salonRescheduleAlert.eyebrow'), title: t('salonRescheduleAlert.title'), intro: t('salonRescheduleAlert.intro'),
+          details: [
+            labels('service', service), labels('stylist', appointment.stylist.name),
+            labels('currentTime', current), labels('requestedDate', formatSalonLongDate(locale, options.requestedDate)),
+            labels('requestedTime', formatSalonClock(locale, options.requestedDate)),
+            { label: t('labels.customer'), value: customer },
+            { label: t('labels.email'), value: appointment.user.email },
+            { label: t('labels.phone'), value: appointment.user.phone || t('values.notProvided') },
+          ],
+          cta: { label: t('salonRescheduleAlert.cta'), href: url(locale, '/admin') },
+          footnotes: [t('salonRescheduleAlert.footnote')],
+          reference: t('common.referenceShort', { reference }),
+        };
+      }
+      const section = kind === 'RESCHEDULE_REQUEST_RECEIVED' ? 'rescheduleRequest' : kind === 'RESCHEDULE_DECLINED' ? 'rescheduleDeclined' : 'rescheduleLapsed';
+      return {
+        ...base,
+        subject: t(`${section}.subject`),
+        preview: t(`${section}.preview`, { requested }),
+        eyebrow: t(`${section}.eyebrow`), title: t(`${section}.title`), intro: t(`${section}.intro`, { requested }),
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('currentTime', current), labels('requestedDate', formatSalonLongDate(locale, options.requestedDate)), labels('requestedTime', formatSalonClock(locale, options.requestedDate))],
+        cta: { label: t(`${section}.cta`), href: url(locale, '/appointments') },
+        footnotes: [t(`${section}.footnote`)],
       };
     }
   }

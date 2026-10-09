@@ -6,6 +6,7 @@ import { createUnsubscribeUrl, UNSUBSCRIBE_TOKEN_TTL_DAYS } from '@/app/lib/unsu
 import { DEFAULT_LOCALE, type Locale } from '@/i18n/config';
 import {
   appointmentEmailContent,
+  isSalonEmailKind,
   marketingUnsubscribeContent,
   passwordResetContent,
   renderPlainText,
@@ -72,7 +73,7 @@ export async function prepareAppointmentEmail(
 ): Promise<PreparedEmail> {
   const normalized = toEmailAppointment(appointment);
   const content = appointmentEmailContent(kind, normalized, locale, options);
-  if (kind === 'SALON_ALERT') {
+  if (isSalonEmailKind(kind)) {
     const address = getSalonNotifyAddress();
     if (!address) throw new Error('SALON_NOTIFY_EMAIL or EMAIL_REPLY_TO is required');
     return prepareEmail(address, content);
