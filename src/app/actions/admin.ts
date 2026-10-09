@@ -571,13 +571,15 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
       const guard = { id: appointmentId, status: 'CONFIRMED', date: current.date, rescheduleRequestedAt: current.rescheduleRequestedAt };
       const audit = (action: string) => appendAuditEvent({
         actorUserId: session.userId, action, targetType: 'Appointment', targetId: appointmentId,
-        metadata: { from: current.date.toISOString(), to: requested.toISOString() },
+        metadata: { from: current.date.toISOString(), to: requested.toISOString(), requestedAt: expected.toISOString() },
       }, tx);
 
       if (decision === 'DECLINE') {
         const cleared = await tx.appointment.updateMany({ where: guard, data: { rescheduleRequestedDate: null, rescheduleRequestedAt: null } });
         if (cleared.count !== 1) throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
-        await enqueueAppointmentNotification(tx, 'RESCHEDULE_DECLINED', current, { requestedDate: requested, requestedAt: expected });
+        // The email tells the customer how to call the salon for another time.
+        const settings = await tx.siteSettings.findUnique({ where: { id: 'singleton' }, select: { phone: true } });
+        await enqueueAppointmentNotification(tx, 'RESCHEDULE_DECLINED', current, { requestedDate: requested, requestedAt: expected, salonPhone: settings?.phone || undefined });
         await audit('APPOINTMENT.RESCHEDULE_DECLINED');
         return false;
       }

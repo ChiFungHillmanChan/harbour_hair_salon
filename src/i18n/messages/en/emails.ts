@@ -51,7 +51,7 @@ const emails = {
     title: 'We’re looking forward to seeing you.',
     intro: 'Your appointment at Harbour Hair Salon is safely booked. Keep this email for your appointment details.',
     cta: 'Manage my booking',
-    footnote: 'Need to make a change? You can cancel or reschedule from My Bookings up to 24 hours before your appointment. Payment is due at the salon; cash and card are accepted.',
+    footnote: 'Need to make a change? You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment. Payment is due at the salon; cash and card are accepted.',
     textHeading: 'HARBOUR HAIR — BOOKING CONFIRMED',
     textIntro: 'Your appointment at Harbour Hair Salon is confirmed.',
     textManage: 'Manage your booking up to 24 hours before the appointment from the My Bookings page: {url}',
@@ -83,7 +83,7 @@ const emails = {
     title: 'Your appointment has moved.',
     intro: 'Your appointment at Harbour Hair Salon has a new date and time. The previous time was {previous}.',
     cta: 'View my booking',
-    footnote: 'You can cancel or reschedule from My Bookings up to 24 hours before your appointment.',
+    footnote: 'You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.',
   },
   reminder: {
     subjectToday: 'Reminder: your appointment is today — Harbour Hair Salon',
@@ -96,7 +96,7 @@ const emails = {
     titleSoon: 'See You Soon!',
     intro: 'This is a friendly reminder of your upcoming appointment at Harbour Hair Salon.',
     cta: 'Manage my booking',
-    footnote: 'Can’t make it? Please let us know as early as possible. Changes are possible from My Bookings up to 24 hours before your appointment.',
+    footnote: 'Can’t make it? Please let us know as early as possible. You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.',
   },
   review: {
     subject: 'How was your visit? — Harbour Hair Salon',

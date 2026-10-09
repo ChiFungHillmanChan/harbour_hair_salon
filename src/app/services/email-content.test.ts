@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { appointmentEmailContent, describeEmailPrice, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
+import { translator } from '../../i18n/messages';
 
 const appointment: EmailAppointment = {
   id: 'appointment-ABCDEFGH',
@@ -107,4 +108,30 @@ test('both salon alert kinds are staff mail', () => {
   assert.equal(isSalonEmailKind('SALON_ALERT'), true);
   assert.equal(isSalonEmailKind('SALON_RESCHEDULE_ALERT'), true);
   assert.equal(isSalonEmailKind('RESCHEDULE_DECLINED'), false);
+});
+
+for (const locale of ['en-GB', 'zh-HK'] as const) {
+  test(`declined and lapsed request emails give the salon phone when it is known (${locale})`, () => {
+    const t = translator(locale, 'emails');
+    for (const kind of ['RESCHEDULE_DECLINED', 'RESCHEDULE_LAPSED'] as const) {
+      const withPhone = appointmentEmailContent(kind, requestAppointment, locale, { requestedDate, salonPhone: '07831 830898' });
+      assert.deepEqual(withPhone.callout, { title: t('request.calloutTitle'), body: t('request.calloutBody', { phone: '07831 830898' }) }, kind);
+      assert.match(renderPlainText(withPhone), /07831 830898/, `${kind} plain text carries the phone`);
+      assert.equal(appointmentEmailContent(kind, requestAppointment, locale, { requestedDate }).callout, undefined, `${kind}: no phone, no callout`);
+    }
+  });
+}
+
+test('booking emails offer a new-time request, not a direct reschedule, from My Bookings', () => {
+  const en = { reschedule: 'You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.' };
+  const zh = { reschedule: '你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。' };
+  assert.deepEqual(appointmentEmailContent('RESCHEDULE', requestAppointment, 'en-GB', { oldDate: requestedDate }).footnotes, [en.reschedule]);
+  assert.deepEqual(appointmentEmailContent('RESCHEDULE', requestAppointment, 'zh-HK', { oldDate: requestedDate }).footnotes, [zh.reschedule]);
+  for (const kind of ['CONFIRMATION', 'REMINDER'] as const) {
+    const english = appointmentEmailContent(kind, requestAppointment, 'en-GB').footnotes.join(' ');
+    assert.match(english, /You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment\./, kind);
+    assert.doesNotMatch(english, /reschedule|Changes are possible/, kind);
+    const chinese = appointmentEmailContent(kind, requestAppointment, 'zh-HK').footnotes.join(' ');
+    assert.match(chinese, /你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。/, kind);
+  }
 });

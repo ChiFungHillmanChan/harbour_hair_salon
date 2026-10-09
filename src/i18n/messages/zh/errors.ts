@@ -45,7 +45,7 @@ const errors: Localized<Messages['errors']> = {
     RESCHEDULE_TOO_LATE: '預約前 24 小時內不能改期',
     RESCHEDULE_PAST: '不能改期至已過去的時間',
     RESCHEDULE_FAILED: '未能改期，請再試一次。',
-    TOO_MANY_RESCHEDULES: '此預約最近已多次改期，請稍後再試或致電本店。',
+    TOO_MANY_RESCHEDULES: '你最近已多次申請更改此預約，請稍後再試或致電本店。',
     RESCHEDULE_REQUEST_TOO_SOON: '請選擇最少 24 小時後的新時間，或致電本店。',
     RESCHEDULE_REQUEST_CHANGED: '此改期申請已有變更，請重新整理後再試。',
     RESCHEDULE_REQUEST_EXPIRED: '此申請已過期：申請的時間距今不足 24 小時。',

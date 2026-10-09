@@ -27,7 +27,7 @@ const appointments = {
     requestOpen: 'You asked to move this to {date}, {time} — waiting for the salon. Your current time stays booked until then.',
     requestExpired: 'Your request to move to {date}, {time} expired. Your original time stands.',
     changeRequest: 'Change requested time',
-    withdrawRequest: 'Withdraw request',
+    withdrawRequest: 'Withdraw new-time request',
     withdrawingRequest: 'Withdrawing…',
     confirmWithdrawRequest: 'Withdraw your request? Your current time stays as it is.',
     cancel: 'Cancel',

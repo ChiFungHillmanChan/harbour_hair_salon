@@ -51,7 +51,7 @@ const emails: Localized<Messages['emails']> = {
     title: '期待與你見面。',
     intro: '你於 Harbour Hair Salon 的預約已經確認，請保留此電郵以便查閱預約資料。',
     cta: '管理我的預約',
-    footnote: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消或改期。費用於店內繳付，接受現金及信用卡。',
+    footnote: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。費用於店內繳付，接受現金及信用卡。',
     textHeading: 'HARBOUR HAIR — 預約已確認',
     textIntro: '你於 Harbour Hair Salon 的預約已經確認。',
     textManage: '你可於預約前 24 小時或之前，在「我的預約」頁面管理預約：{url}',
@@ -83,7 +83,7 @@ const emails: Localized<Messages['emails']> = {
     title: '你的預約時間已經更改。',
     intro: '你於 Harbour Hair Salon 的預約已改至新的日期及時間。原定時間為{previous}。',
     cta: '查看我的預約',
-    footnote: '你可於預約前 24 小時或之前，在「我的預約」取消或改期。',
+    footnote: '你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。',
   },
   reminder: {
     subjectToday: '提提你：你今日有預約 — Harbour Hair Salon',
@@ -96,7 +96,7 @@ const emails: Localized<Messages['emails']> = {
     titleSoon: '稍後見！',
     intro: '溫馨提示：你於 Harbour Hair Salon 的預約即將到來。',
     cta: '管理我的預約',
-    footnote: '未能出席？請盡早通知我們。你可於預約前 24 小時或之前，在「我的預約」作出更改。',
+    footnote: '未能出席？請盡早通知我們。你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。',
   },
   review: {
     subject: '今次體驗如何？ — Harbour Hair Salon',

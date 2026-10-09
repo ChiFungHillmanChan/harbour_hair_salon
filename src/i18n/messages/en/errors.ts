@@ -50,7 +50,7 @@ const errors = {
     RESCHEDULE_TOO_LATE: 'Cannot reschedule within 24 hours of appointment',
     RESCHEDULE_PAST: 'Cannot reschedule to a time in the past',
     RESCHEDULE_FAILED: 'Reschedule failed. Please try again.',
-    TOO_MANY_RESCHEDULES: 'This appointment has been moved several times recently. Please try again later or call the salon.',
+    TOO_MANY_RESCHEDULES: "You've asked to change this appointment several times recently. Please try again later or call the salon.",
     RESCHEDULE_REQUEST_TOO_SOON: 'Please choose a new time at least 24 hours away, or call the salon.',
     RESCHEDULE_REQUEST_CHANGED: 'This reschedule request has changed. Please refresh and try again.',
     RESCHEDULE_REQUEST_EXPIRED: 'This request has expired: the requested time is less than 24 hours away.',

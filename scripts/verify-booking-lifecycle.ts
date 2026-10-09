@@ -335,7 +335,7 @@ async function main() {
       assert.equal(await rescheduleNotices(), noticesBefore + 1);
     }
 
-    console.log('PASS: real create → admin confirm → customer reschedule; duplicate/ownership/status guards, idempotent confirmation, audit and notification writes, frozen price/duration, and moved outbound ICS.');
+    console.log('PASS: real create → admin confirm → customer reschedule request → staff approval; duplicate/ownership/status guards, idempotent confirmation, audit and notification writes, frozen price/duration, and moved outbound ICS.');
 
     const closeAppointment = await db.appointment.create({ data: { id: 'lifecycle-within-24h', userId: ids.customer, stylistId: ids.stylist, serviceId: ids.service,
       date: new Date(Date.now() + 12 * 3600_000), status: 'CONFIRMED', durationAtBooking: 60, priceAtBooking: 100 } });

@@ -38,6 +38,10 @@ export async function lapseExpiredRescheduleRequests(now: Date, limit = 50): Pro
   });
   let lapsed = 0;
   let failed = 0;
+  if (due.length === 0) return { lapsed, failed };
+  // Once per run: the email tells the customer how to call the salon.
+  const settings = await prisma.siteSettings.findUnique({ where: { id: 'singleton' }, select: { phone: true } });
+  const salonPhone = settings?.phone || undefined;
   for (const { id } of due) {
     try {
       const done = await runSerializableWithRetry(async (tx) => {
@@ -51,9 +55,11 @@ export async function lapseExpiredRescheduleRequests(now: Date, limit = 50): Pro
         if (cleared.count !== 1) return false;
         // No email about a visit that has already happened (isCurrent would drop it anyway).
         if (current.date > now) {
-          await enqueueAppointmentNotification(tx, 'RESCHEDULE_LAPSED', current, { requestedDate: current.rescheduleRequestedDate, requestedAt: current.rescheduleRequestedAt });
+          await enqueueAppointmentNotification(tx, 'RESCHEDULE_LAPSED', current, { requestedDate: current.rescheduleRequestedDate, requestedAt: current.rescheduleRequestedAt, salonPhone });
         }
-        await appendAuditEvent({ actorUserId: null, action: 'APPOINTMENT.RESCHEDULE_LAPSED', targetType: 'Appointment', targetId: id, metadata: { to: current.rescheduleRequestedDate.toISOString() } }, tx);
+        await appendAuditEvent({ actorUserId: null, action: 'APPOINTMENT.RESCHEDULE_LAPSED', targetType: 'Appointment', targetId: id, metadata: {
+          from: current.date.toISOString(), to: current.rescheduleRequestedDate.toISOString(), requestedAt: current.rescheduleRequestedAt.toISOString(),
+        } }, tx);
         return true;
       });
       if (done) lapsed++;

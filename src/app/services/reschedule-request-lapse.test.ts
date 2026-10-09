@@ -8,6 +8,8 @@ type Hooks = {
   onBeforeTransaction?: (transactionNumber: number, rows: Row[]) => void;
   onFindUnique?: (id: string, rows: Row[]) => void;
   failEnqueueFor?: string;
+  /** The salon phone in SiteSettings; absent = no settings row (no phone, no callout). */
+  salonPhone?: string;
 };
 /** Due: requested time under 24 h away, OR the booking's original time has passed with a request still open. */
 type DueWhere = { status: string; OR: ({ rescheduleRequestedDate: { lt: Date } } | { date: { lt: Date }; rescheduleRequestedDate: { not: null } })[] };
@@ -20,9 +22,12 @@ function fixture(rows: { id: string; requestedDate: Date | null; requestedAt: Da
     priceAtBooking: null, durationAtBooking: 60, notes: null,
     user: { email: `${row.id}@example.test`, name: 'Amy', phone: null }, stylist: { name: 'Ivan' }, service: { name: 'Cut', duration: 60 },
   }));
-  const enqueued: { id: string; kind: string; requestedAt: string }[] = [];
+  const enqueued: { id: string; kind: string; requestedAt: string; salonPhone?: string }[] = [];
   const audits: string[] = [];
+  const auditMetadata: Record<string, unknown>[] = [];
+  let settingsReads = 0;
   const tx = {
+    siteSettings: { findUnique: async () => { settingsReads++; return hooks.salonPhone ? { phone: hooks.salonPhone } : null; } },
     appointment: {
       findMany: async ({ where }: { where: DueWhere }) => appointments.filter((row) => row.status === where.status && where.OR.some((part) =>
         'date' in part
@@ -39,7 +44,9 @@ function fixture(rows: { id: string; requestedDate: Date | null; requestedAt: Da
         Object.assign(row, data); return { count: 1 };
       },
     },
-    auditEvent: { create: async ({ data }: { data: { action: string } }) => { audits.push(data.action); return { id: 'a' }; } },
+    auditEvent: { create: async ({ data }: { data: { action: string; metadataJson: string } }) => {
+      audits.push(data.action); auditMetadata.push(JSON.parse(data.metadataJson)); return { id: 'a' };
+    } },
   };
   let transactions = 0;
   const service = loadServerModule<typeof import('./reschedule-request-lapse')>('src/app/services/reschedule-request-lapse.ts', {
@@ -51,17 +58,17 @@ function fixture(rows: { id: string; requestedDate: Date | null; requestedAt: Da
       const snapshot = structuredClone(appointments);
       const auditCount = audits.length;
       try { return await fn(tx); } catch (error) {
-        appointments.splice(0, appointments.length, ...snapshot); audits.length = auditCount; throw error;
+        appointments.splice(0, appointments.length, ...snapshot); audits.length = auditCount; auditMetadata.length = auditCount; throw error;
       }
     } },
     './notification-outbox-service': {
-      enqueueAppointmentNotification: async (_db: unknown, kind: string, appointment: { id: string }, options: { requestedAt: Date }) => {
+      enqueueAppointmentNotification: async (_db: unknown, kind: string, appointment: { id: string }, options: { requestedAt: Date; salonPhone?: string }) => {
         if (hooks.failEnqueueFor === appointment.id) throw new Error('enqueue failed');
-        enqueued.push({ id: appointment.id, kind, requestedAt: options.requestedAt.toISOString() }); return { id: 'e' };
+        enqueued.push({ id: appointment.id, kind, requestedAt: options.requestedAt.toISOString(), ...(options.salonPhone ? { salonPhone: options.salonPhone } : {}) }); return { id: 'e' };
       },
     },
   });
-  return { service, appointments, enqueued, audits, transactions: () => transactions };
+  return { service, appointments, enqueued, audits, auditMetadata, settingsReads: () => settingsReads, transactions: () => transactions };
 }
 
 test('only requests whose time is under 24 hours away lapse, once, with one email each', async () => {
@@ -134,4 +141,24 @@ test('a request on a booking whose original time has passed is cleared and audit
   assert.equal(f.appointments[1].rescheduleRequestedAt, null);
   assert.ok(f.appointments[2].rescheduleRequestedAt, 'a future booking with a request over 24 h away is untouched');
   assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(now), { lapsed: 0, failed: 0 }, 're-running is a no-op');
+});
+
+test('lapse emails carry the salon phone, read once per run, and each audit names its request', async () => {
+  const f = fixture([due('one', 10), { ...due('two', 11), requestedAt: new Date('2099-08-30T11:00:00Z') }], { salonPhone: '07831 830898' });
+  assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(now), { lapsed: 2, failed: 0 });
+  assert.deepEqual(f.enqueued.map((event) => event.salonPhone), ['07831 830898', '07831 830898']);
+  assert.equal(f.settingsReads(), 1, 'one settings read per run, not per row');
+  assert.deepEqual(f.auditMetadata, [
+    { from: '2099-09-14T12:00:00.000Z', to: '2099-09-02T10:00:00.000Z', requestedAt: '2099-08-30T10:00:00.000Z' },
+    { from: '2099-09-14T12:00:00.000Z', to: '2099-09-02T11:00:00.000Z', requestedAt: '2099-08-30T11:00:00.000Z' },
+  ]);
+});
+
+test('a lapse run with nothing due reads no settings, and no settings row means no phone', async () => {
+  const idle = fixture([{ id: 'later', requestedDate: new Date('2099-09-10T09:00:00Z'), requestedAt: new Date('2099-08-31T10:00:00Z') }], { salonPhone: '07831 830898' });
+  assert.deepEqual(await idle.service.lapseExpiredRescheduleRequests(now), { lapsed: 0, failed: 0 });
+  assert.equal(idle.settingsReads(), 0);
+  const bare = fixture([due('soon', 11)]);
+  assert.deepEqual(await bare.service.lapseExpiredRescheduleRequests(now), { lapsed: 1, failed: 0 });
+  assert.equal(bare.enqueued[0].salonPhone, undefined);
 });

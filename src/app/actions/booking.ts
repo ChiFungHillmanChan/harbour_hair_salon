@@ -601,7 +601,7 @@ export async function requestReschedule(appointmentId: string, dateStr: string, 
         actorUserId: session.userId,
         action: appointment.rescheduleRequestedAt ? 'APPOINTMENT.RESCHEDULE_REPLACED' : 'APPOINTMENT.RESCHEDULE_REQUESTED',
         targetType: 'Appointment', targetId: appointmentId,
-        metadata: { from: appointment.date.toISOString(), to: newDate.toISOString() },
+        metadata: { from: appointment.date.toISOString(), to: newDate.toISOString(), requestedAt: requestedAt.toISOString() },
       }, tx);
     });
     after(() => dispatchAppointmentNotifications(appointmentId));
@@ -620,10 +620,15 @@ export async function withdrawRescheduleRequest(appointmentId: string) {
   const session = await verifySession();
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    select: { id: true, userId: true, status: true, date: true, rescheduleRequestedAt: true },
+    select: { id: true, userId: true, status: true, date: true, rescheduleRequestedDate: true, rescheduleRequestedAt: true },
   });
   if (!appointment || appointment.userId !== session.userId) return failure(locale, 'APPOINTMENT_NOT_FOUND');
   if (!appointment.rescheduleRequestedAt) return failure(locale, 'RESCHEDULE_REQUEST_CHANGED');
+  const withdrawn = {
+    from: appointment.date.toISOString(),
+    to: appointment.rescheduleRequestedDate?.toISOString() ?? null,
+    requestedAt: appointment.rescheduleRequestedAt.toISOString(),
+  };
   try {
     await runSerializableWithRetry(async (tx) => {
       const changed = await tx.appointment.updateMany({
@@ -631,7 +636,7 @@ export async function withdrawRescheduleRequest(appointmentId: string) {
         data: { rescheduleRequestedDate: null, rescheduleRequestedAt: null },
       });
       if (changed.count !== 1) throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
-      await appendAuditEvent({ actorUserId: session.userId, action: 'APPOINTMENT.RESCHEDULE_WITHDRAWN', targetType: 'Appointment', targetId: appointmentId }, tx);
+      await appendAuditEvent({ actorUserId: session.userId, action: 'APPOINTMENT.RESCHEDULE_WITHDRAWN', targetType: 'Appointment', targetId: appointmentId, metadata: withdrawn }, tx);
     });
   } catch (error) {
     if (!(error instanceof BookingError)) console.error('Withdrawing a reschedule request failed:', error);

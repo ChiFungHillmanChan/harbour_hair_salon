@@ -50,6 +50,8 @@ function fixture(options: {
   openRequest?: { requestedDate: Date; requestedAt: Date };
   /** The session's role (default ADMIN, as today). */
   role?: 'ADMIN' | 'USER';
+  /** The salon phone in SiteSettings; absent = no settings row (no phone, no callout). */
+  salonPhone?: string;
 } & NotificationTimingHooks = {}) {
   const originalDate = options.currentDate ?? new Date('2099-09-14T12:00:00Z');
   const appointment = {
@@ -73,6 +75,7 @@ function fixture(options: {
   let transactions = 0;
   let writes = 0;
   const limiterKeys: string[] = [];
+  const audits: { action: string; metadata: Record<string, unknown> }[] = [];
   let externallyCommitted: Partial<typeof appointment> = {};
   let reads = 0;
   const applyData = (data: Record<string, unknown>) => {
@@ -83,7 +86,15 @@ function fixture(options: {
     }
   };
   const tx = {
-    auditEvent: { create: async () => { assert.equal(transactionActive, true); return { id: "audit" }; } },
+    auditEvent: { create: async ({ data }: { data: { action: string; metadataJson: string } }) => {
+      assert.equal(transactionActive, true);
+      audits.push({ action: data.action, metadata: JSON.parse(data.metadataJson) });
+      return { id: "audit" };
+    } },
+    siteSettings: { findUnique: async () => {
+      assert.equal(transactionActive, true, 'salon settings are read inside the transaction');
+      return options.salonPhone ? { phone: options.salonPhone, salonNotificationLocale: null } : null;
+    } },
     appointment: {
       findUnique: async (args?: { select?: Record<string, unknown> }) => {
         // The stylist-only lookup that feeds the pre-approval Fresha refresh is
@@ -234,7 +245,7 @@ function fixture(options: {
   const admin = loadServerModule<typeof import('./admin')>('src/app/actions/admin.ts', dependencies);
   return {
     appointment, originalDate, messages, events, dispatches: () => dispatches, actions, admin,
-    transactions: () => transactions, writes: () => writes, limiterKeys,
+    transactions: () => transactions, writes: () => writes, limiterKeys, audits,
   };
 }
 
@@ -282,6 +293,7 @@ for (const spent of ['user', 'appointment'] as const) {
     const result = await f.actions.requestReschedule(f.appointment.id, '2099-09-15', '10:00');
     assert.equal(result.success, false);
     assert.equal('code' in result && result.code, 'TOO_MANY_RESCHEDULES');
+    assert.equal(!result.success && result.error, "You've asked to change this appointment several times recently. Please try again later or call the salon.");
     assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
     assert.equal(f.transactions(), 0);
     assert.equal(f.writes(), 0);
@@ -732,4 +744,39 @@ test('the colour patch-test rule is re-checked against the requested date on app
   assert.equal(f.appointment.rescheduleRequestedAt?.toISOString(), OPEN_REQUEST.requestedAt.toISOString(), 'staff can still decline it');
   assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
   assert.equal(f.events.length, 0);
+});
+
+test('a declined request\'s email carries the salon phone from settings, and none without a settings row', async () => {
+  const withPhone = fixture({ openRequest: OPEN_REQUEST, salonPhone: '07831 830898' });
+  assert.equal((await withPhone.admin.decideRescheduleRequest(withPhone.appointment.id, 'DECLINE', OPEN_REQUEST.requestedAt.toISOString())).success, true);
+  assert.equal(JSON.parse(withPhone.events[0].payloadJson).options.salonPhone, '07831 830898');
+  const without = fixture({ openRequest: OPEN_REQUEST });
+  assert.equal((await without.admin.decideRescheduleRequest(without.appointment.id, 'DECLINE', OPEN_REQUEST.requestedAt.toISOString())).success, true);
+  assert.equal(JSON.parse(without.events[0].payloadJson).options.salonPhone, undefined);
+});
+
+test('every reschedule-request audit event records the request it is about', async () => {
+  const original = '2099-09-14T12:00:00.000Z';
+  const requested = OPEN_REQUEST.requestedDate.toISOString();
+  const openAt = OPEN_REQUEST.requestedAt.toISOString();
+  // Date is mocked, so a new request's requestedAt is exactly "now".
+  const now = new Date().toISOString();
+
+  const asked = fixture();
+  assert.equal((await asked.actions.requestReschedule(asked.appointment.id, '2099-09-15', '10:00')).success, true);
+  assert.deepEqual(asked.audits, [{ action: 'APPOINTMENT.RESCHEDULE_REQUESTED', metadata: { from: original, to: requested, requestedAt: now } }]);
+
+  const replaced = fixture({ openRequest: OPEN_REQUEST });
+  assert.equal((await replaced.actions.requestReschedule(replaced.appointment.id, '2099-09-16', '10:00')).success, true);
+  assert.deepEqual(replaced.audits, [{ action: 'APPOINTMENT.RESCHEDULE_REPLACED', metadata: { from: original, to: '2099-09-16T09:00:00.000Z', requestedAt: now } }]);
+
+  const withdrawn = fixture({ openRequest: OPEN_REQUEST });
+  assert.equal((await withdrawn.actions.withdrawRescheduleRequest(withdrawn.appointment.id)).success, true);
+  assert.deepEqual(withdrawn.audits, [{ action: 'APPOINTMENT.RESCHEDULE_WITHDRAWN', metadata: { from: original, to: requested, requestedAt: openAt } }]);
+
+  for (const [decision, action] of [['APPROVE', 'APPOINTMENT.RESCHEDULE_APPROVED'], ['DECLINE', 'APPOINTMENT.RESCHEDULE_DECLINED']] as const) {
+    const f = fixture({ openRequest: OPEN_REQUEST });
+    assert.equal((await f.admin.decideRescheduleRequest(f.appointment.id, decision, openAt)).success, true);
+    assert.deepEqual(f.audits, [{ action, metadata: { from: original, to: requested, requestedAt: openAt } }]);
+  }
 });
