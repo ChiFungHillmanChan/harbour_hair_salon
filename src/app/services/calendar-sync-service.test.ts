@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CalendarConnection, PrismaClient } from '@prisma/client';
-import { refreshStaleCalendarFeeds, syncCalendarFeeds } from './calendar-sync-service';
+import { refreshStylistCalendarFeeds, syncCalendarFeeds } from './calendar-sync-service';
 const now = new Date('2026-09-11T12:00:00Z');
 const empty = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR';
 const busy = empty.replace('END:VCALENDAR', 'BEGIN:VEVENT\r\nUID:shared-uid\r\nDTSTART:20260912T100000Z\r\nDTEND:20260912T110000Z\r\nEND:VEVENT\r\nEND:VCALENDAR');
@@ -144,25 +144,26 @@ async function withCalendarSync<T>(value: string | undefined, run: () => Promise
   }
 }
 
-test('on-demand refresh only re-imports feeds older than one poll interval or whose last attempt failed', async () => {
+test('approval refresh re-imports only that stylist\'s feeds older than five minutes or whose last attempt failed', async () => {
   const queries: Record<string, unknown>[] = [];
   const db = { calendarConnection: { findMany: async ({ where }: { where: Record<string, unknown> }) => { queries.push(where); return []; } } };
-  await withCalendarSync('true', () => refreshStaleCalendarFeeds({ db: db as unknown as PrismaClient, now }));
+  await withCalendarSync('true', () => refreshStylistCalendarFeeds('s1', { db: db as unknown as PrismaClient, now }));
   assert.equal(queries.length, 1);
+  assert.equal(queries[0].stylistId, 's1');
   assert.deepEqual(queries[0].OR, [
     { lastSuccessAt: null },
-    { lastSuccessAt: { lt: new Date('2026-09-11T11:30:00Z') } },
+    { lastSuccessAt: { lt: new Date('2026-09-11T11:55:00Z') } },
     { lastError: { not: null } },
   ]);
 });
 
-test('on-demand refresh respects the kill-switch and never throws', async () => {
+test('approval refresh respects the kill-switch and never throws', async () => {
   let reads = 0;
   const db = { calendarConnection: { findMany: async () => { reads++; throw new Error('database unavailable'); } } };
   for (const flag of [undefined, 'false']) {
-    assert.deepEqual(await withCalendarSync(flag, () => refreshStaleCalendarFeeds({ db: db as unknown as PrismaClient, now })), []);
+    assert.deepEqual(await withCalendarSync(flag, () => refreshStylistCalendarFeeds('s1', { db: db as unknown as PrismaClient, now })), []);
   }
   assert.equal(reads, 0, 'a disabled sync must not touch the database');
-  assert.deepEqual(await withCalendarSync('true', () => refreshStaleCalendarFeeds({ db: db as unknown as PrismaClient, now })), []);
+  assert.deepEqual(await withCalendarSync('true', () => refreshStylistCalendarFeeds('s1', { db: db as unknown as PrismaClient, now })), []);
   assert.equal(reads, 1);
 });

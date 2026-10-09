@@ -36,7 +36,7 @@ function fixture(options: {
   failEnqueue?: boolean;
   onlineReady?: boolean;
   calendarReady?: boolean;
-  onFeedRefresh?: () => void;
+  onFeedRefresh?: (stylistId: string, maxAgeMinutes: number) => void;
   trace?: string[];
   /** Which reschedule allowance is spent: the customer's, or this appointment's. */
   rescheduleSpent?: 'user' | 'appointment';
@@ -185,10 +185,11 @@ function fixture(options: {
       },
     },
     '@/app/services/calendar-sync-service': {
-      refreshStaleCalendarFeeds: async () => {
+      APPROVAL_REFRESH_MINUTES: 5,
+      refreshStylistCalendarFeeds: async (stylistId: string, opts: { maxAgeMinutes: number }) => {
         assert.equal(transactionActive, false, 'marketplace feeds must not be fetched inside the transaction');
         options.trace?.push('refresh');
-        options.onFeedRefresh?.();
+        options.onFeedRefresh?.(stylistId, opts.maxAgeMinutes);
         return [];
       },
     },
@@ -493,4 +494,11 @@ test('a reschedule persists its old date and frozen details under the new event 
   assert.equal(payload.appointment.price.amountPence, 8000);
   assert.equal(payload.appointment.service.duration, 60);
   assert.equal(f.dispatches(), 1);
+});
+
+test('approving a new booking refreshes only its stylist\'s feeds older than five minutes', async () => {
+  const refreshed: [string, number][] = [];
+  const f = fixture({ status: 'PENDING', onFeedRefresh: (stylistId, maxAgeMinutes) => refreshed.push([stylistId, maxAgeMinutes]) });
+  assert.equal((await f.admin.updateAppointmentStatus(f.appointment.id, 'CONFIRMED')).success, true);
+  assert.deepEqual(refreshed, [['stylist-1', 5]]);
 });

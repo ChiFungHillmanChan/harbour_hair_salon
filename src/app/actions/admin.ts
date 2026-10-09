@@ -14,7 +14,7 @@ import { revalidateCategoryPages } from '@/app/actions/admin-services';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
-import { refreshStaleCalendarFeeds } from '@/app/services/calendar-sync-service';
+import { APPROVAL_REFRESH_MINUTES, refreshStylistCalendarFeeds } from '@/app/services/calendar-sync-service';
 import { assertAppointmentSlotAvailable, runSerializableWithRetry } from '@/app/services/booking-service';
 import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
 import { getActionLocale } from '@/i18n/request';
@@ -460,10 +460,14 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
     return { success: false, error: translator(locale, 'adminSchedule')('errors.INVALID_STATUS') };
   }
   try {
-    // Network I/O stays outside the serializable transaction below. Outside
-    // staff hours the scheduled import pauses, so without this an evening
-    // confirmation fails the calendar-freshness check until the next morning.
-    if (status === 'CONFIRMED') await refreshStaleCalendarFeeds();
+    // Network I/O stays outside the serializable transaction below. Re-import
+    // this stylist's feeds older than five minutes: the scheduled import pauses
+    // outside staff hours, so without this an evening confirmation fails the
+    // calendar-freshness check until the next morning.
+    if (status === 'CONFIRMED') {
+      const target = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { stylistId: true } });
+      if (target) await refreshStylistCalendarFeeds(target.stylistId, { maxAgeMinutes: APPROVAL_REFRESH_MINUTES });
+    }
     const { appointment, changed } = await runSerializableWithRetry(async (tx) => {
       const include = {
         user: { select: { email: true, name: true } },
