@@ -57,7 +57,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
   const [showReschedule, setShowReschedule] = useDraftState(`appointments:reschedule:${appointment.id}`, false);
   const [error, setError] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
 
   const appointmentDate = new Date(appointment.date);
   const [isWithin24Hours] = useState(() => {
@@ -127,6 +127,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
 
   async function handleWithdraw() {
     if (!window.confirm(t('card.confirmWithdrawRequest'))) return;
+    setSent(false);
     setWithdrawing(true);
     setError(null);
     try {
@@ -235,7 +236,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             {t(request.state === 'open' ? 'card.requestOpen' : 'card.requestExpired', requestWhen)}
           </p>
         )}
-        {notice && <p className="mt-3 text-xs text-zinc-700">{notice}</p>}
+        {sent && request.state === 'open' && <p className="mt-3 text-xs text-zinc-700">{t('reschedule.sent')}</p>}
       </div>
 
       {showReschedule && (
@@ -244,7 +245,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
           stylistId={appointment.stylistId}
           serviceDuration={appointment.service.duration}
           currentDate={appointment.date}
-          onSent={() => setNotice(t('reschedule.sent'))}
+          onSent={() => setSent(true)}
           onClose={() => {
             setShowReschedule(false);
             router.refresh();

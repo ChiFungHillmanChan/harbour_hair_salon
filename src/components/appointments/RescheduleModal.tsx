@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchSlots, requestReschedule } from '@/app/actions/booking';
 import type { TimeSlot } from '@/app/services/booking-service';
-import { resolveSalonDateTime } from '@/app/services/salon-time';
+import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import { useLocale, useT } from '@/i18n/client';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { clearDraft, useDraftState } from '@/i18n/draft-store';
@@ -40,9 +40,7 @@ export function RescheduleModal({
 
   // Two days ahead: the server refuses anything under 24 h, and the date
   // picker cannot express "after 13:00 tomorrow".
-  const earliest = new Date();
-  earliest.setDate(earliest.getDate() + 2);
-  const minDate = earliest.toISOString().split('T')[0];
+  const [minDate] = useState(() => salonDateKey(new Date(Date.now() + 2 * 86_400_000)));
 
   function close() {
     clearDraft(`${draft}:date`);
