@@ -73,7 +73,11 @@ function fixture(options: {
   const tx = {
     auditEvent: { create: async () => { assert.equal(transactionActive, true); return { id: "audit" }; } },
     appointment: {
-      findUnique: async () => {
+      findUnique: async (args?: { select?: Record<string, unknown> }) => {
+        // The stylist-only lookup that feeds the pre-approval Fresha refresh is
+        // not the action's "initial read": answering it must not fire changeAfterRead.
+        const select = args?.select;
+        if (select && Object.keys(select).length === 1 && select.stylistId === true) return { stylistId: appointment.stylistId };
         const result = structuredClone(appointment);
         if (reads++ === 0 && options.changeAfterRead) {
           if (options.changeAfterRead === 'cancel') appointment.status = 'CANCELLED';
