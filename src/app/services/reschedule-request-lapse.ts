@@ -20,7 +20,7 @@ const lapseInclude = {
  * racing staff decision never sends twice. The customer is emailed only while
  * the original booking is still ahead. A row that throws is logged and skipped
  * (it stays due and is retried next tick) so one bad row can never block the
- * rest of the cron.
+ * rest of the cron; a failed salon-phone read only drops the phone callout.
  */
 export async function lapseExpiredRescheduleRequests(now: Date, limit = 50): Promise<{ lapsed: number; failed: number }> {
   const cutoff = new Date(now.getTime() + RESCHEDULE_REQUEST_LEAD_HOURS * 3_600_000);
@@ -39,9 +39,16 @@ export async function lapseExpiredRescheduleRequests(now: Date, limit = 50): Pro
   let lapsed = 0;
   let failed = 0;
   if (due.length === 0) return { lapsed, failed };
-  // Once per run: the email tells the customer how to call the salon.
-  const settings = await prisma.siteSettings.findUnique({ where: { id: 'singleton' }, select: { phone: true } });
-  const salonPhone = settings?.phone || undefined;
+  // Once per run: the email tells the customer how to call the salon. The phone
+  // is a nicety, so a failed read sends the emails without it rather than
+  // leaving every due request open until the next tick.
+  let salonPhone: string | undefined;
+  try {
+    const settings = await prisma.siteSettings.findUnique({ where: { id: 'singleton' }, select: { phone: true } });
+    salonPhone = settings?.phone || undefined;
+  } catch (error) {
+    console.error('Reading the salon phone for lapse emails failed:', error instanceof Error ? error.name : 'unknown');
+  }
   for (const { id } of due) {
     try {
       const done = await runSerializableWithRetry(async (tx) => {

@@ -10,6 +10,8 @@ type Hooks = {
   failEnqueueFor?: string;
   /** The salon phone in SiteSettings; absent = no settings row (no phone, no callout). */
   salonPhone?: string;
+  /** The SiteSettings read throws (a Neon blip). */
+  settingsReadFails?: boolean;
 };
 /** Due: requested time under 24 h away, OR the booking's original time has passed with a request still open. */
 type DueWhere = { status: string; OR: ({ rescheduleRequestedDate: { lt: Date } } | { date: { lt: Date }; rescheduleRequestedDate: { not: null } })[] };
@@ -27,7 +29,11 @@ function fixture(rows: { id: string; requestedDate: Date | null; requestedAt: Da
   const auditMetadata: Record<string, unknown>[] = [];
   let settingsReads = 0;
   const tx = {
-    siteSettings: { findUnique: async () => { settingsReads++; return hooks.salonPhone ? { phone: hooks.salonPhone } : null; } },
+    siteSettings: { findUnique: async () => {
+      settingsReads++;
+      if (hooks.settingsReadFails) throw new Error('settings read failed');
+      return hooks.salonPhone ? { phone: hooks.salonPhone } : null;
+    } },
     appointment: {
       findMany: async ({ where }: { where: DueWhere }) => appointments.filter((row) => row.status === where.status && where.OR.some((part) =>
         'date' in part
@@ -161,4 +167,15 @@ test('a lapse run with nothing due reads no settings, and no settings row means 
   const bare = fixture([due('soon', 11)]);
   assert.deepEqual(await bare.service.lapseExpiredRescheduleRequests(now), { lapsed: 1, failed: 0 });
   assert.equal(bare.enqueued[0].salonPhone, undefined);
+});
+
+test('a failed salon-phone read still lapses every due request, just without the phone', async (t) => {
+  t.mock.method(console, 'error', () => undefined);
+  const f = fixture([
+    { id: 'a', requestedDate: new Date('2099-09-02T11:00:00Z'), requestedAt: new Date('2099-08-30T10:00:00Z') },
+    { id: 'b', requestedDate: new Date('2099-09-02T10:00:00Z'), requestedAt: new Date('2099-08-30T09:00:00Z') },
+  ], { salonPhone: '07831 830898', settingsReadFails: true });
+  assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(now), { lapsed: 2, failed: 0 });
+  assert.deepEqual(f.enqueued.map((event) => [event.id, event.salonPhone]).sort(), [['a', undefined], ['b', undefined]]);
+  assert.ok(f.appointments.every((row) => row.rescheduleRequestedAt === null));
 });
