@@ -84,6 +84,8 @@ const emails = {
     intro: 'Your appointment at Harbour Hair Salon has a new date and time. The previous time was {previous}.',
     cta: 'View my booking',
     footnote: 'You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.',
+    requestMatched: 'This is the new time you asked for.',
+    requestReplaced: 'Your request to move to {requested} is now closed: the salon has arranged the time above instead.',
   },
   reminder: {
     subjectToday: 'Reminder: your appointment is today — Harbour Hair Salon',

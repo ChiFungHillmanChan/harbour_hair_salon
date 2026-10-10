@@ -182,6 +182,8 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
       const oldDate = current.date;
       const startMoved = oldDate.getTime() !== newDate.getTime();
       const stylistChanged = current.stylistId !== stylistId;
+      // The customer's open request this edit closes, so their email can say so.
+      const closedRequestDate = (startMoved || stylistChanged) && current.rescheduleRequestedAt ? current.rescheduleRequestedDate : null;
 
       const treatwellApi = getTreatwellApiConfiguration();
       const treatwellSyncStatus = changedTreatwellSyncStatus({
@@ -246,7 +248,7 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
           await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', updated);
           await enqueueAppointmentNotification(tx, 'SALON_ALERT', updated);
         } else {
-          await enqueueAppointmentNotification(tx, 'RESCHEDULE', updated, { oldDate });
+          await enqueueAppointmentNotification(tx, 'RESCHEDULE', updated, { oldDate, ...(closedRequestDate ? { requestedDate: closedRequestDate } : {}) });
         }
         return { kind: 'moved' as const, notify: true };
       }

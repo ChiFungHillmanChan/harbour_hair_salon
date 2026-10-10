@@ -127,6 +127,19 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
   });
 }
 
+test('a staff move that closed an open request says what happened to the request', () => {
+  const moved = { ...requestAppointment, date: new Date('2099-09-12T13:00:00Z') };
+  const other = new Date('2099-09-20T09:00:00Z');
+  const replaced = appointmentEmailContent('RESCHEDULE', moved, 'en-GB', { oldDate: requestedDate, requestedDate: other });
+  assert.match(replaced.footnotes[0], /^Your request to move to .+ is now closed: the salon has arranged the time above instead\.$/);
+  assert.match(renderPlainText(replaced), /Your request to move to/);
+  const matched = appointmentEmailContent('RESCHEDULE', moved, 'en-GB', { oldDate: requestedDate, requestedDate: moved.date });
+  assert.equal(matched.footnotes[0], 'This is the new time you asked for.');
+  const zh = appointmentEmailContent('RESCHEDULE', moved, 'zh-HK', { oldDate: requestedDate, requestedDate: other });
+  assert.match(zh.footnotes[0], /^你改至.+的申請已經結束：本店已為你安排以上時間。$/);
+  assert.equal(appointmentEmailContent('RESCHEDULE', moved, 'zh-HK', { oldDate: requestedDate, requestedDate: moved.date }).footnotes[0], '這是你申請的新時間。');
+});
+
 test('booking emails offer a new-time request, not a direct reschedule, from My Bookings', () => {
   const en = { reschedule: 'You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.' };
   const zh = { reschedule: '你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。' };

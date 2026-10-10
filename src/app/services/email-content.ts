@@ -143,6 +143,11 @@ export function appointmentEmailContent(
     case 'RESCHEDULE': {
       if (!options.oldDate) throw new Error('Reschedule notification requires the original date');
       const previous = `${formatSalonLongDate(locale, options.oldDate)} ${formatSalonClock(locale, options.oldDate)}`;
+      // A staff move that closed the customer's open request says what became of it.
+      const closedRequest = options.requestedDate;
+      const requestNote = !closedRequest ? []
+        : closedRequest.getTime() === appointment.date.getTime() ? [t('reschedule.requestMatched')]
+          : [t('reschedule.requestReplaced', { requested: `${formatSalonLongDate(locale, closedRequest)} ${formatSalonClock(locale, closedRequest)}` })];
       return {
         ...base,
         subject: t('reschedule.subject'),
@@ -150,7 +155,7 @@ export function appointmentEmailContent(
         eyebrow: t('reschedule.eyebrow'), title: t('reschedule.title'), intro: t('reschedule.intro', { previous }),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('previousDate', previous)],
         cta: { label: t('reschedule.cta'), href: url(locale, '/appointments') },
-        footnotes: [t('reschedule.footnote')],
+        footnotes: [...requestNote, t('reschedule.footnote')],
       };
     }
     case 'REMINDER': {
