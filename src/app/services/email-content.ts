@@ -143,6 +143,11 @@ export function appointmentEmailContent(
     case 'RESCHEDULE': {
       if (!options.oldDate) throw new Error('Reschedule notification requires the original date');
       const previous = `${formatSalonLongDate(locale, options.oldDate)} ${formatSalonClock(locale, options.oldDate)}`;
+      // A staff move that closed the customer's open request says what became of it.
+      const closedRequest = options.requestedDate;
+      const requestNote = !closedRequest ? []
+        : closedRequest.getTime() === appointment.date.getTime() ? [t('reschedule.requestMatched')]
+          : [t('reschedule.requestReplaced', { requested: `${formatSalonLongDate(locale, closedRequest)} ${formatSalonClock(locale, closedRequest)}` })];
       return {
         ...base,
         subject: t('reschedule.subject'),
@@ -150,7 +155,7 @@ export function appointmentEmailContent(
         eyebrow: t('reschedule.eyebrow'), title: t('reschedule.title'), intro: t('reschedule.intro', { previous }),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('previousDate', previous)],
         cta: { label: t('reschedule.cta'), href: url(locale, '/appointments') },
-        footnotes: [t('reschedule.footnote')],
+        footnotes: [...requestNote, t('reschedule.footnote')],
       };
     }
     case 'REMINDER': {
@@ -237,7 +242,7 @@ export function appointmentEmailContent(
         preview: t(`${section}.preview`, { requested }),
         eyebrow: t(`${section}.eyebrow`), title: t(`${section}.title`), intro: t(`${section}.intro`, { requested }),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('currentTime', current), labels('requestedDate', formatSalonLongDate(locale, options.requestedDate)), labels('requestedTime', formatSalonClock(locale, options.requestedDate))],
-        callout: closed && options.salonPhone ? { title: t('request.calloutTitle'), body: t('request.calloutBody', { phone: options.salonPhone }) } : undefined,
+        callout: closed && options.salonPhone ? { title: t('rescheduleAnotherTime.calloutTitle'), body: t('rescheduleAnotherTime.calloutBody', { phone: options.salonPhone }) } : undefined,
         cta: { label: t(`${section}.cta`), href: url(locale, '/appointments') },
         footnotes: [t(`${section}.footnote`)],
       };
@@ -250,9 +255,8 @@ export function appointmentEmailContent(
  * API route, not a page: the route records the proof, then sends the visitor
  * on in the language carried inside the signed token.
  */
-export function emailVerificationContent(user: { name: string | null }, token: string, expiresInHours: number, locale: Locale): EmailContent {
+export function emailVerificationContent(token: string, expiresInHours: number, locale: Locale): EmailContent {
   const t = translator(locale, 'emails');
-  const name = user.name?.trim();
   return {
     locale,
     palette: 'ink',
@@ -260,7 +264,8 @@ export function emailVerificationContent(user: { name: string | null }, token: s
     preview: t('emailVerification.preview'),
     eyebrow: t('emailVerification.eyebrow'),
     title: t('emailVerification.title'),
-    greeting: name ? t('common.greeting', { name }) : t('common.greetingNoName'),
+    // Never the account name: whoever registered the address typed it, and this mail goes to that address.
+    greeting: t('common.greetingNoName'),
     intro: t('emailVerification.intro'),
     details: [],
     cta: { label: t('emailVerification.cta'), href: `${SITE_URL}/api/auth/verify-email?token=${encodeURIComponent(token)}` },
@@ -269,9 +274,8 @@ export function emailVerificationContent(user: { name: string | null }, token: s
   };
 }
 
-export function passwordResetContent(user: { name: string | null }, token: string, expiresInMinutes: number, locale: Locale): EmailContent {
+export function passwordResetContent(token: string, expiresInMinutes: number, locale: Locale): EmailContent {
   const t = translator(locale, 'emails');
-  const name = user.name?.trim();
   return {
     locale,
     palette: 'ink',
@@ -279,7 +283,8 @@ export function passwordResetContent(user: { name: string | null }, token: strin
     preview: t('passwordReset.preview'),
     eyebrow: t('passwordReset.eyebrow'),
     title: t('passwordReset.title'),
-    greeting: name ? t('common.greeting', { name }) : t('common.greetingNoName'),
+    // Never the account name: an unverified account's name was typed by whoever registered the address.
+    greeting: t('common.greetingNoName'),
     intro: t('passwordReset.intro'),
     details: [],
     // The token stays a query parameter on the reset page, in the language

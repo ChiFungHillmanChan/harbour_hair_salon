@@ -22,8 +22,17 @@ test('encrypt/decrypt round-trips a session payload', async () => {
 
 test('decrypt returns null for a tampered token', async () => {
   const token = await encrypt({ userId: 'u1', role: 'USER', sessionVersion: 0, expiresAt: new Date(Date.now() + 1000) });
-  const tampered = token.slice(0, -2) + (token.endsWith('a') ? 'bb' : 'aa');
-  assert.equal(await decrypt(tampered), null);
+  // Change a character in the MIDDLE of the signature: the last base64url
+  // character carries padding bits, so overwriting the tail could leave the
+  // signature bytes unchanged (measured: about 1 run in 750).
+  const [head, body, signature] = token.split('.');
+  const i = Math.floor(signature.length / 2);
+  const flipped = signature.slice(0, i) + (signature[i] === 'A' ? 'B' : 'A') + signature.slice(i + 1);
+  assert.notEqual(flipped, signature);
+  assert.equal(await decrypt(`${head}.${body}.${flipped}`), null);
+  // An altered payload under the original signature is refused too.
+  const forgedBody = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, 'base64url').toString()), role: 'ADMIN' })).toString('base64url');
+  assert.equal(await decrypt(`${head}.${forgedBody}.${signature}`), null);
 });
 
 test('decrypt returns null for undefined/empty input', async () => {

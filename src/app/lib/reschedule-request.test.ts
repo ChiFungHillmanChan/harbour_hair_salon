@@ -44,3 +44,24 @@ test('the view shows a request on a booking whose original time has passed as ex
     { state: 'expired', requestedDate: '2099-09-10T09:00:00.000Z', requestedAt: '2099-08-30T10:00:00.000Z' },
   );
 });
+
+// The seeded FAQ ships in FAQPage JSON-LD, so it must describe the request
+// flow, not the old instant reschedule. Its Chinese translation is matched by
+// its English source, so both files have to move together.
+test('the seeded cancel/reschedule FAQ describes a request the salon confirms, in both languages', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const seed = await readFile(new URL('../../../scripts/seed-faqs.ts', import.meta.url), 'utf8');
+  const block = /question: 'Can I cancel or reschedule my appointment\?',\s*answer:\s*'([^']*)'/.exec(seed);
+  assert.ok(block, 'the cancel/reschedule FAQ is still seeded');
+  const english = block[1];
+  assert.doesNotMatch(english, /cancel or reschedule free of charge/);
+  assert.match(english, /current time stays booked/);
+
+  const { entries } = JSON.parse(await readFile(new URL('../../../prisma/content-translations/zh-HK.json', import.meta.url), 'utf8')) as {
+    entries: { match: { question?: string }; source: { answer?: string }; fields: { answer?: string } }[];
+  };
+  const entry = entries.find((e) => e.match.question === 'Can I cancel or reschedule my appointment?');
+  assert.ok(entry, 'the FAQ has a Chinese translation');
+  assert.equal(entry.source.answer, english, 'the translation is made from the current English');
+  assert.match(entry.fields.answer ?? '', /申請改期/);
+});

@@ -7,18 +7,22 @@ import type { Locale } from '../../i18n/config';
 // The opening-hours save answers in the admin's interface language, from the
 // validator's CODE — the English sentence is never matched or translated.
 
-function action(locale: Locale) {
+function action(locale: Locale, options: { failWrite?: boolean } = {}) {
   const writes: unknown[] = [];
+  const invalidated: string[] = [];
   const actions = loadServerModule<typeof import('./admin-availability')>('src/app/actions/admin-availability.ts', {
     '@/app/lib/prisma': { __esModule: true, default: {
       availability: { upsert: (query: unknown) => query },
-      $transaction: async (queries: unknown[]) => { writes.push(...queries); return queries; },
+      $transaction: async (queries: unknown[]) => {
+        if (options.failWrite) throw Object.assign(new Error('Connection terminated unexpectedly'), { code: 'P1017' });
+        writes.push(...queries); return queries;
+      },
     } },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin', role: 'ADMIN' }) },
     '@/i18n/request': { getActionT: async (namespace: 'adminSchedule') => translator(locale, namespace) },
-    'next/cache': { revalidatePath: () => undefined, updateTag: () => undefined },
+    'next/cache': { revalidatePath: (path: string) => { invalidated.push(path); }, updateTag: (tag: string) => { invalidated.push(tag); } },
   });
-  return { save: actions.updateStylistAvailability, writes };
+  return { save: actions.updateStylistAvailability, writes, invalidated };
 }
 
 function week(overrides: Record<number, Partial<Record<'open' | 'start' | 'end', string>>> = {}, stylistId = 'stylist-1') {
@@ -52,4 +56,17 @@ test('a valid week still saves', async () => {
   const { save, writes } = action('zh-HK');
   assert.deepEqual(await save({ status: 'idle' }, week({ 3: { open: '' } })), { status: 'success' });
   assert.equal(writes.length, 7);
+});
+
+// A database blip used to throw out of the action into the error boundary,
+// replacing the form and losing the week being edited.
+test('a failed save answers with a retryable error instead of crashing the page', async (t) => {
+  const logged = t.mock.method(console, 'error', () => undefined);
+  const en = action('en-GB', { failWrite: true });
+  assert.deepEqual(await en.save({ status: 'idle' }, week()), { status: 'error', message: 'The opening hours could not be saved. Your changes are still here — please try again.' });
+  assert.deepEqual(en.invalidated, [], 'nothing was saved, so no cache is dropped');
+  assert.equal(logged.mock.callCount(), 1);
+  assert.deepEqual(logged.mock.calls[0].arguments[1], { stylistId: 'stylist-1', error: 'Error', code: 'P1017' });
+  const zh = action('zh-HK', { failWrite: true });
+  assert.deepEqual(await zh.save({ status: 'idle' }, week()), { status: 'error', message: '未能儲存營業時間。你的修改仍然保留，請再試一次。' });
 });

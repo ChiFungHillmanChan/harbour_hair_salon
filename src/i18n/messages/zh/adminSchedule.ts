@@ -230,6 +230,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
       TIME_FORMAT: '{day}：營業時間必須是 09:30 這類格式。',
       CLOSE_BEFORE_OPEN: '{day}：結束時間必須遲於開始時間。',
       INVALID: '未能儲存這些營業時間，請檢查後再試。',
+      SAVE_FAILED: '未能儲存營業時間。你的修改仍然保留，請再試一次。',
     },
   },
   errors: {

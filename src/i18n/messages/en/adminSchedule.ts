@@ -232,6 +232,7 @@ const adminSchedule = {
       TIME_FORMAT: '{day}: opening hours must be times like 09:30.',
       CLOSE_BEFORE_OPEN: '{day}: the closing time must be after the opening time.',
       INVALID: 'These opening hours could not be saved. Please check them and try again.',
+      SAVE_FAILED: 'The opening hours could not be saved. Your changes are still here — please try again.',
     },
   },
   errors: {

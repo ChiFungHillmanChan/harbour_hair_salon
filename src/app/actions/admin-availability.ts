@@ -10,6 +10,7 @@ import type { Messages } from '@/i18n/messages';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { validateWeek, type DayInput, type WeekValidation } from '@/app/services/opening-hours';
+import { describeFault } from '@/app/lib/fault';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -76,8 +77,30 @@ export async function updateStylistAvailability(
     return { status: 'error', message: weekErrorText(t, validated) };
   }
 
-  await prisma.$transaction(
-    validated.days.map((day) =>
+  try {
+    await saveWeek(stylistId, validated.days);
+  } catch (error) {
+    // Answer in the form instead of throwing to the error boundary, which
+    // would replace the form and lose the week being edited. Name and code
+    // only: a driver message can carry the database host.
+    console.error('Saving opening hours failed:', { stylistId, ...describeFault(error) });
+    return { status: 'error', message: t('openingHours.errors.SAVE_FAILED') };
+  }
+
+  // /book reads availability per request, but the admin screen and the booking
+  // page both need to reflect the new week immediately.
+  updateTag('calendar-sync-hours');
+  updateTag('site-settings');
+  revalidateAllLocales(revalidatePath, '/admin');
+  revalidateAllLocales(revalidatePath, '/admin/opening-hours');
+  revalidateAllLocales(revalidatePath, '/book');
+
+  return { status: 'success' };
+}
+
+function saveWeek(stylistId: string, days: Extract<WeekValidation, { ok: true }>['days']) {
+  return prisma.$transaction(
+    days.map((day) =>
       prisma.availability.upsert({
         where: { stylistId_dayOfWeek: { stylistId, dayOfWeek: day.dayOfWeek } },
         update: { isOff: day.isOff, startTime: day.startTime, endTime: day.endTime },
@@ -93,14 +116,4 @@ export async function updateStylistAvailability(
       })
     )
   );
-
-  // /book reads availability per request, but the admin screen and the booking
-  // page both need to reflect the new week immediately.
-  updateTag('calendar-sync-hours');
-  updateTag('site-settings');
-  revalidateAllLocales(revalidatePath, '/admin');
-  revalidateAllLocales(revalidatePath, '/admin/opening-hours');
-  revalidateAllLocales(revalidatePath, '/book');
-
-  return { status: 'success' };
 }

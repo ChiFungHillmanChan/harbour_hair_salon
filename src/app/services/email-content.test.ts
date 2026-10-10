@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appointmentEmailContent, describeEmailPrice, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
-import { translator } from '../../i18n/messages';
+import { appointmentEmailContent, describeEmailPrice, emailVerificationContent, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
 
 const appointment: EmailAppointment = {
   id: 'appointment-ABCDEFGH',
@@ -51,12 +50,27 @@ test('the salon alert is Cantonese by default copy and keeps customer data raw',
 });
 
 test('password reset mail links to the reset page in the requesting language', () => {
-  const zh = passwordResetContent({ name: null }, 'tok en', 60, 'zh-HK');
+  const zh = passwordResetContent('tok en', 60, 'zh-HK');
   assert.match(zh.cta!.href, /\/zh-hk\/auth\/reset-password\?token=tok%20en$/);
   assert.match(renderPlainText(zh), /60 分鐘/);
-  const en = passwordResetContent({ name: 'Ada' }, 'abc', 60, 'en-GB');
+  const en = passwordResetContent('abc', 60, 'en-GB');
   assert.match(en.cta!.href, /\/auth\/reset-password\?token=abc$/);
   assert.doesNotMatch(en.cta!.href, /zh-hk/);
+});
+
+// Anyone can register an address they do not own and type a "name" such as
+// "Your account is locked, call 0900…". The verification and reset emails go
+// to that address from our domain, so they must not carry the name at all.
+test('account emails greet neutrally and never take the account name', () => {
+  const neutral = { 'en-GB': 'Hi there,', 'zh-HK': '你好：' } as const;
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const verify = emailVerificationContent('tok', 24, locale);
+    assert.equal(verify.greeting, neutral[locale]);
+    assert.match(verify.cta!.href, /\/api\/auth\/verify-email\?token=tok$/);
+    assert.equal(passwordResetContent('tok', 60, locale).greeting, neutral[locale]);
+  }
+  assert.equal(emailVerificationContent.length, 3, 'no user/name parameter');
+  assert.equal(passwordResetContent.length, 3, 'no user/name parameter');
 });
 
 test('the unsubscribe confirmation carries its link and says nothing changes without it', () => {
@@ -110,17 +124,36 @@ test('both salon alert kinds are staff mail', () => {
   assert.equal(isSalonEmailKind('RESCHEDULE_DECLINED'), false);
 });
 
+// A declined or lapsed request is about finding ANOTHER time, not an earlier
+// one, so it must not reuse the new-booking "Need it sooner?" callout.
+const anotherTimeCallout = {
+  'en-GB': { title: 'Want a different time?', body: 'Call the salon on 07831 830898 and we’ll find one with you.' },
+  'zh-HK': { title: '想另約時間？', body: '請致電本店 07831 830898，我們會與你另約時間。' },
+} as const;
+
 for (const locale of ['en-GB', 'zh-HK'] as const) {
   test(`declined and lapsed request emails give the salon phone when it is known (${locale})`, () => {
-    const t = translator(locale, 'emails');
     for (const kind of ['RESCHEDULE_DECLINED', 'RESCHEDULE_LAPSED'] as const) {
       const withPhone = appointmentEmailContent(kind, requestAppointment, locale, { requestedDate, salonPhone: '07831 830898' });
-      assert.deepEqual(withPhone.callout, { title: t('request.calloutTitle'), body: t('request.calloutBody', { phone: '07831 830898' }) }, kind);
+      assert.deepEqual(withPhone.callout, anotherTimeCallout[locale], kind);
       assert.match(renderPlainText(withPhone), /07831 830898/, `${kind} plain text carries the phone`);
       assert.equal(appointmentEmailContent(kind, requestAppointment, locale, { requestedDate }).callout, undefined, `${kind}: no phone, no callout`);
     }
   });
 }
+
+test('a staff move that closed an open request says what happened to the request', () => {
+  const moved = { ...requestAppointment, date: new Date('2099-09-12T13:00:00Z') };
+  const other = new Date('2099-09-20T09:00:00Z');
+  const replaced = appointmentEmailContent('RESCHEDULE', moved, 'en-GB', { oldDate: requestedDate, requestedDate: other });
+  assert.match(replaced.footnotes[0], /^Your request to move to .+ is now closed: the salon has arranged the time above instead\.$/);
+  assert.match(renderPlainText(replaced), /Your request to move to/);
+  const matched = appointmentEmailContent('RESCHEDULE', moved, 'en-GB', { oldDate: requestedDate, requestedDate: moved.date });
+  assert.equal(matched.footnotes[0], 'This is the new time you asked for.');
+  const zh = appointmentEmailContent('RESCHEDULE', moved, 'zh-HK', { oldDate: requestedDate, requestedDate: other });
+  assert.match(zh.footnotes[0], /^你改至.+的申請已經結束：本店已為你安排以上時間。$/);
+  assert.equal(appointmentEmailContent('RESCHEDULE', moved, 'zh-HK', { oldDate: requestedDate, requestedDate: moved.date }).footnotes[0], '這是你申請的新時間。');
+});
 
 test('booking emails offer a new-time request, not a direct reschedule, from My Bookings', () => {
   const en = { reschedule: 'You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.' };

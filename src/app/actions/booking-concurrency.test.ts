@@ -382,6 +382,21 @@ for (const status of ['PENDING', 'CONFIRMED']) {
   });
 }
 
+test('an unexpected cancellation failure is logged with the appointment id; an expected refusal is not', async (t) => {
+  const logged = t.mock.method(console, 'error', () => undefined);
+  const failing = fixture({ failEnqueue: true });
+  assert.equal((await failing.actions.cancelAppointment(failing.appointment.id)).success, false);
+  assert.equal(logged.mock.callCount(), 1);
+  assert.match(String(logged.mock.calls[0].arguments[0]), /Cancelling an appointment failed/);
+  // Name only: a driver message can carry the database host.
+  assert.deepEqual(logged.mock.calls[0].arguments.slice(1), [{ appointmentId: failing.appointment.id, error: 'Error' }]);
+  assert.doesNotMatch(JSON.stringify(logged.mock.calls[0].arguments), /queue write failed/);
+
+  const stale = fixture({ status: 'PENDING', changeAfterRead: 'confirm' });
+  assert.equal((await stale.actions.cancelAppointment(stale.appointment.id)).success, false);
+  assert.equal(logged.mock.callCount(), 1, 'a concurrency refusal is a normal answer, not an error');
+});
+
 test('customer cancellation cannot use stale pending status to bypass a concurrent confirmation', async () => {
   const { actions, appointment, messages } = fixture({ status: 'PENDING', changeAfterRead: 'confirm' });
   assert.equal((await actions.cancelAppointment(appointment.id)).success, false);
@@ -463,7 +478,8 @@ test('confirmed appointments retain the 24-hour change restriction while pending
 });
 
 for (const operation of ['approve', 'admin-cancel', 'customer-cancel', 'request'] as const) {
-  test(`a failed notification enqueue rolls back ${operation} without dispatching`, async () => {
+  test(`a failed notification enqueue rolls back ${operation} without dispatching`, async (t) => {
+    t.mock.method(console, 'error', () => undefined); // the failure is logged by design
     const initialStatus = operation === 'approve' ? 'PENDING' : 'CONFIRMED';
     const f = fixture({ status: initialStatus, failEnqueue: true });
     const result = operation === 'request'
@@ -548,6 +564,9 @@ test('a requested time on the stylist\'s day off is refused', async () => {
   const result = await f.actions.requestReschedule(f.appointment.id, '2099-09-16', '10:00'); // Wednesday
   assert.equal('code' in result && result.code, 'STYLIST_OFF_THAT_DAY');
   assert.equal(f.appointment.rescheduleRequestedAt, null);
+  // Refused up front, on the requested weekday: no transaction, no allowance spent.
+  assert.equal(f.transactions(), 0);
+  assert.deepEqual(f.limiterKeys, []);
 });
 
 test('a colour booking cannot be requested into the 48 hours after its patch test', async () => {
@@ -703,7 +722,11 @@ test('a request on a booking whose original time has passed cannot be approved',
   const f = fixture({ openRequest: OPEN_REQUEST, currentDate: new Date('2099-09-01T11:00:00Z') });
   const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
   assert.equal(result.success, false);
+  // The requested time is days away, so the message must not blame it alone,
+  // and it must tell staff what they can still do.
   assert.match(String(!result.success && result.error), /expired/);
+  assert.match(String(!result.success && result.error), /original appointment has already passed/);
+  assert.match(String(!result.success && result.error), /Decline the request or call the customer/);
   assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
   assert.equal(f.appointment.rescheduleRequestedAt?.toISOString(), OPEN_REQUEST.requestedAt.toISOString(), 'the request is left for the lapse step');
   assert.equal(f.appointment.notificationVersion, 0);
@@ -735,6 +758,17 @@ for (const status of ['CANCELLED', 'COMPLETED'] as const) {
     assert.equal(f.events.some((event) => event.kind === 'RESCHEDULE_DECLINED' || event.kind === 'RESCHEDULE_LAPSED'), false);
   });
 }
+
+test('approval refuses a requested day the stylist no longer works', async () => {
+  // The rota changed after the request: the stylist is now off on Tuesdays (OPEN_REQUEST is Tue 15 Sep).
+  const f = fixture({ openRequest: OPEN_REQUEST, offDays: [2] });
+  const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
+  assert.equal(result.success, false);
+  assert.match(String(!result.success && result.error), /not available on this day/);
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+  assert.equal(f.appointment.rescheduleRequestedAt?.toISOString(), OPEN_REQUEST.requestedAt.toISOString(), 'staff can still decline it');
+  assert.equal(f.events.length, 0);
+});
 
 test('the colour patch-test rule is re-checked against the requested date on approval', async () => {
   const f = fixture({ openRequest: OPEN_REQUEST, requiresPatchTest: true, patchTestDate: new Date('2099-09-14T12:00:00Z') });

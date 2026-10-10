@@ -7,6 +7,7 @@ import { EMAIL_VERIFICATION_SELECT, hasVerifiedEmail } from '@/app/lib/email-ver
 import { evaluateBookingGates, type PatchTestGateReason } from '@/app/services/booking-gates';
 import { resolveSalonDateTime, fitsWithinAvailability, isValidSalonTime, isValidSalonDate, SALON_TIME_RE, SALON_DATE_RE, type SalonDateTime } from '@/app/services/salon-time';
 import { BookingError, bookingErrorText, describeBookingError, type BookingErrorCode } from '@/app/services/booking-errors';
+import { describeFault } from '@/app/lib/fault';
 import { PriceChangedError } from '@/app/services/booking-service';
 import { getActionLocale } from '@/i18n/request';
 import type { Locale } from '@/i18n/config';
@@ -493,6 +494,8 @@ export async function cancelAppointment(appointmentId: string) {
     invalidateStylistIcalFeed();
     after(() => dispatchAppointmentNotifications(appointmentId));
   } catch (error) {
+    // A refusal (stale, not found) is an answer; anything else is a fault to investigate.
+    if (!(error instanceof BookingError)) console.error('Cancelling an appointment failed:', { appointmentId, ...describeFault(error) });
     return { success: false, error: describeBookingError(error, locale, 'CANCEL_FAILED') };
   }
 

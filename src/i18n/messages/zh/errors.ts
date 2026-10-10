@@ -48,7 +48,7 @@ const errors: Localized<Messages['errors']> = {
     TOO_MANY_RESCHEDULES: '你最近已多次申請更改此預約，請稍後再試或致電本店。',
     RESCHEDULE_REQUEST_TOO_SOON: '請選擇最少 24 小時後的新時間，或致電本店。',
     RESCHEDULE_REQUEST_CHANGED: '此改期申請已有變更，請重新整理後再試。',
-    RESCHEDULE_REQUEST_EXPIRED: '此申請已過期：申請的時間距今不足 24 小時。',
+    RESCHEDULE_REQUEST_EXPIRED: '呢個申請已經過期：要求嘅時間距今唔夠 24 小時，或者原本嘅預約時間已經過咗。請拒絕申請或者打電話俾客人。',
     RESCHEDULE_SLOT_TAKEN: '嗰個時間已經冇位，請拒絕申請或者打電話俾客人。',
     NOT_AUTHORISED: '沒有權限',
     ADMIN_UPDATE_FAILED: '未能更新此預約，請再試一次。',

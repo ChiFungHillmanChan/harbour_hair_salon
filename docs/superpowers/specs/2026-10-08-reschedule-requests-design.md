@@ -284,6 +284,9 @@ already happened). Re-running is a no-op (the conditional
 clear finds nothing). The route's `NOTIFICATIONS_ENABLED` kill-switch stays above
 the first DB call. No new cron and no extra Neon wake (same tick).
 
+*(Amended 2026-10-10.)* The salon phone for the email is read once per run; if
+that read fails the requests still lapse and the emails go without the phone.
+
 Known limit: the notifications cron runs `*/30 8-19` UTC, so a request that
 lapses overnight gets its email the next morning; the site and admin already
 treat it as expired at the 24 h mark.
@@ -319,7 +322,11 @@ reads happen inside the transaction):
   then every stylist's at 30; kill-switch; never throws. Both approval paths use it.
 - `isCurrent`: table-driven over the four new kinds × (open, replaced, withdrawn,
   approved, cancelled).
-- Lapse: only < 24 h requests; idempotent on re-run; kill-switch before any DB call.
+- Lapse: requests < 24 h away, and *(amended 2026-10-09)* requests on a booking
+  whose original time has passed (cleared and audited, no email); idempotent on
+  re-run; a row that throws is skipped and retried next tick; *(amended
+  2026-10-10)* a failed salon-phone read only drops the phone callout; kill-switch
+  before any DB call.
 - Email copy: en + zh snapshots of subject/greeting/key lines for the four kinds.
 - `use-server-exports.test.ts` still passes (new actions are async exports).
 
@@ -350,5 +357,9 @@ Real PostgreSQL (`scripts/verify-booking-lifecycle.ts`, CI):
 
 - Holding the requested slot; per-stylist booking closure; free-text decline
   reasons; reschedule-request history UI (audit log only).
-- Staff direct moves in Admin (unchanged).
-- The other 2026-10-08 review findings (W4–W6 tests, INFO batch).
+- Staff direct moves in Admin (unchanged), except *(amended 2026-10-10)* a move
+  that closes an open request says so in the customer's moved-booking email
+  ("This is the new time you asked for", or that the request to move to
+  <time> is closed and the salon arranged the new time instead).
+- The other 2026-10-08 review findings (W4–W6 tests, INFO batch) — done
+  separately on 2026-10-10.

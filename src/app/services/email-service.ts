@@ -103,7 +103,7 @@ export async function sendPreparedEmail(email: PreparedEmail, idempotencyKey?: s
  */
 export async function sendEmailVerification(user: { id: string; email: string; name: string | null }, locale: Locale = DEFAULT_LOCALE): Promise<void> {
   const token = await createEmailVerificationToken(user, locale);
-  const content = emailVerificationContent(user, token, EMAIL_VERIFICATION_TTL_HOURS, locale);
+  const content = emailVerificationContent(token, EMAIL_VERIFICATION_TTL_HOURS, locale);
   await sendPreparedEmail(await prepareEmail(user.email, content));
 }
 
@@ -111,8 +111,8 @@ export async function sendEmailVerification(user: { id: string; email: string; n
  * Reset tokens remain short-lived and are never written to the notification
  * queue. The mail uses the language of the page the reset was requested from.
  */
-export async function sendPasswordReset(user: { email: string; name: string | null }, token: string, locale: Locale = DEFAULT_LOCALE): Promise<void> {
-  const content = passwordResetContent(user, token, Math.round(RESET_TOKEN_TTL_MS / 60_000), locale);
+export async function sendPasswordReset(user: { email: string }, token: string, locale: Locale = DEFAULT_LOCALE): Promise<void> {
+  const content = passwordResetContent(token, Math.round(RESET_TOKEN_TTL_MS / 60_000), locale);
   await sendPreparedEmail(await prepareEmail(user.email, content));
 }
 

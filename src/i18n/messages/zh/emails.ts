@@ -84,6 +84,8 @@ const emails: Localized<Messages['emails']> = {
     intro: '你於 Harbour Hair Salon 的預約已改至新的日期及時間。原定時間為{previous}。',
     cta: '查看我的預約',
     footnote: '你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。',
+    requestMatched: '這是你申請的新時間。',
+    requestReplaced: '你改至{requested}的申請已經結束：本店已為你安排以上時間。',
   },
   reminder: {
     subjectToday: '提提你：你今日有預約 — Harbour Hair Salon',
@@ -142,6 +144,10 @@ const emails: Localized<Messages['emails']> = {
     intro: '我們未能將你的預約改至{requested}。以下預約維持不變。如想另約時間，請致電本店。',
     cta: '查看我的預約',
     footnote: '你可於預約前 24 小時或之前，在「我的預約」提出新的申請。',
+  },
+  rescheduleAnotherTime: {
+    calloutTitle: '想另約時間？',
+    calloutBody: '請致電本店 {phone}，我們會與你另約時間。',
   },
   rescheduleLapsed: {
     subject: '你的改期申請已失效 — Harbour Hair Salon',

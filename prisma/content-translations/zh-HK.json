@@ -1904,11 +1904,11 @@
       },
       "source": {
         "question": "Can I cancel or reschedule my appointment?",
-        "answer": "Yes. You can cancel or reschedule free of charge up to 24 hours before your appointment through the My Bookings page. Changes within 24 hours may not be possible."
+        "answer": "Yes. You can cancel free of charge up to 24 hours before your appointment through the My Bookings page. You can also ask for a new time there: the salon confirms it, and your current time stays booked until then. Within 24 hours of your appointment, please call the salon."
       },
       "fields": {
         "question": "可以取消或更改預約嗎？",
-        "answer": "可以。你可於預約時間 24 小時前，透過「我的預約」頁面免費取消或改期。預約前 24 小時內可能無法更改。"
+        "answer": "可以。你可於預約時間 24 小時前，透過「我的預約」頁面免費取消預約，亦可在該頁申請改期：本店確認新時間之前，你原本的時間會繼續保留。預約前 24 小時內，請致電本店。"
       }
     },
     {

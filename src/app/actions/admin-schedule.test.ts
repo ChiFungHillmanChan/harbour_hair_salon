@@ -57,7 +57,7 @@ function fixture(options: {
   const clashChecksInTransaction: boolean[] = [];
   let transactionActive = false;
   let dispatches = 0;
-  const enqueued: { kind: string; oldDate?: string }[] = [];
+  const enqueued: { kind: string; oldDate?: string; requestedDate?: string }[] = [];
 
   const otherBooking = {
     id: 'other', stylistId: 'stylist-1', status: 'CONFIRMED',
@@ -112,10 +112,10 @@ function fixture(options: {
   };
 
   const queue = {
-    enqueueAppointmentNotification: async (client: unknown, kind: string, _appt: unknown, opts?: { oldDate?: Date }) => {
+    enqueueAppointmentNotification: async (client: unknown, kind: string, _appt: unknown, opts?: { oldDate?: Date; requestedDate?: Date }) => {
       assert.equal(client, tx, 'enqueue must use the appointment transaction client');
       assert.equal(transactionActive, true, 'enqueue must happen before commit');
-      enqueued.push({ kind, oldDate: opts?.oldDate?.toISOString() });
+      enqueued.push({ kind, oldDate: opts?.oldDate?.toISOString(), ...(opts?.requestedDate ? { requestedDate: opts.requestedDate.toISOString() } : {}) });
       return { id: `event-${enqueued.length}` };
     },
     dispatchAppointmentNotifications: async () => {
@@ -174,6 +174,18 @@ test('a direct staff move clears any open customer reschedule request', async ()
   assert.deepEqual(await actions.moveAppointmentByAdmin(move()), { success: true });
   assert.equal(appointment.rescheduleRequestedAt, null);
   assert.equal(appointment.rescheduleRequestedDate, null);
+});
+
+test('a staff move that closes an open request tells the customer which request it replaced', async () => {
+  const { actions, enqueued } = fixture({ openRequest: true });
+  assert.deepEqual(await actions.moveAppointmentByAdmin(move()), { success: true });
+  assert.deepEqual(enqueued, [{ kind: 'RESCHEDULE', oldDate: ORIGINAL_START.toISOString(), requestedDate: '2099-09-20T09:00:00.000Z' }]);
+});
+
+test('a staff move with no open request mentions no request', async () => {
+  const { actions, enqueued } = fixture();
+  assert.deepEqual(await actions.moveAppointmentByAdmin(move()), { success: true });
+  assert.deepEqual(enqueued, [{ kind: 'RESCHEDULE', oldDate: ORIGINAL_START.toISOString() }]);
 });
 
 test('changing only the duration keeps an open customer request', async () => {

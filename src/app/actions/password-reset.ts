@@ -85,7 +85,7 @@ export async function requestPasswordReset(
 
   const user = await prisma.user.findUnique({
     where: { email: parsed.data.email },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true },
   });
 
   // No account: stop here, but return the same message as the success path.
@@ -108,7 +108,7 @@ export async function requestPasswordReset(
     ]);
 
     // In the language of the page that asked for it.
-    await sendPasswordReset({ email: user.email, name: user.name }, token, t.locale);
+    await sendPasswordReset({ email: user.email }, token, t.locale);
   } catch (error) {
     console.error('Password reset request failed:', error);
     return { status: 'error', message: t('errors.RESET_SEND_FAILED') };

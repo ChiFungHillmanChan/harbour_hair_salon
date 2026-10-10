@@ -53,7 +53,7 @@ const errors = {
     TOO_MANY_RESCHEDULES: "You've asked to change this appointment several times recently. Please try again later or call the salon.",
     RESCHEDULE_REQUEST_TOO_SOON: 'Please choose a new time at least 24 hours away, or call the salon.',
     RESCHEDULE_REQUEST_CHANGED: 'This reschedule request has changed. Please refresh and try again.',
-    RESCHEDULE_REQUEST_EXPIRED: 'This request has expired: the requested time is less than 24 hours away.',
+    RESCHEDULE_REQUEST_EXPIRED: 'This request has expired: the requested time is less than 24 hours away, or the original appointment has already passed. Decline the request or call the customer.',
     RESCHEDULE_SLOT_TAKEN: 'That time is no longer free. Decline the request or call the customer.',
     NOT_AUTHORISED: 'Not authorised',
     ADMIN_UPDATE_FAILED: 'Could not update this appointment. Please try again.',
