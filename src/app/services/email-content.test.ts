@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appointmentEmailContent, describeEmailPrice, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
+import { appointmentEmailContent, describeEmailPrice, emailVerificationContent, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
 
 const appointment: EmailAppointment = {
   id: 'appointment-ABCDEFGH',
@@ -50,12 +50,27 @@ test('the salon alert is Cantonese by default copy and keeps customer data raw',
 });
 
 test('password reset mail links to the reset page in the requesting language', () => {
-  const zh = passwordResetContent({ name: null }, 'tok en', 60, 'zh-HK');
+  const zh = passwordResetContent('tok en', 60, 'zh-HK');
   assert.match(zh.cta!.href, /\/zh-hk\/auth\/reset-password\?token=tok%20en$/);
   assert.match(renderPlainText(zh), /60 分鐘/);
-  const en = passwordResetContent({ name: 'Ada' }, 'abc', 60, 'en-GB');
+  const en = passwordResetContent('abc', 60, 'en-GB');
   assert.match(en.cta!.href, /\/auth\/reset-password\?token=abc$/);
   assert.doesNotMatch(en.cta!.href, /zh-hk/);
+});
+
+// Anyone can register an address they do not own and type a "name" such as
+// "Your account is locked, call 0900…". The verification and reset emails go
+// to that address from our domain, so they must not carry the name at all.
+test('account emails greet neutrally and never take the account name', () => {
+  const neutral = { 'en-GB': 'Hi there,', 'zh-HK': '你好：' } as const;
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const verify = emailVerificationContent('tok', 24, locale);
+    assert.equal(verify.greeting, neutral[locale]);
+    assert.match(verify.cta!.href, /\/api\/auth\/verify-email\?token=tok$/);
+    assert.equal(passwordResetContent('tok', 60, locale).greeting, neutral[locale]);
+  }
+  assert.equal(emailVerificationContent.length, 3, 'no user/name parameter');
+  assert.equal(passwordResetContent.length, 3, 'no user/name parameter');
 });
 
 test('the unsubscribe confirmation carries its link and says nothing changes without it', () => {

@@ -255,9 +255,8 @@ export function appointmentEmailContent(
  * API route, not a page: the route records the proof, then sends the visitor
  * on in the language carried inside the signed token.
  */
-export function emailVerificationContent(user: { name: string | null }, token: string, expiresInHours: number, locale: Locale): EmailContent {
+export function emailVerificationContent(token: string, expiresInHours: number, locale: Locale): EmailContent {
   const t = translator(locale, 'emails');
-  const name = user.name?.trim();
   return {
     locale,
     palette: 'ink',
@@ -265,7 +264,8 @@ export function emailVerificationContent(user: { name: string | null }, token: s
     preview: t('emailVerification.preview'),
     eyebrow: t('emailVerification.eyebrow'),
     title: t('emailVerification.title'),
-    greeting: name ? t('common.greeting', { name }) : t('common.greetingNoName'),
+    // Never the account name: whoever registered the address typed it, and this mail goes to that address.
+    greeting: t('common.greetingNoName'),
     intro: t('emailVerification.intro'),
     details: [],
     cta: { label: t('emailVerification.cta'), href: `${SITE_URL}/api/auth/verify-email?token=${encodeURIComponent(token)}` },
@@ -274,9 +274,8 @@ export function emailVerificationContent(user: { name: string | null }, token: s
   };
 }
 
-export function passwordResetContent(user: { name: string | null }, token: string, expiresInMinutes: number, locale: Locale): EmailContent {
+export function passwordResetContent(token: string, expiresInMinutes: number, locale: Locale): EmailContent {
   const t = translator(locale, 'emails');
-  const name = user.name?.trim();
   return {
     locale,
     palette: 'ink',
@@ -284,7 +283,8 @@ export function passwordResetContent(user: { name: string | null }, token: strin
     preview: t('passwordReset.preview'),
     eyebrow: t('passwordReset.eyebrow'),
     title: t('passwordReset.title'),
-    greeting: name ? t('common.greeting', { name }) : t('common.greetingNoName'),
+    // Never the account name: an unverified account's name was typed by whoever registered the address.
+    greeting: t('common.greetingNoName'),
     intro: t('passwordReset.intro'),
     details: [],
     // The token stays a query parameter on the reset page, in the language
