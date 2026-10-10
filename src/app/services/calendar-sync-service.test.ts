@@ -72,7 +72,8 @@ test('successful empty feed advances freshness and removes canceled in-progress/
   assert.equal(result[0].ok, true); assert.equal(result[0].pruned, 1);
   assert.equal(state.rows[0].lastSuccessAt?.toISOString(), now.toISOString()); assert.equal(state.rows[0].lockToken, null);
 });
-test('failure preserves blocks and old lastSuccessAt; errors never reveal secret URLs', async () => {
+test('failure preserves blocks and old lastSuccessAt; errors never reveal secret URLs', async (t) => {
+  t.mock.method(console, 'error', () => undefined); // logged by design (name/code only)
   const state = fakeDb(); state.rows[0].lastSuccessAt = new Date('2026-09-11T11:00:00Z');
   state.blocks.push({ source: 'TREATWELL', stylistId: 's1', externalUid: 'old', start: now, end: new Date('2026-09-12T12:00:00Z'), lastSyncAt: now });
   const result = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => { throw new Error('https://example.com/private?token=secret'); } });
@@ -132,7 +133,8 @@ test('large valid feeds reconcile with bounded bulk writes rather than individua
   assert.ok(state.writes.batches.every((size) => size <= 100));
 });
 
-test('a bulk insert failure rolls back removed blocks and freshness', async () => {
+test('a bulk insert failure rolls back removed blocks and freshness', async (t) => {
+  t.mock.method(console, 'error', () => undefined); // logged by design (name/code only)
   const state = fakeDb();
   state.rows[0].lastSuccessAt = new Date('2026-09-11T11:00:00Z');
   state.blocks.push({ source: 'TREATWELL', stylistId: 's1', externalUid: 'keep', start: now, end: new Date('2026-09-12T12:00:00Z'), lastSyncAt: now });
@@ -191,7 +193,8 @@ test('approval refresh leaves another stylist\'s feed alone while it is within t
   assert.equal(state.rows[1].lastSuccessAt?.toISOString(), minutesAgo(10).toISOString());
 });
 
-test('approval refresh respects the kill-switch and never throws', async () => {
+test('approval refresh respects the kill-switch and never throws', async (t) => {
+  t.mock.method(console, 'error', () => undefined); // logged by design (name/code only)
   let reads = 0;
   const db = { calendarConnection: { findMany: async () => { reads++; throw new Error('database unavailable'); } } };
   for (const flag of [undefined, 'false']) {
@@ -200,4 +203,51 @@ test('approval refresh respects the kill-switch and never throws', async () => {
   assert.equal(reads, 0, 'a disabled sync must not touch the database');
   assert.deepEqual(await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: db as unknown as PrismaClient, now })), []);
   assert.equal(reads, 1, 'a failed read ends the refresh; the readiness check that follows reports it');
+});
+
+// A database or network fault (not a feed problem) used to vanish into the
+// generic lastError. It is logged now, but only by name and code: a driver or
+// fetch error message can quote the private feed URL and its token.
+test('a non-feed sync failure is logged by name and code only, never the feed URL', async (t) => {
+  const logged = t.mock.method(console, 'error', () => undefined);
+  const state = fakeDb();
+  const result = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => {
+    throw Object.assign(new Error('connect ECONNREFUSED https://example.com/private?token=secret'), { code: 'ECONNREFUSED' });
+  } });
+  assert.equal(result[0].ok, false);
+  assert.equal(logged.mock.callCount(), 1);
+  const line = JSON.stringify(logged.mock.calls[0].arguments);
+  assert.match(line, /Calendar sync failed/);
+  assert.match(line, /"connectionId":"c1"/);
+  assert.match(line, /ECONNREFUSED/);
+  assert.doesNotMatch(line, /secret|example\.com|private/);
+
+  const writeFails = fakeDb(); writeFails.writes.failBatch = true;
+  await syncCalendarFeeds({ db: writeFails.db, now, fetchFeed: async () => busy });
+  assert.equal(logged.mock.callCount(), 2, 'a failed database write is logged too');
+});
+
+test('a feed problem the admin already sees as lastError is not logged again', async (t) => {
+  const logged = t.mock.method(console, 'error', () => undefined);
+  const state = fakeDb();
+  const result = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => 'not a calendar' });
+  assert.equal(result[0].ok, false);
+  assert.ok(state.rows[0].lastError);
+  assert.equal(logged.mock.callCount(), 0);
+});
+
+test('the pre-approval refresh logs a database failure by name and code, and still never throws', async (t) => {
+  const logged = t.mock.method(console, 'error', () => undefined);
+  process.env.CALENDAR_SYNC_ENABLED = 'true';
+  t.after(() => { delete process.env.CALENDAR_SYNC_ENABLED; });
+  const state = fakeDb();
+  (state.db as unknown as { calendarConnection: { findMany: () => Promise<never> } }).calendarConnection.findMany = async () => {
+    throw Object.assign(new Error("Can't reach database server at db.example.com"), { name: 'PrismaClientInitializationError', code: 'P1001' });
+  };
+  assert.deepEqual(await refreshCalendarFeedsBeforeApproval('s1', { db: state.db, now }), []);
+  assert.equal(logged.mock.callCount(), 1);
+  const line = JSON.stringify(logged.mock.calls[0].arguments);
+  assert.match(line, /PrismaClientInitializationError/);
+  assert.match(line, /P1001/);
+  assert.doesNotMatch(line, /db\.example\.com/);
 });

@@ -6,6 +6,16 @@ import { fetchCalendarFeed, MAX_CALENDAR_FEED_BYTES, validateCalendarFeedUrl } f
 import { CALENDAR_PROVIDERS, type CalendarProvider } from './treatwell-sync-coverage';
 import { CALENDAR_POLL_MINUTES } from './calendar-sync-window';
 
+/**
+ * Name and code only. A driver or fetch error message can quote the private
+ * feed URL (and its token) or the database host, so it never reaches the logs.
+ */
+function describeFault(error: unknown): { error: string; code?: string } {
+  const name = error instanceof Error ? error.name : 'unknown';
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' ? { error: name, code } : { error: name };
+}
+
 export type CalendarSyncResult = {
   connectionId: string; stylistId: string; provider: string;
   ok: boolean; upserted: number; pruned: number;
@@ -102,6 +112,11 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
       }, { timeout: 15_000, maxWait: 5_000 });
       results.push({ ...base, ok: true, upserted: blocks.length, pruned: pruned.count });
     } catch (error) {
+      // A feed problem is already reported to the admin as lastError. Anything
+      // else (database, network) would vanish into the generic message.
+      if (!(error instanceof CalendarFeedError)) {
+        console.error('Calendar sync failed:', { connectionId: connection.id, provider: connection.provider, ...describeFault(error) });
+      }
       const message = error instanceof CalendarFeedError ? error.message : 'Calendar sync failed. Previous busy times were retained.';
       // CAS prevents a slow failure from wiping a new owner's success/lease.
       await db.calendarConnection.updateMany({
@@ -144,8 +159,9 @@ export async function refreshCalendarFeedsBeforeApproval(
   try {
     results.push(...await syncCalendarFeeds({ ...opts, stylistId, staleBefore: new Date(now - APPROVAL_REFRESH_MINUTES * 60_000) }));
     results.push(...await syncCalendarFeeds({ ...opts, staleBefore: new Date(now - CALENDAR_POLL_MINUTES * 60_000) }));
-  } catch {
-    // Reported by the readiness check that follows.
+  } catch (error) {
+    // The readiness check that follows reports the effect; this records the cause.
+    console.error('Calendar refresh before approval failed:', { stylistId, ...describeFault(error) });
   }
   return results;
 }
