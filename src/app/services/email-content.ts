@@ -237,7 +237,7 @@ export function appointmentEmailContent(
         preview: t(`${section}.preview`, { requested }),
         eyebrow: t(`${section}.eyebrow`), title: t(`${section}.title`), intro: t(`${section}.intro`, { requested }),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('currentTime', current), labels('requestedDate', formatSalonLongDate(locale, options.requestedDate)), labels('requestedTime', formatSalonClock(locale, options.requestedDate))],
-        callout: closed && options.salonPhone ? { title: t('request.calloutTitle'), body: t('request.calloutBody', { phone: options.salonPhone }) } : undefined,
+        callout: closed && options.salonPhone ? { title: t('rescheduleAnotherTime.calloutTitle'), body: t('rescheduleAnotherTime.calloutBody', { phone: options.salonPhone }) } : undefined,
         cta: { label: t(`${section}.cta`), href: url(locale, '/appointments') },
         footnotes: [t(`${section}.footnote`)],
       };

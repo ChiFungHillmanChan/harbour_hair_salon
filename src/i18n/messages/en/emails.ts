@@ -143,6 +143,10 @@ const emails = {
     cta: 'View my booking',
     footnote: 'You can make a new request from My Bookings up to 24 hours before your appointment.',
   },
+  rescheduleAnotherTime: {
+    calloutTitle: 'Want a different time?',
+    calloutBody: 'Call the salon on {phone} and we’ll find one with you.',
+  },
   rescheduleLapsed: {
     subject: 'Your reschedule request has expired — Harbour Hair Salon',
     preview: 'Your original time still stands',

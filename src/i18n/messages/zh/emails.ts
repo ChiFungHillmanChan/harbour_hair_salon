@@ -143,6 +143,10 @@ const emails: Localized<Messages['emails']> = {
     cta: '查看我的預約',
     footnote: '你可於預約前 24 小時或之前，在「我的預約」提出新的申請。',
   },
+  rescheduleAnotherTime: {
+    calloutTitle: '想另約時間？',
+    calloutBody: '請致電本店 {phone}，我們會與你另約時間。',
+  },
   rescheduleLapsed: {
     subject: '你的改期申請已失效 — Harbour Hair Salon',
     preview: '你原本的時間維持不變',

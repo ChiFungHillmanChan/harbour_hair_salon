@@ -70,7 +70,7 @@ const CONTACT = [
   {
     question: 'Can I cancel or reschedule my appointment?',
     answer:
-      'Yes. You can cancel or reschedule free of charge up to 24 hours before your appointment through the My Bookings page. Changes within 24 hours may not be possible.',
+      'Yes. You can cancel free of charge up to 24 hours before your appointment through the My Bookings page. You can also ask for a new time there: the salon confirms it, and your current time stays booked until then. Within 24 hours of your appointment, please call the salon.',
   },
   {
     question: 'Do you speak Cantonese at the salon?',

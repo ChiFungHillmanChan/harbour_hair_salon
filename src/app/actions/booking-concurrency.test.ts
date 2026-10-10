@@ -703,7 +703,11 @@ test('a request on a booking whose original time has passed cannot be approved',
   const f = fixture({ openRequest: OPEN_REQUEST, currentDate: new Date('2099-09-01T11:00:00Z') });
   const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
   assert.equal(result.success, false);
+  // The requested time is days away, so the message must not blame it alone,
+  // and it must tell staff what they can still do.
   assert.match(String(!result.success && result.error), /expired/);
+  assert.match(String(!result.success && result.error), /original appointment has already passed/);
+  assert.match(String(!result.success && result.error), /Decline the request or call the customer/);
   assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
   assert.equal(f.appointment.rescheduleRequestedAt?.toISOString(), OPEN_REQUEST.requestedAt.toISOString(), 'the request is left for the lapse step');
   assert.equal(f.appointment.notificationVersion, 0);

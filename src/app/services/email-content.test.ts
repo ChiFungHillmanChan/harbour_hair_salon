@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { appointmentEmailContent, describeEmailPrice, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
-import { translator } from '../../i18n/messages';
 
 const appointment: EmailAppointment = {
   id: 'appointment-ABCDEFGH',
@@ -110,12 +109,18 @@ test('both salon alert kinds are staff mail', () => {
   assert.equal(isSalonEmailKind('RESCHEDULE_DECLINED'), false);
 });
 
+// A declined or lapsed request is about finding ANOTHER time, not an earlier
+// one, so it must not reuse the new-booking "Need it sooner?" callout.
+const anotherTimeCallout = {
+  'en-GB': { title: 'Want a different time?', body: 'Call the salon on 07831 830898 and we’ll find one with you.' },
+  'zh-HK': { title: '想另約時間？', body: '請致電本店 07831 830898，我們會與你另約時間。' },
+} as const;
+
 for (const locale of ['en-GB', 'zh-HK'] as const) {
   test(`declined and lapsed request emails give the salon phone when it is known (${locale})`, () => {
-    const t = translator(locale, 'emails');
     for (const kind of ['RESCHEDULE_DECLINED', 'RESCHEDULE_LAPSED'] as const) {
       const withPhone = appointmentEmailContent(kind, requestAppointment, locale, { requestedDate, salonPhone: '07831 830898' });
-      assert.deepEqual(withPhone.callout, { title: t('request.calloutTitle'), body: t('request.calloutBody', { phone: '07831 830898' }) }, kind);
+      assert.deepEqual(withPhone.callout, anotherTimeCallout[locale], kind);
       assert.match(renderPlainText(withPhone), /07831 830898/, `${kind} plain text carries the phone`);
       assert.equal(appointmentEmailContent(kind, requestAppointment, locale, { requestedDate }).callout, undefined, `${kind}: no phone, no callout`);
     }
