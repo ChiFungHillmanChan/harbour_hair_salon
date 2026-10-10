@@ -15,6 +15,114 @@ import { resolveSalonDateTime, salonDateKey } from '../src/app/services/salon-ti
 import { CALENDAR_FRESHNESS_MINUTES } from '../src/app/services/treatwell-sync-coverage';
 import type { AppointmentEmailKind, PreparedEmail } from '../src/app/services/email-service';
 
+type RaceMode = 'withdraw-commits-first' | 'approve-writes-first';
+type RaceSide = 'approve' | 'withdraw';
+
+/** Resolve after `ms`, so a broken interleaving fails loudly instead of hanging. */
+const settleWithin = (promise: Promise<unknown>, ms: number) => Promise.race([promise, new Promise((resolve) => setTimeout(resolve, ms))]);
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+/**
+ * Wraps a PrismaClient so the reschedule race can force two real, overlapping
+ * Serializable transactions. Only each side's FIRST write to the armed
+ * appointment is gated; retries run freely. A transaction is the APPROVAL if
+ * its first call on that appointment is `findUnique` (decideRescheduleRequest
+ * re-reads inside its transaction) and the WITHDRAW if it is `updateMany`
+ * (withdrawRescheduleRequest reads before its transaction).
+ */
+function createRaceController(db: PrismaClient) {
+  let armed: { id: string; mode: RaceMode } | null = null;
+  let failures: RaceSide[] = [];
+  let gated = new Set<RaceSide>();
+  let approveRead = deferred(), approveWrote = deferred(), withdrawIssued = deferred(), withdrawSettled = deferred();
+
+  /** The approval's first write: wait for the withdraw to commit, or write and then stay uncommitted while it queues. */
+  async function approveWrite(write: () => Promise<unknown>, mode: RaceMode) {
+    if (mode === 'withdraw-commits-first') {
+      await settleWithin(withdrawSettled.promise, 4_000);
+      return write();
+    }
+    const result = await write();
+    approveWrote.resolve();
+    await settleWithin(withdrawIssued.promise, 4_000);
+    await new Promise((resolve) => setTimeout(resolve, 300)); // let the withdraw's UPDATE reach the row lock
+    return result;
+  }
+
+  /** The withdraw's first write: only after the approval has read (or written) the row. */
+  async function withdrawWrite(write: () => Promise<unknown>, mode: RaceMode) {
+    await settleWithin(mode === 'withdraw-commits-first' ? approveRead.promise : approveWrote.promise, 4_000);
+    withdrawIssued.resolve();
+    return write();
+  }
+
+  const raceDb = new Proxy(db, {
+    get(target, prop) {
+      const value = Reflect.get(target, prop);
+      if (prop !== '$transaction') return typeof value === 'function' ? value.bind(target) : value;
+      return async (fn: (tx: unknown) => Promise<unknown>, options?: Parameters<PrismaClient['$transaction']>[1]) => {
+        let side: RaceSide | undefined;
+        try {
+          return await target.$transaction(async (tx) => {
+            const appointment = new Proxy(tx.appointment, {
+              get(delegate, method) {
+                const original = Reflect.get(delegate, method) as unknown;
+                if (typeof original !== 'function') return original;
+                const call = (original as (args: unknown) => Promise<unknown>).bind(delegate);
+                if (method !== 'findUnique' && method !== 'updateMany') return call;
+                return async (args: { where?: { id?: string } }) => {
+                  const run = armed;
+                  if (!run || args?.where?.id !== run.id) return call(args);
+                  side ??= method === 'findUnique' ? 'approve' : 'withdraw';
+                  if (method === 'findUnique') {
+                    const row = await call(args);
+                    approveRead.resolve();
+                    return row;
+                  }
+                  if (gated.has(side)) return call(args);
+                  gated.add(side);
+                  return side === 'approve' ? approveWrite(() => call(args), run.mode) : withdrawWrite(() => call(args), run.mode);
+                };
+              },
+            });
+            return fn(new Proxy(tx, {
+              get(client, key) {
+                if (key === 'appointment') return appointment;
+                const member = Reflect.get(client, key);
+                return typeof member === 'function' ? member.bind(client) : member;
+              },
+            }));
+          }, options);
+        } catch (error) {
+          if (armed && side && (error as { code?: string }).code === 'P2034') failures.push(side);
+          throw error;
+        } finally {
+          if (side === 'withdraw') withdrawSettled.resolve();
+        }
+      };
+    },
+  });
+
+  return {
+    db: raceDb,
+    arm(id: string, mode: RaceMode) {
+      armed = { id, mode };
+      failures = [];
+      gated = new Set();
+      approveRead = deferred(); approveWrote = deferred(); withdrawIssued = deferred(); withdrawSettled = deferred();
+    },
+    disarm() {
+      armed = null;
+      return { serializationFailures: [...failures] };
+    },
+  };
+}
+
 async function main() {
   const connection = process.env.SALON_TEST_DATABASE_URL;
   if (!connection) throw new Error('Set SALON_TEST_DATABASE_URL to an empty, migrated localhost salon_test PostgreSQL database.');
@@ -135,13 +243,22 @@ async function main() {
       ...actionDependencies, '@/app/actions/admin-services': adminServices,
     });
     // The race below needs two actions in flight at once, so these instances read
-    // a FIXED session instead of the shared mutable `session` variable.
+    // a FIXED session instead of the shared mutable `session` variable, and run
+    // their transactions through `race`, which can hold one transaction open
+    // while the other commits (see createRaceController).
+    const race = createRaceController(db);
+    const raceBooking = loadServerModule<typeof import('../src/app/services/booking-service')>('src/app/services/booking-service.ts', {
+      '@/app/lib/prisma': race.db, '@/app/lib/booking-maintenance': maintenance,
+      './notification-outbox-service': notifications, './offers-service': offers,
+    });
     const fixedCustomer = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
-      ...actionDependencies, '@/app/lib/session': { verifySession: async () => ({ userId: ids.customer, role: 'USER' }) },
+      ...actionDependencies, '@/app/services/booking-service': raceBooking,
+      '@/app/lib/session': { verifySession: async () => ({ userId: ids.customer, role: 'USER' }) },
       '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited },
     });
     const fixedAdmin = loadServerModule<typeof import('../src/app/actions/admin')>('src/app/actions/admin.ts', {
-      ...actionDependencies, '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
+      ...actionDependencies, '@/app/services/booking-service': raceBooking,
+      '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
       '@/app/actions/admin-services': adminServices,
     });
     const { syncCalendarFeeds } = await import('../src/app/services/calendar-sync-service');
@@ -277,11 +394,20 @@ async function main() {
     assert.equal(declined.rescheduleRequestedAt, null);
     assert.ok(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: 'RESCHEDULE_DECLINED' } }) >= 1, 'Declining queues a RESCHEDULE_DECLINED notice');
 
-    // Approve racing withdraw, three times, with a fixed session per side so both really run
-    // concurrently. Exactly one wins, the loser reports a concurrency reason, and the final
-    // state matches the winner.
+    // Approve racing withdraw with BOTH transactions open at once. Left to
+    // timing, the approval's calendar refresh made the withdraw commit before the
+    // approval's transaction even began, so the two never overlapped. The race
+    // controller forces each interleaving instead, and the run then proves the
+    // overlap was real: PostgreSQL must reject the loser's first attempt with a
+    // serialization failure (P2034), which the retry turns into "has changed".
+    //  - 'withdraw-commits-first': the approval has read the open request, then
+    //    waits while the withdraw commits; its own write must then fail.
+    //  - 'approve-writes-first': the approval has written (uncommitted) when the
+    //    withdraw's write arrives and blocks; the approval commits and the
+    //    withdraw must fail.
     const raceWins = { approve: 0, withdraw: 0 };
-    for (let round = 0; round < 3; round += 1) {
+    const raceModes = ['withdraw-commits-first', 'approve-writes-first', 'withdraw-commits-first', 'approve-writes-first'] as const;
+    for (const [round, mode] of raceModes.entries()) {
       const target = day(21 + round * 7);
       const preRace = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
       const rescheduleNotices = () => db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: 'RESCHEDULE' } });
@@ -290,12 +416,18 @@ async function main() {
       await assertActionSuccess(asked);
       const racing = await db.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
       const requestedAt = racing.rescheduleRequestedAt!;
+      race.arm(appointment.id, mode);
       const [approve, withdraw] = await Promise.all([
         fixedAdmin.decideRescheduleRequest(appointment.id, 'APPROVE', requestedAt.toISOString()),
         fixedCustomer.withdrawRescheduleRequest(appointment.id),
       ]);
+      const observed = race.disarm();
       while (afterResponse.length) await afterResponse.shift()!();
-      assert.equal([approve, withdraw].filter((outcome) => outcome.success).length, 1, JSON.stringify({ approve, withdraw }));
+      const expectedWinner = mode === 'withdraw-commits-first' ? 'withdraw' : 'approve';
+      const expectedLoser = expectedWinner === 'withdraw' ? 'approve' : 'withdraw';
+      assert.deepEqual(observed.serializationFailures, [expectedLoser], `${mode}: the database must reject exactly the loser's first attempt (${JSON.stringify(observed)})`);
+      assert.equal([approve, withdraw].filter((outcome) => outcome.success).length, 1, JSON.stringify({ mode, approve, withdraw }));
+      assert.equal((expectedWinner === 'approve' ? approve : withdraw).success, true, `${mode}: ${JSON.stringify({ approve, withdraw })}`);
       const loser = approve.success ? withdraw : approve;
       assert.match((loser as { error?: string }).error ?? '', /has changed|refresh/i, JSON.stringify(loser));
       assert.doesNotMatch((loser as { error?: string }).error ?? '', /not found/i);
@@ -312,11 +444,12 @@ async function main() {
         assert.equal(await rescheduleNotices(), noticesBefore, 'A withdrawn request must not send a moved notice');
       }
     }
-    console.log(`race wins: ${JSON.stringify(raceWins)}`);
+    assert.deepEqual(raceWins, { approve: 2, withdraw: 2 });
+    console.log(`race wins (both transactions open at once, P2034 on the loser every round): ${JSON.stringify(raceWins)}`);
 
     // Deterministic, non-concurrent: approval has fully committed, so a late withdraw must lose.
     {
-      const target = day(42);
+      const target = day(49); // after the race rounds (days 21–42)
       const rescheduleNotices = () => db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: 'RESCHEDULE' } });
       const noticesBefore = await rescheduleNotices();
       await assertActionSuccess(await fixedCustomer.requestReschedule(appointment.id, target, '10:00'));
