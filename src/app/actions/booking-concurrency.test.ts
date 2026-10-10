@@ -548,6 +548,9 @@ test('a requested time on the stylist\'s day off is refused', async () => {
   const result = await f.actions.requestReschedule(f.appointment.id, '2099-09-16', '10:00'); // Wednesday
   assert.equal('code' in result && result.code, 'STYLIST_OFF_THAT_DAY');
   assert.equal(f.appointment.rescheduleRequestedAt, null);
+  // Refused up front, on the requested weekday: no transaction, no allowance spent.
+  assert.equal(f.transactions(), 0);
+  assert.deepEqual(f.limiterKeys, []);
 });
 
 test('a colour booking cannot be requested into the 48 hours after its patch test', async () => {
@@ -739,6 +742,17 @@ for (const status of ['CANCELLED', 'COMPLETED'] as const) {
     assert.equal(f.events.some((event) => event.kind === 'RESCHEDULE_DECLINED' || event.kind === 'RESCHEDULE_LAPSED'), false);
   });
 }
+
+test('approval refuses a requested day the stylist no longer works', async () => {
+  // The rota changed after the request: the stylist is now off on Tuesdays (OPEN_REQUEST is Tue 15 Sep).
+  const f = fixture({ openRequest: OPEN_REQUEST, offDays: [2] });
+  const result = await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString());
+  assert.equal(result.success, false);
+  assert.match(String(!result.success && result.error), /not available on this day/);
+  assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
+  assert.equal(f.appointment.rescheduleRequestedAt?.toISOString(), OPEN_REQUEST.requestedAt.toISOString(), 'staff can still decline it');
+  assert.equal(f.events.length, 0);
+});
 
 test('the colour patch-test rule is re-checked against the requested date on approval', async () => {
   const f = fixture({ openRequest: OPEN_REQUEST, requiresPatchTest: true, patchTestDate: new Date('2099-09-14T12:00:00Z') });
