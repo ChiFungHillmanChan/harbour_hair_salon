@@ -5,16 +5,7 @@ import { CalendarFeedError, CALENDAR_WINDOW_DAYS, parseCalendarBusyIntervals } f
 import { fetchCalendarFeed, MAX_CALENDAR_FEED_BYTES, validateCalendarFeedUrl } from './calendar-feed-url';
 import { CALENDAR_PROVIDERS, type CalendarProvider } from './treatwell-sync-coverage';
 import { CALENDAR_POLL_MINUTES } from './calendar-sync-window';
-
-/**
- * Name and code only. A driver or fetch error message can quote the private
- * feed URL (and its token) or the database host, so it never reaches the logs.
- */
-function describeFault(error: unknown): { error: string; code?: string } {
-  const name = error instanceof Error ? error.name : 'unknown';
-  const code = (error as { code?: unknown } | null)?.code;
-  return typeof code === 'string' ? { error: name, code } : { error: name };
-}
+import { describeFault } from '@/app/lib/fault';
 
 export type CalendarSyncResult = {
   connectionId: string; stylistId: string; provider: string;

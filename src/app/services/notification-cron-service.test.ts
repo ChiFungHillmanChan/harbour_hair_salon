@@ -106,7 +106,7 @@ test('the two cron schedules share a lock and do not enqueue duplicate work', as
 // Both schedules fire at 08:00 UTC and share one worker lock. The run that
 // loses the lock used to return before touching its own row, so Admin ->
 // Operations showed the losing schedule (usually "reminders") as stuck for days.
-test('the schedule that finds the shared worker busy still records its run', async () => {
+test('the schedule that finds the shared worker busy records that it fired, without claiming success', async () => {
   const f = fixture(0);
   const [first, second] = await Promise.all([f.service.runNotificationCron('notifications'), f.service.runNotificationCron('reminders')]);
   const busyName = 'busy' in second && second.busy ? 'reminders' : 'busy' in first && first.busy ? 'notifications' : null;
@@ -114,8 +114,7 @@ test('the schedule that finds the shared worker busy still records its run', asy
   const row = f.jobStates.get(busyName);
   assert.ok(row, 'the busy schedule has a row');
   assert.equal((row.lastStartedAt as Date).getTime(), now.getTime());
-  assert.equal((row.lastSucceededAt as Date).getTime(), now.getTime(), 'finding the work already running is a normal outcome');
-  assert.equal(row.lastError, null);
+  assert.equal(row.lastSucceededAt, undefined, 'it cannot know how the shared run ends');
   assert.deepEqual(JSON.parse(String(row.lastResultJson)), { busy: true, sharedWorker: 'notification-worker' });
 });
 
@@ -168,4 +167,16 @@ test('a failing lapse step never blocks discovery or delivery and is recorded', 
   const result = await f.service.runNotificationCron('notifications');
   assert.equal(f.dispatchCalls(), 1);
   assert.equal('lapseFailed' in result ? result.lapseFailed : undefined, 1);
+});
+
+test('a busy hand-over leaves an earlier failure on that schedule visible', async () => {
+  const f = fixture(0);
+  const failedAt = new Date('2026-09-10T08:00:00Z');
+  f.jobStates.set('reminders', { name: 'reminders', lastFailedAt: failedAt, lastError: 'Notification worker failed.', lastResultJson: null });
+  f.jobStates.set('notification-worker', { name: 'notification-worker', lockedUntil: new Date(now.getTime() + 60_000), lockToken: 'other-run', lastResultJson: null });
+  assert.deepEqual(await f.service.runNotificationCron('reminders'), { busy: true, failed: 0 });
+  const row = f.jobStates.get('reminders')!;
+  assert.equal((row.lastStartedAt as Date).getTime(), now.getTime());
+  assert.equal(row.lastError, 'Notification worker failed.');
+  assert.equal((row.lastFailedAt as Date).getTime(), failedAt.getTime());
 });

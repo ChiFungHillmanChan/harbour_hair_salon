@@ -29,14 +29,15 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
   await prisma.backgroundJobState.upsert({ where: { name: workerName }, create: { name: workerName }, update: {} });
   const claim = await prisma.backgroundJobState.updateMany({ where: { name: workerName, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] }, data: { lockedUntil: new Date(now.getTime() + 2 * 60_000), lockToken, lastStartedAt: now } });
   if (claim.count !== 1) {
-    // Both schedules fire together at 08:00 UTC to share one Neon wake. The
-    // other run is already doing this work, so this schedule ran normally;
-    // record it, or Admin -> Operations shows this row as stuck for days.
-    const busy = { busy: true, sharedWorker: workerName };
+    // Both schedules fire together at 08:00 UTC to share one Neon wake. Record
+    // that this schedule fired and handed over, or Admin -> Operations shows its
+    // row as never starting for days. Not a success: this run cannot know how
+    // the shared worker's run ends (that is on the other schedule's row).
+    const busy = JSON.stringify({ busy: true, sharedWorker: workerName });
     await prisma.backgroundJobState.upsert({
       where: { name },
-      create: { name, lastStartedAt: now, lastSucceededAt: now, lastResultJson: JSON.stringify(busy) },
-      update: { lastStartedAt: now, lastSucceededAt: now, lastError: null, lastResultJson: JSON.stringify(busy) },
+      create: { name, lastStartedAt: now, lastResultJson: busy },
+      update: { lastStartedAt: now, lastResultJson: busy },
     });
     return { busy: true, failed: 0 };
   }

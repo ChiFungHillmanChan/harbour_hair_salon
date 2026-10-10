@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { CalendarConnection, PrismaClient } from '@prisma/client';
+import { Prisma, type CalendarConnection, type PrismaClient } from '@prisma/client';
 import { refreshCalendarFeedsBeforeApproval, syncCalendarFeeds } from './calendar-sync-service';
 const now = new Date('2026-09-11T12:00:00Z');
 const empty = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR';
@@ -242,7 +242,8 @@ test('the pre-approval refresh logs a database failure by name and code, and sti
   t.after(() => { delete process.env.CALENDAR_SYNC_ENABLED; });
   const state = fakeDb();
   (state.db as unknown as { calendarConnection: { findMany: () => Promise<never> } }).calendarConnection.findMany = async () => {
-    throw Object.assign(new Error("Can't reach database server at db.example.com"), { name: 'PrismaClientInitializationError', code: 'P1001' });
+    // The real class: Prisma keeps a connection failure's code in errorCode, not code.
+    throw new Prisma.PrismaClientInitializationError("Can't reach database server at db.example.com", '6.19.3', 'P1001');
   };
   assert.deepEqual(await refreshCalendarFeedsBeforeApproval('s1', { db: state.db, now }), []);
   assert.equal(logged.mock.callCount(), 1);

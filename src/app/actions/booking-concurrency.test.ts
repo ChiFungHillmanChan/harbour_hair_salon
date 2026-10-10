@@ -388,8 +388,9 @@ test('an unexpected cancellation failure is logged with the appointment id; an e
   assert.equal((await failing.actions.cancelAppointment(failing.appointment.id)).success, false);
   assert.equal(logged.mock.callCount(), 1);
   assert.match(String(logged.mock.calls[0].arguments[0]), /Cancelling an appointment failed/);
-  assert.deepEqual(logged.mock.calls[0].arguments[1], { appointmentId: failing.appointment.id });
-  assert.match(String(logged.mock.calls[0].arguments[2]), /queue write failed/);
+  // Name only: a driver message can carry the database host.
+  assert.deepEqual(logged.mock.calls[0].arguments.slice(1), [{ appointmentId: failing.appointment.id, error: 'Error' }]);
+  assert.doesNotMatch(JSON.stringify(logged.mock.calls[0].arguments), /queue write failed/);
 
   const stale = fixture({ status: 'PENDING', changeAfterRead: 'confirm' });
   assert.equal((await stale.actions.cancelAppointment(stale.appointment.id)).success, false);

@@ -10,6 +10,7 @@ import type { Messages } from '@/i18n/messages';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { validateWeek, type DayInput, type WeekValidation } from '@/app/services/opening-hours';
+import { describeFault } from '@/app/lib/fault';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -82,8 +83,7 @@ export async function updateStylistAvailability(
     // Answer in the form instead of throwing to the error boundary, which
     // would replace the form and lose the week being edited. Name and code
     // only: a driver message can carry the database host.
-    const code = (error as { code?: unknown } | null)?.code;
-    console.error('Saving opening hours failed:', { stylistId, error: error instanceof Error ? error.name : 'unknown', ...(typeof code === 'string' ? { code } : {}) });
+    console.error('Saving opening hours failed:', { stylistId, ...describeFault(error) });
     return { status: 'error', message: t('openingHours.errors.SAVE_FAILED') };
   }
 
