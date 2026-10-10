@@ -493,6 +493,8 @@ export async function cancelAppointment(appointmentId: string) {
     invalidateStylistIcalFeed();
     after(() => dispatchAppointmentNotifications(appointmentId));
   } catch (error) {
+    // A refusal (stale, not found) is an answer; anything else is a fault to investigate.
+    if (!(error instanceof BookingError)) console.error('Cancelling an appointment failed:', { appointmentId }, error);
     return { success: false, error: describeBookingError(error, locale, 'CANCEL_FAILED') };
   }
 

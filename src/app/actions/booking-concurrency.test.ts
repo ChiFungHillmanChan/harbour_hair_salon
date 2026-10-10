@@ -382,6 +382,20 @@ for (const status of ['PENDING', 'CONFIRMED']) {
   });
 }
 
+test('an unexpected cancellation failure is logged with the appointment id; an expected refusal is not', async (t) => {
+  const logged = t.mock.method(console, 'error', () => undefined);
+  const failing = fixture({ failEnqueue: true });
+  assert.equal((await failing.actions.cancelAppointment(failing.appointment.id)).success, false);
+  assert.equal(logged.mock.callCount(), 1);
+  assert.match(String(logged.mock.calls[0].arguments[0]), /Cancelling an appointment failed/);
+  assert.deepEqual(logged.mock.calls[0].arguments[1], { appointmentId: failing.appointment.id });
+  assert.match(String(logged.mock.calls[0].arguments[2]), /queue write failed/);
+
+  const stale = fixture({ status: 'PENDING', changeAfterRead: 'confirm' });
+  assert.equal((await stale.actions.cancelAppointment(stale.appointment.id)).success, false);
+  assert.equal(logged.mock.callCount(), 1, 'a concurrency refusal is a normal answer, not an error');
+});
+
 test('customer cancellation cannot use stale pending status to bypass a concurrent confirmation', async () => {
   const { actions, appointment, messages } = fixture({ status: 'PENDING', changeAfterRead: 'confirm' });
   assert.equal((await actions.cancelAppointment(appointment.id)).success, false);
@@ -463,7 +477,8 @@ test('confirmed appointments retain the 24-hour change restriction while pending
 });
 
 for (const operation of ['approve', 'admin-cancel', 'customer-cancel', 'request'] as const) {
-  test(`a failed notification enqueue rolls back ${operation} without dispatching`, async () => {
+  test(`a failed notification enqueue rolls back ${operation} without dispatching`, async (t) => {
+    t.mock.method(console, 'error', () => undefined); // the failure is logged by design
     const initialStatus = operation === 'approve' ? 'PENDING' : 'CONFIRMED';
     const f = fixture({ status: initialStatus, failEnqueue: true });
     const result = operation === 'request'
