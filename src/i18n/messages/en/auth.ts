@@ -52,6 +52,7 @@ const auth = {
     submitting: 'Signing in...',
     noAccount: "Don't have an account?",
     register: 'Register here',
+    privacy: 'How we use your details: see our <link>privacy policy</link>.',
   },
   register: {
     title: 'Create Account',
@@ -69,6 +70,7 @@ const auth = {
     haveAccount: 'Already have an account?',
     signIn: 'Sign in',
     recover: 'Recover access by email',
+    privacy: 'We use your details to run your account and bookings. See our <link>privacy policy</link>.',
   },
   forgot: {
     title: 'Forgot your password?',

@@ -52,6 +52,7 @@ const auth: Localized<Messages['auth']> = {
     submitting: '正在登入…',
     noAccount: '還沒有帳戶？',
     register: '立即註冊',
+    privacy: '我們如何使用你的資料：請參閱<link>私隱政策</link>。',
   },
   register: {
     title: '建立帳戶',
@@ -69,6 +70,7 @@ const auth: Localized<Messages['auth']> = {
     haveAccount: '已有帳戶？',
     signIn: '登入',
     recover: '透過電郵重新取得帳戶',
+    privacy: '我們會使用你的資料管理帳戶及預約，詳情請參閱<link>私隱政策</link>。',
   },
   forgot: {
     title: '忘記密碼？',

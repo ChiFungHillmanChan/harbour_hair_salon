@@ -138,6 +138,7 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `unsubscribe.ts` — `unsubscribeFromMarketing` (the public form: never changes the Resend audience; emails a signed confirmation link only to a subscribed address, same answer either way, per-IP + hashed per-address limits) and `confirmUnsubscribe` (the link page's POST button: verifies the token, then `contacts.update({ unsubscribed: true })`); `sendMarketingUnsubscribeConfirmation` + `marketingUnsubscribeContent` build the mail. Tests in `unsubscribe.test.ts`.
 
 ## Pages
+- `src/app/[locale]/privacy/page.tsx` — the UK GDPR privacy notice (EN/ZH `legal.privacy`; bump `LAST_UPDATED` with the wording): controller, data collected, purposes + lawful basis, processors, transfers, retention, rights + ICO, contact, cookies, automated decisions. Lists render from fixed key arrays; `src/test/pages/privacy-page.test.ts` pins every cookie name and stated period to the code's constants (session policy, token TTLs, rate-limit window). Auth pages hide the footer, so `RegisterForm`/`SignInForm` link the notice under their submit buttons (`auth-forms-privacy.test.ts`).
 - `src/app/admin/employees/page.tsx` — admin employee list with create/edit/delete via `EmployeeForm`
 - `src/app/admin/timesheets/page.tsx` — admin timesheet browser and manual entry editor
 - `src/app/admin/payroll/page.tsx` — admin payroll runner: period picker, computed gross lines, CSV export, finalize
