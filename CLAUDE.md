@@ -47,7 +47,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`. Session helpers in `src/app/lib/session.ts`. Route protection in `middleware.ts`.
 - **Email**: Resend SDK with React Email templates. Service in `src/app/services/email-service.ts`, templates in `src/components/emails/`.
 - **Validation**: Zod
-- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC), notifications (`*/30 8-19` UTC, daytime only), calendar-sync (`*/30`, but the route skips ticks outside saved staff hours ±15 min before touching the DB) and housekeeping (daily 03:15 UTC). See "Neon compute budget" below before adding another; `neon-compute-budget.test.ts` pins these.
+- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC; also sends the salon's daily "needs attention" email, `services/ops-alert-service.ts`, only when something is wrong), notifications (`*/30 8-19` UTC, daytime only), calendar-sync (`*/30`, but the route skips ticks outside saved staff hours ±15 min before touching the DB) and housekeeping (daily 03:15 UTC). See "Neon compute budget" below before adding another; `neon-compute-budget.test.ts` pins these.
 
 ### Environment Variables
 
@@ -162,6 +162,18 @@ Rules that follow from this:
 - **Use regular `<img>` for external/CDN images**, `next/image` only for local `public/` assets.
 - **Tailwind CSS only** for styling. The brand is **monochrome black/white/grey** (client requirement) — never reintroduce the old blue `#174F7F` or gold.
 - **readme/structure.md**: Check before creating new functions/components to avoid duplication.
+
+### Booking and operations rules (2026-10-13 review — keep them)
+
+- **Online requests need `MIN_BOOKING_NOTICE_MINUTES` (120) notice** (`lib/booking-constants.ts`); staff-entered bookings are exempt. A repeat submission (same customer, service and start, any stylist) returns the existing request instead of booking twice.
+- **Unanswered requests lapse when their start time passes** (`services/pending-request-lapse.ts`, run by the notifications cron and by housekeeping); staff cannot confirm a request that has started. Cron code invalidates the busy feed with `invalidateStylistIcalFeedFromCron()` — `updateTag` only works in Server Actions.
+- **"Mark completed" only once an appointment has started.** The outbound busy feed exports every non-cancelled booking until it ends, completed ones included, so Fresha cannot resell a chair that is still in use.
+- **Email verification is GET → confirm page → POST.** Never verify (or consume anything) on a GET: mail scanners open every link. Auth emails share a 20-per-IP daily cap (`emailSendDailyLimiter`).
+- **Customer erasure goes through Admin → Users** (`actions/admin-erasure.ts`, `docs/data-erasure.md`): anonymise, never delete a customer row (it cascades the booking history). The privacy notice (`messages/*/legal.ts`) states retention periods — keep it true when retention code changes.
+- **Every fixed `lastError` sentence a job writes is catalogued** in `services/operations-messages.ts` (a test enforces it) so Admin → Operations can translate it.
+- **No `images.remotePatterns`.** Remote images render as plain `<img>`; a remote pattern lets anyone run billed optimisations on that host.
+- **The monochrome brand is enforced by `src/app/brand-monochrome.test.ts`.**
+- **Deploys are serialised** (`deploy.yml` concurrency; deploy-production only ships main's current head; the Vercel CLI is pinned — bump it on purpose). With the `NEON_API_KEY` secret and `NEON_PROJECT_ID` variable set, each production deploy first takes a compute-less Neon branch (`predeploy-*`, newest three kept).
 
 ### Security guardrails (2026-09-29 audit, PRs #48–#55 — keep them)
 
