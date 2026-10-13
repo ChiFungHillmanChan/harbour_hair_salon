@@ -252,6 +252,7 @@ const adminContent = {
       slug: 'Slug',
       slugPlaceholder: 'Leave blank to auto-generate from name',
       imageUrl: 'Image URL',
+      imageUrlPlaceholder: '/images/stylists/chan.webp or https://...',
       scheduleBoard: 'Schedule board',
       calendarColour: 'Calendar colour',
       calendarColourHelp: 'Fills this stylist’s appointments on the admin schedule board. Staff-facing only — the public site stays monochrome.',

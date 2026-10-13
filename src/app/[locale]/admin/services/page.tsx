@@ -12,6 +12,8 @@ import { HTML_LANG } from '@/i18n/config';
 import { getActionT } from '@/i18n/request';
 import { getLocale, getT } from '@/i18n/server';
 import { rich } from '@/i18n/rich';
+import { adminFacingMessage } from '@/app/lib/admin-notice';
+import { describeFault } from '@/app/lib/fault';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +33,9 @@ async function deleteServiceRow(id: string): Promise<RowActionResult> {
     await deleteService(formData);
   } catch (error) {
     unstable_rethrow(error);
-    console.error('deleteService failed:', error);
+    console.error('deleteService failed:', describeFault(error));
     const t = await getActionT('adminCatalog');
-    return { error: error instanceof Error ? error.message : t('servicesList.deleteFailed') };
+    return { error: adminFacingMessage(error, t('servicesList.deleteFailed')) };
   }
 
   return { success: true };

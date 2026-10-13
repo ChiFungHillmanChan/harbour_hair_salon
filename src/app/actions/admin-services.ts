@@ -13,6 +13,7 @@ import { localizeHref } from '@/i18n/paths';
 import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
 import { HAIR_LENGTHS, PRICE_NATURES, PRICE_TYPES, VAT_DISPLAYS } from '@/app/services/pricing/policy';
 import { penceToDecimalString, toPence } from '@/app/services/pricing/money';
+import { AdminNoticeError } from '@/app/lib/admin-notice';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -188,7 +189,7 @@ export async function updateService(
 export async function deleteService(formData: FormData): Promise<void> {
   await requireAdmin();
   const id = formData.get('id');
-  if (typeof id !== 'string' || !id) throw new Error('Missing service id');
+  if (typeof id !== 'string' || !id) throw new AdminNoticeError((await getActionT('adminCatalog'))('servicesList.deleteFailed'));
 
   const [appointmentCount, dependents] = await Promise.all([
     prisma.appointment.count({ where: { serviceId: id } }),
@@ -200,7 +201,7 @@ export async function deleteService(formData: FormData): Promise<void> {
     // server-side. A service with history is retired instead (not public,
     // not bookable), which keeps every past appointment intact.
     const t = await getActionT('adminCatalog');
-    throw new Error(t('serviceForm.errors.DELETE_IN_USE', { count: appointmentCount }));
+    throw new AdminNoticeError(t('serviceForm.errors.DELETE_IN_USE', { count: appointmentCount }));
   }
 
   await prisma.$transaction(async (tx) => {

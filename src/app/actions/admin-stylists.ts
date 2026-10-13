@@ -12,6 +12,7 @@ import { invalidateStylistIcalToken } from '@/app/services/stylist-ical-cache';
 import { getActionT, localizedPath } from '@/i18n/request';
 import type { MessageParams } from '@/i18n/format';
 import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
+import { AdminNoticeError } from '@/app/lib/admin-notice';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -186,17 +187,17 @@ export async function updateStylist(
 export async function deleteStylist(formData: FormData): Promise<void> {
   await requireAdmin();
   const id = formData.get('id');
-  if (typeof id !== 'string' || !id) throw new Error(await message('MISSING_ID'));
+  if (typeof id !== 'string' || !id) throw new AdminNoticeError(await message('MISSING_ID'));
 
   // Read the slug while the row still exists: /stylists/[slug] is ISR
   // (revalidate 3600), so without purging that exact path the deleted stylist's
   // profile stays live and bookable for up to an hour.
   const existing = await prisma.stylist.findUnique({ where: { id }, select: { slug: true } });
-  if (!existing) throw new Error(await message('NOT_FOUND'));
+  if (!existing) throw new AdminNoticeError(await message('NOT_FOUND'));
 
   const appointmentCount = await prisma.appointment.count({ where: { stylistId: id } });
   if (appointmentCount > 0) {
-    throw new Error(await message('DELETE_IN_USE', { count: appointmentCount }));
+    throw new AdminNoticeError(await message('DELETE_IN_USE', { count: appointmentCount }));
   }
 
   await prisma.$transaction(async (tx) => {

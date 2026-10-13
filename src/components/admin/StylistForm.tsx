@@ -135,7 +135,7 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
             name="imageUrl"
             maxLength={500}
             defaultValue={stylist?.imageUrl ?? ''}
-            placeholder="/images/stylists/chan.webp or https://..."
+            placeholder={t('stylists.form.imageUrlPlaceholder')}
             className={`${fieldClass} font-mono`}
           />
         </div>

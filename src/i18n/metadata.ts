@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { DEFAULT_LOCALE, HTML_LANG, LOCALES, OG_LOCALE, type Locale } from './config';
 import { localizeHref } from './paths';
+import { translator } from './messages';
+import { OG_IMAGE } from '@/app/lib/og-defaults';
 
 /**
  * canonical + hreflang for a page that exists in both languages. Each language
@@ -14,7 +16,15 @@ export function alternatesFor(locale: Locale, path: string): NonNullable<Metadat
   return { canonical: localizeHref(locale, path), languages };
 }
 
-/** Open Graph locale fields for a page in `locale`. */
+/**
+ * Open Graph fields that follow the page language: the locale pair, and the
+ * shared card image with its alt text translated (OG_BASE carries the English
+ * one). Spread right after OG_BASE so a page's own `images` still win.
+ */
 export function ogLocale(locale: Locale) {
-  return { locale: OG_LOCALE[locale], alternateLocale: LOCALES.filter((other) => other !== locale).map((other) => OG_LOCALE[other]) };
+  return {
+    locale: OG_LOCALE[locale],
+    alternateLocale: LOCALES.filter((other) => other !== locale).map((other) => OG_LOCALE[other]),
+    images: [{ ...OG_IMAGE, alt: translator(locale, 'common')('meta.ogImageAlt') }],
+  };
 }
