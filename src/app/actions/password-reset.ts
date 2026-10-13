@@ -14,6 +14,7 @@ import {
   RESET_TOKEN_TTL_MS,
 } from '@/app/lib/password-reset';
 import { getActionT } from '@/i18n/request';
+import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
 
 // 'sent' carries no text: the page words it in its own language, so the
 // confirmation still reads correctly after a language switch.
@@ -96,8 +97,9 @@ export async function requestPasswordReset(
     select: { id: true, email: true },
   });
 
-  // No account: stop here, but return the same message as the success path.
-  if (!user) return { status: 'sent' };
+  // No account — or a walk-in / erased account whose address is a placeholder
+  // that can never receive mail: stop here, with the same answer as success.
+  if (!user || isPlaceholderEmail(user.email)) return { status: 'sent' };
 
   const token = generateResetToken();
 

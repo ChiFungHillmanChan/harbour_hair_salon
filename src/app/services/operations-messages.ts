@@ -16,6 +16,7 @@ export const OPERATIONS_MESSAGES = {
   RETRY_WINDOW_EXPIRED: 'Retry window expired. Check provider delivery logs before any manual resend.',
   DELIVERY_FAILED_REPEATEDLY: 'Delivery failed repeatedly. Check the email provider and sender configuration.',
   DELIVERY_RETRY_SCHEDULED: 'Delivery failed. A retry is scheduled; check provider status and sender configuration.',
+  CUSTOMER_ERASED: 'Customer data erased; never sent.',
 } as const;
 
 export type OperationsMessageKey = keyof typeof OPERATIONS_MESSAGES;

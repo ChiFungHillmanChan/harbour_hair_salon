@@ -190,6 +190,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       RETRY_WINDOW_EXPIRED: '重試期限已過。人手重發前，請先查看電郵服務的發送紀錄。',
       DELIVERY_FAILED_REPEATEDLY: '多次發送失敗。請檢查電郵服務及寄件人設定。',
       DELIVERY_RETRY_SCHEDULED: '發送失敗，已安排重試；請檢查電郵服務狀態及寄件人設定。',
+      CUSTOMER_ERASED: '顧客資料已刪除；不會寄出。',
     },
     report: {
       title: '最新就緒報告',
