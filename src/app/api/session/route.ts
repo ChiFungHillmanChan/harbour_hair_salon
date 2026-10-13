@@ -6,10 +6,9 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Cosmetic header state only; every protected route still verifies server-side.
- * The header normally reads the session_hint cookie without touching the
- * network — this route is its fallback when the hint is absent (sessions
- * created before the hint cookie existed), and back-fills the hint so the
- * fallback runs at most once per browser.
+ * The header reads the session_hint cookie (back-filled by middleware) and no
+ * longer calls this; it stays for pages still open from older deployments and
+ * back-fills the hint the same way.
  */
 export async function GET() {
   const session = await getSession();

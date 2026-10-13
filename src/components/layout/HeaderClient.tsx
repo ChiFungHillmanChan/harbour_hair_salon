@@ -24,31 +24,14 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
   // Instant, network-free auth state from the non-httpOnly session_hint
   // cookie. Re-read on every navigation: this component lives in the root
   // layout and survives soft navigations, so login/logout redirects must
-  // trigger a re-read rather than relying on a remount.
+  // trigger a re-read rather than relying on a remount. No network fallback:
+  // middleware back-fills the hint on every page response that carries a
+  // session, so a missing hint means signed out (the old /api/session fetch
+  // only ever ran for anonymous visitors, on every full page load).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs header with the cookie the server just set/cleared; same idiom as AdminSidebar
     setRole(parseSessionHint(document.cookie));
   }, [pathname]);
-
-  // Fallback for sessions created before the hint cookie existed: one fetch
-  // per full page load; /api/session back-fills the hint so this runs once.
-  useEffect(() => {
-    if (parseSessionHint(document.cookie) !== null) return;
-    const controller = new AbortController();
-    fetch('/api/session', {
-      cache: 'no-store',
-      credentials: 'same-origin',
-      signal: controller.signal,
-    })
-      .then((response) => response.ok ? response.json() as Promise<{ session: { role: string } | null }> : { session: null })
-      .then((body) => {
-        if (body.session?.role) setRole(body.session.role);
-      })
-      .catch(() => {
-        // Signed-out default already rendered; nothing to roll back.
-      });
-    return () => controller.abort();
-  }, []);
 
   const handleSignOut = () => {
     if (isSigningOut) return;

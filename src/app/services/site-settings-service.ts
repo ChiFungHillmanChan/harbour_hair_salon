@@ -102,11 +102,18 @@ const getSiteSettingsFromStore = unstable_cache(async (): Promise<SiteSettings> 
     const created = await prisma.siteSettings.create({ data: { id: SINGLETON_ID } });
     return mapRow(created);
   } catch {
-    // Someone else inserted it between our read and create. Read again.
+    // Someone else inserted it between our read and create. Read again. Never
+    // return DEFAULTS from in here: unstable_cache would keep the fallback for
+    // the whole revalidate period (CLAUDE.md) — throw and fall back outside.
     const row = await prisma.siteSettings.findUnique({ where: { id: SINGLETON_ID } });
-    return row ? mapRow(row) : DEFAULTS;
+    if (!row) throw new Error('SiteSettings singleton missing after a create race');
+    return mapRow(row);
   }
-}, ['site-settings'], { revalidate: 3600, tags: ['site-settings'] });
+  // A day, not an hour: every expiry made the next visit to /contact, /about etc.
+  // re-read settings, waking Neon overnight. Admin → Settings → Save drops the
+  // 'site-settings' tag, so edits there still show at once; a direct DB write
+  // needs that Save (or `vercel cache invalidate --tag site-settings`).
+}, ['site-settings'], { revalidate: 86400, tags: ['site-settings'] });
 
 async function getSiteSettingsOrDefaults(): Promise<SiteSettings> {
   try {
