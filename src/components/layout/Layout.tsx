@@ -68,16 +68,8 @@ export async function Footer() {
               <li><Link href="/blog" className="hover:text-white transition-colors">{t('footer.journal')}</Link></li>
               <li><Link href="/book" className="hover:text-white transition-colors">{t('footer.bookOnline')}</Link></li>
               <li><Link href="/contact" className="hover:text-white transition-colors">{t('footer.contactUs')}</Link></li>
-              <li>
-                <a
-                  href="https://www.treatwell.co.uk/place/harbour-hair-hk-hair-stylist/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-white transition-colors"
-                >
-                  Treatwell
-                </a>
-              </li>
+              {/* Marketplace links come only from Admin → Settings (SocialLinks
+                  below), so clearing a URL there removes it everywhere. */}
             </ul>
           </div>
 

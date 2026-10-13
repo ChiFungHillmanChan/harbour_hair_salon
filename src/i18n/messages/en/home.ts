@@ -57,7 +57,9 @@ const home = {
   },
   visit: {
     title: 'Visit & follow us',
-    body: 'Find us in central Leeds, book through Treatwell, or follow along on Instagram.',
+    // Channel-neutral: the buttons below come from Admin → Settings, so the copy
+    // must not name a marketplace that may since have been switched off.
+    body: 'Find us in central Leeds, book your next visit, or follow along on Instagram.',
     bookOnTreatwell: 'Book on Treatwell',
     directions: 'Directions & Google reviews',
   },
