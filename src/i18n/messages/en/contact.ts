@@ -30,6 +30,9 @@ const contact = {
   },
   map: {
     title: 'Harbour Hair Salon location on Google Maps - Central Arcade, Leeds LS1 6DX',
+    notice: 'The map is provided by Google, which sets its own cookies, so it loads only when you ask for it.',
+    show: 'Show map',
+    open: 'Open in Google Maps',
   },
   follow: {
     heading: 'Find & follow us',

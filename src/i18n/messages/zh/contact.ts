@@ -30,6 +30,9 @@ const contact: Localized<Messages['contact']> = {
   },
   map: {
     title: 'Harbour Hair Salon 的 Google 地圖位置－Central Arcade, Leeds LS1 6DX',
+    notice: '地圖由 Google 提供，並會設定 Google 自己的 cookies，所以只會在你要求時才載入。',
+    show: '顯示地圖',
+    open: '在 Google 地圖開啟',
   },
   follow: {
     heading: '搜尋及關注我們',
