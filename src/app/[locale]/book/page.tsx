@@ -84,10 +84,11 @@ export default async function BookPage() {
   const [locale, t] = await Promise.all([getLocale(), getT('booking')]);
 
   if (!(await isBookingEnabled())) {
+    const contact = await closedContact();
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
         <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-8 md:p-12 text-center">
-          <BookingClosedNotice t={t} {...await closedContact()} />
+          <BookingClosedNotice t={t} {...contact} />
         </div>
       </div>
     );
