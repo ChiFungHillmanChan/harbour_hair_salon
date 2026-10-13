@@ -4,11 +4,13 @@ import { Stylist } from '@prisma/client';
 import type { ClientPublicService } from '@/app/services/public-service-select';
 import type { ClientOffering, PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { format, addDays, startOfToday } from 'date-fns';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from '@/i18n/link';
 import { fetchBookingDays, submitBooking, type ClientQuote } from '@/app/actions/booking';
 import type { BookingDay } from '@/app/services/booking-days';
 import { DayChip, TimeSlotGrid, UnavailableDayBlock } from './DayAvailability';
+import { BookingClosedNotice, type BookingClosedContact } from './BookingClosedNotice';
+import { isBookingClosedAnswer } from './closed-answer';
 import { reconcileSelection } from './reconcile-selection';
 import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
 import { salonDateKey } from '@/app/services/salon-time';
@@ -33,6 +35,11 @@ interface BookingWizardProps {
   offerings: ClientOffering[];
   categories: { category: string; entries: PriceListEntry[] }[];
   stylists: PublicStylist[];
+  /**
+   * How to book if online booking closes while the wizard is open (the nightly
+   * pause, or staff switching it off) — what /book itself shows when closed.
+   */
+  closedContact: BookingClosedContact;
 }
 
 const STEPS: Step[] = ['SERVICE', 'STYLIST', 'DATE', 'CONFIRM'];
@@ -43,7 +50,7 @@ const isRoutingTarget = (service: ClientService) => service.isConsultation || se
 /** Can be picked in the wizard: bookable, or a consultation-routed service whose price is shown. */
 const isSelectable = (service: ClientService) => service.isBookable || service.requiresConsultation;
 
-export function BookingWizard({ services, offerings, categories, stylists }: BookingWizardProps) {
+export function BookingWizard({ services, offerings, categories, stylists, closedContact }: BookingWizardProps) {
   const t = useT('booking');
   const tp = useT('pricing');
   const tc = useT('common');
@@ -98,6 +105,16 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
   const [slotLoadFailed, setSlotLoadFailed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  // Online booking closed while the wizard was open. The server answers every
+  // lookup and request with "closed" from then on, so the wizard says what
+  // /book says when closed, instead of "no appointments available".
+  const [bookingClosed, setBookingClosed] = useState(false);
+  const closedNotice = useRef<HTMLDivElement>(null);
+  // The step the customer was using is gone: take them (and a screen reader)
+  // to what replaced it.
+  useEffect(() => {
+    if (bookingClosed) closedNotice.current?.focus();
+  }, [bookingClosed]);
   // Colour patch-test gate: populated when a colour service + date are selected
   const [colourGate, setColourGate] = useState<{ eligible: boolean; reason: string; testDate: string | null } | null>(null);
 
@@ -151,6 +168,8 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
             const next = reconcileSelection(result.days, dayString, selectedTime, step);
             if (next.time !== selectedTime) setSelectedTime(next.time);
             if (next.step !== step) setStep(next.step);
+          } else if (isBookingClosedAnswer(result)) {
+            setBookingClosed(true);
           } else {
             setBookingDays([]);
             setSlotLoadFailed(true);
@@ -222,6 +241,10 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
       if (result.success) {
         setIsSubmitted(true);
         setRepricedQuote(null);
+      } else if (isBookingClosedAnswer(result)) {
+        // Closed between loading the times and confirming: the same answer as
+        // a lookup refused for it.
+        setBookingClosed(true);
       } else if (result.quote) {
         setRepricedQuote(result.quote);
         setBookingError(t('confirm.priceChanged'));
@@ -319,6 +342,20 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
         >
           {t('done.viewBookings')}
         </Link>
+      </div>
+    );
+  }
+
+  if (bookingClosed) {
+    return (
+      <div
+        ref={closedNotice}
+        tabIndex={-1}
+        className="max-w-4xl mx-auto bg-white shadow-xl px-4 py-10 sm:p-12 rounded-xl border border-zinc-100 text-center focus:outline-none"
+      >
+        <div className="max-w-xl mx-auto">
+          <BookingClosedNotice t={t} {...closedContact} heading="h2" />
+        </div>
       </div>
     );
   }

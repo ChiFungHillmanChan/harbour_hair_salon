@@ -1,4 +1,5 @@
 import { loadServerModule } from './load-server-module';
+import { BookingError } from '../app/services/booking-errors';
 import type { Locale } from '../i18n/config';
 
 /** Two stylists who work every day, 10:00–19:00 salon time, in name order. */
@@ -13,8 +14,12 @@ type Where = { userId?: string; serviceId?: string; date?: Date | { gte?: Date; 
  * created appointments are stored and then seen by every later read (slot
  * grids, conflict checks, the repeat-request lookup, the booking cap).
  * Records the notices enqueued and the post-commit side effects.
+ *
+ * `enabled: false` closes booking at the cached page gate (isBookingEnabled);
+ * `ready: false` closes it only at the authoritative check inside the booking
+ * transaction, as when it closes between loading the times and confirming.
  */
-export function bookingFixture(options: { locale?: Locale } = {}) {
+export function bookingFixture(options: { locale?: Locale; enabled?: boolean; ready?: boolean } = {}) {
   const rows: Row[] = [];
   const notices: string[] = [];
   const effects = { feedInvalidations: 0, dispatches: 0 };
@@ -80,8 +85,11 @@ export function bookingFixture(options: { locale?: Locale } = {}) {
     dispatchAppointmentNotifications: async () => { effects.dispatches++; },
   };
   const readiness = {
-    isBookingEnabled: async () => true,
-    assertOnlineBookingReady: async () => ({ bookingEnabled: true, phone: '0113 000 0000' }),
+    isBookingEnabled: async () => options.enabled !== false,
+    assertOnlineBookingReady: async () => {
+      if (options.enabled === false || options.ready === false) throw new BookingError('MAINTENANCE');
+      return { bookingEnabled: true, phone: '0113 000 0000' };
+    },
   };
   const service = loadServerModule<typeof import('../app/services/booking-service')>('src/app/services/booking-service.ts', {
     '@/app/lib/prisma': db,

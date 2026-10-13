@@ -142,11 +142,19 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
   }
 }
 
+/**
+ * A failed availability lookup. `reason: 'CLOSED'` means online booking is
+ * closed (the nightly pause, or staff switched it off), which the page must
+ * say as such — not as "no appointments available", and not as "couldn't
+ * load" (a lookup failure, with no reason).
+ */
+type AvailabilityRefused = { ok: false; reason?: 'CLOSED' };
+
 // Helper for client-side fetching without form state. The "Anyone" option
 // returns the union of every stylist's availability.
 export type FetchSlotsResult =
   | { ok: true; slots: Awaited<ReturnType<typeof getAvailableSlots>> }
-  | { ok: false };
+  | AvailabilityRefused;
 
 export async function fetchSlots(
   stylistId: string,
@@ -154,7 +162,7 @@ export async function fetchSlots(
   serviceDuration: number,
 ): Promise<FetchSlotsResult> {
   if (!(await isBookingEnabled())) {
-    return { ok: true, slots: [] };
+    return { ok: false, reason: 'CLOSED' };
   }
 
   // Guard the client-supplied duration before it reaches the slot loop (see
@@ -181,7 +189,7 @@ export async function fetchSlots(
   }
 }
 
-export type FetchBookingDaysResult = { ok: true; days: BookingDay[] } | { ok: false };
+export type FetchBookingDaysResult = { ok: true; days: BookingDay[] } | AvailabilityRefused;
 
 /**
  * The booking page's whole date strip in one request: each day's status, hours
@@ -194,7 +202,7 @@ export async function fetchBookingDays(
   serviceDuration: number,
 ): Promise<FetchBookingDaysResult> {
   if (!(await isBookingEnabled())) {
-    return { ok: true, days: [] };
+    return { ok: false, reason: 'CLOSED' };
   }
   const duration = SERVICE_DURATION.safeParse(serviceDuration);
   const validDates = Array.isArray(dates) && dates.length > 0 && dates.length <= BOOKING_DAYS_MAX &&
