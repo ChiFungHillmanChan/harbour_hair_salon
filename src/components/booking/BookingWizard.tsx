@@ -4,13 +4,16 @@ import { Stylist } from '@prisma/client';
 import type { ClientPublicService } from '@/app/services/public-service-select';
 import type { ClientOffering, PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { format, addDays, startOfToday } from 'date-fns';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import Link from '@/i18n/link';
 import { fetchBookingDays, submitBooking, type ClientQuote } from '@/app/actions/booking';
 import type { BookingDay } from '@/app/services/booking-days';
 import { DayChip, TimeSlotGrid, UnavailableDayBlock } from './DayAvailability';
+import { BookingClosedNotice, type BookingClosedContact } from './BookingClosedNotice';
+import { isBookingClosedAnswer } from './closed-answer';
 import { reconcileSelection } from './reconcile-selection';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
+import { salonDateKey } from '@/app/services/salon-time';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
 import { useDraftState, clearDraft } from '@/i18n/draft-store';
@@ -22,8 +25,9 @@ import { Duration, OptionLabel, PriceFinePrint, SurchargeBreakdown, useCategoryL
 type ClientService = ClientPublicService;
 
 // Only the public-safe fields the page passes down (never the full Stylist row,
-// which carries the secret treatwellIcalUrl).
-type PublicStylist = Pick<Stylist, 'id' | 'name' | 'role' | 'imageUrl'>;
+// which carries the secret treatwellIcalUrl). `translated`: the role line is in
+// the page's language (false = the English role is shown, marked lang="en").
+type PublicStylist = Pick<Stylist, 'id' | 'name' | 'role' | 'imageUrl'> & { translated: boolean };
 
 type Step = 'SERVICE' | 'STYLIST' | 'DATE' | 'CONFIRM';
 
@@ -32,6 +36,11 @@ interface BookingWizardProps {
   offerings: ClientOffering[];
   categories: { category: string; entries: PriceListEntry[] }[];
   stylists: PublicStylist[];
+  /**
+   * How to book if online booking closes while the wizard is open (the nightly
+   * pause, or staff switching it off) — what /book itself shows when closed.
+   */
+  closedContact: BookingClosedContact;
 }
 
 const STEPS: Step[] = ['SERVICE', 'STYLIST', 'DATE', 'CONFIRM'];
@@ -42,7 +51,7 @@ const isRoutingTarget = (service: ClientService) => service.isConsultation || se
 /** Can be picked in the wizard: bookable, or a consultation-routed service whose price is shown. */
 const isSelectable = (service: ClientService) => service.isBookable || service.requiresConsultation;
 
-export function BookingWizard({ services, offerings, categories, stylists }: BookingWizardProps) {
+export function BookingWizard({ services, offerings, categories, stylists, closedContact }: BookingWizardProps) {
   const t = useT('booking');
   const tp = useT('pricing');
   const tc = useT('common');
@@ -97,6 +106,16 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
   const [slotLoadFailed, setSlotLoadFailed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  // Online booking closed while the wizard was open. The server answers every
+  // lookup and request with "closed" from then on, so the wizard says what
+  // /book says when closed, instead of "no appointments available".
+  const [bookingClosed, setBookingClosed] = useState(false);
+  const closedNotice = useRef<HTMLDivElement>(null);
+  // The step the customer was using is gone: take them (and a screen reader)
+  // to what replaced it.
+  useEffect(() => {
+    if (bookingClosed) closedNotice.current?.focus();
+  }, [bookingClosed]);
   // Colour patch-test gate: populated when a colour service + date are selected
   const [colourGate, setColourGate] = useState<{ eligible: boolean; reason: string; testDate: string | null } | null>(null);
 
@@ -115,16 +134,27 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
     : stylists.find((stylist) => stylist.id === selectedStylistId) ?? null;
   const activeQuote = repricedQuote && repricedQuote.serviceId === selectedService?.id ? repricedQuote : null;
 
-  /** "Full Head Colour & Blow Dry · Long hair" for an option; the service name otherwise. */
-  const displayName = (service: ClientService) => {
+  /**
+   * "Full Head Colour & Blow Dry · Long hair" for an option; the service name
+   * otherwise. A name with no translation in the page's language is shown in
+   * English and marked lang="en", so a screen reader pronounces it as English;
+   * the hair-length label is always the page's own language.
+   */
+  const displayName = (service: ClientService): ReactNode => {
     const offering = service.offeringId ? offeringById.get(service.offeringId) : undefined;
-    if (!offering) return service.name;
+    if (!offering) return <span lang={service.translated ? undefined : 'en'}>{service.name}</span>;
+    const name = <span lang={offering.translated ? undefined : 'en'}>{offering.name}</span>;
     const length = service.hairLength ? tp.dynamic(`hairLength.${service.hairLength}`) : null;
-    return length ? `${offering.name} · ${length}` : offering.name;
+    return length ? <>{name} · {length}</> : name;
   };
+  // A category without a translation shows its stored (English) name.
+  const categoryLang = (category: string) => (locale === 'en-GB' || tp.has(`categories.${category}`) ? undefined : 'en');
 
   const dayString = selectedDay;
   const days = useMemo(() => Array.from({ length: BOOKING_DAYS_MAX }, (_, offset) => format(addDays(startOfToday(), offset), 'yyyy-MM-dd')), []);
+  // The salon's (London) today: the only day whose times the online notice
+  // period can grey out, so the only day that explains it.
+  const [salonToday] = useState(() => salonDateKey(new Date()));
 
   // One request per stylist/service fills the whole date strip and every day's
   // times; changing the day is then instant and costs no extra database work.
@@ -147,6 +177,8 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
             const next = reconcileSelection(result.days, dayString, selectedTime, step);
             if (next.time !== selectedTime) setSelectedTime(next.time);
             if (next.step !== step) setStep(next.step);
+          } else if (isBookingClosedAnswer(result)) {
+            setBookingClosed(true);
           } else {
             setBookingDays([]);
             setSlotLoadFailed(true);
@@ -218,6 +250,10 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
       if (result.success) {
         setIsSubmitted(true);
         setRepricedQuote(null);
+      } else if (isBookingClosedAnswer(result)) {
+        // Closed between loading the times and confirming: the same answer as
+        // a lookup refused for it.
+        setBookingClosed(true);
       } else if (result.quote) {
         setRepricedQuote(result.quote);
         setBookingError(t('confirm.priceChanged'));
@@ -315,6 +351,20 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
         >
           {t('done.viewBookings')}
         </Link>
+      </div>
+    );
+  }
+
+  if (bookingClosed) {
+    return (
+      <div
+        ref={closedNotice}
+        tabIndex={-1}
+        className="max-w-4xl mx-auto bg-white shadow-xl px-4 py-10 sm:p-12 rounded-xl border border-zinc-100 text-center focus:outline-none"
+      >
+        <div className="max-w-xl mx-auto">
+          <BookingClosedNotice t={t} {...closedContact} heading="h2" />
+        </div>
       </div>
     );
   }
@@ -507,7 +557,7 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
                       className="block w-full pl-4 pr-10 py-3 border border-zinc-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 transition-all appearance-none text-zinc-900"
                    >
                       {browsable.map(({ category }) => (
-                         <option key={category} value={category}>{categoryLabel(category)}</option>
+                         <option key={category} value={category} lang={categoryLang(category)}>{categoryLabel(category)}</option>
                       ))}
                    </select>
                    <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
@@ -597,7 +647,7 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
                    )}
                  </div>
                 <h3 className="font-medium text-zinc-900 text-lg">{stylist.name}</h3>
-                <p className="text-sm text-zinc-600 mt-1">{stylist.role}</p>
+                <p className="text-sm text-zinc-600 mt-1" lang={stylist.translated ? undefined : 'en'}>{stylist.role}</p>
               </button>
             ))}
           </div>
@@ -665,6 +715,9 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
                   <p className="font-medium">{slotLoadFailed ? t('date.loadFailed') : t('date.noneAvailable')}</p>
                   <p className="text-sm text-zinc-500 mt-1">{slotLoadFailed ? t('date.loadFailedHelp') : t('date.noneAvailableHelp')}</p>
                 </div>
+              )}
+              {dayString === salonToday && !daysLoading && !slotLoadFailed && (
+                <p className="mt-4 text-xs text-zinc-500">{t('date.noticeHint', { count: MIN_BOOKING_NOTICE_MINUTES / 60 })}</p>
               )}
             </div>
           </div>

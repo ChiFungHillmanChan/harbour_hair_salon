@@ -7,6 +7,8 @@ import { SITE_URL } from '@/app/lib/site-url';
 import { formatGBP, toPence } from './pricing/money';
 import type { PriceNature, PriceType, VatDisplay } from './pricing/policy';
 import { salonRelativeDay } from './salon-time';
+import { appointmentCalendarEvent } from './appointment-calendar';
+import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod } from '@/app/lib/calendar-links';
 
 /**
  * What an email may say about a booking's price. Built from the booking's own
@@ -67,6 +69,8 @@ export type EmailContent = {
   details: { label: string; value: string }[];
   callout?: { title: string; body: string };
   cta?: { label: string; href: string };
+  /** Smaller text links under the button (e.g. "Add to Google Calendar"). */
+  links?: { label: string; href: string }[];
   footnotes: string[];
   reference?: string;
   address: string;
@@ -85,7 +89,51 @@ export function describeEmailPrice(price: EmailPrice, locale: Locale): string {
   return parts.join(' · ');
 }
 
-export type AppointmentEmailOptions = { salonPhone?: string; oldDate?: Date; requestedDate?: Date; now?: Date };
+export type AppointmentEmailOptions = {
+  salonPhone?: string; oldDate?: Date; requestedDate?: Date; now?: Date;
+  /** The appointment's notificationVersion when the event was queued: the calendar entry's SEQUENCE. */
+  sequence?: number;
+};
+
+/**
+ * The calendar file a customer email carries. A confirmed time (confirmation,
+ * approved move, reminder) adds or updates the customer's own calendar entry;
+ * a cancellation removes it. Never for a request that is not confirmed yet,
+ * nor for staff mail.
+ */
+export function calendarMethodFor(kind: AppointmentEmailKind): IcsMethod | null {
+  switch (kind) {
+    case 'CONFIRMATION':
+    case 'RESCHEDULE':
+    case 'REMINDER':
+      return 'PUBLISH';
+    case 'CANCELLATION':
+      return 'CANCEL';
+    default:
+      return null;
+  }
+}
+
+/** Built at dispatch from the queued snapshot alone: no database read. */
+function calendarEventFor(appointment: EmailAppointment, locale: Locale, options: AppointmentEmailOptions) {
+  return appointmentCalendarEvent({
+    id: appointment.id, date: appointment.date, durationMinutes: appointment.service.duration,
+    serviceName: appointment.service.name, stylistName: appointment.stylist.name, sequence: options.sequence ?? 0,
+  }, locale);
+}
+
+/** The .ics attachment for an appointment email, or null when the kind carries none (see calendarMethodFor). */
+export function appointmentCalendarFile(
+  kind: AppointmentEmailKind,
+  appointment: EmailAppointment,
+  locale: Locale,
+  options: AppointmentEmailOptions = {},
+): { filename: string; method: IcsMethod; ics: string } | null {
+  const method = calendarMethodFor(kind);
+  if (!method) return null;
+  const event = calendarEventFor(appointment, locale, options);
+  return { filename: event.filename, method, ics: appointmentIcsFile(event, method, options.now) };
+}
 
 /** The words of every appointment email, in one language, from one place (HTML and plain text share them). */
 export function appointmentEmailContent(
@@ -95,6 +143,9 @@ export function appointmentEmailContent(
   options: AppointmentEmailOptions = {},
 ): EmailContent {
   const t = translator(locale, 'emails');
+  // A confirmed time can go straight into the customer's Google Calendar; the
+  // attached file (email-service) covers every other calendar app.
+  const calendarLinks = () => [{ label: t('calendar.addToGoogle'), href: appointmentGoogleCalendarUrl(calendarEventFor(appointment, locale, options)) }];
   const date = formatSalonLongDate(locale, appointment.date);
   const time = formatSalonClock(locale, appointment.date);
   const reference = appointment.id.slice(-8).toUpperCase();
@@ -116,7 +167,8 @@ export function appointmentEmailContent(
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration), labels('price', price)],
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('confirmation.cta'), href: url(locale, '/appointments') },
-        footnotes: [t('confirmation.footnote')],
+        links: calendarLinks(),
+        footnotes: [t('confirmation.footnote'), t('calendar.attached')],
       };
     case 'REQUEST_RECEIVED':
       return {
@@ -151,7 +203,8 @@ export function appointmentEmailContent(
         eyebrow: t('cancellation.eyebrow'), title: t('cancellation.title'), intro: t('cancellation.intro'),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time)],
         cta: { label: t('cancellation.cta'), href: url(locale, '/book') },
-        footnotes: [t('cancellation.footnote')],
+        // A Google link can only add; the attached CANCEL file removes the entry elsewhere.
+        footnotes: [t('calendar.cancelled'), t('cancellation.footnote')],
       };
     case 'RESCHEDULE': {
       if (!options.oldDate) throw new Error('Reschedule notification requires the original date');
@@ -168,7 +221,8 @@ export function appointmentEmailContent(
         eyebrow: t('reschedule.eyebrow'), title: t('reschedule.title'), intro: t('reschedule.intro', { previous }),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('previousDate', previous)],
         cta: { label: t('reschedule.cta'), href: url(locale, '/appointments') },
-        footnotes: [...requestNote, t('reschedule.footnote')],
+        links: calendarLinks(),
+        footnotes: [...requestNote, t('reschedule.footnote'), t('calendar.moved'), t('calendar.attached')],
       };
     }
     case 'REMINDER': {
@@ -183,7 +237,8 @@ export function appointmentEmailContent(
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration)],
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('reminder.cta'), href: url(locale, '/appointments') },
-        footnotes: [t('reminder.footnote')],
+        links: calendarLinks(),
+        footnotes: [t('reminder.footnote'), t('calendar.attached')],
       };
     }
     case 'REVIEW_REQUEST':
@@ -346,6 +401,7 @@ export function renderPlainText(content: EmailContent): string {
     '',
     ...(content.callout ? [`${content.callout.title}: ${content.callout.body}`, ''] : []),
     ...(content.cta ? [`${content.cta.label}: ${content.cta.href}`, ''] : []),
+    ...(content.links?.length ? [...content.links.map((link) => `${link.label}: ${link.href}`), ''] : []),
     ...content.footnotes,
     '',
     `${t('labels.location')}: ${content.address}`,

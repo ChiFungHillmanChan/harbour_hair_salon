@@ -12,7 +12,8 @@ import { PriceChangedError } from '@/app/services/booking-service';
 import { getActionLocale } from '@/i18n/request';
 import type { Locale } from '@/i18n/config';
 import type { PriceQuote } from '@/app/services/pricing/quote';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
+import type { MessageParams } from '@/i18n/format';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { verifySession } from '@/app/lib/session';
 import { appendAuditEvent } from '@/app/lib/audit';
@@ -34,8 +35,8 @@ import { headers } from 'next/headers';
 // paused no code is ever looked up, so there is nothing to enumerate.)
 
 /** A failed action result in the caller's language. */
-function failure(locale: Locale, code: BookingErrorCode) {
-  return { success: false as const, code, error: bookingErrorText(locale, code) };
+function failure(locale: Locale, code: BookingErrorCode, params?: MessageParams) {
+  return { success: false as const, code, error: bookingErrorText(locale, code, params) };
 }
 
 // The availability lookups need no session, so they are limited per address.
@@ -141,11 +142,19 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
   }
 }
 
+/**
+ * A failed availability lookup. `reason: 'CLOSED'` means online booking is
+ * closed (the nightly pause, or staff switched it off), which the page must
+ * say as such — not as "no appointments available", and not as "couldn't
+ * load" (a lookup failure, with no reason).
+ */
+type AvailabilityRefused = { ok: false; reason?: 'CLOSED' };
+
 // Helper for client-side fetching without form state. The "Anyone" option
 // returns the union of every stylist's availability.
 export type FetchSlotsResult =
   | { ok: true; slots: Awaited<ReturnType<typeof getAvailableSlots>> }
-  | { ok: false };
+  | AvailabilityRefused;
 
 export async function fetchSlots(
   stylistId: string,
@@ -153,7 +162,7 @@ export async function fetchSlots(
   serviceDuration: number,
 ): Promise<FetchSlotsResult> {
   if (!(await isBookingEnabled())) {
-    return { ok: true, slots: [] };
+    return { ok: false, reason: 'CLOSED' };
   }
 
   // Guard the client-supplied duration before it reaches the slot loop (see
@@ -180,7 +189,7 @@ export async function fetchSlots(
   }
 }
 
-export type FetchBookingDaysResult = { ok: true; days: BookingDay[] } | { ok: false };
+export type FetchBookingDaysResult = { ok: true; days: BookingDay[] } | AvailabilityRefused;
 
 /**
  * The booking page's whole date strip in one request: each day's status, hours
@@ -193,7 +202,7 @@ export async function fetchBookingDays(
   serviceDuration: number,
 ): Promise<FetchBookingDaysResult> {
   if (!(await isBookingEnabled())) {
-    return { ok: true, days: [] };
+    return { ok: false, reason: 'CLOSED' };
   }
   const duration = SERVICE_DURATION.safeParse(serviceDuration);
   const validDates = Array.isArray(dates) && dates.length > 0 && dates.length <= BOOKING_DAYS_MAX &&
@@ -350,9 +359,12 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
     patchTestReason,
     bookingInstant: fullDate,
     now: new Date(),
+    // Online requests only: staff approve them, so they need notice. Bookings
+    // staff enter themselves (admin-schedule.ts) never pass through here.
+    minNoticeMinutes: MIN_BOOKING_NOTICE_MINUTES,
   });
   if (!gate.ok) {
-    return failure(locale, gate.code);
+    return failure(locale, gate.code, gate.params);
   }
 
   // Resolve which stylist(s) can take this slot. For a named stylist we validate
@@ -410,7 +422,10 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
           locale,
         });
 
-
+    // The same request again (the answer to the first was lost, or a second
+    // tap): it is already made, so there is no feed to refresh and nothing new
+    // to send.
+    if (appointment.repeat) return { success: true };
 
     // The marketplaces poll a cached feed; drop it so the new busy period is
     // visible on their next poll rather than whenever the window expires.

@@ -5,6 +5,7 @@ import { RESET_TOKEN_TTL_MS } from '@/app/lib/password-reset';
 import { createUnsubscribeUrl, UNSUBSCRIBE_TOKEN_TTL_DAYS } from '@/app/lib/unsubscribe-token';
 import { DEFAULT_LOCALE, type Locale } from '@/i18n/config';
 import {
+  appointmentCalendarFile,
   appointmentEmailContent,
   isSalonEmailKind,
   marketingUnsubscribeContent,
@@ -25,6 +26,9 @@ export type { AppointmentEmailKind, AppointmentEmailOptions } from './email-cont
 /** @deprecated kept for old callers; see EmailAppointment in email-content.ts. */
 export type AppointmentWithDetails = LegacyEmailAppointment;
 
+/** Resend's attachment shape: `content` is base64. */
+export type EmailAttachment = { filename: string; content: string; content_type?: string };
+
 export type PreparedEmail = {
   from: string;
   to: string;
@@ -32,6 +36,8 @@ export type PreparedEmail = {
   html: string;
   text?: string;
   reply_to?: string;
+  /** The customer's calendar file on booking mail (see calendarMethodFor in email-content.ts). */
+  attachments?: EmailAttachment[];
 };
 
 export function getSalonNotifyAddress(): string | null {
@@ -53,7 +59,7 @@ function getFromAddress(): string {
 }
 
 /** HTML and plain text are rendered from the same words. */
-async function prepareEmail(to: string, content: EmailContent): Promise<PreparedEmail> {
+async function prepareEmail(to: string, content: EmailContent, attachments: EmailAttachment[] = []): Promise<PreparedEmail> {
   const replyTo = process.env.EMAIL_REPLY_TO?.trim();
   return {
     from: getFromAddress(),
@@ -62,6 +68,7 @@ async function prepareEmail(to: string, content: EmailContent): Promise<Prepared
     html: await render(EmailFrame({ content })),
     text: renderPlainText(content),
     ...(replyTo ? { reply_to: replyTo } : {}),
+    ...(attachments.length ? { attachments } : {}),
   };
 }
 
@@ -85,7 +92,13 @@ export async function prepareAppointmentEmail(
     if (!address) throw new Error('SALON_NOTIFY_EMAIL or EMAIL_REPLY_TO is required');
     return prepareEmail(address, content);
   }
-  return prepareEmail(normalized.user.email, content);
+  // A confirmed time carries an .ics that adds it to the customer's calendar; a
+  // cancellation, one that removes it. Built from the queued snapshot alone, and
+  // frozen with the rest of the request so a retry sends the identical file.
+  const calendar = appointmentCalendarFile(kind, normalized, locale, options);
+  return prepareEmail(normalized.user.email, content, calendar
+    ? [{ filename: calendar.filename, content: Buffer.from(calendar.ics, 'utf8').toString('base64'), content_type: 'text/calendar' }]
+    : []);
 }
 
 /** Abort the HTTP request itself; never log provider error bodies or recipient data. */

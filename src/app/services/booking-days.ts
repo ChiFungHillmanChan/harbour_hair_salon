@@ -30,6 +30,12 @@ export function buildBookingDays(input: {
   hoursByStylist: ReadonlyMap<string, readonly WorkingHours[]>;
   busyByStylist: ReadonlyMap<string, readonly BookedInterval[]>;
   bookable: (start: Date, duration: number) => boolean;
+  /**
+   * Whether a free start may still be requested online (e.g. enough notice
+   * for staff to approve it). A time it refuses stays on the grid, greyed like
+   * a taken one, rather than vanishing as the horizon's do.
+   */
+  requestable?: (start: Date) => boolean;
 }): BookingDay[] {
   return input.dates.map((date) => {
     const { dayOfWeek } = resolveSalonDateTime(date, '12:00');
@@ -44,8 +50,10 @@ export function buildBookingDays(input: {
       if (end === null || hours.endTime > end) end = hours.endTime;
       const busy = [...(input.busyByStylist.get(stylistId) ?? [])];
       for (const slot of buildSlotGridForWindow(date, hours, busy, input.duration, input.now)) {
-        if (!input.bookable(resolveSalonDateTime(date, slot.time).utc, input.duration)) continue;
-        free.set(slot.time, (free.get(slot.time) ?? false) || slot.available);
+        const start = resolveSalonDateTime(date, slot.time).utc;
+        if (!input.bookable(start, input.duration)) continue;
+        const open = slot.available && (input.requestable?.(start) ?? true);
+        free.set(slot.time, (free.get(slot.time) ?? false) || open);
       }
     }
     const slots = [...free]

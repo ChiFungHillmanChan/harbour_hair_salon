@@ -43,6 +43,8 @@ function bookingFixture(
     },
     appointment: {
       count: async () => (options.activeBookings ?? 0) + stored.length,
+      // No earlier copy of the same request (see booking-repeat-request.test.ts).
+      findFirst: async () => null,
       findMany: async () => { conflictReads++; return []; },
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const row = { id: `appointment-${stored.length + 1}`, notificationVersion: 0, ...data, user: { name: 'Customer', email: 'customer@example.test', phone: null }, stylist: { name: 'Stylist' }, service: { ...liveService } };

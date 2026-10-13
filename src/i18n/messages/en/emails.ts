@@ -118,6 +118,18 @@ const emails = {
     cta: 'Leave a review',
     footnote: 'Your feedback helps us look after every client.',
   },
+  /**
+   * The customer's own calendar entry for a confirmed appointment — the same
+   * words in the emails (link + attached .ics) and on My Bookings.
+   */
+  calendar: {
+    title: '{service} at Harbour Hair Salon',
+    details: 'Stylist: {stylist}\nView or change your booking: {url}',
+    addToGoogle: 'Add to Google Calendar',
+    attached: 'A calendar file (.ics) is attached: open it to add this appointment to Apple Calendar, Outlook or another calendar app.',
+    moved: 'If you saved the previous time in your calendar, please delete it and add the new time.',
+    cancelled: 'If you added this appointment to your calendar, please remove it. In most calendar apps, opening the attached calendar file (.ics) does this for you.',
+  },
   salonAlert: {
     subject: 'New booking request — Harbour Hair Salon',
     preview: 'Action needed: {customer} requested {service} on {date} at {time}',

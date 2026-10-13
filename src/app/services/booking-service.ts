@@ -16,7 +16,7 @@ import { penceToDecimalString } from './pricing/money';
 import type { Locale } from '@/i18n/config';
 import { bookingCoverageEndsAt, isBookableDateWindow, isWithinBookingHorizon } from './booking-horizon';
 import { buildBookingDays, type BookingDay, type WorkingHours } from './booking-days';
-import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, meetsMinimumNotice } from '@/app/lib/booking-constants';
 import { getTreatwellApiConfiguration, initialTreatwellSyncStatus } from './treatwell-api';
 
 /**
@@ -195,7 +195,15 @@ export async function getAvailableSlots(
   ];
 
   return buildStylistSlots(availability, busy, dateStr, serviceDuration, now)
-    .filter((slot) => isWithinBookingHorizon(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now));
+    .filter((slot) => isRequestableOnline(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now));
+}
+
+/**
+ * A free start a customer may request online: inside the booking horizon and
+ * with enough notice for staff to approve it (MIN_BOOKING_NOTICE_MINUTES).
+ */
+function isRequestableOnline(start: Date, durationMinutes: number, now: Date): boolean {
+  return isWithinBookingHorizon(start, durationMinutes, now) && meetsMinimumNotice(start, now);
 }
 
 /**
@@ -261,7 +269,7 @@ export async function getAvailableSlotsUnion(
       now,
     );
     for (const slot of slots) {
-      if (slot.available && isWithinBookingHorizon(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now)) times.add(slot.time);
+      if (slot.available && isRequestableOnline(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now)) times.add(slot.time);
     }
   }
 
@@ -322,6 +330,8 @@ export async function getBookingDays(stylistId: string, dates: string[], service
   return buildBookingDays({
     dates, duration: serviceDuration, now, hoursByStylist, busyByStylist,
     bookable: (start, duration) => isWithinBookingHorizon(start, duration, now),
+    // Too soon for staff to approve: still shown, greyed like a taken time.
+    requestable: (start) => meetsMinimumNotice(start, now),
   });
 }
 
@@ -376,11 +386,39 @@ function appointmentPriceFields(quote: PriceQuote, locale: Locale | undefined) {
   };
 }
 
+/** What a booking request returns, whether it made the appointment or found it already made. */
+const bookingResultInclude = {
+  // phone is here for the salon's internal new-request alert email.
+  user: { select: { email: true, name: true, phone: true } },
+  stylist: { select: { name: true } },
+  service: { select: { name: true, price: true, duration: true } },
+} satisfies Prisma.AppointmentInclude;
+
+/**
+ * The request this customer already holds for exactly this service and start
+ * time, with ANY stylist, if it still stands. Seeing it again means the answer
+ * to the first attempt was lost (a dropped connection, a second tap) and the
+ * customer sent the same request twice. It is returned as the result instead of
+ * booking again: "Anyone" would otherwise take the same time with the next free
+ * stylist, and a named stylist would be refused their own slot. Read inside the
+ * booking transaction and before the booking cap — a retry of the sixth
+ * booking is not a seventh — so two concurrent copies still serialize and the
+ * loser's retry finds the winner's row.
+ */
+async function findRepeatRequest(tx: Prisma.TransactionClient, data: NewBookingInput) {
+  return tx.appointment.findFirst({
+    where: { userId: data.userId, serviceId: data.serviceId, date: data.date, status: { in: ['PENDING', 'CONFIRMED'] } },
+    include: bookingResultInclude,
+  });
+}
+
 export async function createBooking(data: NewBookingInput & { stylistId: string }) {
   refuseDiscountCode(data.discountCode);
   // Use Serializable transaction to prevent double-booking race conditions
   const appointment = await runSerializableWithRetry(async (tx) => {
     const settings = await assertOnlineBookingReady(tx);
+    const made = await findRepeatRequest(tx, data);
+    if (made) return { ...made, repeat: true as const };
     await assertActiveBookingLimit(tx, data.userId);
     const [{ service, quote }, stylist] = await Promise.all([
       quoteInTx(tx, data),
@@ -414,16 +452,11 @@ export async function createBooking(data: NewBookingInput & { stylistId: string 
         notes: data.notes ?? null,
         treatwellSyncStatus,
       },
-      include: {
-        // phone is here for the salon's internal new-request alert email.
-        user: { select: { email: true, name: true, phone: true } },
-        stylist: { select: { name: true } },
-        service: { select: { name: true, price: true, duration: true } },
-      },
+      include: bookingResultInclude,
     });
     await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', created, { salonPhone: settings.phone });
     await enqueueAppointmentNotification(tx, 'SALON_ALERT', created);
-    return created;
+    return { ...created, repeat: false as const };
   });
 
   return appointment;
@@ -439,6 +472,9 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
   refuseDiscountCode(data.discountCode);
   const appointment = await runSerializableWithRetry(async (tx) => {
     const settings = await assertOnlineBookingReady(tx);
+    // Before choosing a stylist: a repeat must not be given the next free one.
+    const made = await findRepeatRequest(tx, data);
+    if (made) return { ...made, repeat: true as const };
     await assertActiveBookingLimit(tx, data.userId);
     const { service, quote } = await quoteInTx(tx, data);
 
@@ -508,16 +544,11 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
         notes: data.notes ?? null,
         treatwellSyncStatus,
       },
-      include: {
-        // phone is here for the salon's internal new-request alert email.
-        user: { select: { email: true, name: true, phone: true } },
-        stylist: { select: { name: true } },
-        service: { select: { name: true, price: true, duration: true } },
-      },
+      include: bookingResultInclude,
     });
     await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', created, { salonPhone: settings.phone });
     await enqueueAppointmentNotification(tx, 'SALON_ALERT', created);
-    return created;
+    return { ...created, repeat: false as const };
   });
 
   return appointment;

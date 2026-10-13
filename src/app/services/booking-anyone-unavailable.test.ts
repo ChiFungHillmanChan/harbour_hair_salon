@@ -24,6 +24,8 @@ function fixture(blocks: { stylistId: string; start: Date; end: Date }[], booked
     },
     appointment: {
       count: async () => 0,
+      // No earlier copy of the same request (see booking-repeat-request.test.ts).
+      findFirst: async () => null,
       // Honours the stylist filter so a booked stylist's appointment only blocks that stylist.
       findMany: async ({ where }: { where: { stylistId?: string | { in: string[] }; status?: { not: string } } }) => booked
         .filter((row) => typeof where.stylistId === 'string' ? row.stylistId === where.stylistId : (where.stylistId?.in ?? []).includes(row.stylistId))

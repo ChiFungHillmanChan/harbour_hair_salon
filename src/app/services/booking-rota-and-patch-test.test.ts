@@ -52,6 +52,8 @@ function fixture(options: { requiresPatchTest?: boolean; patchTestDate?: Date } 
     },
     appointment: {
       count: async () => 0,
+      // No earlier copy of the same request (see booking-repeat-request.test.ts).
+      findFirst: async () => null,
       findMany: async ({ where }: { where: { service?: { isPatchTest?: boolean } } }) => {
         if (where.service?.isPatchTest) return options.patchTestDate ? [{ date: options.patchTestDate, status: 'COMPLETED' }] : [];
         return [];

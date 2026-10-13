@@ -100,6 +100,16 @@ export function EmailFrame({ content }: { content: EmailContent }) {
               </Section>
             )}
 
+            {content.links && content.links.length > 0 && (
+              <Section style={{ textAlign: 'center', marginBottom: '28px' }}>
+                {content.links.map((link) => (
+                  <Text key={link.href} style={{ fontSize: '13px', margin: '0 0 6px' }}>
+                    <Link href={link.href} style={{ color: c.ink, textDecoration: 'underline' }}>{link.label}</Link>
+                  </Text>
+                ))}
+              </Section>
+            )}
+
             {content.footnotes.length > 0 && <Hr style={{ borderColor: c.line, margin: '0 0 20px' }} />}
             {content.footnotes.map((note) => (
               <Text key={note} style={{ color: c.muted, fontSize: '12px', lineHeight: '1.65', margin: '0 0 8px' }}>

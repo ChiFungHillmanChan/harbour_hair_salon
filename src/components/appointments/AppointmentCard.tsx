@@ -10,6 +10,7 @@ import { useFormatPrice } from '@/components/pricing/PriceParts';
 import { useLocale, useT } from '@/i18n/client';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useDraftState } from '@/i18n/draft-store';
+import { appointmentGoogleCalendarUrl, appointmentIcsBlob, type AppointmentCalendarEvent } from '@/app/lib/calendar-links';
 import { RescheduleModal } from './RescheduleModal';
 
 /**
@@ -34,7 +35,25 @@ type SerializedAppointment = {
   price: BookedPrice;
   hasReview?: boolean;
   request: RescheduleRequestView;
+  /** The entry for the customer's own calendar: confirmed, upcoming bookings only. */
+  calendar?: AppointmentCalendarEvent | null;
 };
+
+/**
+ * Save the appointment as an .ics file. Made here on the device from what the
+ * page already holds — no request, so no database work.
+ */
+function downloadCalendarFile(event: AppointmentCalendarEvent) {
+  const href = URL.createObjectURL(appointmentIcsBlob(event));
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = event.filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  // Let the browser start the download before the file is released.
+  setTimeout(() => URL.revokeObjectURL(href), 1_000);
+}
 
 interface AppointmentCardProps {
   appointment: SerializedAppointment;
@@ -216,9 +235,37 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
 
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
+        {isUpcoming && appointment.calendar && (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-100 pt-4">
+            <a
+              href={appointmentGoogleCalendarUrl(appointment.calendar)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors"
+            >
+              <CalendarIcon />
+              {t('card.addToGoogleCalendar')}
+              <span className="sr-only"> {t('card.opensInNewTab')}</span>
+            </a>
+            <button
+              type="button"
+              onClick={() => downloadCalendarFile(appointment.calendar!)}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors"
+            >
+              <DownloadIcon />
+              {t('card.downloadCalendarFile')}
+            </button>
+          </div>
+        )}
+
         {isUpcoming && isPending && (
           <p className="mt-3 text-xs text-amber-700">
             {t('card.awaitingConfirmation')}
+          </p>
+        )}
+        {isUpcoming && isPending && (
+          <p className="mt-1 text-xs text-zinc-500">
+            {t('card.calendarAfterConfirmation')}
           </p>
         )}
         {isUpcoming && cancelLocked && (
@@ -253,5 +300,21 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
         />
       )}
     </>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg className="w-4 h-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg className="w-4 h-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+    </svg>
   );
 }

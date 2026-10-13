@@ -11,3 +11,25 @@ export const ANY_STYLIST_ID = 'any';
  * module may export only async functions (`next build` refuses anything else).
  */
 export const BOOKING_DAYS_MAX = 14;
+
+/**
+ * The least notice, in minutes, an ONLINE request needs. Online requests wait
+ * for a member of staff to approve them, so a time sooner than this could not
+ * be confirmed before the customer is due: the booking page shows such times
+ * as unavailable and submitBooking refuses them. Bookings staff enter in Admin
+ * are not restricted.
+ *
+ * 120 (two hours) is the salon's default. To change it, change this number and
+ * redeploy: the booking page, the server check and the customer's message
+ * ("at least N hours' notice") all read it. Whole hours read best.
+ */
+export const MIN_BOOKING_NOTICE_MINUTES = 120;
+
+/**
+ * True when `start` gives at least `minutes` of notice from `now`. Compared
+ * as absolute instants, so a clock change in between neither shortens nor
+ * stretches the notice.
+ */
+export function meetsMinimumNotice(start: Date, now: Date = new Date(), minutes: number = MIN_BOOKING_NOTICE_MINUTES): boolean {
+  return start.getTime() - now.getTime() >= minutes * 60_000;
+}
