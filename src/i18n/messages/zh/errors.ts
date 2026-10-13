@@ -11,6 +11,8 @@ const errors: Localized<Messages['errors']> = {
     STYLIST_UNAVAILABLE: '這位髮型師暫時未能接受預約，請選擇其他髮型師。',
     CUSTOMER_GONE: '此顧客記錄已不存在，請重新搜尋。',
     ONLY_PENDING_CONFIRM: '只可確認待處理的預約申請',
+    REQUEST_EXPIRED: '此預約申請的時間已到，無法再確認。請拒絕申請，或致電顧客重新預約。',
+    COMPLETE_BEFORE_START: '此預約尚未開始，須待開始時間過後才可標示為已完成。',
     CALENDAR_SETUP_NEEDED: '日曆設定需要處理。確認此預約前，請先檢查「整合設定」。',
     STALE: '此預約已有變更，請重新整理後再試。',
     MAINTENANCE: '網上預約暫時關閉，請致電本店預約。謝謝，不便之處敬請原諒。',

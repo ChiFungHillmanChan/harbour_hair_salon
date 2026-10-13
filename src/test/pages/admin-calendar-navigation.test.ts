@@ -112,7 +112,7 @@ test('invalid and duplicate query parameters fall back to a valid salon date and
   }
 });
 
-function renderClient(dateStr: string, view: string, pendingAppointments: Record<string, unknown>[] = []) {
+function renderClient(dateStr: string, view: string, pendingAppointments: Record<string, unknown>[] = [], appointments: Record<string, unknown>[] = []) {
   const urls: string[] = [];
   const statuses: string[][] = [];
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
@@ -129,8 +129,70 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': { updateAppointmentStatus: async (id: string, status: string) => { statuses.push([id, status]); return { success: true }; } },
   });
-  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments: [], pendingAppointments, rescheduleRequests: [], stylists: [], busyBlocks: [] }), urls, statuses };
+  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments, pendingAppointments, rescheduleRequests: [], stylists: [], busyBlocks: [] }), urls, statuses };
 }
+
+/** A board row (CalendarAppointment) for the client renderer. */
+function boardAppointment(id: string, status: string, date: string) {
+  return {
+    id, status, date, stylistId: 'stylist', serviceId: 'service', updatedAt: date, durationAtBooking: 60, notes: null,
+    rescheduleRequestedDate: null, rescheduleRequestedAt: null, price: { known: false },
+    user: { id: `user-${id}`, name: `Customer ${id}`, email: null },
+    stylist: { name: 'Stylist', calendarColor: null }, service: { name: 'Cut', duration: 60, calendarColor: null },
+  };
+}
+
+/** Runs a client handler that uses window.confirm, answering `answer`. */
+async function withConfirm(answer: boolean, run: () => unknown) {
+  const previous = (globalThis as { window?: unknown }).window;
+  const asked: string[] = [];
+  (globalThis as { window?: unknown }).window = { confirm: (message: string) => { asked.push(message); return answer; } };
+  try {
+    await run();
+    await new Promise((resolve) => setImmediate(resolve)); // let the status action settle
+  } finally {
+    (globalThis as { window?: unknown }).window = previous;
+  }
+  return asked;
+}
+
+const byName = (nodes: Element[], name: string) => nodes.filter((element) => typeof element.type === 'function' && element.type.name === name);
+const run = (element: Element) => (element.type as (props: Record<string, unknown>) => unknown)(element.props);
+
+test('Mark completed is offered only once a confirmed booking has started, and asks before completing it', async (t) => {
+  // 12:00Z is 13:00 in London (BST) on 16 September.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-16T12:00:00Z') });
+  const { rendered, statuses } = renderClient('2026-09-16', 'month', [], [
+    boardAppointment('started', 'CONFIRMED', '2026-09-16T11:30:00.000Z'),
+    boardAppointment('later', 'CONFIRMED', '2026-09-16T14:00:00.000Z'),
+    boardAppointment('done', 'COMPLETED', '2026-09-16T09:00:00.000Z'),
+  ]);
+  const controls = byName(elements(rendered), 'MarkCompletedButton');
+  assert.deepEqual(controls.map((element) => element.props.apptId), ['started'], 'a booking still ahead (or already completed) has no completion control');
+  const button = elements(run(controls[0]))[0];
+  assert.equal(button.props.children, 'Mark completed');
+
+  const declined = await withConfirm(false, () => (button.props.onClick as () => unknown)());
+  assert.deepEqual(declined, ['Mark Customer started’s appointment as completed? This cannot be undone.']);
+  assert.deepEqual(statuses, [], 'nothing changes unless the admin confirms');
+
+  await withConfirm(true, () => (button.props.onClick as () => unknown)());
+  assert.deepEqual(statuses, [['started', 'COMPLETED']]);
+});
+
+test('a booking request whose time has come offers Decline but not Confirm', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-16T12:00:00Z') });
+  const { rendered } = renderClient('2026-09-16', 'month', [], [
+    boardAppointment('lapsing', 'PENDING', '2026-09-16T11:00:00.000Z'),
+    boardAppointment('open', 'PENDING', '2026-09-16T15:00:00.000Z'),
+  ]);
+  const actions = byName(elements(rendered), 'PendingActions');
+  assert.deepEqual(actions.map((element) => [element.props.apptId, element.props.started]), [['lapsing', true], ['open', false]]);
+  const labels = (element: Element) => elements(run(element)).filter((node) => node.type === 'button').map((node) => node.props.children);
+  assert.deepEqual(labels(actions[0]), ['Decline']);
+  assert.ok(elements(run(actions[0])).some((node) => node.props.children === 'Time passed — can no longer be confirmed'));
+  assert.deepEqual(labels(actions[1]), ['Confirm booking', 'Decline']);
+});
 
 test('calendar arrows request another server-loaded month via the URL', () => {
   const { rendered, urls } = renderClient('2026-12-01', 'month');
@@ -170,7 +232,9 @@ test('day and year arrows preserve their requested view in the server URL', () =
   }
 });
 
-test('an outstanding request outside the current month can be opened and approved from the global queue', async () => {
+test('an outstanding request outside the current month can be opened and approved from the global queue', async (t) => {
+  // A request can only be approved before its time, so pin "now" ahead of it.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-16T12:00:00Z') });
   const { rendered, urls, statuses } = renderClient('2026-09-16', 'month', [{
     id: 'future-request', date: new Date('2026-11-30T10:00:00Z'), status: 'PENDING',
     user: { name: 'Future Customer' }, stylist: { name: 'Stylist' }, service: { name: 'Cut' },

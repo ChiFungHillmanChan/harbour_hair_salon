@@ -16,6 +16,8 @@ const errors = {
     STYLIST_UNAVAILABLE: 'This stylist is no longer available. Please choose another stylist.',
     CUSTOMER_GONE: 'That customer no longer exists — search again.',
     ONLY_PENDING_CONFIRM: 'Only pending requests can be confirmed',
+    REQUEST_EXPIRED: 'This booking request’s time has already come, so it can no longer be confirmed. Decline it, or call the customer and make a new booking.',
+    COMPLETE_BEFORE_START: 'This appointment hasn’t started yet. It can be marked completed once its start time has passed.',
     CALENDAR_SETUP_NEEDED: 'Calendar setup needs attention. Check Integrations before confirming this request.',
     STALE: 'This appointment has changed. Please refresh and try again.',
     MAINTENANCE: 'Online booking is closed at the moment. Please call the salon to book — thank you, and sorry for any inconvenience.',

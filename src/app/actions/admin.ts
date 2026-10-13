@@ -17,6 +17,7 @@ import { checkCalendarBookingReadiness } from '@/app/services/integration-readin
 import { refreshCalendarFeedsBeforeApproval } from '@/app/services/calendar-sync-service';
 import { assertAppointmentSlotAvailable, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
+import { hasAppointmentStarted } from '@/app/lib/appointment-timing';
 import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
 import { getActionLocale } from '@/i18n/request';
 import { translator } from '@/i18n/messages';
@@ -469,7 +470,7 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       const target = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { stylistId: true } });
       if (target) await refreshCalendarFeedsBeforeApproval(target.stylistId);
     }
-    const { appointment, changed } = await runSerializableWithRetry(async (tx) => {
+    const { appointment, notified } = await runSerializableWithRetry(async (tx) => {
       const include = {
         user: { select: { email: true, name: true } },
         stylist: { select: { name: true, treatwellExternalId: true } },
@@ -477,13 +478,19 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       } as const;
       const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
       if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      if (current.status === status) return { appointment: current, changed: false };
+      if (current.status === status) return { appointment: current, notified: false };
       if (status === 'CONFIRMED' && current.status !== 'PENDING') {
         throw new BookingError('ONLY_PENDING_CONFIRM');
       }
       if (current.status === 'CANCELLED') {
         throw new BookingError('CANCELLED_CANNOT_REINSTATE');
       }
+      const started = hasAppointmentStarted(current.date);
+      // Nobody can be told "confirmed" for a time that has already come; the
+      // notifications cron closes such a request instead (pending-request-lapse.ts).
+      if (status === 'CONFIRMED' && started) throw new BookingError('REQUEST_EXPIRED');
+      // Completion cannot be undone, so it waits until the visit has begun.
+      if (status === 'COMPLETED' && !started) throw new BookingError('COMPLETE_BEFORE_START');
 
       if (status === 'CONFIRMED') {
         const readiness = await checkCalendarBookingReadiness(tx);
@@ -516,14 +523,19 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       if (result.count !== 1) throw new BookingError('STALE');
       const updated = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
       if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      if (status === 'CONFIRMED' || status === 'CANCELLED') await enqueueAppointmentNotification(tx, status === 'CONFIRMED' ? 'CONFIRMATION' : 'CANCELLATION', updated);
+      // A cancellation is news only while the visit is still ahead. Tidying the
+      // diary afterwards (a no-show, a duplicate) must not tell the customer
+      // their appointment "has been cancelled"; the version bump above still
+      // retires anything queued earlier for this booking.
+      const notice = status === 'CONFIRMED' ? 'CONFIRMATION' : status === 'CANCELLED' && !started ? 'CANCELLATION' : null;
+      if (notice) await enqueueAppointmentNotification(tx, notice, updated);
       await appendAuditEvent({ actorUserId: session.userId, action: 'APPOINTMENT.STATUS', targetType: 'Appointment', targetId: appointmentId, metadata: { from: current.status, to: status } }, tx);
-      return { appointment: updated, changed: true };
+      return { appointment: updated, notified: notice !== null };
     });
 
     // Finish the action's cache invalidation before external email delivery.
     invalidateStylistIcalFeed();
-    if (changed) after(() => dispatchAppointmentNotifications(appointment.id));
+    if (notified) after(() => dispatchAppointmentNotifications(appointment.id));
   } catch (error) {
     return { success: false, error: describeBookingError(error, locale, 'ADMIN_UPDATE_FAILED') };
   }

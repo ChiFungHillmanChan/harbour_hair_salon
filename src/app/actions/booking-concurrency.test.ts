@@ -752,7 +752,8 @@ test('only admins can decide a reschedule request', async () => {
 
 for (const status of ['CANCELLED', 'COMPLETED'] as const) {
   test(`staff marking a booking ${status} also clears its open request`, async () => {
-    const f = fixture({ openRequest: OPEN_REQUEST });
+    // A visit can only be completed once it has started (mocked now: 12:00Z).
+    const f = fixture({ openRequest: OPEN_REQUEST, ...(status === 'COMPLETED' ? { currentDate: new Date('2099-09-01T11:30:00Z') } : {}) });
     assert.equal((await f.admin.updateAppointmentStatus(f.appointment.id, status)).success, true);
     assert.equal(f.appointment.rescheduleRequestedAt, null);
     assert.equal(f.events.some((event) => event.kind === 'RESCHEDULE_DECLINED' || event.kind === 'RESCHEDULE_LAPSED'), false);

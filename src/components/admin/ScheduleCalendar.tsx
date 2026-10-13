@@ -15,6 +15,7 @@ import { weekDayKeys } from '@/app/services/admin-calendar-range';
 import { calendarBusyForDay, calendarBusyLabel, isWholeDayBlock, salonWorkingWindow } from '@/app/lib/calendar-busy-display';
 import { payloadArrival, shouldRefreshCalendar } from '@/app/services/calendar-sync-window';
 import { describeBoardPrice } from '@/app/lib/board-price';
+import { hasAppointmentStarted } from '@/app/lib/appointment-timing';
 import { useLocale, useT } from '@/i18n/client';
 import { useLocalizedRouter } from '@/i18n/navigation';
 import { useDraftState } from '@/i18n/draft-store';
@@ -65,22 +66,28 @@ async function setAppointmentStatus(
 // Approve / decline buttons for a PENDING booking request (double-confirm flow:
 // customers submit requests, the salon confirms them here). Confirming can take
 // a few seconds because out-of-date marketplace feeds are re-imported first, so
-// both buttons show progress and cannot be pressed twice.
-function PendingActions({ apptId, onDone }: { apptId: string; onDone: () => void }) {
+// both buttons show progress and cannot be pressed twice. Once the requested
+// time has come the request can no longer be confirmed (the server refuses it
+// and the notifications cron closes it), so only Decline is offered.
+function PendingActions({ apptId, started, onDone }: { apptId: string; started: boolean; onDone: () => void }) {
   const [pending, startTransition] = useTransition();
   const t = useT('adminSchedule');
   const run = (status: 'CONFIRMED' | 'CANCELLED') =>
     startTransition(async () => { await setAppointmentStatus(apptId, status, onDone, t('appointment.updateFailed')); });
   return (
-    <div className="flex gap-2" aria-busy={pending}>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => run('CONFIRMED')}
-        className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
-      >
-        {pending ? t('pending.checking') : t('pending.confirm')}
-      </button>
+    <div className="flex flex-wrap items-center gap-2" aria-busy={pending}>
+      {started ? (
+        <span className="text-xs font-medium uppercase text-zinc-500">{t('pending.expired')}</span>
+      ) : (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => run('CONFIRMED')}
+          className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
+        >
+          {pending ? t('pending.checking') : t('pending.confirm')}
+        </button>
+      )}
       <button
         type="button"
         disabled={pending}
@@ -94,6 +101,27 @@ function PendingActions({ apptId, onDone }: { apptId: string; onDone: () => void
         {t('pending.decline')}
       </button>
     </div>
+  );
+}
+
+// Completion cannot be undone (and the server refuses it before the start
+// time), so the control appears only once the visit has begun and asks first.
+// "Now" is the browser's clock at render; the board re-renders on refresh.
+function MarkCompletedButton({ apptId, customer, onDone, className }: { apptId: string; customer: string; onDone: () => void; className: string }) {
+  const [pending, startTransition] = useTransition();
+  const t = useT('adminSchedule');
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => {
+        if (!window.confirm(t('appointment.markCompletedConfirm', { customer }))) return;
+        startTransition(async () => { await setAppointmentStatus(apptId, 'COMPLETED', onDone, t('appointment.updateFailed')); });
+      }}
+      className={`${className} disabled:cursor-wait disabled:opacity-60`}
+    >
+      {t('appointment.markCompleted')}
+    </button>
   );
 }
 
@@ -289,20 +317,19 @@ const DayView = ({ dateStr, dayAppts, busyBlocks, stylists, onRefresh, onEdit }:
                                 {price.notes.length > 0 && <span className="ml-1">({price.notes.join(' · ')})</span>}
                               </span>
                           </div>
-                          <button type="button" onClick={() => onEdit(appt)} className="mt-2 mr-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-white">{t('appointment.edit')}</button>
+                          <button type="button" onClick={() => onEdit(appt)} className="mt-2 mr-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-900 hover:bg-white">{t('appointment.edit')}</button>
                           {appt.status === 'PENDING' && (
                             <div className="mt-2">
-                              <PendingActions apptId={appt.id} onDone={onRefresh} />
+                              <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} onDone={onRefresh} />
                             </div>
                           )}
-                          {appt.status === 'CONFIRMED' && (
-                            <button
-                              type="button"
-                              onClick={() => setAppointmentStatus(appt.id, 'COMPLETED', onRefresh, t('appointment.updateFailed'))}
+                          {appt.status === 'CONFIRMED' && hasAppointmentStarted(appt.date) && (
+                            <MarkCompletedButton
+                              apptId={appt.id}
+                              customer={appt.user.name ?? t('appointment.customerFallback')}
+                              onDone={onRefresh}
                               className="mt-2 rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
-                            >
-                              {t('appointment.markCompleted')}
-                            </button>
+                            />
                           )}
                       </div>
                   </div>
@@ -526,7 +553,7 @@ export function ScheduleCalendar({
           {view === 'year' ? t('refresh.yearNote') : t('refresh.autoNote')}
           {' '}{t('refresh.savedNote')}
         </p>
-        <button type="button" onClick={() => startNavigation(() => router.refresh())} disabled={isNavigating} className="shrink-0 rounded border border-zinc-300 px-3 py-2 font-semibold text-[#174F7F] disabled:opacity-50">{t('refresh.button')}</button>
+        <button type="button" onClick={() => startNavigation(() => router.refresh())} disabled={isNavigating} className="shrink-0 rounded border border-zinc-300 px-3 py-2 font-semibold text-zinc-900 disabled:opacity-50">{t('refresh.button')}</button>
       </div>
       {(pendingAppointments.length > 0 || pendingHasPrevious) && (
         <section aria-label={t('pending.sectionLabel')} className="rounded-lg border border-amber-300 bg-amber-50 p-4">
@@ -540,7 +567,7 @@ export function ScheduleCalendar({
                   </button>
                   <p className="text-sm text-zinc-600">{t('appointment.withStylist', { service: appt.service.name, stylist: appt.stylist.name })}</p>
                 </div>
-                <PendingActions apptId={appt.id} onDone={() => router.refresh()} />
+                <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} onDone={() => router.refresh()} />
               </div>
             ))}
           </div>
@@ -688,7 +715,7 @@ export function ScheduleCalendar({
                             <span className="ml-2 text-zinc-700">{appt.user.name}</span>
                             <span className={`ml-2 inline-block rounded px-2 py-1 text-xs font-medium ${statusChipClass(appt.status)}`}>{statusLabel(t, appt.status)}</span>
                             <span className="block text-xs text-zinc-500">{t('appointment.withStylist', { service: appt.service.name, stylist: appt.stylist.name })}</span>
-                            <button type="button" onClick={() => openEditor(appt)} className="mt-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-zinc-50">{t('appointment.edit')}</button>
+                            <button type="button" onClick={() => openEditor(appt)} className="mt-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-900 hover:bg-zinc-50">{t('appointment.edit')}</button>
                           </li>
                         ))}
                       </ul>
@@ -743,21 +770,20 @@ export function ScheduleCalendar({
                                      <p className="text-sm text-zinc-500">{t('appointment.withStylist', { service: appt.service.name, stylist: appt.stylist.name })}</p>
                                  </div>
                                  <div className="flex flex-wrap items-center gap-2">
-                                     <button type="button" onClick={() => openEditor(appt)} className="rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-[#174F7F] hover:bg-zinc-50">{t('appointment.edit')}</button>
+                                     <button type="button" onClick={() => openEditor(appt)} className="rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-900 hover:bg-zinc-50">{t('appointment.edit')}</button>
                                      <div className={`text-xs px-2 py-1 rounded font-medium ${statusChipClass(appt.status)}`}>
                                          {statusLabel(t, appt.status)}
                                      </div>
                                      {appt.status === 'PENDING' && (
-                                       <PendingActions apptId={appt.id} onDone={() => router.refresh()} />
+                                       <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} onDone={() => router.refresh()} />
                                      )}
-                                     {appt.status === 'CONFIRMED' && (
-                                       <button
-                                         type="button"
-                                         onClick={() => setAppointmentStatus(appt.id, 'COMPLETED', () => router.refresh(), t('appointment.updateFailed'))}
+                                     {appt.status === 'CONFIRMED' && hasAppointmentStarted(appt.date) && (
+                                       <MarkCompletedButton
+                                         apptId={appt.id}
+                                         customer={appt.user.name ?? t('appointment.customerFallback')}
+                                         onDone={() => router.refresh()}
                                          className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
-                                       >
-                                         {t('appointment.markCompleted')}
-                                       </button>
+                                       />
                                      )}
                                  </div>
                              </div>

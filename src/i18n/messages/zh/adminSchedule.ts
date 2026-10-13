@@ -50,6 +50,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     checking: '正在檢查日曆…',
     decline: '拒絕',
     declineConfirm: '確定拒絕此預約申請？顧客需要重新預約。',
+    expired: '時間已過，無法再確認',
   },
   rescheduleRequests: {
     stat: '改期申請',
@@ -73,6 +74,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     stylist: '髮型師：{name}',
     edit: '編輯預約',
     markCompleted: '標示為已完成',
+    markCompletedConfirm: '確定將{customer}的預約標示為已完成？此操作無法復原。',
     updateFailed: '更新失敗',
   },
   year: {
