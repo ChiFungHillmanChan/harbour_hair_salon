@@ -16,10 +16,9 @@ import { translator } from '@/i18n/messages';
 import type { EmailContent } from '@/app/services/email-content';
 
 const PALETTES = {
-  // The monochrome salon look shared by every mail…
+  // The monochrome salon look shared by every mail, the confirmation included
+  // (the brand is black/white/grey only — never the old blue or gold).
   ink: { header: '#18181B', headerMuted: '#A1A1AA', footer: '#18181B', footerMuted: '#71717A', accent: '#52525B', ink: '#18181B', muted: '#52525B', line: '#E4E4E7', surface: '#FAFAFA', page: '#F4F4F5', button: '#18181B' },
-  // …except the confirmation, which keeps the colour scheme it already had.
-  brand: { header: '#174F7F', headerMuted: '#D8E7F2', footer: '#103653', footerMuted: '#B9CAD7', accent: '#D8B36A', ink: '#17202A', muted: '#5F6B76', line: '#DFE9F0', surface: '#F5F9FC', page: '#EEF3F7', button: '#174F7F' },
 } as const;
 
 /**

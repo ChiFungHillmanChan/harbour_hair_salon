@@ -168,3 +168,9 @@ test('booking emails offer a new-time request, not a direct reschedule, from My 
     assert.match(chinese, /你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。/, kind);
   }
 });
+
+test('every customer mail, the confirmation included, uses the monochrome palette', () => {
+  for (const kind of ['CONFIRMATION', 'REQUEST_RECEIVED', 'REMINDER', 'CANCELLATION'] as const) {
+    assert.equal(appointmentEmailContent(kind, appointment, 'en-GB', { salonPhone: '07831 830898' }).palette, 'ink', kind);
+  }
+});

@@ -122,7 +122,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
                     <td className="px-6 py-4 text-sm text-zinc-500">{user.email}</td>
                     <td className="px-6 py-4 text-right">
                       <form action={promoteGoogleUserToAdmin.bind(null, user.id)}>
-                        <button className="rounded-md bg-[#174F7F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#123f66]">
+                        <button className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-700">
                           {t('users.google.makeAdmin')}
                         </button>
                       </form>

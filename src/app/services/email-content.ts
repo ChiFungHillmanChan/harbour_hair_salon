@@ -56,8 +56,8 @@ export const RESCHEDULE_REQUEST_EMAIL_KINDS: readonly AppointmentEmailKind[] = [
 
 export type EmailContent = {
   locale: Locale;
-  /** 'brand' keeps the confirmation mail's existing colour scheme; everything else is monochrome. */
-  palette: 'ink' | 'brand';
+  /** Every mail uses the monochrome salon look (client requirement: no blue or gold). */
+  palette: 'ink';
   subject: string;
   preview: string;
   eyebrow: string;
@@ -109,7 +109,7 @@ export function appointmentEmailContent(
   switch (kind) {
     case 'CONFIRMATION':
       return {
-        ...base, palette: 'brand',
+        ...base,
         subject: t('confirmation.subject'),
         preview: t('confirmation.preview', { service, date }),
         eyebrow: t('confirmation.eyebrow'), title: t('confirmation.title'), intro: t('confirmation.intro'),

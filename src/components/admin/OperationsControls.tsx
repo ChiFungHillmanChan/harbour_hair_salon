@@ -9,7 +9,7 @@ const initialState: OperationsActionState = { status: 'idle' };
 
 function SubmitButton({ children, busy }: { children: React.ReactNode; busy: string }) {
   const { pending } = useFormStatus();
-  return <button disabled={pending} className="rounded-lg bg-[#174F7F] px-4 py-3 text-sm font-semibold text-white hover:bg-[#123e64] disabled:opacity-50">{pending ? busy : children}</button>;
+  return <button disabled={pending} className="rounded-lg bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-zinc-700 disabled:opacity-50">{pending ? busy : children}</button>;
 }
 
 export function OperationsControls({ notificationsEnabled }: { notificationsEnabled: boolean }) {

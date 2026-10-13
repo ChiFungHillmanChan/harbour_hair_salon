@@ -9,7 +9,7 @@ import { formatSalonDateTime } from '@/i18n/dates';
 import { getLocale, getT } from '@/i18n/server';
 
 type Props = { stylists: Awaited<ReturnType<typeof listCalendarConnectionsForAdmin>> };
-const button = 'rounded bg-[#174F7F] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123e64] disabled:opacity-50';
+const button = 'rounded bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:opacity-50';
 const secondary = 'rounded border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50';
 
 export async function CalendarConnectionsSetup({ stylists }: Props) {
