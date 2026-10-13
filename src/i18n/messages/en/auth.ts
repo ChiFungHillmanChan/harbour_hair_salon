@@ -163,6 +163,7 @@ const auth = {
     PHONE_TOO_LONG: 'Phone number must be 20 characters or fewer.',
     LOGIN_RATE_LIMITED: 'Too many login attempts. Please try again in 15 minutes.',
     REGISTER_RATE_LIMITED: 'Too many registration attempts. Please try again in 15 minutes.',
+    EMAIL_DAILY_LIMIT: 'Too many emails have been requested from your connection today. Please try again tomorrow, or call the salon.',
     INCORRECT_CREDENTIALS: 'Incorrect email or password. Please try again.',
     ALREADY_REGISTERED: 'This email is already registered. Please sign in or use Forgot password to verify your email and recover access.',
     USE_GOOGLE: 'This email is already registered with Google. Please use "Continue with Google" to sign in.',

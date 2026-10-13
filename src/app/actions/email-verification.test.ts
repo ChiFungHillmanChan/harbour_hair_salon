@@ -118,7 +118,8 @@ function resendFixture(user: { emailVerifiedAt: Date | null; oauthAccounts: { pr
   const actions = loadServerModule<typeof import('./email-verification')>('src/app/actions/email-verification.ts', {
     '@/app/lib/prisma': { user: { findUnique: async () => ({ ...customer, ...user }) } },
     '@/app/lib/session': { verifySession: async () => ({ userId: customer.id, role: 'USER' }) },
-    '@/app/lib/rate-limit': { createRateLimiter: () => ({ check: async () => allowed }) },
+    'next/headers': { headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.5' }) },
+    '@/app/lib/rate-limit': { createRateLimiter: () => ({ check: async () => allowed }), emailSendDailyLimiter: { check: async () => true } },
     '@/app/services/email-service': { sendEmailVerification: async (to: { email: string }) => { sent.push(to.email); } },
   });
   return { resend: () => actions.resendVerificationEmail(), sent };
@@ -164,7 +165,7 @@ test('registering sends the confirmation link after the response', async () => {
     'next/headers': { headers: async () => new Headers() },
     'next/server': { after: (callback: () => unknown) => callback() },
     'next/navigation': { redirect: (path: string) => { throw new Error(`redirect:${path}`); } },
-    '@/app/lib/rate-limit': { registerLimiter: { check: async () => true } },
+    '@/app/lib/rate-limit': { registerLimiter: { check: async () => true }, emailSendDailyLimiter: { check: async () => true } },
     '@/app/services/email-service': { sendEmailVerification: async (user: { email: string }, locale: string) => { sent.push({ email: user.email, locale }); } },
   });
   const form = new FormData();

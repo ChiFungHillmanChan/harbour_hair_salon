@@ -162,6 +162,7 @@ const auth: Localized<Messages['auth']> = {
     PHONE_TOO_LONG: '電話號碼不可超過 20 個字元。',
     LOGIN_RATE_LIMITED: '登入嘗試次數過多，請於 15 分鐘後再試。',
     REGISTER_RATE_LIMITED: '註冊嘗試次數過多，請於 15 分鐘後再試。',
+    EMAIL_DAILY_LIMIT: '今日經你的網絡要求發出的電郵次數過多，請明天再試，或致電本店。',
     INCORRECT_CREDENTIALS: '電郵地址或密碼不正確，請再試一次。',
     ALREADY_REGISTERED: '此電郵地址已經註冊。請直接登入，或使用「忘記密碼」驗證電郵地址並重新取得帳戶。',
     USE_GOOGLE: '此電郵地址已透過 Google 註冊，請按「使用 Google 繼續」登入。',
