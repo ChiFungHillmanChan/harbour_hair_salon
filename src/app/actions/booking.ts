@@ -410,7 +410,10 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
           locale,
         });
 
-
+    // The same request again (the answer to the first was lost, or a second
+    // tap): it is already made, so there is no feed to refresh and nothing new
+    // to send.
+    if (appointment.repeat) return { success: true };
 
     // The marketplaces poll a cached feed; drop it so the new busy period is
     // visible on their next poll rather than whenever the window expires.

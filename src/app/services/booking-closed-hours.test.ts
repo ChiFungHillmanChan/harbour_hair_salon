@@ -55,6 +55,8 @@ function fixture(options: { hours?: Hours; existing?: { date: Date; durationMin:
     },
     appointment: {
       count: async () => 0,
+      // No earlier copy of the same request (see booking-repeat-request.test.ts).
+      findFirst: async () => null,
       findUnique: async () => structuredClone(appointment),
       findMany: async () => (options.existing ?? []).map((row, index) => ({
         id: `existing-${index}`, stylistId: 'stylist-1', date: row.date,

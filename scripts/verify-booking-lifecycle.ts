@@ -314,9 +314,17 @@ async function main() {
     assert.equal(await db.notificationDelivery.count(), 0);
     console.log('PASS: imported Fresha ICS blocks every overlapping slot and transactional booking, preserves adjacent slots, and is absent from the private outbound feed.');
 
+    // The same customer's request twice at once (a lost answer, a second tap) is
+    // one request: both calls return the booking it made.
     const attempts = await Promise.allSettled([create(bookingDay, '10:00'), create(bookingDay, '10:00')]);
-    assert.equal(attempts.filter(result => result.status === 'fulfilled').length, 1, 'Concurrent requests must reserve the slot only once');
-    for (const attempt of attempts) if (attempt.status === 'rejected') assert.match(String(attempt.reason), /no longer available/);
+    assert.ok(attempts.every(result => result.status === 'fulfilled'), attempts.map(result => result.status === 'rejected' ? String(result.reason) : 'fulfilled').join('; '));
+    assert.equal(new Set(attempts.map(result => result.status === 'fulfilled' ? result.value.id : null)).size, 1, 'A repeated request returns the booking already made');
+    assert.equal(await db.appointment.count(), 1, 'Concurrent requests must reserve the slot only once');
+    // Two different customers racing for one free slot: only one can have it.
+    const rivals = await Promise.allSettled([ids.other, ids.admin].map(userId =>
+      booking.createBooking({ userId, stylistId: ids.stylist, serviceId: ids.service, date: instant(day(19), '10:00') })));
+    assert.equal(rivals.filter(result => result.status === 'fulfilled').length, 1, 'Concurrent requests from different customers must reserve the slot only once');
+    for (const rival of rivals) if (rival.status === 'rejected') assert.match(String(rival.reason), /no longer available/);
     const appointment = await db.appointment.findFirstOrThrow({ where: { userId: ids.customer } });
     assert.equal(appointment.status, 'PENDING');
     assert.equal(appointment.durationAtBooking, 60);
