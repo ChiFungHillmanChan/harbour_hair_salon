@@ -132,6 +132,7 @@ const legal = {
     /** Server action results, keyed by code. */
     results: {
       RATE_LIMITED: 'Too many requests. Please try again in an hour.',
+      DAILY_LIMIT: 'Too many emails have been requested from your connection today. Please try again tomorrow.',
       INVALID_EMAIL: 'Please enter a valid email address.',
       UNAVAILABLE: 'Unsubscribe is temporarily unavailable. Please contact the salon.',
       FAILED: 'Unsubscribe failed. Please try again later.',

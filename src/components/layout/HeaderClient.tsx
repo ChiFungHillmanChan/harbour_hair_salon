@@ -25,9 +25,10 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
   // cookie. Re-read on every navigation: this component lives in the root
   // layout and survives soft navigations, so login/logout redirects must
   // trigger a re-read rather than relying on a remount. No network fallback:
-  // middleware back-fills the hint on every page response that carries a
-  // session, so a missing hint means signed out (the old /api/session fetch
-  // only ever ran for anonymous visitors, on every full page load).
+  // createSession always sets the hint with the same expiry as the session
+  // (and middleware re-sets it on protected routes), so a missing hint means
+  // signed out. Sessions issued before the hint existed (July 2026) expired
+  // long ago; the old /api/session fetch ran for anonymous visitors only.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs header with the cookie the server just set/cleared; same idiom as AdminSidebar
     setRole(parseSessionHint(document.cookie));

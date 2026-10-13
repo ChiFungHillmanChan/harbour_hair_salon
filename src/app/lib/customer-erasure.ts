@@ -5,7 +5,9 @@ import { ERASED_EMAIL_DOMAIN, isPlaceholderEmail } from './walk-in-customer';
 // what the admin must type to confirm. Procedure: docs/data-erasure.md.
 
 /** The name an erased customer's account keeps, so past diary entries still read sensibly. */
-export const ERASED_CUSTOMER_NAME = 'Erased customer';
+// Bilingual on purpose: it is stored as the account name and shown as-is on
+// every admin screen, in either interface language.
+export const ERASED_CUSTOMER_NAME = 'Erased customer · 已刪除顧客';
 
 /** Typed to confirm erasing a customer who never gave a real email address. */
 export const ERASE_CONFIRMATION_WORD = 'ERASE';

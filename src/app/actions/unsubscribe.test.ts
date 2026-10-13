@@ -43,6 +43,10 @@ function setup(options: { contact?: Contact; allow?: (prefix: string, key: strin
         backend: () => 'memory',
         check: async (key: string) => { limiterKeys.push(`${prefix}|${key}`); return options.allow?.(prefix, key) ?? true; },
       }),
+      emailSendDailyLimiter: {
+        backend: () => 'memory',
+        check: async (key: string) => { limiterKeys.push(`rl:email-ip-day|${key}`); return options.allow?.('rl:email-ip-day', key) ?? true; },
+      },
     },
     '@/app/services/email-service': {
       sendMarketingUnsubscribeConfirmation: async (email: string) => { sent.push(email); },
@@ -108,7 +112,7 @@ test('a provider failure on a listed address gives the same answer as an unliste
     'next/headers': { headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.10' }) },
     'next/server': { after: () => {} },
     resend: { Resend: class { contacts = { get: async () => { throw new Error('provider down'); } }; } },
-    '@/app/lib/rate-limit': { createRateLimiter: () => ({ backend: () => 'memory', check: async () => true }) },
+    '@/app/lib/rate-limit': { createRateLimiter: () => ({ backend: () => 'memory', check: async () => true }), emailSendDailyLimiter: { backend: () => 'memory', check: async () => true } },
     '@/app/services/email-service': { sendMarketingUnsubscribeConfirmation: async () => {} },
     '@/i18n/request': { getActionT: async (namespace: 'legal') => translator('en-GB', namespace) },
   });
@@ -157,4 +161,16 @@ test('an expired link changes nothing', async () => {
   const result = await f.actions.confirmUnsubscribe({ status: 'idle' }, tokenForm(token));
   assert.equal(result.status, 'error');
   assert.equal(f.updates.length, 0);
+});
+
+test('the daily per-client email budget applies here too, the same for listed and unlisted addresses', async () => {
+  for (const contact of [{ unsubscribed: false }, 'missing'] as const) {
+    const { actions, sent, lookups, settle } = setup({ contact, allow: (prefix) => prefix !== 'rl:email-ip-day' });
+    const result = await actions.unsubscribeFromMarketing({ status: 'idle' }, emailForm('client@example.com'));
+    await settle();
+    const label = JSON.stringify(contact);
+    assert.deepEqual(result, { status: 'error', message: t('unsubscribe.results.DAILY_LIMIT') }, label);
+    assert.deepEqual(sent, [], label);
+    assert.deepEqual(lookups, [], `${label}: the list is never consulted`);
+  }
 });

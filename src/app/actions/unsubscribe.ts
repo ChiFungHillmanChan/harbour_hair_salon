@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { headers } from 'next/headers';
 import { after } from 'next/server';
 import { Resend } from 'resend';
-import { createRateLimiter } from '@/app/lib/rate-limit';
+import { createRateLimiter, emailSendDailyLimiter } from '@/app/lib/rate-limit';
 import { verifyUnsubscribeToken } from '@/app/lib/unsubscribe-token';
 import { sendMarketingUnsubscribeConfirmation } from '@/app/services/email-service';
 import { getActionT } from '@/i18n/request';
@@ -78,6 +78,14 @@ export async function unsubscribeFromMarketing(
   if (!resend || !audienceId) {
     console.error('Marketing unsubscribe is not configured: missing RESEND_API_KEY or RESEND_AUDIENCE_ID');
     return { status: 'error', message: t('unsubscribe.results.UNAVAILABLE') };
+  }
+
+  // The same daily per-client email budget as registration, verification and
+  // reset requests (it protects the provider allowance booking mail shares).
+  // Spent before the per-address check and for every address alike, so the
+  // answer still never depends on whether an address is on the list.
+  if (!(await emailSendDailyLimiter.check(ip))) {
+    return { status: 'error', message: t('unsubscribe.results.DAILY_LIMIT') };
   }
 
   const email = parsed.data.email;

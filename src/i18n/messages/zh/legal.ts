@@ -125,6 +125,7 @@ const legal: Localized<Messages['legal']> = {
     },
     results: {
       RATE_LIMITED: '請求次數過多，請於一小時後再試。',
+      DAILY_LIMIT: '今日由你的網絡發出的電郵要求已達上限，請明天再試。',
       INVALID_EMAIL: '請輸入有效的電郵地址。',
       UNAVAILABLE: '暫時未能取消訂閱，請聯絡本店。',
       FAILED: '取消訂閱失敗，請稍後再試。',

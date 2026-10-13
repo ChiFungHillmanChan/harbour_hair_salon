@@ -135,3 +135,6 @@ Design: `docs/superpowers/specs/2026-10-13-square-deposits-design.md`. Runbook:
       booking is open.
 - [ ] DMARC `p=none` → `p=quarantine` once reports are clean; Search Console verification.
 - [ ] Remove the duplicate `NEON2_*` env set once confirmed unused.
+- [ ] Before the first records turn 6 years old (2032): decide and implement what happens to booking
+      records after 6 years (delete or anonymise; deleting an appointment also deletes its review) —
+      the privacy notice says "up to 6 years". Account-event records are already deleted by housekeeping.

@@ -18,8 +18,10 @@ env:
 # finished — so the newest commit always deploys last. (2026-09-29: five pushes
 # in 19 s each started a parallel run and the slowest one won.) Never "re-run"
 # an old main run to roll back — promote an older deployment in Vercel instead.
+# The event is part of the key: a manual "Run workflow" on main (CI only, it
+# never deploys) must not supersede a queued push run that would deploy.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -168,9 +170,10 @@ jobs:
       group: production-deploy
       cancel-in-progress: false
     env:
-      # Optional pre-migration snapshot (see the step below). Unset = skipped.
-      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      # Optional pre-migration snapshot (see the step below). Only a yes/no
+      # here: the Neon API key itself is exposed to that one step, never to
+      # the build, which runs dependency code.
+      NEON_SNAPSHOT: ${{ secrets.NEON_API_KEY != '' && vars.NEON_PROJECT_ID != '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -193,24 +196,39 @@ jobs:
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       # The build below runs `prisma migrate deploy` against production. When
-      # the NEON_API_KEY secret and NEON_PROJECT_ID variable are set, first take
-      # a compute-less Neon branch of the production database (instant,
-      # copy-on-write, no CU-hours) so a bad migration can be undone even after
-      # the free plan's 6-hour restore window. Keeps the newest three.
+      # the NEON_API_KEY secret (ideally a project-scoped key) and the
+      # NEON_PROJECT_ID variable are set, first take a compute-less Neon branch
+      # of the production database (instant, copy-on-write, no CU-hours) so a
+      # bad migration can be undone after the free plan's 6-hour restore
+      # window. The snapshots hold customer data, so they are pruned: the
+      # newest three are kept, none older than 14 days (docs/data-erasure.md).
+      # A safety net, not a gate: a Neon API problem warns and the deploy goes on.
       - name: Snapshot the production database
-        if: env.NEON_API_KEY != '' && env.NEON_PROJECT_ID != ''
+        if: env.NEON_SNAPSHOT == 'true'
+        continue-on-error: true
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
         run: |
           set -euo pipefail
           api="https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches"
           name="predeploy-$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
-          curl -fsS -X POST "$api" -H "Authorization: Bearer $NEON_API_KEY" -H 'Content-Type: application/json' \
-            -d "{\"branch\":{\"name\":\"$name\"}}" > /dev/null
-          echo "Created Neon branch $name"
+          if curl -fsS -X POST "$api" -H "Authorization: Bearer $NEON_API_KEY" -H 'Content-Type: application/json' \
+            -d "{\"branch\":{\"name\":\"$name\"}}" > /dev/null; then
+            echo "Created Neon branch $name"
+          else
+            echo "::warning::Could not snapshot the production database before migrating."
+          fi
+          cutoff=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)
           curl -fsS "$api" -H "Authorization: Bearer $NEON_API_KEY" \
-            | jq -r '[.branches[] | select(.name | startswith("predeploy-"))] | sort_by(.created_at) | reverse | .[3:][] | .id' \
+            | jq -r --arg cutoff "$cutoff" '[.branches[] | select(.name | startswith("predeploy-"))] | sort_by(.created_at) | reverse
+                | to_entries[] | select(.key >= 3 or (.value.created_at < $cutoff and .key > 0)) | .value.id' \
             | while read -r id; do
-                curl -fsS -X DELETE "$api/$id" -H "Authorization: Bearer $NEON_API_KEY" > /dev/null
-                echo "Deleted old snapshot branch $id"
+                # Neon refuses to delete a branch that has children (e.g. one
+                # restored from it) — tidying up must never block a deploy.
+                curl -fsS -X DELETE "$api/$id" -H "Authorization: Bearer $NEON_API_KEY" > /dev/null \
+                  && echo "Deleted old snapshot branch $id" \
+                  || echo "::warning::Could not delete old snapshot branch $id"
               done
 
       - name: Build

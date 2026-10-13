@@ -68,6 +68,6 @@ test('each match offers erasure with the confirmation it needs; an erased accoun
   const rows = elements(rendered).filter((element) => element.type === 'li').map(text);
   assert.match(rows[0], /amy@example\.com · 07000 000001 · 3 appointments/);
   assert.match(rows[1], /No email \(phone booking\) · 07000 000002 · 1 appointment$/);
-  assert.match(rows[2], /^Erased customer2 appointmentsErased$/, 'no placeholder address, no button');
+  assert.equal(rows[2], `${ERASED_CUSTOMER_NAME}2 appointmentsErased`, 'no placeholder address, no button');
   assert.doesNotMatch(text(rendered), /walk-in\.harbourhair\.invalid|erased\.invalid/, 'synthetic addresses are never shown');
 });

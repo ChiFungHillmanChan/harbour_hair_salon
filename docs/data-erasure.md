@@ -73,8 +73,12 @@ someone.)
   customer's details — delete them. Resend keeps its own sent-email log for its
   retention period.
 - **Anything else**: phone/WhatsApp contacts, paper notes, exported files.
-- **Backups**: Neon's restore history ages out by itself. If production is ever
-  restored to a point before an erasure, re-apply every erasure in the log.
+- **Backups**: Neon's restore history ages out by itself. The pre-deploy
+  snapshot branches (`predeploy-*`, made by the deploy workflow when
+  `NEON_API_KEY` is set) are full copies of production; they are pruned after
+  14 days (newest three at most). If production is ever restored from either —
+  a point in time or a snapshot taken before an erasure — re-apply every
+  erasure in the log.
 
 ## Record
 
