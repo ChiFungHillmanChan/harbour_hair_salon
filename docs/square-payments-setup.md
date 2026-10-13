@@ -16,8 +16,8 @@ Square **Sandbox**, how to go live, and what staff do day to day.
   setup refusals are not declines, in-salon refunds, bounded refund retries and "Mark refund as
   settled outside the website", a hold Square shows taken, the 12-hour lapse grace) is marked
   **(review 2)**.
-  **Production credentials may be set once the sandbox acceptance list (§4) has passed on the
-  release candidate** (CLAUDE.md), then §5.
+  **Production credentials may be set once the sandbox acceptance list (§4) has passed on a
+  Preview deployment of `main`** (CLAUDE.md), then §5.
 - Square facts below were checked against Square's documentation on **13 October 2026**. The
   gateway pins Square API version **2026-09-16** (`SQUARE_API_VERSION`,
   `src/app/services/square-gateway.ts`). The 2026-09-16 Cantonese plan is superseded; do not
@@ -472,7 +472,8 @@ curl -sS -X POST "$URL" -H 'Content-Type: application/json' -H "x-square-hmacsha
 
 ## 5. Production go-live checklist
 
-Only once §4 has passed on the release candidate (S1–S4 merged and deployed).
+Only once §4 has passed on a Preview deployment of `main` (S1–S4 are merged and deployed since
+2026-10-13, #63).
 
 **Owner**
 - [ ] A Square **seller** account in the salon's legal name (the merchant of record), United

@@ -1,12 +1,14 @@
 # Launch checklist — Harbour Hair Salon
 
-Last verified against production: **2026-10-12 23:56 UTC** (read-only checks, `main` @
-`a20310b`, PR #61), plus the 2026-10-13 production-readiness review.
+Last verified against production: **2026-10-13 18:55 UTC** (read-only checks after both
+releases deployed, `main` @ `def37c4`), plus the 2026-10-13 production-readiness review.
 
 > **Status:** the public site is live and stable. **Online booking is closed** — by the
 > Square lock in code (production opens only with Square production credentials, see §2)
 > and by configuration (§3). The 2026-10-13 review's code findings are fixed in the
-> "review follow-ups" release (§1); Square deposits are built in a separate release (§2).
+> "review follow-ups" release (§1, #62); Square deposits are the second release (§2, #63).
+> Both are live since 2026-10-13; production online booking stays locked until Square
+> production credentials are set.
 >
 > **Deploys:** merge to `main`; GitHub Actions tests and deploys. Runs on `main` queue
 > (never cancel mid-flight); a queued run is superseded by a newer one, so the newest commit
@@ -22,17 +24,17 @@ Work top to bottom. The order in §3 is **load-bearing**.
 
 | Area | State |
 |---|---|
-| Tests / `tsc` / lint / audit | All green — 1,247 tests with the follow-ups release (1,057 before); CI also replays migrations on PostgreSQL 18 and runs the integration, booking-lifecycle and HTTP suites |
+| Tests / `tsc` / lint / audit | All green — 1,284 tests with release 1 and 1,644 with release 2 (1,057 before); CI also replays migrations on PostgreSQL 18 and runs the integration, booking-lifecycle and HTTP suites |
 | Online booking | **CLOSED** — `SiteSettings.bookingEnabled=false`, plus the Square lock |
 | Notifications | `NOTIFICATIONS_ENABLED=false` — customers get no booking email yet |
 | Calendar sync | `CALENDAR_SYNC_ENABLED=true`; Fresha inbound OK for all 4 stylists |
 | Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals |
 | Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed) |
-| Housekeeping | `HOUSEKEEPING_ENABLED` unset — off until the follow-ups release, which makes it **on unless set to `false`** (the privacy notice's retention periods depend on it) |
+| Housekeeping | `HOUSEKEEPING_ENABLED` unset, so it is **on** since release 1 (it runs unless set to `false`; the privacy notice's retention periods depend on it). First run 03:15 UTC on 2026-10-14; checked before the deploy, production had nothing for it to close or remove (no pending requests, no expired rows) |
 | Operations diagnostics | Last run 2026-09-20, **never passed** |
 | Neon | Free plan (100 CU-h/month, overrun **suspends** the database until next month); Oct 1–12 used 17.6 CU-h (~45/month pace); 6-hour restore history |
 | Crons (UTC) | reminders `0 8` (+ daily ops alert), notifications `*/30 8-19`, calendar-sync `*/30` (staff hours ±15 min), housekeeping `15 3` |
-| Migrations | 21 applied, none pending |
+| Migrations | 22 applied — release 2's deploy added `20261013120000_square_deposits` on 2026-10-13 (additive only; no drift afterwards). The preview database has it too |
 | Accounts | 1 admin, 12 customers |
 
 ---
@@ -77,15 +79,18 @@ does at each step, env vars, sandbox setup and tests, go-live, operations:
 `docs/square-payments-setup.md`.** Customer terms: `/booking-terms`; privacy notice updated for
 Square and payment records.
 
-- [ ] Preview database: apply `20261013120000_square_deposits` (runbook §7) — until then every
-      PR's "Deploy Preview" fails.
+- [x] Code merged and deployed (#63, 2026-10-13). Production has the new payment tables,
+      deposits are off by default, and `/api/webhooks/square` answers 404 until Square is
+      configured.
+- [x] Preview database: `20261013120000_square_deposits` applied on 2026-10-13 (runbook §7;
+      `prisma migrate deploy`, no drift afterwards).
 - [ ] Developer: sandbox setup on **Preview** only (runbook §3 — free Square Developer account, UK
       test account, Vercel Protection Bypass for Automation + an alias for the webhook URL;
       `PREVIEW_EMAIL_ALLOWLIST` = your own address **before** notifications go on there, because the
       preview database holds real customers), then the sandbox acceptance checklist (runbook §4).
 - [ ] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
 - [ ] Production credentials — **only once the sandbox acceptance checklist (runbook §4) has
-      passed on the release candidate**. S1–S4 are built: S3 captures a hold on approval, releases
+      passed on a Preview deployment**. S1–S4 are built: S3 captures a hold on approval, releases
       it on decline, withdrawal, lapse or expiry, and refunds cancellations; S4 (the Square webhook
       and the daily reconciliation) follows up a payment whose outcome was unclear, a failed
       release and a refund left pending. Production application in the **salon's** Square
