@@ -3,6 +3,7 @@ import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from '@/i18n/link';
 import Image from 'next/image';
+import { BlogCoverImage } from '@/components/blog/BlogCoverImage';
 import { getPublishedPosts } from '@/app/services/blog-service';
 import { Pagination } from '@/components/admin/Pagination';
 import { pageNumber } from '@/app/lib/pagination';
@@ -114,11 +115,10 @@ export default async function BlogIndexPage({ searchParams }: { searchParams: Pr
               >
                 <Link href={`/blog/${post.slug}`} className="block">
                   <div className="relative aspect-[16/9] overflow-hidden bg-zinc-100">
-                    <Image
+                    <BlogCoverImage
                       src={post.coverImage}
                       alt={post.coverAlt}
                       lang={fallbackLang(post.translated)}
-                      fill
                       className="object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition-all duration-700"
                     />
                   </div>

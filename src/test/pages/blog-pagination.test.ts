@@ -20,6 +20,7 @@ const io = {
   'next/link': 'a',
   '@/i18n/link': 'a',
   'next/image': 'img',
+  '@/components/blog/BlogCoverImage': { BlogCoverImage: 'img' },
   '@/app/lib/site-url': { SITE_URL: 'https://salon.example' },
   '@/components/admin/Pagination': { Pagination },
   // next/root-params only exists inside the Next compiler.

@@ -27,16 +27,10 @@ const nextConfig: NextConfig = {
   images: {
     formats: ['image/avif', 'image/webp'],
     minimumCacheTTL: 60 * 60 * 24 * 30,
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "res.cloudinary.com",
-      },
-      {
-        protocol: "https",
-        hostname: "*.googleusercontent.com",
-      },
-    ],
+    // No remotePatterns, deliberately: the optimizer only serves files from
+    // public/. A remote pattern let anyone have us optimise any image on that
+    // host (each one a billed transformation, uncapped). Remote images render
+    // as plain <img> — see components/blog/BlogCoverImage.tsx.
   },
   headers: async () => [{
     source: '/(.*)',
