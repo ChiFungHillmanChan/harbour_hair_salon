@@ -264,7 +264,8 @@ function toClientQuote(quote: PriceQuote): ClientQuote {
 }
 
 export type SubmitBookingResult =
-  | { success: true }
+  /** `alreadyRequested`: the same request was already made (see findRepeatRequest); nothing new was booked. */
+  | { success: true; alreadyRequested?: true }
   | { success: false; code?: BookingErrorCode; error: string; quote?: ClientQuote };
 
 export async function submitBooking(data: z.infer<typeof createBookingSchema>): Promise<SubmitBookingResult> {
@@ -424,8 +425,8 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
 
     // The same request again (the answer to the first was lost, or a second
     // tap): it is already made, so there is no feed to refresh and nothing new
-    // to send.
-    if (appointment.repeat) return { success: true };
+    // to send. The wizard tells the customer it was already requested.
+    if (appointment.repeat) return { success: true, alreadyRequested: true };
 
     // The marketplaces poll a cached feed; drop it so the new busy period is
     // visible on their next poll rather than whenever the window expires.

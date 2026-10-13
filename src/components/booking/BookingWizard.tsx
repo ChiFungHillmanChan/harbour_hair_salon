@@ -91,6 +91,9 @@ export function BookingWizard({ services, offerings, categories, stylists, close
     .filter((group) => group.entries.length > 0), [categories]);
   const [selectedCategory, setSelectedCategory] = useDraftState<string>(`${DRAFT}:category`, () => browsable[0]?.category ?? 'Haircuts');
   const [isSubmitted, setIsSubmitted] = useDraftState(`${DRAFT}:submitted`, false);
+  // The server found this exact request already made (a lost answer, a second
+  // tap): nothing new was booked, so the success screen says where it is.
+  const [alreadyRequested, setAlreadyRequested] = useDraftState(`${DRAFT}:alreadyRequested`, false);
   // A newer price the server returned instead of booking: the customer must
   // see it and confirm again. Keyed by service so a different choice drops it.
   const [repricedQuote, setRepricedQuote] = useDraftState<ClientQuote | null>(`${DRAFT}:reprice`, null);
@@ -249,6 +252,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
 
       if (result.success) {
         setIsSubmitted(true);
+        setAlreadyRequested(result.alreadyRequested === true);
         setRepricedQuote(null);
       } else if (isBookingClosedAnswer(result)) {
         // Closed between loading the times and confirming: the same answer as
@@ -338,14 +342,19 @@ export function BookingWizard({ services, offerings, categories, stylists, close
           </svg>
         </div>
         <h2 className="text-3xl font-serif mb-4 text-zinc-900">{t('done.title')}</h2>
-        <p className="text-zinc-700 mb-8">
+        <p className={`text-zinc-700 ${alreadyRequested ? 'mb-4' : 'mb-8'}`}>
           {t('done.body')}
         </p>
+        {alreadyRequested && (
+          <p className="text-zinc-700 mb-8">
+            {t('done.alreadyRequested')}
+          </p>
+        )}
         <Link
           href="/appointments"
           onClick={() => {
             // The request is made; a later visit to /book starts fresh.
-            for (const key of ['step', 'service', 'stylist', 'day', 'time', 'origin', 'gate', 'offering', 'option', 'search', 'category', 'submitted', 'reprice']) clearDraft(`${DRAFT}:${key}`);
+            for (const key of ['step', 'service', 'stylist', 'day', 'time', 'origin', 'gate', 'offering', 'option', 'search', 'category', 'submitted', 'alreadyRequested', 'reprice']) clearDraft(`${DRAFT}:${key}`);
           }}
           className="bg-zinc-900 text-white px-8 py-3 uppercase tracking-widest text-sm hover:bg-black rounded-md transition-colors"
         >
