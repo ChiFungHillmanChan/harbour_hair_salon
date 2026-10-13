@@ -2,6 +2,8 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { resolveCalendarColor } from '@/app/lib/calendar-colors';
+import type { DepositView } from '@/app/lib/deposit-display';
+import { DepositChip } from './DepositChip';
 import {
   MIN_DURATION_MINUTES,
   applyMove,
@@ -42,6 +44,8 @@ export type GridAppointment = {
   updatedAt: string;
   /** A customer has asked to move this booking (an open reschedule request). */
   moveRequested?: boolean;
+  /** The booking's card deposit (lib/deposit-display.ts), when it has one. */
+  deposit?: DepositView | null;
 };
 
 export type GridBusyBlock = CalendarBusyBlock;
@@ -510,6 +514,7 @@ export function ScheduleDayGrid({
                         </div>
                         <div className="truncate opacity-90">{appt.serviceName}</div>
                         {appt.moveRequested && <div className="font-semibold uppercase">{t('rescheduleRequests.badge')}</div>}
+                        {appt.deposit && <div><DepositChip deposit={appt.deposit} t={t} onColour /></div>}
                         <div className="opacity-80">{t('grid.minutes', { count: position.durationMin })}</div>
                       </div>
                       <div

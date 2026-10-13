@@ -12,6 +12,7 @@ import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock'
 import { LOCALES } from '@/i18n/config';
 import { getActionT } from '@/i18n/request';
 import { BLOG_POSTS_TAG } from '@/app/services/blog-service';
+import { parsePoundsInput } from '@/app/services/pricing/money';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -27,6 +28,25 @@ const urlOrEmpty = z
   .refine((v) => v === '' || /^https?:\/\//.test(v), {
     message: 'URL',
   });
+
+// A whole percentage, 0–100: "20", never "" (which Number() would read as 0),
+// "12.5" or "1e2".
+const wholePercent = z
+  .string()
+  .trim()
+  .regex(/^\d{1,3}$/, 'DEPOSIT_PERCENT')
+  .transform(Number)
+  .refine((value) => value <= 100, 'DEPOSIT_PERCENT');
+
+// Typed in pounds like every price box and stored in pence; blank means £0.
+const poundsAsPence = z.string().transform((text, ctx) => {
+  const pence = text.trim() === '' ? 0 : parsePoundsInput(text);
+  if (pence === null) {
+    ctx.issues.push({ code: 'custom', message: 'MONEY', input: text });
+    return z.NEVER;
+  }
+  return pence;
+});
 
 /**
  * Operational settings, saved immediately in both languages. The homepage
@@ -55,6 +75,11 @@ const settingsSchema = z.object({
   // An unchecked checkbox is absent from FormData entirely, so this is parsed
   // from an explicit boolean the action computes rather than from the raw entry.
   bookingEnabled: z.boolean().default(false),
+  // Deposit policy for customer booking requests (services/deposit-quote.ts),
+  // used on the next request: money paths read the row, not the page cache.
+  depositsEnabled: z.boolean().default(false),
+  depositPercent: wholePercent.default(0),
+  depositMinimumServicePence: poundsAsPence.default(0),
 });
 
 export type SettingsActionState =
@@ -72,6 +97,9 @@ export async function updateSiteSettings(
   const parsed = settingsSchema.safeParse({
     ...Object.fromEntries(formData),
     bookingEnabled: formData.get('bookingEnabled') === 'on',
+    depositsEnabled: formData.get('depositsEnabled') === 'on',
+    // The box holds pounds, so it is named for them; the column holds pence.
+    depositMinimumServicePence: formData.get('depositMinimumServicePounds') ?? undefined,
   });
   if (!parsed.success) {
     // Name the offending field — otherwise the owner just sees a generic
@@ -91,8 +119,9 @@ export async function updateSiteSettings(
       // editing the phone number or hero text must not fail just because
       // marketplace imports pause outside staff hours.
       const current = await tx.siteSettings.findUnique({ where: { id: 'singleton' }, select: { bookingEnabled: true } });
-      // Deposits are not taken yet, so production cannot open online booking
-      // at all (lib/online-booking-lock.ts). Say so rather than list readiness.
+      // Booking requests take a Square deposit, so production cannot open
+      // online booking without Square production credentials
+      // (lib/online-booking-lock.ts). Say so rather than list readiness.
       if (parsed.data.bookingEnabled && !current?.bookingEnabled && isOnlineBookingLockedForPayments()) {
         return [t('settings.errors.PAYMENTS_NOT_CONNECTED')];
       }
@@ -131,7 +160,19 @@ export async function updateSiteSettings(
         update: parsed.data,
         create: { id: 'singleton', ...parsed.data },
       });
-      await appendAuditEvent({ actorUserId: session.userId, action: 'SETTINGS.UPDATE', targetType: 'SiteSettings', targetId: 'singleton', metadata: { bookingEnabled: parsed.data.bookingEnabled, salonNotificationLocale: parsed.data.salonNotificationLocale } }, tx);
+      await appendAuditEvent({
+        actorUserId: session.userId,
+        action: 'SETTINGS.UPDATE',
+        targetType: 'SiteSettings',
+        targetId: 'singleton',
+        metadata: {
+          bookingEnabled: parsed.data.bookingEnabled,
+          salonNotificationLocale: parsed.data.salonNotificationLocale,
+          depositsEnabled: parsed.data.depositsEnabled,
+          depositPercent: parsed.data.depositPercent,
+          depositMinimumServicePence: parsed.data.depositMinimumServicePence,
+        },
+      }, tx);
       return [];
     }, { isolationLevel: 'Serializable' });
     if (blockers.length) return { status: 'error', message: t('settings.errors.NOT_SAVED', { reasons: blockers.join(' ') }) };

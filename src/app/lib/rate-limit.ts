@@ -123,6 +123,83 @@ export function createRateLimiter(
   };
 }
 
+/**
+ * A limiter that counts FAILURES rather than attempts: `allows(key)` says
+ * whether the key is still under its limit and spends nothing, `record(key)`
+ * counts one failure. Card declines use it — checking on every card attempt
+ * costs nothing until a card is actually declined.
+ *
+ * Never fails open. Every failure is also counted in this instance's own
+ * window, and `allows` is false when EITHER that window or Redis says the
+ * limit is reached: a Redis outage or timeout (the wait is bounded by
+ * REDIS_TIMEOUT_MS) answers from the window, and cannot undo what this
+ * instance has counted.
+ */
+export type FailureLimiter = {
+  allows(key: string): Promise<boolean>;
+  record(key: string): Promise<void>;
+};
+
+type RedisFailureCounter = {
+  limit(key: string): Promise<{ success: boolean; reason?: string }>;
+  getRemaining(key: string): Promise<{ remaining: number }>;
+};
+
+function withinTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), ms); });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
+export function createFailureLimiter(
+  policy: RateLimitPolicy,
+  /** Test seams: the Redis-backed counter (or null for none), and how long to wait for it. */
+  deps: { redis?: RedisFailureCounter | null; timeoutMs?: number } = {},
+): FailureLimiter {
+  const window = new SlidingWindow({ limit: policy.limit, windowMs: policy.windowSeconds * 1000 });
+  const timeoutMs = deps.timeoutMs ?? REDIS_TIMEOUT_MS;
+  let counter: RedisFailureCounter | null | undefined = deps.redis;
+
+  function getCounter(): RedisFailureCounter | null {
+    if (counter !== undefined) return counter;
+    const redis = getRedis();
+    counter = redis
+      ? new Ratelimit({
+          redis,
+          limiter: Ratelimit.slidingWindow(policy.limit, `${policy.windowSeconds} s`),
+          prefix: policy.prefix,
+          timeout: timeoutMs,
+        })
+      : null;
+    return counter;
+  }
+
+  return {
+    async allows(key: string): Promise<boolean> {
+      if (!window.allows(key)) return false;
+      const redis = getCounter();
+      if (!redis) return true;
+      try {
+        return (await withinTimeout(redis.getRemaining(key), timeoutMs)).remaining > 0;
+      } catch (err) {
+        // Down or silent: this instance's own count has already answered.
+        console.error(`[rate-limit] ${policy.prefix} Redis unavailable, using in-memory fallback:`, err instanceof Error ? err.message : 'unknown');
+        return true;
+      }
+    },
+    async record(key: string): Promise<void> {
+      window.check(key);
+      const redis = getCounter();
+      if (!redis) return;
+      try {
+        await withinTimeout(redis.limit(key), timeoutMs);
+      } catch (err) {
+        console.error(`[rate-limit] ${policy.prefix} Redis unavailable, counted in memory only:`, err instanceof Error ? err.message : 'unknown');
+      }
+    },
+  };
+}
+
 // --- Shared policies -------------------------------------------------------
 // Values preserve the limits each call site used before this module existed.
 
@@ -164,3 +241,16 @@ export const availabilityLimiter = createRateLimiter({ prefix: 'rl:availability'
 // appointment so one booking cannot be bounced between two times all day.
 export const rescheduleLimiter = createRateLimiter({ prefix: 'rl:reschedule', limit: 5, windowSeconds: 60 * 60 });
 export const appointmentRescheduleLimiter = createRateLimiter({ prefix: 'rl:reschedule-appt', limit: 3, windowSeconds: 24 * 60 * 60 });
+
+/**
+ * Card declines on deposit authorizations (money-safety review I4): a
+ * stolen-card tester behind one verified account — or one address, across
+ * accounts — gets a few tries a day instead of bookingLimiter's six an hour.
+ * Counted only when Square declines a deposit (the attempt ends FAILED,
+ * actions/booking.ts); checked before an attempt is written or Square is
+ * asked, and a refusal answers PAYMENT_UNAVAILABLE ("call the salon").
+ */
+export const DEPOSIT_DECLINE_ACCOUNT_POLICY: RateLimitPolicy = { prefix: 'rl:decline-acct', limit: 3, windowSeconds: 24 * 60 * 60 };
+export const DEPOSIT_DECLINE_IP_POLICY: RateLimitPolicy = { prefix: 'rl:decline-ip', limit: 5, windowSeconds: 24 * 60 * 60 };
+export const depositDeclineAccountLimiter = createFailureLimiter(DEPOSIT_DECLINE_ACCOUNT_POLICY);
+export const depositDeclineIpLimiter = createFailureLimiter(DEPOSIT_DECLINE_IP_POLICY);

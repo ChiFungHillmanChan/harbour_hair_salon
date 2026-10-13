@@ -23,6 +23,16 @@ export type SiteSettings = {
   bookingEnabled: boolean;
   /** Language of the salon's own notification mails (new booking alerts). */
   salonNotificationLocale: Locale;
+  /**
+   * Square deposit policy, for the admin form and page copy only. Anything that
+   * moves money reads the row directly (services/deposit-quote.ts), because this
+   * cached copy can be up to a day old.
+   */
+  depositsEnabled: boolean;
+  /** Whole percent of the quoted price, 0–100. */
+  depositPercent: number;
+  /** Services quoted below this many pence take no percentage deposit. */
+  depositMinimumServicePence: number;
 };
 
 const SINGLETON_ID = 'singleton';
@@ -45,6 +55,10 @@ const DEFAULTS: SiteSettings = {
   // silently opening a booking flow that may double-book against Treatwell.
   bookingEnabled: false,
   salonNotificationLocale: 'zh-HK',
+  // The column defaults: no deposit is taken until the salon sets one.
+  depositsEnabled: false,
+  depositPercent: 0,
+  depositMinimumServicePence: 0,
 };
 
 function mapRow(row: {
@@ -63,6 +77,9 @@ function mapRow(row: {
   heroSubtitle: string;
   bookingEnabled: boolean;
   salonNotificationLocale: string;
+  depositsEnabled: boolean;
+  depositPercent: number;
+  depositMinimumServicePence: number;
 }): SiteSettings {
   return {
     phone: row.phone,
@@ -80,6 +97,9 @@ function mapRow(row: {
     heroSubtitle: row.heroSubtitle,
     bookingEnabled: row.bookingEnabled,
     salonNotificationLocale: isLocale(row.salonNotificationLocale) ? row.salonNotificationLocale : DEFAULTS.salonNotificationLocale,
+    depositsEnabled: row.depositsEnabled,
+    depositPercent: row.depositPercent,
+    depositMinimumServicePence: row.depositMinimumServicePence,
   };
 }
 

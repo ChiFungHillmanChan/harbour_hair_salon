@@ -26,6 +26,7 @@ const emails = {
     requestedTime: 'Requested time',
     duration: 'Duration',
     price: 'Price',
+    deposit: 'Deposit',
     previousDate: 'Previous date',
     currentTime: 'Current booking',
     customer: 'Customer',
@@ -41,8 +42,15 @@ const emails = {
     nhsPrice: 'NHS price',
     vatExcluded: 'VAT excluded',
     subjectToConsultation: 'may be adjusted after consultation',
+    /** An amount with the price's fine print, e.g. what is left to pay (values.vatExcluded / subjectToConsultation). */
+    withNotes: '{amount} ({notes})',
     nameNotGiven: 'Name not given',
     notProvided: 'Not provided',
+    depositHeld: '{amount} held on your card — not taken yet',
+    depositPaid: '{amount} paid',
+    depositRefunding: '{amount} — being refunded',
+    depositReleased: '{amount} hold released — nothing taken',
+    depositKept: '{amount} kept',
   },
   confirmation: {
     subject: 'Your booking is confirmed — Harbour Hair Salon',
@@ -55,6 +63,10 @@ const emails = {
     textHeading: 'HARBOUR HAIR — BOOKING CONFIRMED',
     textIntro: 'Your appointment at Harbour Hair Salon is confirmed.',
     textManage: 'Manage your booking up to 24 hours before the appointment from the My Bookings page: {url}',
+    footnoteWithDeposit: 'Need to make a change? You can cancel (your deposit is refunded in full) or request a new time from My Bookings up to 24 hours before your appointment.',
+    depositPaid: 'Your {deposit} deposit is paid; {remainder} is left to pay in the salon. Cash and card are accepted.',
+    depositPaidNoTotal: 'Your {deposit} deposit is paid; the rest is due at the salon. Cash and card are accepted.',
+    depositPaidInFull: 'Your {deposit} deposit covers the full price: there is nothing left to pay in the salon.',
   },
   request: {
     subject: 'We’ve received your booking request — Harbour Hair Salon',
@@ -66,6 +78,8 @@ const emails = {
     calloutBody: 'Call the salon on {phone} and we’ll sort it out straight away.',
     cta: 'View my request',
     footnote: 'You can withdraw this request at any time from My Bookings. Payment is due at the salon; cash and card are accepted.',
+    depositHold: 'We’ve placed a {amount} hold on your card. It is only taken if we confirm your booking; if we can’t, the hold is released.',
+    footnoteWithDeposit: 'You can withdraw this request at any time from My Bookings. The rest of the price is due at the salon; cash and card are accepted.',
   },
   requestLapsed: {
     subject: 'We couldn’t confirm your booking request — Harbour Hair Salon',
@@ -73,8 +87,15 @@ const emails = {
     eyebrow: 'Request not confirmed',
     title: 'We couldn’t confirm your request in time.',
     intro: 'We’re sorry — we couldn’t confirm your booking request for {date} at {time} before that time came, so the request has now closed. Please call us or book another time.',
+    introHoldExpired: 'We’re sorry — we couldn’t confirm your booking request for {date} at {time} while the hold on your card was still valid, so the request has now closed. Please call us or book another time.',
     cta: 'Book another time',
     footnote: 'If you have already arranged a time with the salon, you can ignore this email.',
+  },
+  /** What became of a card deposit when its booking closed (cancellation and request-lapsed mail). */
+  deposit: {
+    refunding: 'Your {amount} deposit is being refunded. Most banks show refunds within 5–10 working days; some take up to 14.',
+    released: 'The {amount} hold on your card has been released — nothing was taken. Your bank may take a few days to remove it.',
+    kept: 'The {amount} deposit is kept under our booking terms.',
   },
   cancellation: {
     subject: 'Your booking has been cancelled — Harbour Hair Salon',

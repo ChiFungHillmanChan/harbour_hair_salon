@@ -7,6 +7,7 @@ import { BookingClosedNotice, type BookingClosedContact } from '@/components/boo
 import { getAggregateRating } from '@/app/services/review-service';
 import { redirect } from 'next/navigation';
 import { isBookingEnabled } from '@/app/lib/booking-maintenance';
+import { publicSquareConfig } from '@/app/lib/online-booking-lock';
 import { activeMarketplaces } from '@/app/services/marketplace-channels';
 import { getSession } from '@/app/lib/session';
 import { EMAIL_VERIFICATION_SELECT, hasVerifiedEmail } from '@/app/lib/email-verification';
@@ -108,7 +109,8 @@ export default async function BookPage() {
   // instead of letting the customer fill in the whole wizard first.
   const account = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { email: true, ...EMAIL_VERIFICATION_SELECT },
+    // The name and email also go to Square with a card deposit, to verify the card.
+    select: { email: true, name: true, ...EMAIL_VERIFICATION_SELECT },
   });
   if (account && !hasVerifiedEmail(account)) {
     const ta = await getT('auth');
@@ -170,13 +172,17 @@ export default async function BookPage() {
       </section>
 
       <div className="container mx-auto px-4 py-8 md:py-12">
-        <ClientMessages namespaces={['pricing']} sections={{ booking: ['steps', 'service', 'gate', 'stylist', 'date', 'confirm', 'done', 'closed'] }}>
+        <ClientMessages namespaces={['pricing']} sections={{ booking: ['steps', 'service', 'gate', 'stylist', 'date', 'confirm', 'deposit', 'done', 'closed'] }}>
           <BookingWizard
             services={catalog.services}
             offerings={catalog.offerings}
             categories={catalog.categories}
             stylists={stylists}
             closedContact={contact}
+            // Card deposits: only Square's public values, read now (never at
+            // build time) — null when no deposit can be taken here. The access
+            // token never leaves the server.
+            payment={{ square: publicSquareConfig(), payer: { name: account?.name ?? null, email: account?.email ?? null } }}
           />
         </ClientMessages>
       </div>

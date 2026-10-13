@@ -28,6 +28,47 @@ test('email transport preserves the frozen request and idempotency key, with an 
   }
 });
 
+test('a preview deployment emails only PREVIEW_EMAIL_ALLOWLIST recipients; the rest is dropped as if sent', async () => {
+  const saved = { fetch: globalThis.fetch, key: process.env.RESEND_API_KEY, env: process.env.VERCEL_ENV, list: process.env.PREVIEW_EMAIL_ALLOWLIST, warn: console.warn };
+  const restore = (name: 'RESEND_API_KEY' | 'VERCEL_ENV' | 'PREVIEW_EMAIL_ALLOWLIST', value: string | undefined) => {
+    if (value === undefined) delete process.env[name]; else process.env[name] = value;
+  };
+  const sent: string[] = [];
+  const notices: unknown[][] = [];
+  globalThis.fetch = async (_url, init) => { sent.push(JSON.parse(String(init?.body)).to); return Response.json({ id: 'email-1' }); };
+  console.warn = (...args: unknown[]) => { notices.push(args); };
+  const email = (to: string) => ({ from: 'Salon <booking@example.com>', to, subject: 'Reminder', html: '<p>Reminder</p>' });
+  try {
+    process.env.RESEND_API_KEY = 'test-only-key';
+    process.env.VERCEL_ENV = 'preview';
+    // Unset: a preview sends nothing at all, and says so without the address.
+    delete process.env.PREVIEW_EMAIL_ALLOWLIST;
+    await sendPreparedEmail(email('customer@example.com'), 'appointment/a/1/REMINDER');
+    await sendPreparedEmail(email('tester@example.com'));
+    assert.deepEqual(sent, []);
+    assert.equal(notices.length, 2);
+    assert.ok(notices.every((args) => args.length === 1 && typeof args[0] === 'string' && !String(args[0]).includes('@')), 'one line, no address');
+
+    // Read at send time: the list applies from the next email, no restart needed.
+    process.env.PREVIEW_EMAIL_ALLOWLIST = 'Tester@Example.com, @staff.example.org';
+    await sendPreparedEmail(email('tester@example.com'));
+    await sendPreparedEmail(email('owner@staff.example.org'));
+    await sendPreparedEmail(email('customer@example.com'));
+    assert.deepEqual(sent, ['tester@example.com', 'owner@staff.example.org'], 'the copied customer is never emailed');
+
+    // Production is not restricted by the list.
+    process.env.VERCEL_ENV = 'production';
+    await sendPreparedEmail(email('customer@example.com'));
+    assert.deepEqual(sent.at(-1), 'customer@example.com');
+  } finally {
+    globalThis.fetch = saved.fetch;
+    console.warn = saved.warn;
+    restore('RESEND_API_KEY', saved.key);
+    restore('VERCEL_ENV', saved.env);
+    restore('PREVIEW_EMAIL_ALLOWLIST', saved.list);
+  }
+});
+
 test('appointment templates render with the ordinary Node renderer used by the server', () => {
   // The suite's react-server condition deliberately forbids react-dom/server.
   // Exercise the external email renderer in a clean ordinary Node process.

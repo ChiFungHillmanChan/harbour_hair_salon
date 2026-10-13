@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateDepositPence, poundsFromPence, type DepositPolicyInput } from './deposit-policy';
+import { calculateDepositPence, HIGH_DEPOSIT_PERCENT, isHighDepositPercent, poundsFromPence, type DepositPolicyInput } from './deposit-policy';
 
 function policy(overrides: Partial<DepositPolicyInput> = {}): DepositPolicyInput {
   return {
@@ -76,4 +76,13 @@ test('pound display preserves exactly two decimals for every valid pence input',
   for (const value of [-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
     assert.throws(() => poundsFromPence(value), /pence/);
   }
+});
+
+test('Admin → Settings warns about a deposit percentage above 50 (still allowed up to 100)', () => {
+  assert.equal(HIGH_DEPOSIT_PERCENT, 50);
+  for (const percent of [0, 10, 30, 50]) assert.equal(isHighDepositPercent(percent), false, String(percent));
+  for (const percent of [51, 75, 100]) assert.equal(isHighDepositPercent(percent), true, String(percent));
+  assert.equal(isHighDepositPercent(NaN), false, 'an empty or unreadable box warns of nothing');
+  // The warning is advice only: the policy still calculates a 100% deposit.
+  assert.equal(calculateDepositPence(policy({ depositPercent: 100 })), 10000);
 });

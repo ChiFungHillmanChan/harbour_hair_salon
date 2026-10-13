@@ -12,7 +12,7 @@ import { getActionLocale, getActionT } from '@/i18n/request';
 import { localizeHref } from '@/i18n/paths';
 import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
 import { HAIR_LENGTHS, PRICE_NATURES, PRICE_TYPES, VAT_DISPLAYS } from '@/app/services/pricing/policy';
-import { penceToDecimalString, toPence } from '@/app/services/pricing/money';
+import { parsePoundsInput, penceToDecimalString, toPence } from '@/app/services/pricing/money';
 import { AdminNoticeError } from '@/app/lib/admin-notice';
 
 async function requireAdmin() {
@@ -93,6 +93,24 @@ function parseSettings(formData: FormData) {
   return settingsSchema.safeParse(Object.fromEntries(formData));
 }
 
+/**
+ * The online deposit for this service (services/deposit-quote.ts), typed in
+ * pounds: empty = the salon policy (null), 0 = never a deposit, otherwise a
+ * fixed amount, which may not exceed the price it is set against (a later
+ * price cut is capped when the deposit is worked out). A form without the box
+ * (a page opened before it existed) leaves the stored value alone.
+ */
+function parseDepositOverride(formData: FormData, pricePence: number): { ok: true; pence: number | null | undefined } | { ok: false; code: string } {
+  const value = formData.get('depositOverride');
+  if (value === null) return { ok: true, pence: undefined };
+  if (typeof value !== 'string') return { ok: false, code: 'DEPOSIT_OVERRIDE' };
+  if (value.trim() === '') return { ok: true, pence: null };
+  const pence = parsePoundsInput(value);
+  if (pence === null) return { ok: false, code: 'DEPOSIT_OVERRIDE' };
+  if (pence > pricePence) return { ok: false, code: 'DEPOSIT_ABOVE_PRICE' };
+  return { ok: true, pence };
+}
+
 async function assertOfferingExists(offeringId: string | null) {
   if (!offeringId) return true;
   return Boolean(await prisma.serviceOffering.findUnique({ where: { id: offeringId }, select: { id: true } }));
@@ -123,6 +141,8 @@ export async function createService(
     return errorState('PRICE');
   }
   if (!/^\d{1,6}(\.\d{1,2})?$/.test(priceText) || pricePence < 0) return errorState('PRICE');
+  const deposit = parseDepositOverride(formData, pricePence);
+  if (!deposit.ok) return errorState(deposit.code);
 
   let contentFields: unknown = null;
   try {
@@ -144,6 +164,7 @@ export async function createService(
           description: typeof english.description === 'string' && english.description.trim() ? english.description : null,
           priceNote: typeof english.priceNote === 'string' && english.priceNote.trim() ? english.priceNote : null,
           price: penceToDecimalString(pricePence),
+          depositOverridePence: deposit.pence ?? null,
         },
         select: { id: true },
       }),
@@ -171,14 +192,17 @@ export async function updateService(
   if (typeof id !== 'string' || !id) {
     return errorState('MISSING_ID');
   }
-  const existing = await prisma.service.findUnique({ where: { id }, select: { id: true } });
+  const existing = await prisma.service.findUnique({ where: { id }, select: { id: true, price: true } });
   if (!existing) return errorState('NOT_FOUND');
 
   const parsed = parseSettings(formData);
   if (!parsed.success) return errorState(parsed.error.issues[0]?.message ?? 'INVALID');
+  // The published price (edited in the bilingual editor above this form).
+  const deposit = parseDepositOverride(formData, toPence(existing.price));
+  if (!deposit.ok) return errorState(deposit.code);
   if (!(await assertOfferingExists(parsed.data.offeringId))) return errorState('OFFERING');
 
-  await prisma.service.update({ where: { id }, data: parsed.data });
+  await prisma.service.update({ where: { id }, data: { ...parsed.data, depositOverridePence: deposit.pence } });
 
   refreshServicePages();
   await revalidateCategoryPages();

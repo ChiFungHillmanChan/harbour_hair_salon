@@ -20,6 +20,21 @@ export type EmailPrice =
   | { known: true; amountPence: number; priceType: PriceType | null; vatDisplay: VatDisplay | null; priceNature: PriceNature | null }
   | { known: false };
 
+/**
+ * The booking's card deposit as it stood when the email was queued: an amount
+ * and its PaymentAttempt status (AUTHORIZED = held on the card, not taken;
+ * CAPTURED = taken). Absent or null: no deposit (or an event queued before
+ * deposits existed).
+ */
+export type EmailDeposit = { amountPence: number; status: string };
+
+/**
+ * What became of a booking's deposit when the booking closed
+ * (services/deposit-lifecycle.ts): refunded, its hold released, or kept by
+ * the salon. Carried in the queued options, so no database read at send time.
+ */
+export type DepositOutcome = 'REFUNDING' | 'RELEASED' | 'KEPT';
+
 export type EmailAppointment = {
   id: string;
   date: Date;
@@ -28,6 +43,7 @@ export type EmailAppointment = {
   service: { name: string; duration: number };
   price: EmailPrice;
   notes?: string | null;
+  deposit?: EmailDeposit | null;
 };
 
 /** Pre-quote callers and old queued events pass `service.price` as a number. */
@@ -100,7 +116,77 @@ export type AppointmentEmailOptions = {
    * note. Undefined — mail queued before this was recorded — counts as confirmed.
    */
   wasConfirmed?: boolean;
+  /**
+   * CANCELLATION and REQUEST_LAPSED: what became of the booking's card deposit
+   * (the amount is the queued snapshot's `deposit`). Undefined — no deposit,
+   * or mail queued before deposits — adds no deposit wording.
+   */
+  depositOutcome?: DepositOutcome;
+  /**
+   * REQUEST_LAPSED only: closed because the hold on the customer's card ran
+   * out before anyone confirmed it, while the requested time is still ahead.
+   */
+  holdExpired?: boolean;
 };
+
+/** "£20.00" in the email's language. */
+function money(pence: number, locale: Locale): string {
+  return formatGBP(pence, HTML_LANG[locale]);
+}
+
+/** A deposit amount the snapshot can vouch for, or null (none, or an unusable value). */
+function depositAmount(deposit: EmailDeposit | null | undefined): number | null {
+  return deposit && Number.isSafeInteger(deposit.amountPence) && deposit.amountPence > 0 ? deposit.amountPence : null;
+}
+
+/**
+ * What a closing email says about the deposit: a Deposit row and one
+ * sentence (refunded, released or kept), or nothing without an outcome.
+ */
+function depositClosingNote(appointment: EmailAppointment, locale: Locale, outcome: DepositOutcome | undefined) {
+  const pence = depositAmount(appointment.deposit);
+  if (!outcome || pence === null) return null;
+  const t = translator(locale, 'emails');
+  const amount = money(pence, locale);
+  const [value, sentence] = outcome === 'REFUNDING'
+    ? [t('values.depositRefunding', { amount }), t('deposit.refunding', { amount })]
+    : outcome === 'KEPT'
+      ? [t('values.depositKept', { amount }), t('deposit.kept', { amount })]
+      : [t('values.depositReleased', { amount }), t('deposit.released', { amount })];
+  return { row: { label: t('labels.deposit'), value }, sentence };
+}
+
+/**
+ * What is left to pay in the salon, with the fine print the price itself
+ * carries when that amount is not exact: "£80.00 (VAT excluded · may be
+ * adjusted after consultation)" (see describeEmailPrice).
+ */
+function remainderText(price: Extract<EmailPrice, { known: true }>, depositPence: number, locale: Locale): string {
+  const t = translator(locale, 'emails');
+  const amount = money(price.amountPence - depositPence, locale);
+  const notes = [
+    ...(price.vatDisplay === 'EXCLUDED' ? [t('values.vatExcluded')] : []),
+    ...(price.priceNature === 'SUBJECT_TO_CONSULTATION' ? [t('values.subjectToConsultation')] : []),
+  ];
+  return notes.length ? t('values.withNotes', { amount, notes: notes.join(' · ') }) : amount;
+}
+
+/**
+ * The confirmation's deposit wording: what was paid and what is left to pay
+ * in the salon — from the booking's own recorded price, never today's.
+ */
+function depositPaidNote(appointment: EmailAppointment, locale: Locale) {
+  const pence = appointment.deposit?.status === 'CAPTURED' ? depositAmount(appointment.deposit) : null;
+  if (pence === null) return null;
+  const t = translator(locale, 'emails');
+  const deposit = money(pence, locale);
+  const sentence = !appointment.price.known
+    ? t('confirmation.depositPaidNoTotal', { deposit })
+    : appointment.price.amountPence > pence
+      ? t('confirmation.depositPaid', { deposit, remainder: remainderText(appointment.price, pence, locale) })
+      : t('confirmation.depositPaidInFull', { deposit });
+  return { row: { label: t('labels.deposit'), value: t('values.depositPaid', { amount: deposit }) }, sentence };
+}
 
 /**
  * The calendar file a customer email carries. A confirmed time (confirmation,
@@ -167,58 +253,82 @@ export function appointmentEmailContent(
   const duration = t('values.minutes', { count: appointment.service.duration });
   const price = describeEmailPrice(appointment.price, locale);
   const base = { locale, palette: 'ink' as const, greeting, footnotes: [] as string[], reference: t('common.reference', { reference }), address: t('common.address') };
-  const labels = (key: 'service' | 'stylist' | 'date' | 'time' | 'requestedDate' | 'requestedTime' | 'duration' | 'price' | 'previousDate' | 'currentTime', value: string) => ({ label: t(`labels.${key}`), value });
+  const labels = (key: 'service' | 'stylist' | 'date' | 'time' | 'requestedDate' | 'requestedTime' | 'duration' | 'price' | 'deposit' | 'previousDate' | 'currentTime', value: string) => ({ label: t(`labels.${key}`), value });
 
   switch (kind) {
-    case 'CONFIRMATION':
+    case 'CONFIRMATION': {
+      // A deposit taken when the salon confirmed (services/deposit-lifecycle.ts):
+      // what was paid and what is left to pay in the salon.
+      const paid = depositPaidNote(appointment, locale);
       return {
         ...base,
         subject: t('confirmation.subject'),
         preview: t('confirmation.preview', { service, date }),
         eyebrow: t('confirmation.eyebrow'), title: t('confirmation.title'), intro: t('confirmation.intro'),
-        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration), labels('price', price)],
+        details: [
+          labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration), labels('price', price),
+          ...(paid ? [paid.row] : []),
+        ],
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('confirmation.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: [t('confirmation.footnote'), t('calendar.attached')],
+        footnotes: paid ? [t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')] : [t('confirmation.footnote'), t('calendar.attached')],
       };
-    case 'REQUEST_RECEIVED':
+    }
+    case 'REQUEST_RECEIVED': {
+      // A deposit Square holds for this request: taken only if the salon
+      // confirms it, released otherwise (services/payment-attempts.ts).
+      const hold = appointment.deposit?.status === 'AUTHORIZED' && appointment.deposit.amountPence > 0
+        ? formatGBP(appointment.deposit.amountPence, HTML_LANG[locale])
+        : null;
       return {
         ...base,
         subject: t('request.subject'),
         preview: t('request.preview', { service, date }),
         eyebrow: t('request.eyebrow'), title: t('request.title'), intro: t('request.intro'),
-        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('requestedDate', date), labels('requestedTime', time), labels('duration', duration), labels('price', price)],
+        details: [
+          labels('service', service), labels('stylist', appointment.stylist.name), labels('requestedDate', date), labels('requestedTime', time), labels('duration', duration), labels('price', price),
+          ...(hold ? [labels('deposit', t('values.depositHeld', { amount: hold }))] : []),
+        ],
         callout: options.salonPhone ? { title: t('request.calloutTitle'), body: t('request.calloutBody', { phone: options.salonPhone }) } : undefined,
         cta: { label: t('request.cta'), href: url(locale, '/appointments') },
-        footnotes: [t('request.footnote')],
+        // "Payment is due at the salon" is only true in full without a deposit.
+        footnotes: hold ? [t('request.depositHold', { amount: hold }), t('request.footnoteWithDeposit')] : [t('request.footnote')],
         reference: t('common.referenceShort', { reference }),
       };
-    case 'REQUEST_LAPSED':
-      // A booking request nobody confirmed before its time came (pending-request-lapse.ts).
+    }
+    case 'REQUEST_LAPSED': {
+      // A booking request nobody confirmed before its time came — or before
+      // the hold on the customer's card ran out (pending-request-lapse.ts).
+      const deposit = depositClosingNote(appointment, locale, options.depositOutcome);
       return {
         ...base,
         subject: t('requestLapsed.subject'),
         preview: t('requestLapsed.preview', { service, date }),
-        eyebrow: t('requestLapsed.eyebrow'), title: t('requestLapsed.title'), intro: t('requestLapsed.intro', { date, time }),
-        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('requestedDate', date), labels('requestedTime', time)],
+        eyebrow: t('requestLapsed.eyebrow'), title: t('requestLapsed.title'),
+        intro: options.holdExpired ? t('requestLapsed.introHoldExpired', { date, time }) : t('requestLapsed.intro', { date, time }),
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('requestedDate', date), labels('requestedTime', time), ...(deposit ? [deposit.row] : [])],
         callout: options.salonPhone ? { title: t('rescheduleAnotherTime.calloutTitle'), body: t('rescheduleAnotherTime.calloutBody', { phone: options.salonPhone }) } : undefined,
         cta: { label: t('requestLapsed.cta'), href: url(locale, '/book') },
-        footnotes: [t('requestLapsed.footnote')],
+        footnotes: [...(deposit ? [deposit.sentence] : []), t('requestLapsed.footnote')],
         reference: t('common.referenceShort', { reference }),
       };
-    case 'CANCELLATION':
+    }
+    case 'CANCELLATION': {
+      // Refunded, hold released, or kept (services/deposit-lifecycle.ts).
+      const deposit = depositClosingNote(appointment, locale, options.depositOutcome);
       return {
         ...base,
         subject: t('cancellation.subject'),
         preview: t('cancellation.preview', { service, date }),
         eyebrow: t('cancellation.eyebrow'), title: t('cancellation.title'), intro: t('cancellation.intro'),
-        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time)],
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), ...(deposit ? [deposit.row] : [])],
         cta: { label: t('cancellation.cta'), href: url(locale, '/book') },
         // A Google link can only add; the attached CANCEL file removes the entry
         // elsewhere. A request never confirmed is in no calendar: nothing to remove.
-        footnotes: [...(calendarMethodFor(kind, options) ? [t('calendar.cancelled')] : []), t('cancellation.footnote')],
+        footnotes: [...(deposit ? [deposit.sentence] : []), ...(calendarMethodFor(kind, options) ? [t('calendar.cancelled')] : []), t('cancellation.footnote')],
       };
+    }
     case 'RESCHEDULE': {
       if (!options.oldDate) throw new Error('Reschedule notification requires the original date');
       const previous = `${formatSalonLongDate(locale, options.oldDate)} ${formatSalonClock(locale, options.oldDate)}`;

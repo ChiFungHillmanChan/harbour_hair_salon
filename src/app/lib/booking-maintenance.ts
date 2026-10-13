@@ -39,8 +39,8 @@ export const BOOKING_MAINTENANCE_MESSAGE =
 
 /** Read the switch and calendar state without the public settings cache. */
 export async function assertOnlineBookingReady(db: Prisma.TransactionClient) {
-  // Production stays closed until Square deposits are wired, whatever the
-  // switch or the database says (lib/online-booking-lock.ts).
+  // Production stays closed without Square production credentials, whatever
+  // the switch or the database says (lib/online-booking-lock.ts).
   if (isOnlineBookingLockedForPayments()) throw new BookingError('MAINTENANCE');
   // A closed deployment must not wake Neon just to confirm booking is closed.
   if (process.env.NOTIFICATIONS_ENABLED !== 'true') throw new BookingError('MAINTENANCE');

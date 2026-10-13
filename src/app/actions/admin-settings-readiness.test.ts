@@ -108,17 +108,40 @@ test('closing booking works even while every readiness check is failing', async 
   assert.equal(f.saved.phone, '09876543210');
 });
 
-test('production refuses to switch online booking on until Square deposits are wired, but other settings still save', async () => {
+const SQUARE_PRODUCTION = {
+  SQUARE_PAYMENTS_ENABLED: 'true',
+  SQUARE_ENVIRONMENT: 'production',
+  SQUARE_ACCESS_TOKEN: 'production-access-token',
+  SQUARE_APPLICATION_ID: 'sq0idp-production-application',
+  SQUARE_LOCATION_ID: 'production-location',
+  SQUARE_WEBHOOK_SIGNATURE_KEY: 'production-signature-key',
+  SQUARE_WEBHOOK_NOTIFICATION_URL: 'https://www.harbourhair.co.uk/api/webhooks/square',
+};
+
+/** Run with exactly these production/Square variables, then restore the process environment. */
+async function inProductionBuild(square: Partial<Record<keyof typeof SQUARE_PRODUCTION, string>>, run: () => Promise<void>) {
   const env = process.env as Record<string, string | undefined>;
-  const previous = { node: env.NODE_ENV, vercel: env.VERCEL_ENV };
-  env.NODE_ENV = 'production';
-  env.VERCEL_ENV = 'production';
+  const keys = ['NODE_ENV', 'VERCEL_ENV', ...Object.keys(SQUARE_PRODUCTION)];
+  const previous = Object.fromEntries(keys.map((key) => [key, env[key]]));
+  for (const key of Object.keys(SQUARE_PRODUCTION)) delete env[key];
+  Object.assign(env, { NODE_ENV: 'production', VERCEL_ENV: 'production' }, square);
   try {
+    await run();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete env[key];
+      else env[key] = value;
+    }
+  }
+}
+
+test('production refuses to switch online booking on without Square production credentials, but other settings still save', async () => {
+  await inProductionBuild({}, async () => {
     const f = fixture();
     f.form.set('bookingEnabled', 'on');
     const refused = await f.actions.updateSiteSettings({ status: 'idle' }, f.form);
     assert.equal(refused.status, 'error');
-    assert.match('message' in refused ? refused.message : '', /Square deposits/);
+    assert.match('message' in refused ? refused.message : '', /Square production credentials/);
     assert.equal(f.saved.bookingEnabled, false);
     assert.equal(f.saved.phone, '01234567890', 'nothing is saved with a refused switch');
     assert.deepEqual(f.readinessCalls, { calendar: 0, operations: 0 });
@@ -127,12 +150,33 @@ test('production refuses to switch online booking on until Square deposits are w
     const g = fixture();
     assert.equal((await g.actions.updateSiteSettings({ status: 'idle' }, g.form)).status, 'success');
     assert.equal(g.saved.phone, '09876543210');
-  } finally {
-    for (const [key, value] of [['NODE_ENV', previous.node], ['VERCEL_ENV', previous.vercel]] as const) {
-      if (value === undefined) delete env[key];
-      else env[key] = value;
-    }
-  }
+  });
+});
+
+test('Square sandbox credentials never let production switch online booking on', async () => {
+  await inProductionBuild({ ...SQUARE_PRODUCTION, SQUARE_ENVIRONMENT: 'sandbox', SQUARE_APPLICATION_ID: 'sandbox-sq0idb-test-application' }, async () => {
+    const f = fixture();
+    f.form.set('bookingEnabled', 'on');
+    const refused = await f.actions.updateSiteSettings({ status: 'idle' }, f.form);
+    assert.match('message' in refused ? refused.message : '', /Square production credentials/);
+    assert.equal(f.saved.bookingEnabled, false);
+    assert.deepEqual(f.readinessCalls, { calendar: 0, operations: 0 });
+  });
+});
+
+test('with Square production credentials, the usual launch checks decide whether booking can open', async () => {
+  await inProductionBuild(SQUARE_PRODUCTION, async () => {
+    const f = fixture();
+    f.form.set('bookingEnabled', 'on');
+    assert.equal((await f.actions.updateSiteSettings({ status: 'idle' }, f.form)).status, 'success');
+    assert.equal(f.saved.bookingEnabled, true);
+    assert.deepEqual(f.readinessCalls, { calendar: 1, operations: 1 });
+
+    const blocked = fixture({ calendarReady: false });
+    blocked.form.set('bookingEnabled', 'on');
+    assert.equal((await blocked.actions.updateSiteSettings({ status: 'idle' }, blocked.form)).status, 'error');
+    assert.equal(blocked.saved.bookingEnabled, false);
+  });
 });
 
 test('saving settings also refreshes the cached blog list (the runbook\'s refresh step)', async () => {

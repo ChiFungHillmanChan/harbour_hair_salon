@@ -5,7 +5,10 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: '*',
-      allow: '/',
+      // Robots rules are path prefixes, so `/book` below would also hide the
+      // booking terms (in the sitemap). Crawlers follow the longest matching
+      // rule, which makes these two allows win over it.
+      allow: ['/', '/booking-terms', '/zh-hk/booking-terms'],
       // Private and transactional pages in both languages. These pages are
       // also noindex and protected server-side; robots is not the lock.
       disallow: [

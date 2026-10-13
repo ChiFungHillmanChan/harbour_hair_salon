@@ -1,6 +1,7 @@
-// STATUS: NOT WIRED. Square deposit foundation only — nothing in the booking
-// flow calls this yet, and production online booking is locked closed until it
-// does. See lib/online-booking-lock.ts (SQUARE_DEPOSITS_WIRED).
+// Applied to the server quote and the salon policy by services/deposit-quote.ts
+// (previewBookingQuote, and submitBooking, which authorizes the deposit;
+// docs/superpowers/specs/2026-10-13-square-deposits-design.md). No imports:
+// the booking page also uses poundsFromPence for the card form's amount.
 
 /** Policy inputs must come from trusted server pricing/settings before payment. */
 export type DepositPolicyInput = {
@@ -41,6 +42,18 @@ export function calculateDepositPence(input: DepositPolicyInput): number {
   const denominator = BigInt(100) * BigInt(10) ** BigInt(fraction.length - Number(exponent));
   const rounded = (BigInt(input.servicePricePence) * numerator + denominator / BigInt(2)) / denominator;
   return Number(rounded);
+}
+
+/**
+ * Admin → Settings warns above this salon deposit percentage (100 stays
+ * allowed): UK consumer law can treat a large deposit the trader keeps as an
+ * unfair term, and many salons take 10–30%.
+ */
+export const HIGH_DEPOSIT_PERCENT = 50;
+
+/** True for a percentage worth that warning. */
+export function isHighDepositPercent(percent: number): boolean {
+  return Number.isFinite(percent) && percent > HIGH_DEPOSIT_PERCENT;
 }
 
 export function poundsFromPence(pence: number): string {

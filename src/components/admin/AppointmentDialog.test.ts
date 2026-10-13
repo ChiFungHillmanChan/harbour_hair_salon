@@ -35,14 +35,22 @@ const SERVICES = [
   service('legacy', 'Blow Dry (Student & NHS)', 3000, { priceType: 'NHS', isBookable: false, vatDisplay: 'UNSPECIFIED' }),
 ];
 
+/** "Re-check payment" (DepositRecheckButton.tsx has its own test): found by type in the tree. */
+const Recheck = () => null;
+/** "Mark refund as settled outside the website" (DepositSettleRefundButton.tsx has its own test). */
+const SettleOutside = () => null;
+
 /** Renders the dialog with an in-memory draft store, so a re-render sees every update. */
 function dialog(target: DialogTarget, actions: Record<string, (input: Record<string, unknown>) => Promise<unknown>>) {
   const store = new Map<string, unknown>();
   const calls: Record<string, unknown>[] = [];
+  const statusCalls: unknown[][] = [];
   const { AppointmentDialog } = loadServerModule<typeof import('./AppointmentDialog')>('src/components/admin/AppointmentDialog.tsx', {
     react: { useEffect: () => undefined, useRef: (value: unknown) => ({ current: value }), useState: (value: unknown) => [value, () => undefined] },
     '@/i18n/client': { useT: (namespace: Namespace) => translator('en-GB', namespace), useLocale: () => 'en-GB' },
     './RescheduleRequestActions': { RescheduleRequestActions: () => null },
+    './DepositRecheckButton': { DepositRecheckButton: Recheck },
+    './DepositSettleRefundButton': { DepositSettleRefundButton: SettleOutside },
     '@/i18n/draft-store': {
       clearDraft: (key: string) => store.delete(key),
       useDraftState: (key: string, initial: unknown) => {
@@ -55,6 +63,9 @@ function dialog(target: DialogTarget, actions: Record<string, (input: Record<str
       createAppointmentByAdmin: async (input: Record<string, unknown>) => { calls.push(input); return actions.create(input); },
       editAppointmentByAdmin: async (input: Record<string, unknown>) => { calls.push(input); return actions.edit(input); },
     },
+    '@/app/actions/admin': {
+      updateAppointmentStatus: async (...args: unknown[]) => { statusCalls.push(args); return { success: true }; },
+    },
   });
   const render = () => elements(AppointmentDialog({
     target, services: SERVICES, stylists: [{ id: 's1', name: 'Ivan' }], onClose: () => undefined, onSaved: () => undefined,
@@ -64,7 +75,7 @@ function dialog(target: DialogTarget, actions: Record<string, (input: Record<str
     const key = `schedule-dialog:${target.mode === 'edit' ? target.appointmentId : 'new'}`;
     store.set(key, { ...(store.get(key) as Record<string, unknown>), ...patch });
   };
-  return { render, calls, patchDraft };
+  return { render, calls, patchDraft, statusCalls };
 }
 
 const submitButton = (nodes: Element[]) => nodes.filter((node) => node.type === 'button').at(-1)!;
@@ -187,4 +198,83 @@ test('a customer on file with a saved language is shown it and never asked', asy
 
   await (submitButton(nodes).props.onClick as () => Promise<void>)();
   assert.equal(calls[0].customerLocale, undefined, 'their own saved language is used, not the dialog\'s');
+});
+
+// Cancelling a booking that holds a card deposit (actions/admin.ts
+// updateAppointmentStatus): a confirmed booking's taken deposit is refunded
+// unless staff untick the box; a request's hold is always released.
+const depositTarget = (status: string, deposit: { state: string; amountPence: number }): DialogTarget => ({
+  mode: 'edit', appointmentId: 'appt-1', dateStr: '2099-09-15', time: '10:00', stylistId: 's1', serviceId: 'blow-dry',
+  durationMin: 45, notes: '', customerName: 'Mei', status, updatedAt: '2099-09-01T00:00:00.000Z', price: { known: false },
+  date: '2099-09-15T09:00:00.000Z', rescheduleRequestedDate: null, rescheduleRequestedAt: null, deposit: deposit as never,
+});
+
+async function pressCancel(nodes: Element[]) {
+  const asked: string[] = [];
+  const previous = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = { confirm: (message: string) => { asked.push(message); return true; } };
+  try {
+    const button = nodes.find((node) => node.type === 'button' && text(node) === 'Cancel booking');
+    assert.ok(button, 'the dialog offers Cancel booking');
+    await (button.props.onClick as () => Promise<void>)();
+  } finally {
+    (globalThis as { window?: unknown }).window = previous;
+  }
+  return asked;
+}
+
+test('cancelling a confirmed booking with a taken deposit refunds it by default; unticking keeps it', async () => {
+  const { render, statusCalls } = dialog(depositTarget('CONFIRMED', { state: 'PAID', amountPence: 2000 }), {});
+  let nodes = render();
+  const chip = nodes.find((node) => typeof node.type === 'function' && 'deposit' in node.props);
+  assert.deepEqual(chip?.props.deposit, { state: 'PAID', amountPence: 2000 }, 'the deposit chip');
+  assert.deepEqual(nodes.filter((node) => node.type === Recheck).map((node) => node.props), [{ appointmentId: 'appt-1' }], 'Re-check payment, next to the chip');
+  const box = nodes.find((node) => node.type === 'input' && node.props.type === 'checkbox');
+  assert.ok(box, 'the refund choice is offered');
+  assert.equal(box.props.checked, true, 'ticked by default');
+  assert.match(text(nodes), /Refund the £20\.00 deposit/);
+  assert.deepEqual(await pressCancel(nodes), ['Cancel Mei’s booking and refund the £20.00 deposit? This releases the appointment time.']);
+  assert.deepEqual(statusCalls.at(-1), ['appt-1', 'CANCELLED', { refundDeposit: true }]);
+
+  // A successful cancel closes the dialog; staff who keep the deposit untick first.
+  const keeping = dialog(depositTarget('CONFIRMED', { state: 'PAID', amountPence: 2000 }), {});
+  nodes = keeping.render();
+  (nodes.find((node) => node.type === 'input' && node.props.type === 'checkbox')!.props.onChange as (event: unknown) => void)({ target: { checked: false } });
+  nodes = keeping.render();
+  assert.equal(nodes.find((node) => node.type === 'input' && node.props.type === 'checkbox')!.props.checked, false);
+  assert.deepEqual(await pressCancel(nodes), ['Cancel Mei’s booking and keep the £20.00 deposit? This releases the appointment time.']);
+  assert.deepEqual(keeping.statusCalls, [['appt-1', 'CANCELLED', { refundDeposit: false }]]);
+});
+
+test('cancelling a request releases its hold: no refund choice, and the dialog says so', async () => {
+  const { render, statusCalls } = dialog(depositTarget('PENDING', { state: 'HELD', amountPence: 2000 }), {});
+  const nodes = render();
+  assert.equal(nodes.find((node) => node.type === 'input' && node.props.type === 'checkbox'), undefined);
+  assert.match(text(nodes), /Cancelling releases the £20\.00 hold on the customer’s card\./);
+  assert.deepEqual(await pressCancel(nodes), ['Cancel Mei’s request? The £20.00 hold on their card will be released and the appointment time freed.']);
+  assert.deepEqual(statusCalls.at(-1), ['appt-1', 'CANCELLED', { refundDeposit: true }]);
+});
+
+test('a booking without a deposit cancels as before', async () => {
+  const target = depositTarget('CONFIRMED', { state: 'PAID', amountPence: 2000 });
+  delete (target as { deposit?: unknown }).deposit;
+  const { render, statusCalls } = dialog(target, {});
+  const nodes = render();
+  assert.equal(nodes.find((node) => node.type === 'input' && node.props.type === 'checkbox'), undefined);
+  assert.equal(nodes.find((node) => node.type === Recheck), undefined, 'no deposit, nothing to re-check');
+  assert.deepEqual(await pressCancel(nodes), ['Cancel Mei’s booking? This releases the appointment time.']);
+  assert.deepEqual(statusCalls.at(-1), ['appt-1', 'CANCELLED', { refundDeposit: true }]);
+});
+
+// Review W-C (c): the booking's payment panel offers "Mark refund as settled
+// outside the website" for a refund Square has not confirmed — and only then.
+test('a refund Square has not confirmed can be marked settled outside the website from the payment panel', () => {
+  const stuck = dialog(depositTarget('CANCELLED', { state: 'REFUND_PENDING', amountPence: 2000, refundToSettle: { id: 'refund-1', amountPence: 2000 } } as never), {});
+  const nodes = stuck.render();
+  assert.deepEqual(nodes.filter((node) => node.type === SettleOutside).map((node) => node.props), [{ appointmentId: 'appt-1', refund: { id: 'refund-1', amountPence: 2000 } }]);
+  assert.equal(nodes.filter((node) => node.type === Recheck).length, 1, 'next to Re-check payment');
+  // Square is still handling it, or it is done: nothing to settle by hand.
+  for (const deposit of [{ state: 'REFUND_PENDING', amountPence: 2000 }, { state: 'REFUNDED', amountPence: 2000 }, { state: 'PAID', amountPence: 2000 }]) {
+    assert.equal(dialog(depositTarget('CANCELLED', deposit), {}).render().find((node) => node.type === SettleOutside), undefined, deposit.state);
+  }
 });

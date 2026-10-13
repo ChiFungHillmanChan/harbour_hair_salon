@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cancelAppointment, withdrawRescheduleRequest } from '@/app/actions/booking';
 import type { RescheduleRequestView } from '@/app/lib/reschedule-request';
+import type { DepositView } from '@/app/lib/deposit-display';
 import type { PriceNature, PriceType, VatDisplay } from '@/app/services/pricing/policy';
 import { useFormatPrice } from '@/components/pricing/PriceParts';
 import { useLocale, useT } from '@/i18n/client';
@@ -33,6 +34,8 @@ type SerializedAppointment = {
   service: { name: string; nameIsEnglish?: boolean; duration: number };
   serviceId: string;
   price: BookedPrice;
+  /** The card deposit's state (lib/deposit-display.ts); absent or null: none. */
+  deposit?: DepositView | null;
   hasReview?: boolean;
   request: RescheduleRequestView;
   /** The entry for the customer's own calendar: confirmed, upcoming bookings only. */
@@ -99,6 +102,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
 
   // The recorded amount and the notes that were true when it was booked.
   const { price } = appointment;
+  const deposit = appointment.deposit ?? null;
   const priceNotes: string[] = [];
   if (price.known) {
     if (price.priceType === 'NHS') priceNotes.push(tp('nhsApplied'));
@@ -124,7 +128,13 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
       : undefined;
 
   async function handleCancel() {
-    if (!window.confirm(t('card.confirmCancel'))) return;
+    // Say what happens to the deposit: a taken one is refunded, a hold released.
+    const confirmText = deposit?.state === 'PAID'
+      ? t('card.confirmCancelRefund', { amount: formatPrice(deposit.amountPence) })
+      : deposit?.state === 'HELD'
+        ? t('card.confirmWithdrawRelease', { amount: formatPrice(deposit.amountPence) })
+        : t('card.confirmCancel');
+    if (!window.confirm(confirmText)) return;
 
     setCancelling(true);
     setError(null);
@@ -179,6 +189,9 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             </p>
             {priceNotes.length > 0 && <p className="text-xs text-zinc-500">{priceNotes.join(' · ')}</p>}
             {!price.known && <p className="text-xs text-zinc-500">{tp('unknownPriceHelp')}</p>}
+            {deposit && (
+              <p className="text-sm text-zinc-700">{t.dynamic(`deposit.${deposit.state}`, { amount: formatPrice(deposit.amountPence) })}</p>
+            )}
           </div>
 
           <div className="flex flex-col items-start sm:items-end gap-3">

@@ -57,7 +57,13 @@ function bookAs(saved: string | null, pageLocale: Locale) {
         findUnique: async () => ({ emailVerifiedAt: new Date('2026-01-01'), oauthAccounts: [], preferredLocale: saved }),
         update: async ({ where, data }: { where: unknown; data: unknown }) => { writes.push({ where, data }); return {}; },
       },
-      service: { findUnique: async () => ({ duration: 60, requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false, isBookable: true, isPublic: true }) },
+      service: { findUnique: async () => ({
+        id: 'service-1', price: '30.00', duration: 60, offeringId: null, hairLength: null, priceType: 'STANDARD', priceVersion: 1, vatDisplay: 'UNSPECIFIED',
+        priceNature: 'LISTED', durationConfirmed: true, surchargeBaseServiceId: null, surchargeAmount: null, priceSource: null, depositOverridePence: null,
+        requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false, isBookable: true, isPublic: true,
+      }) },
+      // No SiteSettings row: deposits off (services/deposit-quote.ts), so no card deposit is due.
+      siteSettings: { findUnique: async () => null },
       availability: { findFirst: async () => ({ startTime: '09:00', endTime: '18:00' }) },
     },
     '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },

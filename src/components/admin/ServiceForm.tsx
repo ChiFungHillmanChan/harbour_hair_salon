@@ -8,6 +8,7 @@ import { BilingualContentEditor } from './BilingualContentEditor';
 import { useT } from '@/i18n/client';
 import { clearDraft, usePreservedForm } from '@/i18n/draft-store';
 import { HAIR_LENGTHS, PRICE_NATURES, PRICE_TYPES, VAT_DISPLAYS } from '@/app/services/pricing/policy';
+import { penceToDecimalString } from '@/app/services/pricing/money';
 
 type FormAction = (prev: ServiceActionState, formData: FormData) => Promise<ServiceActionState>;
 
@@ -30,6 +31,8 @@ type ServiceLite = {
   isPublic: boolean;
   isBookable: boolean;
   durationConfirmed: boolean;
+  /** Online deposit: null follows the salon policy, 0 never takes one, N is fixed pence. */
+  depositOverridePence: number | null;
   /** Set for a composite option (e.g. extra long = long + surcharge): shown read-only. */
   composite?: { baseName: string; surcharge: string } | null;
 };
@@ -211,6 +214,29 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
             <input type="checkbox" name="isConsultation" defaultChecked={service?.isConsultation ?? false} className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900" />
             <span className="text-sm text-zinc-700">{t('serviceForm.isConsultation')}</span>
           </label>
+        </div>
+      </section>
+
+      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+        <div>
+          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('serviceForm.depositTitle')}</h2>
+          <p id="service-deposit-help" className="mt-1 text-xs leading-5 text-zinc-500">{t('serviceForm.depositHelp')}</p>
+        </div>
+        <div>
+          <label htmlFor="service-deposit" className={labelClass}>
+            {t('serviceForm.depositOverride')} <span className="text-zinc-400 normal-case tracking-normal">{t('serviceForm.optional')}</span>
+          </label>
+          <input
+            id="service-deposit"
+            type="text"
+            inputMode="decimal"
+            name="depositOverride"
+            pattern="\d{1,6}(\.\d{1,2})?"
+            defaultValue={service?.depositOverridePence == null ? '' : penceToDecimalString(service.depositOverridePence)}
+            placeholder={t('serviceForm.depositPlaceholder')}
+            aria-describedby="service-deposit-help"
+            className={`${fieldClass} max-w-48 font-mono`}
+          />
         </div>
       </section>
 

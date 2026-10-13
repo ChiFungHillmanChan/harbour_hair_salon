@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { BookingError } from '../booking-errors';
 import { buildQuote, QuoteIntegrityError, type PriceQuote } from './quote';
 
-/** Everything a quote, the booking gates and the Treatwell sync read from a Service. */
+/** Everything a quote, its deposit, the booking gates and the Treatwell sync read from a Service. */
 export const quotableServiceSelect = {
   id: true,
   name: true,
@@ -25,6 +25,8 @@ export const quotableServiceSelect = {
   isConsultation: true,
   isPatchTest: true,
   treatwellExternalId: true,
+  // services/deposit-quote.ts: null = salon policy, 0 = none, N = fixed pence.
+  depositOverridePence: true,
 } satisfies Prisma.ServiceSelect;
 
 export type QuotableServiceRow = Prisma.ServiceGetPayload<{ select: typeof quotableServiceSelect }>;

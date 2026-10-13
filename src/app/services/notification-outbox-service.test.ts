@@ -157,6 +157,105 @@ test('disabled delivery still enqueues notification fields and frozen values wit
   assert.equal(saved.locale, 'en-GB', 'a booking with no recorded language is mailed in English');
 });
 
+test('a request queued with a held deposit carries it in the snapshot (schema 3); without one it carries none', async () => {
+  const payloads: string[] = [];
+  const db = {
+    notificationDelivery: {
+      findUnique: async () => null,
+      upsert: async ({ create }: { create: { payloadJson: string } }) => { payloads.push(create.payloadJson); return { id: `queued-${payloads.length}` }; },
+    },
+  };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': db, './email-service': {},
+  });
+  const appointment = {
+    id: 'a', date: new Date('2099-09-12T12:00:00Z'), notificationVersion: 0, priceAtBooking: 100, durationAtBooking: 60, notes: null,
+    user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', duration: 60 },
+  };
+  await service.enqueueAppointmentNotification(db as never, 'REQUEST_RECEIVED', {
+    ...appointment, paymentAttempt: { status: 'AUTHORIZED', amountPence: 2000, squarePaymentId: 'square-secret-id' },
+  } as never);
+  await service.enqueueAppointmentNotification(db as never, 'SALON_ALERT', { ...appointment, id: 'b' } as never);
+  const [held, none] = payloads.map((payload) => JSON.parse(payload));
+  assert.equal(held.appointment.schema, 3);
+  assert.deepEqual(held.appointment.deposit, { amountPence: 2000, status: 'AUTHORIZED' });
+  assert.ok(!payloads[0].includes('square-secret-id'), 'no Square identifiers travel with the email');
+  assert.equal(none.appointment.schema, 3);
+  assert.equal(none.appointment.deposit, null);
+});
+
+test('the queued deposit reaches the email at send time without a database read', async () => {
+  const f = fixture({ unprepared: true });
+  f.row.kind = 'REQUEST_RECEIVED';
+  f.row.eventKey = 'appointment/a/0/REQUEST_RECEIVED';
+  f.db.appointment.findUnique = async () => ({ id: 'a', status: 'PENDING', date: new Date('2026-09-12T12:00:00Z'), notificationVersion: 0, review: null });
+  const payload = JSON.parse(f.row.payloadJson);
+  payload.appointment = {
+    schema: 3, id: 'a', date: '2026-09-12T12:00:00.000Z', notes: null, user: { name: 'Customer', email: 'customer@example.com' },
+    stylist: { name: 'Stylist' }, service: { name: 'Cut', duration: 60 }, price: { known: false }, deposit: { amountPence: 2000, status: 'AUTHORIZED' },
+  };
+  f.row.payloadJson = JSON.stringify(payload);
+  const prepared: unknown[] = [];
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': f.db,
+    './email-service': {
+      prepareAppointmentEmail: async (_kind: string, appointment: unknown) => { prepared.push(appointment); return { from: 'f', to: 'customer@example.com', subject: 's', html: 'h' }; },
+      sendPreparedEmail: async () => undefined,
+    },
+  });
+  await service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+  assert.equal(f.row.status, 'SENT');
+  assert.deepEqual((prepared[0] as { deposit: unknown }).deposit, { amountPence: 2000, status: 'AUTHORIZED' });
+});
+
+test('what became of a deposit is queued with the closing mail and reaches it at send time', async () => {
+  const payloads: string[] = [];
+  const db = {
+    notificationDelivery: {
+      findUnique: async () => null,
+      upsert: async ({ create }: { create: { payloadJson: string } }) => { payloads.push(create.payloadJson); return { id: `queued-${payloads.length}` }; },
+    },
+  };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': db, './email-service': {},
+  });
+  const appointment = {
+    id: 'a', date: new Date('2099-09-12T12:00:00Z'), notificationVersion: 1, priceAtBooking: 100, durationAtBooking: 60, notes: null,
+    user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', duration: 60 },
+    paymentAttempt: { status: 'CAPTURED', amountPence: 2000 },
+  };
+  await service.enqueueAppointmentNotification(db as never, 'CANCELLATION', appointment as never, { wasConfirmed: true, depositOutcome: 'REFUNDING' });
+  await service.enqueueAppointmentNotification(db as never, 'REQUEST_LAPSED', { ...appointment, id: 'b', paymentAttempt: { status: 'AUTHORIZED', amountPence: 2000 } } as never, { depositOutcome: 'RELEASED', holdExpired: true });
+  await service.enqueueAppointmentNotification(db as never, 'CANCELLATION', { ...appointment, id: 'c' } as never, { wasConfirmed: false });
+  const [refunded, lapsed, plain] = payloads.map((payload) => JSON.parse(payload));
+  assert.deepEqual(refunded.options, { wasConfirmed: true, depositOutcome: 'REFUNDING' });
+  assert.deepEqual(refunded.appointment.deposit, { amountPence: 2000, status: 'CAPTURED' });
+  assert.deepEqual(lapsed.options, { depositOutcome: 'RELEASED', holdExpired: true });
+  assert.deepEqual(plain.options, { wasConfirmed: false }, 'nothing added without an outcome');
+
+  // At send time the options travel from the payload alone.
+  const f = fixture({ unprepared: true });
+  f.row.kind = 'CANCELLATION';
+  f.row.eventKey = 'appointment/a/0/CANCELLATION';
+  f.db.appointment.findUnique = async () => ({ id: 'a', status: 'CANCELLED', date: new Date('2026-09-12T12:00:00Z'), notificationVersion: 0, review: null });
+  const payload = JSON.parse(f.row.payloadJson);
+  payload.options = { wasConfirmed: true, depositOutcome: 'KEPT' };
+  payload.appointment = { ...refunded.appointment, date: '2026-09-12T12:00:00.000Z' };
+  f.row.payloadJson = JSON.stringify(payload);
+  const prepared: { options: Record<string, unknown> }[] = [];
+  const sender = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': f.db,
+    './email-service': {
+      prepareAppointmentEmail: async (_kind: string, _appointment: unknown, options: Record<string, unknown>) => { prepared.push({ options }); return { from: 'f', to: 'customer@example.com', subject: 's', html: 'h' }; },
+      sendPreparedEmail: async () => undefined,
+    },
+  });
+  await sender.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+  assert.equal(f.row.status, 'SENT');
+  assert.equal(prepared[0].options.depositOutcome, 'KEPT');
+  assert.equal(prepared[0].options.wasConfirmed, true);
+});
+
 test('customer mail keeps the booking language; the salon alert uses the salon setting', async () => {
   const payloads: Record<string, { locale: string; appointment: { service: { name: string }; price: unknown } }> = {};
   const db = {

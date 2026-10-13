@@ -7,16 +7,20 @@ import { localizeHref } from '@/i18n/paths';
 import { SITE_URL } from '@/app/lib/site-url';
 import type { EmailContent } from './email-content';
 import { OPERATIONS_READINESS_JOB } from './operations-readiness';
+import { alertWindows, collectPaymentAttention, countPaymentAttention, type PaymentAttentionCounts } from './payment-attention';
 
 /**
  * The salon's daily "needs attention" email. Nothing else pushes a problem to
- * anyone: failed emails, a failing scheduled job or a dead Fresha feed only
- * show up if someone opens Admin → Operations. It runs inside the existing
+ * anyone: failed emails, a failing scheduled job, a dead Fresha feed or a card
+ * deposit nothing could settle (payment-attention.ts) only show up if someone
+ * opens Admin → Operations. It runs inside the existing
  * 08:00 UTC reminders cron (the same Neon wake — no new schedule) and sends
  * nothing on a good day.
  */
 
-type OpsDb = Pick<PrismaClient, 'notificationDelivery' | 'backgroundJobState' | 'calendarConnection' | 'appointment' | 'siteSettings'>;
+type OpsDb = Pick<PrismaClient,
+  'notificationDelivery' | 'backgroundJobState' | 'calendarConnection' | 'appointment' | 'siteSettings'
+  | 'paymentAttempt' | 'paymentRefund' | 'squareWebhookEvent'>;
 
 export type OpsFinding =
   | { kind: 'HOUSEKEEPING_OFF' }
@@ -24,13 +28,24 @@ export type OpsFinding =
   | { kind: 'JOB_FAILING'; job: string; since: Date }
   | { kind: 'CALENDAR_ERROR'; stylist: string; provider: string }
   | { kind: 'CALENDAR_STALE'; stylist: string; provider: string; lastSuccessAt: Date | null }
-  | { kind: 'REQUESTS_WAITING'; count: number; oldestCreatedAt: Date };
+  | { kind: 'REQUESTS_WAITING'; count: number; oldestCreatedAt: Date }
+  // Card deposits and refunds nothing could settle by itself (payment-attention.ts).
+  | ({ kind: 'PAYMENTS_NEED_ATTENTION' } & PaymentAttentionCounts);
+
+/**
+ * The order the payment lines are listed in the email, most urgent first: a
+ * Square setup refusal turns every customer away, so it leads.
+ */
+const PAYMENT_LINES: (keyof PaymentAttentionCounts)[] = [
+  'squareSetupRefused', 'takenNotConfirmed', 'takenOnCancelled', 'refundsFailed', 'refundsUnresolved', 'lateCaptures', 'cardDeclines',
+  'awaitingSquare', 'holdsNotReleased', 'refundsUnconfirmed', 'unmatchedNotifications',
+];
 
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
 
 export async function collectOpsFindings(db: OpsDb, now: Date, options: { calendarSyncEnabled: boolean; housekeepingEnabled: boolean }): Promise<OpsFinding[]> {
-  const [failedDeliveries, jobs, connections, waiting] = await Promise.all([
+  const [failedDeliveries, jobs, connections, waiting, payments] = await Promise.all([
     // Final failures only: a delivery still inside its retry window says PENDING.
     db.notificationDelivery.count({ where: { status: 'FAILED', updatedAt: { gte: new Date(now.getTime() - DAY) } } }),
     db.backgroundJobState.findMany({ select: { name: true, lastFailedAt: true, lastSucceededAt: true } }),
@@ -50,6 +65,7 @@ export async function collectOpsFindings(db: OpsDb, now: Date, options: { calend
       orderBy: { createdAt: 'asc' },
       take: 100,
     }),
+    collectPaymentAttention(db, now, alertWindows(now), 100),
   ]);
 
   const findings: OpsFinding[] = [];
@@ -73,6 +89,8 @@ export async function collectOpsFindings(db: OpsDb, now: Date, options: { calend
     }
   }
   if (waiting.length > 0) findings.push({ kind: 'REQUESTS_WAITING', count: waiting.length, oldestCreatedAt: waiting[0].createdAt });
+  const paymentCounts = countPaymentAttention(payments);
+  if (Object.values(paymentCounts).some((count) => count > 0)) findings.push({ kind: 'PAYMENTS_NEED_ATTENTION', ...paymentCounts });
   return findings;
 }
 
@@ -83,7 +101,7 @@ export function opsAlertContent(findings: OpsFinding[], locale: Locale): EmailCo
   const tm = translator(locale, 'emails');
   const when = (date: Date | null) => (date ? formatSalonDateTime(locale, date) : t('operations.never'));
   const provider = (code: string) => PROVIDER_NAMES[code] ?? code;
-  const details = findings.map((finding) => {
+  const details = findings.flatMap((finding) => {
     switch (finding.kind) {
       case 'HOUSEKEEPING_OFF':
         return { label: t('opsAlert.labels.jobs'), value: t('opsAlert.findings.HOUSEKEEPING_OFF') };
@@ -97,6 +115,12 @@ export function opsAlertContent(findings: OpsFinding[], locale: Locale): EmailCo
         return { label: t('opsAlert.labels.calendars'), value: t('opsAlert.findings.CALENDAR_STALE', { stylist: finding.stylist, provider: provider(finding.provider), time: when(finding.lastSuccessAt) }) };
       case 'REQUESTS_WAITING':
         return { label: t('opsAlert.labels.requests'), value: t('opsAlert.findings.REQUESTS_WAITING', { count: finding.count, time: when(finding.oldestCreatedAt) }) };
+      case 'PAYMENTS_NEED_ATTENTION':
+        // One line per kind of problem, most urgent first.
+        return PAYMENT_LINES.filter((line) => finding[line] > 0).map((line) => ({
+          label: t('opsAlert.labels.payments'),
+          value: t.dynamic(`opsAlert.findings.PAYMENTS_NEED_ATTENTION.${line}`, { count: finding[line] }),
+        }));
     }
   });
   return {

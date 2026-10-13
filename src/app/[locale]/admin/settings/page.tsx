@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  // The live row, not the day-long public cache: Save writes every field back.
+  // The live row, not the day-long public cache: Save writes every field back,
+  // and the deposit policy must show exactly what the money paths will read.
   const [settings, t] = await Promise.all([getSiteSettingsForEditing(), getT('adminContent')]);
   // The settings row is created on first read above; if the database was
   // unreachable the hero editor is left out rather than failing the page.
@@ -21,6 +22,11 @@ export default async function AdminSettingsPage() {
     console.error('Failed to load the hero editor:', error);
     return null;
   });
+  const deposits = {
+    depositsEnabled: settings.depositsEnabled,
+    depositPercent: settings.depositPercent,
+    depositMinimumServicePence: settings.depositMinimumServicePence,
+  };
   // Everything but the hero text, which only the bilingual editor below writes.
   const operational = {
     phone: settings.phone,
@@ -34,6 +40,7 @@ export default async function AdminSettingsPage() {
     booksyUrl: settings.booksyUrl,
     bookingEnabled: settings.bookingEnabled,
     salonNotificationLocale: settings.salonNotificationLocale,
+    ...deposits,
   };
 
   return (

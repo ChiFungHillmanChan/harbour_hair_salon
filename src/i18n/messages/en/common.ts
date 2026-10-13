@@ -59,6 +59,7 @@ const common = {
     rights: '© {year} Harbour Hair Salon. All rights reserved.',
     paymentLanguages: 'Payment: Cash & Card · Languages: English, Chinese (Cantonese)',
     privacy: 'Privacy',
+    bookingTerms: 'Booking terms',
     unsubscribe: 'Unsubscribe',
     promoLabel: 'Booking',
     promoTitle: 'Ready for a fresh look?',

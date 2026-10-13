@@ -62,3 +62,12 @@ test('rejects nonsensical configuration', () => {
   assert.throws(() => new SlidingWindow({ limit: 0, windowMs: 1000 }));
   assert.throws(() => new SlidingWindow({ limit: 1, windowMs: 0 }));
 });
+
+test('allows() looks without recording', () => {
+  const window = new SlidingWindow({ limit: 2, windowMs: 1_000 });
+  for (let i = 0; i < 5; i++) assert.equal(window.allows('k', 0), true);
+  window.check('k', 0);
+  window.check('k', 0);
+  assert.equal(window.allows('k', 10), false);
+  assert.equal(window.allows('k', 1_001), true, 'the window slides');
+});

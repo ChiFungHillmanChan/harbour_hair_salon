@@ -33,6 +33,8 @@ function bookingFixture(
   const hours = { startTime: '09:00', endTime: options.hoursEnd ?? '18:00' };
   const tx = {
     service: { findUnique: async () => liveService },
+    // No SiteSettings row: deposits off (services/deposit-quote.ts), so no card deposit is due.
+    siteSettings: { findUnique: async () => null },
     stylist: {
       findUnique: async () => ({ id: 'stylist-1', name: 'Stylist', isActive: options.stylistActive !== false, treatwellExternalId: null }),
       findMany: async () => [{ id: 'stylist-1', name: 'Stylist', availabilities: [hours] }],

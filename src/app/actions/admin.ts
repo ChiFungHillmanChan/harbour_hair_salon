@@ -20,6 +20,14 @@ import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { hasAppointmentStarted } from '@/app/lib/appointment-timing';
 import { isRequestLapseNoticeDue, readSalonPhoneForLapseNotice } from '@/app/services/request-lapse-notice';
 import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
+import {
+  approvalStep, claimDepositForCapture, depositGatewayFor, loadLinkedDeposit, markDepositCaptured, NO_DEPOSIT,
+  planDepositForClosing, recordDepositTakenNotConfirmed, settleDepositAfterCommit, settleDepositBeforeClosing, submitDepositRefund,
+  takeDeposit, type ApprovalStep, type LinkedDeposit,
+} from '@/app/services/deposit-lifecycle';
+import { formatGBP } from '@/app/services/pricing/money';
+import { describeFault } from '@/app/lib/fault';
+import { HTML_LANG } from '@/i18n/config';
 import { getActionLocale } from '@/i18n/request';
 import { translator } from '@/i18n/messages';
 import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
@@ -454,7 +462,49 @@ export async function promoteGoogleUserToAdmin(id: string) {
 const ALLOWED_APPOINTMENT_STATUSES = ['CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
 type AppointmentStatus = (typeof ALLOWED_APPOINTMENT_STATUSES)[number];
 
-export async function updateAppointmentStatus(appointmentId: string, status: string) {
+const statusInclude = {
+  user: { select: { email: true, name: true } },
+  stylist: { select: { name: true, treatwellExternalId: true } },
+  service: { select: { name: true, price: true, duration: true, treatwellExternalId: true } },
+} as const;
+type StatusAppointment = Prisma.AppointmentGetPayload<{ include: typeof statusInclude }>;
+
+/**
+ * `refresh`: the board changed although the action was refused (a deposit's
+ * state moved, or the request was cancelled), so the caller reloads it.
+ */
+export type AppointmentStatusResult = { success: true } | { success: false; error: string; refresh?: true };
+
+/** A cancelled booking leaves Treatwell too, when it was sent there. */
+function cancelledSyncFields(current: Pick<StatusAppointment, 'treatwellBookingId' | 'stylist' | 'service'>) {
+  const api = getTreatwellApiConfiguration();
+  return {
+    treatwellSyncStatus: changedTreatwellSyncStatus({
+      apiReady: api.enabled && api.configured,
+      treatwellBookingId: current.treatwellBookingId,
+      stylistExternalId: current.stylist.treatwellExternalId,
+      serviceExternalId: current.service.treatwellExternalId,
+    }),
+    treatwellSyncError: null,
+  };
+}
+
+/**
+ * Staff move a booking on the board: confirm a request, mark a visit
+ * completed, or cancel (decline) it. Card deposits
+ * (docs/superpowers/specs/2026-10-13-square-deposits-design.md) follow:
+ * confirming takes the request's deposit (approveWithDeposit); declining or
+ * cancelling a request releases its hold; cancelling a confirmed booking
+ * refunds a deposit taken in full unless `refundDeposit` is false (staff keep
+ * it — a late cancellation or no-show, as the booking terms allow); marking
+ * completed keeps a taken deposit (it counts toward the bill) and releases a
+ * hold nobody took. Bookings without a deposit change exactly as before.
+ */
+export async function updateAppointmentStatus(
+  appointmentId: string,
+  status: string,
+  options: { refundDeposit?: boolean } = {},
+): Promise<AppointmentStatusResult> {
   // Messages go back in the admin's interface language; see booking-errors.ts.
   const locale = await getActionLocale();
   const session = await verifySession();
@@ -464,104 +514,268 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
   if (!ALLOWED_APPOINTMENT_STATUSES.includes(status as AppointmentStatus)) {
     return { success: false, error: translator(locale, 'adminSchedule')('errors.INVALID_STATUS') };
   }
+  // Keeping a taken deposit is an explicit choice; anything else refunds it.
+  const refundDeposit = options?.refundDeposit !== false;
+  let depositStep: ApprovalStep = 'NONE';
+  let slotLost: { amountPence: number } | null = null;
   try {
-    // Network I/O stays outside the serializable transaction below. Re-import
-    // this stylist's recent Fresha sales, and any stylist's feed the paused
-    // out-of-hours import has let go stale, or an evening confirmation fails
-    // the all-stylist calendar-freshness check until the next morning.
+    const now = new Date();
     if (status === 'CONFIRMED') {
       const target = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { stylistId: true } });
+      // A request whose card hold has gone, or whose deposit someone else is
+      // taking, is refused before the feed refresh; so is one whose deposit
+      // this deployment cannot take.
+      const deposit = target ? await loadLinkedDeposit(prisma, appointmentId) : null;
+      const step = approvalStep(deposit, now);
+      if (step !== 'NONE' && step !== 'CAPTURE' && step !== 'CONFIRM') throw new BookingError(step);
+      if (step === 'CAPTURE' && deposit && !depositGatewayFor(deposit)) throw new BookingError('DEPOSIT_PAYMENTS_UNAVAILABLE');
+      depositStep = step;
+      // Network I/O stays outside the serializable transaction below. Re-import
+      // this stylist's recent Fresha sales, and any stylist's feed the paused
+      // out-of-hours import has let go stale, or an evening confirmation fails
+      // the all-stylist calendar-freshness check until the next morning.
       if (target) await refreshCalendarFeedsBeforeApproval(target.stylistId);
+    } else {
+      // A capture nobody saw finish is settled first (Square is asked), so the
+      // closing knows whether the deposit was taken or is still only held.
+      const refusal = await settleDepositBeforeClosing(prisma, appointmentId, now);
+      if (refusal) throw new BookingError(refusal);
     }
-    const { appointment, notified } = await runSerializableWithRetry(async (tx) => {
-      const include = {
-        user: { select: { email: true, name: true } },
-        stylist: { select: { name: true, treatwellExternalId: true } },
-        service: { select: { name: true, price: true, duration: true, treatwellExternalId: true } },
-      } as const;
-      const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
-      if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      if (current.status === status) return { appointment: current, notified: false };
-      if (status === 'CONFIRMED' && current.status !== 'PENDING') {
-        throw new BookingError('ONLY_PENDING_CONFIRM');
-      }
-      if (current.status === 'CANCELLED') {
-        throw new BookingError('CANCELLED_CANNOT_REINSTATE');
-      }
-      const now = new Date();
-      const started = hasAppointmentStarted(current.date, now);
-      // Nobody can be told "confirmed" for a time that has already come; the
-      // notifications cron closes such a request instead (pending-request-lapse.ts).
-      if (status === 'CONFIRMED' && started) throw new BookingError('REQUEST_EXPIRED');
-      // Completion cannot be undone, so it waits until the visit has begun.
-      if (status === 'COMPLETED' && !started) throw new BookingError('COMPLETE_BEFORE_START');
 
-      if (status === 'CONFIRMED') {
-        const readiness = await checkCalendarBookingReadiness(tx);
-        if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
-        // Imported bookings or opening hours may have changed since the request.
-        await assertAppointmentSlotAvailable(tx, current, current.date);
+    if (depositStep !== 'NONE') {
+      const approved = await approveWithDeposit(appointmentId, session.userId);
+      // Finish the action's cache invalidation before external email delivery.
+      invalidateStylistIcalFeed();
+      if (approved.kind === 'SLOT_LOST') {
+        // The request is cancelled; its refund row is committed. Ask Square now.
+        await submitDepositRefund(prisma, approved.refundId);
+        slotLost = { amountPence: approved.amountPence };
       }
+      if (approved.notified) after(() => dispatchAppointmentNotifications(appointmentId));
+    } else {
+      const { appointment, notified, deposit } = await runSerializableWithRetry(async (tx) => {
+        const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include: statusInclude });
+        if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
+        if (current.status === status) return { appointment: current, notified: false, deposit: NO_DEPOSIT };
+        if (status === 'CONFIRMED' && current.status !== 'PENDING') {
+          throw new BookingError('ONLY_PENDING_CONFIRM');
+        }
+        if (current.status === 'CANCELLED') {
+          throw new BookingError('CANCELLED_CANNOT_REINSTATE');
+        }
+        const now = new Date();
+        const started = hasAppointmentStarted(current.date, now);
+        // Nobody can be told "confirmed" for a time that has already come; the
+        // notifications cron closes such a request instead (pending-request-lapse.ts).
+        if (status === 'CONFIRMED' && started) throw new BookingError('REQUEST_EXPIRED');
+        // Completion cannot be undone, so it waits until the visit has begun.
+        if (status === 'COMPLETED' && !started) throw new BookingError('COMPLETE_BEFORE_START');
 
-      const data: Prisma.AppointmentUpdateManyMutationInput = {
-        status,
-        // A cancelled or completed booking has nothing left to move.
-        ...(status !== 'CONFIRMED' ? { rescheduleRequestedDate: null, rescheduleRequestedAt: null } : {}),
-        notificationVersion: { increment: 1 },
-      };
-      if (status === 'CANCELLED') {
-        const api = getTreatwellApiConfiguration();
-        data.treatwellSyncStatus = changedTreatwellSyncStatus({
-          apiReady: api.enabled && api.configured,
-          treatwellBookingId: current.treatwellBookingId,
-          stylistExternalId: current.stylist.treatwellExternalId,
-          serviceExternalId: current.service.treatwellExternalId,
+        if (status === 'CONFIRMED') {
+          const readiness = await checkCalendarBookingReadiness(tx);
+          if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
+          // Imported bookings or opening hours may have changed since the request.
+          await assertAppointmentSlotAvailable(tx, current, current.date);
+        }
+
+        // The deposit, if any: refused while it is being taken; otherwise what
+        // the customer is told and what happens once this commits.
+        const deposit = status === 'CONFIRMED' ? NO_DEPOSIT : await planDepositForClosing(tx, appointmentId, {
+          closing: status === 'CANCELLED' ? 'CANCEL' : 'COMPLETE',
+          // A request never became a booking: its deposit always goes back.
+          refund: current.status === 'PENDING' || refundDeposit,
+          reason: 'STAFF_CANCELLED',
+          requestedById: session.userId,
+          now,
         });
-        data.treatwellSyncError = null;
-      }
 
-      const result = await tx.appointment.updateMany({
-        where: { id: appointmentId, status: current.status, date: current.date, updatedAt: current.updatedAt },
-        data,
+        const data: Prisma.AppointmentUpdateManyMutationInput = {
+          status,
+          // A cancelled or completed booking has nothing left to move.
+          ...(status !== 'CONFIRMED' ? { rescheduleRequestedDate: null, rescheduleRequestedAt: null } : {}),
+          notificationVersion: { increment: 1 },
+          ...(status === 'CANCELLED' ? cancelledSyncFields(current) : {}),
+        };
+
+        const result = await tx.appointment.updateMany({
+          where: { id: appointmentId, status: current.status, date: current.date, updatedAt: current.updatedAt },
+          data,
+        });
+        if (result.count !== 1) throw new BookingError('STALE');
+        const updated = await tx.appointment.findUnique({ where: { id: appointmentId }, include: statusInclude });
+        if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
+        const depositNotice = { ...updated, paymentAttempt: deposit.paymentAttempt };
+        const depositOutcome = deposit.outcome ? { depositOutcome: deposit.outcome } : {};
+        // A cancellation is news only while the visit is still ahead. Tidying the
+        // diary afterwards (a no-show, a duplicate) must not tell the customer
+        // their appointment "has been cancelled"; the version bump above still
+        // retires anything queued earlier for this booking.
+        let notified = false;
+        if (status === 'CONFIRMED') {
+          await enqueueAppointmentNotification(tx, 'CONFIRMATION', updated);
+          notified = true;
+        } else if (status === 'CANCELLED' && !started) {
+          // A declined request was never in the customer's calendar: no file to remove it.
+          await enqueueAppointmentNotification(tx, 'CANCELLATION', depositNotice, { wasConfirmed: current.status === 'CONFIRMED', ...depositOutcome });
+          notified = true;
+        } else if (status === 'CANCELLED' && current.status === 'PENDING' && await isRequestLapseNoticeDue(tx, current, now)) {
+          // Declining a request whose time has come closes it exactly as the
+          // lapse step would, which then skips it (no longer PENDING): the
+          // customer gets the same "couldn't confirm in time" email. The phone
+          // read is best effort (on PostgreSQL a failed statement aborts the
+          // transaction, so the decline then fails whole and is simply retried).
+          await enqueueAppointmentNotification(tx, 'REQUEST_LAPSED', depositNotice, { salonPhone: await readSalonPhoneForLapseNotice(tx), ...depositOutcome });
+          notified = true;
+        }
+        await appendAuditEvent({
+          actorUserId: session.userId, action: 'APPOINTMENT.STATUS', targetType: 'Appointment', targetId: appointmentId,
+          // Staff keeping a deposit is recorded as KEPT.
+          metadata: { from: current.status, to: status, ...(deposit.outcome ? { deposit: deposit.outcome, depositPence: deposit.amountPence } : {}) },
+        }, tx);
+        return { appointment: updated, notified, deposit };
       });
-      if (result.count !== 1) throw new BookingError('STALE');
-      const updated = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
-      if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      // A cancellation is news only while the visit is still ahead. Tidying the
-      // diary afterwards (a no-show, a duplicate) must not tell the customer
-      // their appointment "has been cancelled"; the version bump above still
-      // retires anything queued earlier for this booking.
-      let notified = false;
-      if (status === 'CONFIRMED') {
-        await enqueueAppointmentNotification(tx, 'CONFIRMATION', updated);
-        notified = true;
-      } else if (status === 'CANCELLED' && !started) {
-        // A declined request was never in the customer's calendar: no file to remove it.
-        await enqueueAppointmentNotification(tx, 'CANCELLATION', updated, { wasConfirmed: current.status === 'CONFIRMED' });
-        notified = true;
-      } else if (status === 'CANCELLED' && current.status === 'PENDING' && await isRequestLapseNoticeDue(tx, current, now)) {
-        // Declining a request whose time has come closes it exactly as the
-        // lapse step would, which then skips it (no longer PENDING): the
-        // customer gets the same "couldn't confirm in time" email. The phone
-        // read is best effort (on PostgreSQL a failed statement aborts the
-        // transaction, so the decline then fails whole and is simply retried).
-        await enqueueAppointmentNotification(tx, 'REQUEST_LAPSED', updated, { salonPhone: await readSalonPhoneForLapseNotice(tx) });
-        notified = true;
-      }
-      await appendAuditEvent({ actorUserId: session.userId, action: 'APPOINTMENT.STATUS', targetType: 'Appointment', targetId: appointmentId, metadata: { from: current.status, to: status } }, tx);
-      return { appointment: updated, notified };
-    });
 
-    // Finish the action's cache invalidation before external email delivery.
-    invalidateStylistIcalFeed();
-    if (notified) after(() => dispatchAppointmentNotifications(appointment.id));
+      // Finish the action's cache invalidation before external email delivery.
+      invalidateStylistIcalFeed();
+      // Release the hold or ask Square for the refund, now that it is committed.
+      await settleDepositAfterCommit(prisma, deposit);
+      if (notified) after(() => dispatchAppointmentNotifications(appointment.id));
+    }
   } catch (error) {
-    return { success: false, error: describeBookingError(error, locale, 'ADMIN_UPDATE_FAILED') };
+    if (!(error instanceof BookingError)) console.error('Changing an appointment status failed:', { appointmentId, status, ...describeFault(error) });
+    const failure = { success: false as const, error: describeBookingError(error, locale, 'ADMIN_UPDATE_FAILED') };
+    // A refused deposit approval may still have moved the deposit's state.
+    return depositStep === 'NONE' ? failure : { ...failure, refresh: true };
   }
   revalidateAllLocales(revalidatePath, '/admin');
   revalidateAllLocales(revalidatePath, '/appointments');
   revalidateAllLocales(revalidatePath, '/book');
+  if (slotLost) {
+    return { success: false, refresh: true, error: bookingErrorText(locale, 'DEPOSIT_SLOT_LOST_REFUNDED', { amount: formatGBP(slotLost.amountPence, HTML_LANG[locale]) }) };
+  }
   return { success: true };
+}
+
+type DepositApproval =
+  | { kind: 'CONFIRMED'; notified: boolean }
+  | { kind: 'SLOT_LOST'; notified: boolean; refundId: string; amountPence: number };
+
+/**
+ * Confirm a request that holds a card deposit ("Approve (staff) — capture" in
+ * the deposits design). Transaction 1 makes every check a plain approval
+ * makes and claims the deposit — only one approval ever can. Square then takes
+ * it, outside any transaction. Transaction 2 re-checks the time and confirms
+ * (CONFIRMED + CAPTURED + the confirmation email, together) — or, had the time
+ * been taken meanwhile, cancels the request with a full refund (SLOT_LOST).
+ * A deposit taken earlier, by an approval that could not save its
+ * confirmation, is confirmed in transaction 1 without touching money. If
+ * transaction 2 fails, the deposit is recorded taken so that confirming again
+ * cannot take it twice.
+ */
+async function approveWithDeposit(appointmentId: string, actorUserId: string): Promise<DepositApproval> {
+  const claimed = await runSerializableWithRetry(async (tx) => {
+    const now = new Date();
+    const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include: statusInclude });
+    if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
+    if (current.status === 'CONFIRMED') return { kind: 'DONE' as const, notified: false };
+    if (current.status !== 'PENDING') throw new BookingError('ONLY_PENDING_CONFIRM');
+    if (hasAppointmentStarted(current.date, now)) throw new BookingError('REQUEST_EXPIRED');
+    const readiness = await checkCalendarBookingReadiness(tx);
+    if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
+    await assertAppointmentSlotAvailable(tx, current, current.date);
+    const claim = await claimDepositForCapture(tx, appointmentId, now);
+    // The deposit was read just before this transaction; it cannot vanish.
+    if (claim.kind === 'NONE') throw new BookingError('STALE');
+    if (claim.kind === 'CONFIRM') {
+      await confirmDepositRequest(tx, current, claim.attempt, actorUserId, now);
+      return { kind: 'DONE' as const, notified: true };
+    }
+    return { kind: 'CLAIMED' as const, attempt: claim.attempt, origin: claim.origin };
+  });
+  if (claimed.kind === 'DONE') return { kind: 'CONFIRMED', notified: claimed.notified };
+
+  const taken = await takeDeposit(prisma, claimed.attempt, claimed.origin);
+  if (taken !== 'CAPTURED') throw new BookingError(taken);
+
+  try {
+    return await runSerializableWithRetry(async (tx): Promise<DepositApproval> => {
+      const now = new Date();
+      const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include: statusInclude });
+      const attempt = await loadLinkedDeposit(tx, appointmentId);
+      if (!current || !attempt || attempt.id !== claimed.attempt.id || (attempt.status !== 'CAPTURING' && attempt.status !== 'CAPTURED')) {
+        throw new Error('The deposit approval lost its request');
+      }
+      // Confirmed meanwhile by an approval that took over a stale claim.
+      if (current.status === 'CONFIRMED') {
+        await markDepositCaptured(tx, attempt, now);
+        return { kind: 'CONFIRMED', notified: false };
+      }
+      // Every closing refuses while a deposit is being taken, so a request
+      // closed meanwhile means someone settled this capture already (and
+      // refunded it with the closing): leave the money alone.
+      if (current.status !== 'PENDING') throw new Error('The request closed while its deposit was being taken');
+      try {
+        await assertAppointmentSlotAvailable(tx, current, current.date);
+      } catch (error) {
+        if (!(error instanceof BookingError)) throw error;
+        return cancelAfterSlotLost(tx, current, attempt, actorUserId, now);
+      }
+      await confirmDepositRequest(tx, current, attempt, actorUserId, now);
+      return { kind: 'CONFIRMED', notified: true };
+    });
+  } catch (error) {
+    await recordDepositTakenNotConfirmed(prisma, claimed.attempt.id, new Date());
+    if (!(error instanceof BookingError)) console.error('Confirming a request after taking its deposit failed:', { appointmentId, ...describeFault(error) });
+    throw new BookingError('DEPOSIT_TAKEN_NOT_CONFIRMED');
+  }
+}
+
+/** PENDING → CONFIRMED with its deposit recorded taken and the confirmation email saying so. */
+async function confirmDepositRequest(tx: Prisma.TransactionClient, current: StatusAppointment, attempt: LinkedDeposit, actorUserId: string, now: Date) {
+  const result = await tx.appointment.updateMany({
+    where: { id: current.id, status: 'PENDING', date: current.date, updatedAt: current.updatedAt },
+    data: { status: 'CONFIRMED', notificationVersion: { increment: 1 } },
+  });
+  if (result.count !== 1) throw new BookingError('STALE');
+  await markDepositCaptured(tx, attempt, now);
+  const updated = await tx.appointment.findUnique({ where: { id: current.id }, include: statusInclude });
+  if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
+  await enqueueAppointmentNotification(tx, 'CONFIRMATION', { ...updated, paymentAttempt: { status: 'CAPTURED', amountPence: attempt.amountPence } });
+  await appendAuditEvent({
+    actorUserId, action: 'APPOINTMENT.STATUS', targetType: 'Appointment', targetId: current.id,
+    metadata: { from: 'PENDING', to: 'CONFIRMED', deposit: 'CAPTURED', depositPence: attempt.amountPence },
+  }, tx);
+}
+
+/**
+ * The time was taken between taking the deposit and confirming (rare): the
+ * request is cancelled and its deposit refunded in full, in this transaction
+ * (the refund row; Square is asked after the commit). The customer is told
+ * the deposit is on its way back; the admin is told why (the action's error).
+ */
+async function cancelAfterSlotLost(
+  tx: Prisma.TransactionClient, current: StatusAppointment, attempt: LinkedDeposit, actorUserId: string, now: Date,
+): Promise<DepositApproval> {
+  const closed = await tx.appointment.updateMany({
+    where: { id: current.id, status: 'PENDING', date: current.date, updatedAt: current.updatedAt },
+    data: { status: 'CANCELLED', rescheduleRequestedDate: null, rescheduleRequestedAt: null, notificationVersion: { increment: 1 }, ...cancelledSyncFields(current) },
+  });
+  if (closed.count !== 1) throw new BookingError('STALE');
+  await markDepositCaptured(tx, attempt, now);
+  const deposit = await planDepositForClosing(tx, current.id, { closing: 'CANCEL', refund: true, reason: 'SLOT_LOST', requestedById: null, now });
+  if (!deposit.refundId) throw new Error('The deposit taken for a lost time could not be refunded');
+  const updated = await tx.appointment.findUnique({ where: { id: current.id }, include: statusInclude });
+  if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
+  // A request never confirmed: no calendar file to remove.
+  const notified = !hasAppointmentStarted(current.date, now);
+  if (notified) {
+    await enqueueAppointmentNotification(tx, 'CANCELLATION', { ...updated, paymentAttempt: deposit.paymentAttempt }, { wasConfirmed: false, depositOutcome: 'REFUNDING' });
+  }
+  await appendAuditEvent({
+    actorUserId, action: 'APPOINTMENT.STATUS', targetType: 'Appointment', targetId: current.id,
+    metadata: { from: 'PENDING', to: 'CANCELLED', reason: 'SLOT_LOST', deposit: 'REFUNDING', depositPence: deposit.amountPence },
+  }, tx);
+  return { kind: 'SLOT_LOST', notified, refundId: deposit.refundId, amountPence: deposit.amountPence };
 }
 
 /**

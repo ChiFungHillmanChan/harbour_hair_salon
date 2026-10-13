@@ -1,11 +1,11 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import type { Appointment, Prisma, PrismaClient, Service, Stylist, User } from '@prisma/client';
+import type { Appointment, PaymentAttempt, Prisma, PrismaClient, Service, Stylist, User } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
 import { isRequestLapseNoticeTimely } from '@/app/lib/appointment-timing';
 import { prepareAppointmentEmail, sendPreparedEmail, type AppointmentEmailKind, type AppointmentEmailOptions, type PreparedEmail } from './email-service';
-import { isSalonEmailKind, RESCHEDULE_REQUEST_EMAIL_KINDS, type EmailPrice } from './email-content';
+import { isSalonEmailKind, RESCHEDULE_REQUEST_EMAIL_KINDS, type DepositOutcome, type EmailDeposit, type EmailPrice } from './email-content';
 import { recordedPrice } from './pricing/recorded-price';
 import { DEFAULT_LOCALE, isLocale, localeOrDefault, type Locale } from '@/i18n/config';
 
@@ -15,17 +15,25 @@ type NotificationAppointment = Pick<Appointment, 'id' | 'date' | 'priceAtBooking
   user: Pick<User, 'email' | 'name'> & Partial<Pick<User, 'phone'>>;
   stylist: Pick<Stylist, 'name'>;
   service: Pick<Service, 'name' | 'duration'> & Partial<Pick<Service, 'id' | 'price'>>;
+  /** The booking's card deposit, when the caller knows it (services/payment-attempts.ts). */
+  paymentAttempt?: Pick<PaymentAttempt, 'status' | 'amountPence'> | null;
 };
 
 /**
- * Snapshot schema 2 (current): the service name already in the event's
- * language, the booking's frozen price with its NHS/VAT meaning, and the
- * language itself. Schema 1 events (queued before languages existed) carry
- * `service.price` and no locale; they are still delivered, in English, with no
- * NHS/VAT wording added after the fact.
+ * Snapshot schema 3 (current): schema 2 plus the booking's card deposit as it
+ * stood when the event was queued (null = none), so an email can mention a
+ * hold on the card, a deposit paid, or (with the queued `depositOutcome`) a
+ * refund, a released hold or a kept deposit without a database read at send time.
+ *
+ * Schema 2: the service name already in the event's language, the booking's
+ * frozen price with its NHS/VAT meaning, and the language itself. Schema 2
+ * events carry no deposit and are delivered without deposit wording. Schema 1
+ * events (queued before languages existed) carry `service.price` and no
+ * locale; they are still delivered, in English, with no NHS/VAT wording added
+ * after the fact.
  */
-type SnapshotV2 = {
-  schema: 2;
+type SnapshotV3 = {
+  schema: 3;
   id: string;
   date: string;
   notes: string | null;
@@ -33,16 +41,26 @@ type SnapshotV2 = {
   stylist: { name: string };
   service: { name: string; duration: number };
   price: EmailPrice;
+  deposit: EmailDeposit | null;
 };
+type SnapshotV2 = Omit<SnapshotV3, 'schema' | 'deposit'> & { schema: 2 };
 type SnapshotV1 = { id: string; date: string; notes?: string | null; user: SnapshotV2['user']; stylist: SnapshotV2['stylist']; service: { name: string; price: number; duration: number } };
 type NotificationPayload = {
   version: number;
   date: string;
   locale?: Locale;
   email?: PreparedEmail;
-  appointment?: SnapshotV1 | SnapshotV2;
-  /** `wasConfirmed`: CANCELLATION only, see AppointmentEmailOptions (absent on mail queued before it existed). */
-  options?: { salonPhone?: string; oldDate?: string; requestedDate?: string; requestedAt?: string; wasConfirmed?: boolean };
+  appointment?: SnapshotV1 | SnapshotV2 | SnapshotV3;
+  /**
+   * `wasConfirmed`: CANCELLATION only; `depositOutcome`: CANCELLATION and
+   * REQUEST_LAPSED; `holdExpired`: REQUEST_LAPSED only — see
+   * AppointmentEmailOptions. Each is absent on mail queued before it existed,
+   * which renders as it always did.
+   */
+  options?: {
+    salonPhone?: string; oldDate?: string; requestedDate?: string; requestedAt?: string; wasConfirmed?: boolean;
+    depositOutcome?: DepositOutcome; holdExpired?: boolean;
+  };
 };
 
 /** The customer's language for their own mail; never the language of whoever triggered the event. */
@@ -78,6 +96,13 @@ function emailPrice(appointment: NotificationAppointment): EmailPrice {
   if (!recorded.known) return { known: false };
   return { known: true, amountPence: recorded.amountPence, priceType: recorded.priceType, vatDisplay: recorded.vatDisplay, priceNature: recorded.priceNature };
 }
+
+/** Only an amount and a state: no Square identifiers travel with the email. */
+function emailDeposit(appointment: NotificationAppointment): EmailDeposit | null {
+  const attempt = appointment.paymentAttempt;
+  if (!attempt || !Number.isSafeInteger(attempt.amountPence) || attempt.amountPence <= 0) return null;
+  return { amountPence: attempt.amountPence, status: attempt.status };
+}
 const LEASE_MS = 5 * 60_000;
 const RETRY_WINDOW_MS = 23 * 60 * 60_000;
 const MAX_ATTEMPTS = 12;
@@ -101,8 +126,8 @@ export async function enqueueAppointmentNotification(
   const existing = await db.notificationDelivery.findUnique({ where: { eventKey }, select: { id: true } });
   if (existing) return existing;
   const locale = eventLocale(kind, appointment, isSalonEmailKind(kind) ? await salonLocaleFrom(db) : DEFAULT_LOCALE);
-  const snapshot: SnapshotV2 = {
-    schema: 2,
+  const snapshot: SnapshotV3 = {
+    schema: 3,
     id: appointment.id,
     date: appointment.date.toISOString(),
     notes: appointment.notes,
@@ -111,9 +136,17 @@ export async function enqueueAppointmentNotification(
     service: { name: await serviceNameIn(db, appointment, locale), duration: appointment.durationAtBooking ?? appointment.service.duration },
     // The booking's own frozen amount, never today's price list; unknown stays unknown.
     price: emailPrice(appointment),
+    deposit: emailDeposit(appointment),
   };
   // Saving a booking/cancellation must not depend on email configuration or rendering.
-  const payload: NotificationPayload = { version: appointment.notificationVersion, date: appointment.date.toISOString(), locale, appointment: snapshot, options: { salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString(), requestedDate: options.requestedDate?.toISOString(), requestedAt: options.requestedAt?.toISOString(), wasConfirmed: options.wasConfirmed } };
+  const payload: NotificationPayload = {
+    version: appointment.notificationVersion, date: appointment.date.toISOString(), locale, appointment: snapshot,
+    options: {
+      salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString(), requestedDate: options.requestedDate?.toISOString(),
+      requestedAt: options.requestedAt?.toISOString(), wasConfirmed: options.wasConfirmed,
+      depositOutcome: options.depositOutcome, holdExpired: options.holdExpired,
+    },
+  };
   return db.notificationDelivery.upsert({
     where: { eventKey },
     create: { eventKey, appointmentId: appointment.id, kind, payloadJson: JSON.stringify(payload) },

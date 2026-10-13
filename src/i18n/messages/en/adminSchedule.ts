@@ -79,6 +79,82 @@ const adminSchedule = {
     markCompletedConfirm: 'Mark {customer}’s appointment as completed? This cannot be undone.',
     updateFailed: 'Failed to update',
   },
+  /** A booking's card deposit on the board (lib/deposit-display.ts states). */
+  deposit: {
+    chip: {
+      HELD: 'Deposit held {amount}',
+      PROCESSING: 'Deposit being taken {amount}',
+      PAID: 'Deposit paid {amount}',
+      REFUND_PENDING: 'Refund pending {amount}',
+      REFUNDED: 'Refunded {amount}',
+      REFUND_FAILED: 'Refund failed {amount}',
+      RELEASED: 'Hold released {amount}',
+      KEPT: 'Deposit kept {amount}',
+    },
+    confirm: 'Confirm & take {amount} deposit',
+    declineConfirm: 'Decline this booking request? The customer will need to book again, and the {amount} hold on their card will be released.',
+    refund: 'Refund the {amount} deposit',
+    refundHelp: 'Untick to keep it (a late cancellation or no-show, as the booking terms allow).',
+    releaseNote: 'Cancelling releases the {amount} hold on the customer’s card.',
+    cancelRefundConfirm: 'Cancel {customer}’s booking and refund the {amount} deposit? This releases the appointment time.',
+    cancelKeepConfirm: 'Cancel {customer}’s booking and keep the {amount} deposit? This releases the appointment time.',
+    cancelReleaseConfirm: 'Cancel {customer}’s request? The {amount} hold on their card will be released and the appointment time freed.',
+    /** Marking a visit completed: an untaken hold is released (never taken), a taken deposit counts towards the bill. */
+    completeHeldConfirm: 'Mark {customer}’s appointment as completed? This cannot be undone. The {amount} hold will be released — collect the full price in the salon.',
+    completePaidConfirm: 'Mark {customer}’s appointment as completed? This cannot be undone. The {amount} deposit already paid counts towards the price.',
+    /** "Re-check payment" (actions/admin-payments.ts): asks Square about this booking's deposit and refunds now. */
+    recheck: {
+      button: 'Re-check payment',
+      checking: 'Checking…',
+      failed: 'The payment could not be re-checked just now. Nothing was changed; try again.',
+      unreachable: 'Square could not be reached for everything just now, so some of this may be out of date. Try again in a few minutes.',
+      states: {
+        NONE: 'This booking has no card deposit.',
+        UNAVAILABLE: 'This deposit cannot be checked from this site: Square payments are switched off here, or it was taken with other Square credentials.',
+        HELD: 'Square holds {amount} on the customer’s card. Nothing has been taken yet.',
+        HOLD_ENDED: 'Square has already released the {amount} hold, so this request can no longer be confirmed. It closes automatically and the customer is emailed; you can also decline it now.',
+        RELEASE_PENDING: 'The {amount} hold is not released yet. It is retried automatically, and Square drops it within 7 days at most.',
+        RELEASED: 'The {amount} hold is released. Nothing was taken.',
+        PAID: 'The {amount} deposit has been taken.',
+        KEPT: 'The {amount} deposit was taken and kept when the booking was cancelled.',
+        TAKEN_ON_CANCELLED: 'Square has taken the {amount} deposit, but this booking is cancelled and the deposit was neither refunded nor recorded as kept. Check the payment in the Square Dashboard and refund it there if it should go back.',
+        TAKEN_NOT_CONFIRMED: 'Square shows the {amount} deposit as taken, but this booking is not confirmed. Confirm the request (the deposit is not taken twice); once the appointment has passed, mark it completed if the customer came (the deposit is kept) or decline it (the deposit is refunded). Left open, it is refunded automatically 12 hours after the appointment ends.',
+        LATE_CAPTURE: 'Square took the {amount} deposit after this booking had closed, so a full refund has been requested.',
+        IN_PROGRESS: 'The deposit is being taken right now. Re-check in a minute.',
+        UNCONFIRMED: 'Square has not confirmed what happened to the {amount} deposit yet. Re-check later; it is never taken twice.',
+        MISMATCH: 'The payment Square holds does not match this deposit (amount or reference). Check it in the Square Dashboard.',
+      },
+      refund: 'Refund of {amount}: {status}',
+      refundStatus: {
+        REQUESTED: 'not yet accepted by Square (asked again automatically)',
+        SUBMITTING: 'being sent to Square right now (re-check in a few minutes)',
+        PENDING: 'accepted by Square, on its way to the customer',
+        COMPLETED: 'completed',
+        FAILED: 'failed — refund the customer another way',
+        REJECTED: 'rejected — refund the customer another way',
+        UNKNOWN: 'not yet confirmed by Square (asked again with the same key)',
+        UNRESOLVED: 'not confirmed by Square after 7 days, so the website stopped asking — check the Square Dashboard (it may already be refunded), refund by hand if not, then mark it settled outside the website',
+        SETTLED_EXTERNALLY: 'settled outside the website (Square Dashboard or cash)',
+      },
+    },
+    /**
+     * "Mark refund as settled outside the website" (actions/admin-payments.ts
+     * markRefundSettledOutside): staff refunded the customer themselves, so the
+     * website never sends this refund to Square again.
+     */
+    settleOutside: {
+      button: 'Mark refund as settled outside the website',
+      saving: 'Saving…',
+      help: 'Square has not confirmed this {amount} refund. If the customer already has the money back another way — refunded in the Square Dashboard or in cash — record it here so the website stops asking Square.',
+      confirm: 'Mark the {amount} refund as settled outside the website? Do this only once the customer has the money back — refunded in the Square Dashboard or in cash. The website will never send this refund to Square again, and this cannot be undone here.',
+      done: 'The {amount} refund is recorded as settled outside the website. The website will not ask Square for it again.',
+      sending: 'This refund is being sent to Square right now. Wait a few minutes, press Re-check payment, and try again only if it is still unconfirmed.',
+      answered: 'Square has already answered for this refund ({status}), so it cannot be marked as settled outside the website.',
+      notFound: 'This refund is not on this booking any more. Close the booking and open it again.',
+      changed: 'This refund changed while it was being marked. Press Re-check payment to see where it is now.',
+      failed: 'The refund could not be marked just now. Nothing was changed; try again.',
+    },
+  },
   year: {
     bookings: { one: '{count} booking', other: '{count} bookings' },
   },

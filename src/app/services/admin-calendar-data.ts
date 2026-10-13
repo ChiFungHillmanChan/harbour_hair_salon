@@ -10,6 +10,7 @@ import { recordedPrice } from './pricing/recorded-price';
 import { toPence } from './pricing/money';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import type { BoardPrice } from '@/app/lib/board-price';
+import { adminDepositView, adminDepositViewSelect, depositView, depositViewSelect } from '@/app/lib/deposit-display';
 
 // The service's CURRENT price is deliberately not selected: an appointment
 // shows only the price recorded when it was booked (unknown when none was).
@@ -20,6 +21,9 @@ export const calendarAppointmentSelect = {
   user: { select: { id: true, name: true, email: true } },
   stylist: { select: { name: true, calendarColor: true } },
   service: { select: { name: true, duration: true, calendarColor: true } },
+  // The card deposit's state (deposit-display.ts) and our own refund ids —
+  // a refund staff may mark settled outside the website — never Square ids.
+  paymentAttempt: { select: adminDepositViewSelect },
 } satisfies Prisma.AppointmentSelect;
 
 type CalendarRow = Prisma.AppointmentGetPayload<{ select: typeof calendarAppointmentSelect }>;
@@ -39,6 +43,7 @@ export function serializeCalendarAppointment(row: CalendarRow, includeContact = 
     rescheduleRequestedDate: row.rescheduleRequestedDate?.toISOString() ?? null,
     rescheduleRequestedAt: row.rescheduleRequestedAt?.toISOString() ?? null,
     price: boardPrice(row),
+    deposit: adminDepositView(row.paymentAttempt),
     user: { id: row.user.id, name: row.user.name, email: includeContact ? row.user.email : null },
     stylist: row.stylist,
     service: row.service,
@@ -69,9 +74,14 @@ const pendingSelect = {
   user: { select: { name: true } },
   stylist: { select: { name: true } },
   service: { select: { name: true } },
+  paymentAttempt: { select: depositViewSelect },
 } satisfies Prisma.AppointmentSelect;
 type PendingRow = Prisma.AppointmentGetPayload<{ select: typeof pendingSelect }>;
-export type PendingAppointment = Omit<PendingRow, 'date'> & { date: string };
+
+function serializePending({ paymentAttempt, date, ...row }: PendingRow) {
+  return { ...row, date: date.toISOString(), deposit: depositView(paymentAttempt) };
+}
+export type PendingAppointment = ReturnType<typeof serializePending>;
 
 const rescheduleRequestSelect = {
   id: true, date: true, rescheduleRequestedDate: true, rescheduleRequestedAt: true,
@@ -150,7 +160,7 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     periodCount: view === 'year' ? monthCounts.reduce((sum, count) => sum + count, 0) : appointments.length,
     appointments: appointments.map((row) => serializeCalendarAppointment(row, view === 'day')),
     busyBlocks: busyBlocks.map((row) => ({ ...row, start: row.start.toISOString(), end: row.end.toISOString(), lastSyncAt: row.lastSyncAt.toISOString() })),
-    pendingAppointments: page.map((row) => ({ ...row, date: row.date.toISOString() })),
+    pendingAppointments: page.map(serializePending),
     pendingNext: pendingRows.length > 25 ? encodeDateCursor(page[page.length - 1]) : null,
     pendingHasPrevious: Boolean(cursor),
     rescheduleRequests: rescheduleRows.filter((row) => row.rescheduleRequestedDate && row.rescheduleRequestedAt).map((row) => ({
