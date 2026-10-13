@@ -67,6 +67,15 @@ const emails: Localized<Messages['emails']> = {
     cta: '查看我的申請',
     footnote: '你可隨時在「我的預約」撤回此申請。費用於店內繳付，接受現金及信用卡。',
   },
+  requestLapsed: {
+    subject: '未能確認你的預約申請 — Harbour Hair Salon',
+    preview: '我們未能及時確認你{date}的{service}預約申請',
+    eyebrow: '申請未獲確認',
+    title: '我們未能及時確認你的申請。',
+    intro: '很抱歉，我們未能在{date} {time}之前確認你的預約申請，申請現已結束。請致電本店或另約時間。',
+    cta: '另約時間',
+    footnote: '如你已與本店另行約定時間，請忽略此電郵。',
+  },
   cancellation: {
     subject: '你的預約已取消 — Harbour Hair Salon',
     preview: '你的預約已取消——{date}的{service}',

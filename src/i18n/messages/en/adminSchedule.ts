@@ -52,6 +52,7 @@ const adminSchedule = {
     checking: 'Checking calendars…',
     decline: 'Decline',
     declineConfirm: 'Decline this booking request? The customer will need to book again.',
+    expired: 'Time passed — can no longer be confirmed',
   },
   rescheduleRequests: {
     stat: 'Reschedule requests',
@@ -75,6 +76,7 @@ const adminSchedule = {
     stylist: 'Stylist: {name}',
     edit: 'Edit booking',
     markCompleted: 'Mark completed',
+    markCompletedConfirm: 'Mark {customer}’s appointment as completed? This cannot be undone.',
     updateFailed: 'Failed to update',
   },
   year: {

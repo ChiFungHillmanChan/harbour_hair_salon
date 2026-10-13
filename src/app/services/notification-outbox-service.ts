@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Appointment, Prisma, PrismaClient, Service, Stylist, User } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
+import { isRequestLapseNoticeTimely } from '@/app/lib/appointment-timing';
 import { prepareAppointmentEmail, sendPreparedEmail, type AppointmentEmailKind, type AppointmentEmailOptions, type PreparedEmail } from './email-service';
 import { isSalonEmailKind, RESCHEDULE_REQUEST_EMAIL_KINDS, type EmailPrice } from './email-content';
 import { recordedPrice } from './pricing/recorded-price';
@@ -127,6 +128,10 @@ async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string
   const thisRequestOpen = Boolean(payload.options?.requestedAt) && current.rescheduleRequestedAt?.toISOString() === payload.options?.requestedAt;
   switch (kind) {
     case 'CANCELLATION': return current.status === 'CANCELLED';
+    // A booking request closed unanswered (pending-request-lapse.ts); the
+    // version/date match above drops it if anything changed since, and mail
+    // held back (sending switched off) is dropped once it would arrive too late.
+    case 'REQUEST_LAPSED': return current.status === 'CANCELLED' && isRequestLapseNoticeTimely(current.date, now);
     case 'REQUEST_RECEIVED':
     case 'SALON_ALERT': return current.status === 'PENDING' && current.date > now;
     case 'CONFIRMATION':

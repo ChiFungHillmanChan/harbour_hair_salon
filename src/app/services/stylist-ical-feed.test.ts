@@ -2,7 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildStylistIcalFeed } from './stylist-ical-feed';
 
-type FakeAppt = { id: string; date: Date; service: { duration: number } };
+type FakeAppt = { id: string; date: Date; service: { duration: number }; status?: string };
+
+/** Applies the query's status filter, so a too-narrow filter drops the row. */
+function statusMatches(row: FakeAppt, filter: unknown): boolean {
+  const status = row.status ?? 'CONFIRMED';
+  if (!filter || typeof filter !== 'object') return filter === undefined || filter === status;
+  if ('in' in filter) return (filter.in as string[]).includes(status);
+  if ('not' in filter) return status !== filter.not;
+  throw new Error(`Unhandled status filter ${JSON.stringify(filter)}`);
+}
 
 function fakeDb(
   stylist: { id: string; icalToken: string | null } | null,
@@ -22,7 +31,7 @@ function fakeDb(
     appointment: {
       findMany: async (args: { where: unknown; select: unknown; orderBy: unknown }) => {
         findManyCalls.push(args);
-        return appointments;
+        return appointments.filter((row) => statusMatches(row, (args.where as { status?: unknown }).status));
       },
     },
   };
@@ -99,20 +108,33 @@ test('body is a well-formed CRLF calendar and leaks no customer fields', async (
   assert.doesNotMatch(body, /name|email|notes/i);
 });
 
-test('queries only bookable appointments for the right stylist', async () => {
+test('queries every non-cancelled appointment for the right stylist', async () => {
   const db = fakeDb({ id: 's1', icalToken: 'tok' }, []);
   await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW });
   assert.equal(db.findManyCalls.length, 1);
   const where = db.findManyCalls[0].where as {
     stylistId: string;
-    status: { in: string[] };
+    status: unknown;
     date: { gte: Date };
   };
   assert.equal(where.stylistId, 's1');
-  assert.deepEqual([...where.status.in].sort(), ['CONFIRMED', 'PENDING']);
+  // Same rule as the website's own availability (booking-service.ts): only a
+  // cancellation frees the chair. A COMPLETED booking that has not ended yet
+  // still occupies it, so it must stay in the feed or Fresha resells the slot.
+  assert.deepEqual(where.status, { not: 'CANCELLED' });
   // Superset cut-off in the query; exact end-time filtering happens in memory.
   assert.ok(where.date.gte instanceof Date);
   assert.ok(where.date.gte < NOW);
+});
+
+test('a booking marked completed before it ends keeps blocking the rest of its time', async () => {
+  const db = fakeDb({ id: 's1', icalToken: 'tok' }, [
+    // Started 11:30, ends 13:30, already marked COMPLETED by staff at 12:00.
+    { id: 'finished-early', date: new Date('2026-07-21T11:30:00Z'), service: { duration: 120 }, status: 'COMPLETED' } as FakeAppt,
+  ]);
+  const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW });
+  assert.equal(result.status, 200);
+  if (result.status === 200) assert.match(result.body, /UID:finished-early@/);
 });
 
 test('booked duration remains fixed when the current service duration changes', async () => {

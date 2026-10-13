@@ -6,10 +6,12 @@ const now = new Date('2026-09-11T12:00:00Z');
 before(() => mock.timers.enable({ apis: ['Date'], now }));
 after(() => mock.timers.reset());
 
-function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: string[] = [], lapseFails = false) {
+function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: string[] = [], lapseFails = false, requestLapseFails = false) {
   let dispatchCalls = 0;
   const createdAt: Date[] = [];
   let lapseCalls = 0;
+  // Order of the steps that must happen before delivery in one run.
+  const steps: string[] = [];
   const existing = Array.from({ length: prefixSize }, (_, index) => {
     const id = `review-${String(index).padStart(5, '0')}`;
     return { id, status: 'COMPLETED', date: new Date('2026-09-02T12:00:00Z'), notificationVersion: 0, reviewRequestSent: false, reminderSent: true, review: null, notifications: [{ eventKey: `appointment/${id}/0/REVIEW_REQUEST`, kind: 'REVIEW_REQUEST', status: 'FAILED' }] };
@@ -62,6 +64,11 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: str
   const service = loadServerModule<typeof import('./notification-cron-service')>('src/app/services/notification-cron-service.ts', {
     '@/app/lib/prisma': db,
     './reschedule-request-lapse': { lapseExpiredRescheduleRequests: async () => { lapseCalls++; if (lapseFails) throw new Error('boom'); return { lapsed: 0, failed: 0 }; } },
+    './pending-request-lapse': { lapseStartedPendingRequests: async (at: Date) => {
+      steps.push(`request-lapse@${at.toISOString()}`);
+      if (requestLapseFails) throw new Error('boom');
+      return { lapsed: 2, failed: 0 };
+    } },
     './notification-outbox-service': {
       enqueueAppointmentNotification: async (_db: unknown, kind: string, row: (typeof rows)[number]) => {
         // The real outbox writes nothing (returns null) for walk-in placeholder addresses.
@@ -75,10 +82,10 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: str
         }
         return { id: eventKey };
       },
-      dispatchPendingNotifications: async (options: { now?: Date }) => (dispatchCalls++, { sent: advanceOnEnqueue ? createdAt.filter((date) => date <= (options.now ?? new Date())).length : 0, failed: 0, skipped: 0, deferred: 0 }),
+      dispatchPendingNotifications: async (options: { now?: Date }) => (dispatchCalls++, steps.push('dispatch'), { sent: advanceOnEnqueue ? createdAt.filter((date) => date <= (options.now ?? new Date())).length : 0, failed: 0, skipped: 0, deferred: 0 }),
     },
   });
-  return { service, queued, jobStates, rows, cleanupCalls, lapseCalls: () => lapseCalls, dispatchCalls: () => dispatchCalls };
+  return { service, queued, jobStates, rows, cleanupCalls, steps, lapseCalls: () => lapseCalls, dispatchCalls: () => dispatchCalls };
 }
 
 test('terminal review notices do not keep an upcoming reminder out of the next run', async () => {
@@ -167,6 +174,22 @@ test('a failing lapse step never blocks discovery or delivery and is recorded', 
   const result = await f.service.runNotificationCron('notifications');
   assert.equal(f.dispatchCalls(), 1);
   assert.equal('lapseFailed' in result ? result.lapseFailed : undefined, 1);
+});
+
+test('each claimed run closes started booking requests before delivery, so their emails go out in the same tick', async () => {
+  const f = fixture(0);
+  const [first, second] = await Promise.all([f.service.runNotificationCron('notifications'), f.service.runNotificationCron('reminders')]);
+  assert.deepEqual(f.steps, [`request-lapse@${now.toISOString()}`, 'dispatch'], 'once per claimed run, before dispatch; a busy run does not');
+  const claimed = 'busy' in first ? second : first;
+  assert.equal('requestsLapsed' in claimed ? claimed.requestsLapsed : undefined, 2);
+});
+
+test('a failing booking-request lapse step never blocks delivery and is recorded', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const f = fixture(0, false, [], false, true);
+  const result = await f.service.runNotificationCron('notifications');
+  assert.equal(f.dispatchCalls(), 1);
+  assert.equal('requestLapseFailed' in result ? result.requestLapseFailed : undefined, 1);
 });
 
 test('a busy hand-over leaves an earlier failure on that schedule visible', async () => {

@@ -67,6 +67,15 @@ const emails = {
     cta: 'View my request',
     footnote: 'You can withdraw this request at any time from My Bookings. Payment is due at the salon; cash and card are accepted.',
   },
+  requestLapsed: {
+    subject: 'We couldn’t confirm your booking request — Harbour Hair Salon',
+    preview: 'We couldn’t confirm your request for {service} on {date} in time',
+    eyebrow: 'Request not confirmed',
+    title: 'We couldn’t confirm your request in time.',
+    intro: 'We’re sorry — we couldn’t confirm your booking request for {date} at {time} before that time came, so the request has now closed. Please call us or book another time.',
+    cta: 'Book another time',
+    footnote: 'If you have already arranged a time with the salon, you can ignore this email.',
+  },
   cancellation: {
     subject: 'Your booking has been cancelled — Harbour Hair Salon',
     preview: 'Your booking has been cancelled — {service} on {date}',

@@ -44,7 +44,7 @@ export function toEmailAppointment(input: LegacyEmailAppointment | EmailAppointm
 }
 
 export type AppointmentEmailKind = 'REQUEST_RECEIVED' | 'SALON_ALERT' | 'CONFIRMATION' | 'CANCELLATION' | 'RESCHEDULE' | 'REMINDER' | 'REVIEW_REQUEST'
-  | 'RESCHEDULE_REQUEST_RECEIVED' | 'SALON_RESCHEDULE_ALERT' | 'RESCHEDULE_DECLINED' | 'RESCHEDULE_LAPSED';
+  | 'RESCHEDULE_REQUEST_RECEIVED' | 'SALON_RESCHEDULE_ALERT' | 'RESCHEDULE_DECLINED' | 'RESCHEDULE_LAPSED' | 'REQUEST_LAPSED';
 
 /** Kinds addressed to the salon (its address and language), never the customer. */
 export function isSalonEmailKind(kind: AppointmentEmailKind): boolean {
@@ -128,6 +128,19 @@ export function appointmentEmailContent(
         callout: options.salonPhone ? { title: t('request.calloutTitle'), body: t('request.calloutBody', { phone: options.salonPhone }) } : undefined,
         cta: { label: t('request.cta'), href: url(locale, '/appointments') },
         footnotes: [t('request.footnote')],
+        reference: t('common.referenceShort', { reference }),
+      };
+    case 'REQUEST_LAPSED':
+      // A booking request nobody confirmed before its time came (pending-request-lapse.ts).
+      return {
+        ...base,
+        subject: t('requestLapsed.subject'),
+        preview: t('requestLapsed.preview', { service, date }),
+        eyebrow: t('requestLapsed.eyebrow'), title: t('requestLapsed.title'), intro: t('requestLapsed.intro', { date, time }),
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('requestedDate', date), labels('requestedTime', time)],
+        callout: options.salonPhone ? { title: t('rescheduleAnotherTime.calloutTitle'), body: t('rescheduleAnotherTime.calloutBody', { phone: options.salonPhone }) } : undefined,
+        cta: { label: t('requestLapsed.cta'), href: url(locale, '/book') },
+        footnotes: [t('requestLapsed.footnote')],
         reference: t('common.referenceShort', { reference }),
       };
     case 'CANCELLATION':

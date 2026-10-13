@@ -26,6 +26,7 @@ import { getActionLocale } from '@/i18n/request';
 import { isLocale, type Locale } from '@/i18n/config';
 import { revalidateAllLocales } from '@/i18n/revalidate';
 import { isPlaceholderEmail, placeholderEmailFor } from '@/app/lib/walk-in-customer';
+import { isErasedEmail } from '@/app/lib/customer-erasure';
 import { resolveSalonDateTime, SALON_DATE_RE, SALON_TIME_RE } from '@/app/services/salon-time';
 import { MIN_DURATION_MINUTES } from '@/app/lib/calendar-geometry';
 import { BookingError, bookingErrorText, describeBookingError, type BookingErrorCode } from '@/app/services/booking-errors';
@@ -508,6 +509,9 @@ export async function searchAdminCustomers(query: string): Promise<AdminCustomer
   });
 
   return candidates
+    // An erased customer's record is history only; a returning customer is
+    // booked as someone new (actions/admin-erasure.ts).
+    .filter((row) => !isErasedEmail(row.email))
     .filter((row) =>
       [row.name, isPlaceholderEmail(row.email) ? null : row.email, row.phone]
         .some((field) => field?.toLowerCase().includes(needle)),
