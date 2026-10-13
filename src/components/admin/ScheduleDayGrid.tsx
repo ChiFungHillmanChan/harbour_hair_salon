@@ -456,7 +456,7 @@ export function ScheduleDayGrid({
                       aria-label={label.detail}
                       title={label.detail}
                       onClick={(event) => event.stopPropagation()}
-                      className={`absolute left-1 right-1 overflow-hidden rounded border px-1 leading-4 focus-visible:outline-2 focus-visible:outline-[#174F7F] ${
+                      className={`absolute left-1 right-1 overflow-hidden rounded border px-1 leading-4 focus-visible:outline-2 focus-visible:outline-zinc-900 ${
                         wholeDay
                           ? 'border-zinc-400 border-l-4 border-l-zinc-600 bg-[repeating-linear-gradient(135deg,var(--color-zinc-200)_0_6px,var(--color-zinc-100)_6px_12px)] py-1 text-xs text-zinc-800'
                           : 'border-zinc-300 border-l-4 border-l-zinc-500 bg-zinc-100 text-[10px] text-zinc-700'
