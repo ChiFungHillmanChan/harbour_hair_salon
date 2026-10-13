@@ -189,7 +189,8 @@ export async function dispatchPendingNotifications(options: { db?: PrismaClient;
         payload.email = await prepareAppointmentEmail(
           row.kind as AppointmentEmailKind,
           { ...payload.appointment, date: new Date(payload.appointment.date) },
-          { ...payload.options, oldDate: payload.options?.oldDate ? new Date(payload.options.oldDate) : undefined, requestedDate: payload.options?.requestedDate ? new Date(payload.options.requestedDate) : undefined, now },
+          // `sequence`: the version this event was queued at orders the customer's calendar file updates.
+          { ...payload.options, oldDate: payload.options?.oldDate ? new Date(payload.options.oldDate) : undefined, requestedDate: payload.options?.requestedDate ? new Date(payload.options.requestedDate) : undefined, now, sequence: payload.version },
           // Schema-1 events have no language: English, as they were written.
           localeOrDefault(payload.locale),
         );

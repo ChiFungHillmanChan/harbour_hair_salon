@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appointmentEmailContent, describeEmailPrice, emailVerificationContent, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
+import { appointmentCalendarFile, appointmentEmailContent, describeEmailPrice, emailVerificationContent, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
 
 const appointment: EmailAppointment = {
   id: 'appointment-ABCDEFGH',
@@ -158,8 +158,9 @@ test('a staff move that closed an open request says what happened to the request
 test('booking emails offer a new-time request, not a direct reschedule, from My Bookings', () => {
   const en = { reschedule: 'You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.' };
   const zh = { reschedule: '你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。' };
-  assert.deepEqual(appointmentEmailContent('RESCHEDULE', requestAppointment, 'en-GB', { oldDate: requestedDate }).footnotes, [en.reschedule]);
-  assert.deepEqual(appointmentEmailContent('RESCHEDULE', requestAppointment, 'zh-HK', { oldDate: requestedDate }).footnotes, [zh.reschedule]);
+  // The booking footnote comes first; the calendar notes follow it.
+  assert.equal(appointmentEmailContent('RESCHEDULE', requestAppointment, 'en-GB', { oldDate: requestedDate }).footnotes[0], en.reschedule);
+  assert.equal(appointmentEmailContent('RESCHEDULE', requestAppointment, 'zh-HK', { oldDate: requestedDate }).footnotes[0], zh.reschedule);
   for (const kind of ['CONFIRMATION', 'REMINDER'] as const) {
     const english = appointmentEmailContent(kind, requestAppointment, 'en-GB').footnotes.join(' ');
     assert.match(english, /You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment\./, kind);
@@ -167,4 +168,89 @@ test('booking emails offer a new-time request, not a direct reschedule, from My 
     const chinese = appointmentEmailContent(kind, requestAppointment, 'zh-HK').footnotes.join(' ');
     assert.match(chinese, /你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。/, kind);
   }
+});
+
+// "Add to Google Calendar" + an attached .ics, for confirmed times only. The
+// request appointment is 13:00 BST (12:00Z) on 14 Sep 2099, for 60 minutes.
+const calendarText = {
+  'en-GB': {
+    label: 'Add to Google Calendar',
+    title: 'Cut & Blow-dry at Harbour Hair Salon',
+    details: 'Stylist: Ivan\nView or change your booking: https://www.harbourhair.co.uk/appointments',
+    attached: 'A calendar file (.ics) is attached: open it to add this appointment to Apple Calendar, Outlook or another calendar app.',
+    moved: 'If you saved the previous time in your calendar, please delete it and add the new time.',
+    cancelled: 'If you added this appointment to your calendar, please remove it. In most calendar apps, opening the attached calendar file (.ics) does this for you.',
+  },
+  'zh-HK': {
+    label: '加入 Google 日曆',
+    title: 'Cut & Blow-dry｜Harbour Hair Salon',
+    details: '髮型師：Ivan\n查看或更改預約：https://www.harbourhair.co.uk/zh-hk/appointments',
+    attached: '此電郵附有日曆檔案（.ics），開啟後即可將預約加入 Apple 日曆、Outlook 或其他日曆應用程式。',
+    moved: '如你已將原定時間加入日曆，請刪除該項目，再加入新的時間。',
+    cancelled: '如你已將此預約加入日曆，請將其移除。在大部分日曆應用程式中，開啟附上的日曆檔案（.ics）即可自動移除。',
+  },
+} as const;
+
+for (const locale of ['en-GB', 'zh-HK'] as const) {
+  const words = calendarText[locale];
+
+  test(`confirmed-time emails offer Add to Google Calendar and mention the attached file (${locale})`, () => {
+    for (const kind of ['CONFIRMATION', 'RESCHEDULE', 'REMINDER'] as const) {
+      const content = appointmentEmailContent(kind, requestAppointment, locale, { oldDate: requestedDate, sequence: 2 });
+      assert.equal(content.links?.length, 1, kind);
+      assert.equal(content.links![0].label, words.label);
+      const link = new URL(content.links![0].href);
+      assert.equal(`${link.origin}${link.pathname}`, 'https://calendar.google.com/calendar/render');
+      assert.equal(link.searchParams.get('action'), 'TEMPLATE');
+      assert.equal(link.searchParams.get('text'), words.title);
+      assert.equal(link.searchParams.get('dates'), '20990914T120000Z/20990914T130000Z');
+      assert.equal(link.searchParams.get('details'), words.details);
+      assert.equal(link.searchParams.get('location'), 'Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX');
+      assert.equal(content.footnotes.at(-1), words.attached, kind);
+      assert.match(renderPlainText(content), new RegExp(`${words.label}: https://calendar\\.google\\.com/calendar/render\\?action=TEMPLATE&`), `${kind} plain text`);
+    }
+    assert.ok(appointmentEmailContent('RESCHEDULE', requestAppointment, locale, { oldDate: requestedDate }).footnotes.includes(words.moved), 'a moved booking asks to replace the old entry');
+    assert.ok(!appointmentEmailContent('CONFIRMATION', requestAppointment, locale).footnotes.includes(words.moved));
+  });
+
+  test(`a cancellation asks the customer to remove the entry, with no add link (${locale})`, () => {
+    const content = appointmentEmailContent('CANCELLATION', requestAppointment, locale, { sequence: 3 });
+    assert.equal(content.links, undefined);
+    assert.ok(content.footnotes.includes(words.cancelled));
+  });
+}
+
+test('requests, staff alerts and the review request never offer a calendar entry', () => {
+  for (const kind of ['REQUEST_RECEIVED', 'SALON_ALERT', 'RESCHEDULE_REQUEST_RECEIVED', 'SALON_RESCHEDULE_ALERT', 'RESCHEDULE_DECLINED', 'RESCHEDULE_LAPSED', 'REVIEW_REQUEST'] as const) {
+    const content = appointmentEmailContent(kind, requestAppointment, 'en-GB', { requestedDate, salonPhone: '07831 830898', sequence: 1 });
+    assert.equal(content.links, undefined, kind);
+    assert.ok(!JSON.stringify(content).includes('calendar.google.com'), kind);
+    assert.ok(!content.footnotes.some((note) => /\.ics/.test(note)), kind);
+    assert.equal(appointmentCalendarFile(kind, requestAppointment, 'en-GB', { requestedDate }), null, kind);
+  }
+});
+
+test('the attached file: PUBLISH with the queued SEQUENCE for confirmed times, CANCEL with the same UID for a cancellation', () => {
+  const now = new Date('2099-09-10T08:00:00Z');
+  for (const kind of ['CONFIRMATION', 'RESCHEDULE', 'REMINDER'] as const) {
+    const file = appointmentCalendarFile(kind, requestAppointment, 'en-GB', { oldDate: requestedDate, sequence: 2, now })!;
+    assert.equal(file.method, 'PUBLISH', kind);
+    assert.equal(file.filename, 'harbour-hair-2099-09-14.ics');
+    const ics = file.ics.replace(/\r\n /g, '');
+    assert.match(ics, /\r\nMETHOD:PUBLISH\r\n/);
+    assert.match(ics, /\r\nSTATUS:CONFIRMED\r\n/);
+    assert.match(ics, /\r\nSEQUENCE:2\r\n/);
+    assert.match(ics, /\r\nUID:appointment-appointment-abcdefgh@harbourhair\.co\.uk\r\n/);
+    assert.match(ics, /\r\nDTSTAMP:20990910T080000Z\r\n/);
+    assert.match(ics, /\r\nDTSTART:20990914T120000Z\r\nDTEND:20990914T130000Z\r\n/);
+    assert.match(ics, /\r\nSUMMARY:Cut & Blow-dry at Harbour Hair Salon\r\n/);
+  }
+  const cancel = appointmentCalendarFile('CANCELLATION', requestAppointment, 'zh-HK', { sequence: 3, now })!;
+  assert.equal(cancel.method, 'CANCEL');
+  const ics = cancel.ics.replace(/\r\n /g, '');
+  assert.match(ics, /\r\nMETHOD:CANCEL\r\n/);
+  assert.match(ics, /\r\nSTATUS:CANCELLED\r\n/);
+  assert.match(ics, /\r\nSEQUENCE:3\r\n/);
+  assert.match(ics, /\r\nUID:appointment-appointment-abcdefgh@harbourhair\.co\.uk\r\n/);
+  assert.match(ics, /\r\nSUMMARY:Cut & Blow-dry｜Harbour Hair Salon\r\n/, 'in the language of the email');
 });
