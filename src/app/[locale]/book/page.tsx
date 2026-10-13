@@ -61,11 +61,12 @@ async function getStylists(locale: Awaited<ReturnType<typeof getLocale>>) {
     select: { id: true, name: true, role: true, imageUrl: true },
   });
   const translations = await loadPublishedTranslations(prisma, 'STYLIST', stylists.map((s) => s.id), locale);
-  // Names are never translated; only the role line is.
+  // Names are never translated; only the role line is. A role with no published
+  // translation is shown in English, and the wizard marks it lang="en" so a
+  // screen reader on /zh-hk pronounces it as English.
   return stylists.map((stylist) => {
-    const { translated: _translated, ...localized } = overlay(stylist, translations.get(stylist.id), ['role']);
-    void _translated;
-    return localized;
+    const { translated, ...localized } = overlay(stylist, translations.get(stylist.id), ['role']);
+    return { ...localized, translated: locale === 'en-GB' || translated };
   });
 }
 

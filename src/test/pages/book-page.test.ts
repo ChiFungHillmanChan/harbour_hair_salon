@@ -58,6 +58,22 @@ test('closed: /book shows the shared closed notice with the salon phone and live
   assert.deepEqual(find(tree, Wizard), []);
 });
 
+type WizardStylist = { id: string; role: string; translated: boolean };
+const roles = (stylists: unknown) => (stylists as WizardStylist[]).map(({ id, role, translated }) => ({ id, role, translated }));
+
+test('on /zh-hk the wizard is told which stylist roles fell back to English (marked lang="en")', async () => {
+  const tree = await loadPage({ enabled: true, locale: 'zh-HK', stylistTranslations: { ivan: '資深髮型師' } }).default();
+  assert.deepEqual(roles(find(tree, Wizard)[0].props.stylists), [
+    { id: 'ivan', role: '資深髮型師', translated: true },
+    { id: 'lox', role: 'Stylist', translated: false },
+  ]);
+});
+
+test('in English no role is a fallback', async () => {
+  const tree = await loadPage({ enabled: true }).default();
+  assert.ok(roles(find(tree, Wizard)[0].props.stylists).every((stylist) => stylist.translated));
+});
+
 test('open: the wizard gets the same contact details and the closed copy, for when booking closes mid-way', async () => {
   const tree = await loadPage({ enabled: true }).default();
   const [wizard] = find(tree, Wizard);

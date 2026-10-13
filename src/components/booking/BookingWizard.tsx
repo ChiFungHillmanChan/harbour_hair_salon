@@ -4,7 +4,7 @@ import { Stylist } from '@prisma/client';
 import type { ClientPublicService } from '@/app/services/public-service-select';
 import type { ClientOffering, PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { format, addDays, startOfToday } from 'date-fns';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import Link from '@/i18n/link';
 import { fetchBookingDays, submitBooking, type ClientQuote } from '@/app/actions/booking';
 import type { BookingDay } from '@/app/services/booking-days';
@@ -25,8 +25,9 @@ import { Duration, OptionLabel, PriceFinePrint, SurchargeBreakdown, useCategoryL
 type ClientService = ClientPublicService;
 
 // Only the public-safe fields the page passes down (never the full Stylist row,
-// which carries the secret treatwellIcalUrl).
-type PublicStylist = Pick<Stylist, 'id' | 'name' | 'role' | 'imageUrl'>;
+// which carries the secret treatwellIcalUrl). `translated`: the role line is in
+// the page's language (false = the English role is shown, marked lang="en").
+type PublicStylist = Pick<Stylist, 'id' | 'name' | 'role' | 'imageUrl'> & { translated: boolean };
 
 type Step = 'SERVICE' | 'STYLIST' | 'DATE' | 'CONFIRM';
 
@@ -133,13 +134,21 @@ export function BookingWizard({ services, offerings, categories, stylists, close
     : stylists.find((stylist) => stylist.id === selectedStylistId) ?? null;
   const activeQuote = repricedQuote && repricedQuote.serviceId === selectedService?.id ? repricedQuote : null;
 
-  /** "Full Head Colour & Blow Dry · Long hair" for an option; the service name otherwise. */
-  const displayName = (service: ClientService) => {
+  /**
+   * "Full Head Colour & Blow Dry · Long hair" for an option; the service name
+   * otherwise. A name with no translation in the page's language is shown in
+   * English and marked lang="en", so a screen reader pronounces it as English;
+   * the hair-length label is always the page's own language.
+   */
+  const displayName = (service: ClientService): ReactNode => {
     const offering = service.offeringId ? offeringById.get(service.offeringId) : undefined;
-    if (!offering) return service.name;
+    if (!offering) return <span lang={service.translated ? undefined : 'en'}>{service.name}</span>;
+    const name = <span lang={offering.translated ? undefined : 'en'}>{offering.name}</span>;
     const length = service.hairLength ? tp.dynamic(`hairLength.${service.hairLength}`) : null;
-    return length ? `${offering.name} · ${length}` : offering.name;
+    return length ? <>{name} · {length}</> : name;
   };
+  // A category without a translation shows its stored (English) name.
+  const categoryLang = (category: string) => (locale === 'en-GB' || tp.has(`categories.${category}`) ? undefined : 'en');
 
   const dayString = selectedDay;
   const days = useMemo(() => Array.from({ length: BOOKING_DAYS_MAX }, (_, offset) => format(addDays(startOfToday(), offset), 'yyyy-MM-dd')), []);
@@ -548,7 +557,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                       className="block w-full pl-4 pr-10 py-3 border border-zinc-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 transition-all appearance-none text-zinc-900"
                    >
                       {browsable.map(({ category }) => (
-                         <option key={category} value={category}>{categoryLabel(category)}</option>
+                         <option key={category} value={category} lang={categoryLang(category)}>{categoryLabel(category)}</option>
                       ))}
                    </select>
                    <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
@@ -638,7 +647,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                    )}
                  </div>
                 <h3 className="font-medium text-zinc-900 text-lg">{stylist.name}</h3>
-                <p className="text-sm text-zinc-600 mt-1">{stylist.role}</p>
+                <p className="text-sm text-zinc-600 mt-1" lang={stylist.translated ? undefined : 'en'}>{stylist.role}</p>
               </button>
             ))}
           </div>
