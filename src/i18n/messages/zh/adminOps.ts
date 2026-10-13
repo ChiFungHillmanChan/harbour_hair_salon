@@ -183,6 +183,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       empty: '尚未有任何通知排入佇列。',
       kind: {
         REQUEST_RECEIVED: '已收到預約申請',
+        REQUEST_LAPSED: '預約申請已失效',
         SALON_ALERT: '店方通知',
         CONFIRMATION: '預約確認',
         CANCELLATION: '取消預約',

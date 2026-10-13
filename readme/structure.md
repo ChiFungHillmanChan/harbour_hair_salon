@@ -36,8 +36,9 @@ Colour services (`Service.requiresPatchTest`) require a COMPLETED Consultation &
 - `src/app/services/booking-service.ts` — `getValidPatchTest(userId, colourDate)` queries the user's patch-test appointments and delegates to the pure function.
 - `src/app/actions/booking.ts` — `submitBooking` and `requestReschedule` / `withdrawRescheduleRequest` enforce the gate server-side; `checkColourEligibility(serviceId, dateIso)` powers the wizard UX. `requestReschedule` answers a request for the booking's current (or already-requested) instant as a no-op success (no version bump, no email), and caps real requests with `rescheduleLimiter` (5/h per customer) and `appointmentRescheduleLimiter` (3/24h per appointment) → `TOO_MANY_RESCHEDULES`.
 - `src/components/booking/BookingWizard.tsx` — Shows a blocking gate panel + "book Consultation & Patch Test first" CTA at the CONFIRM step; disables submit when ineligible.
-- `src/app/actions/admin.ts` — `updateAppointmentStatus(appointmentId, status)` (admin-only) marks appointments COMPLETED — the signal that unlocks colour booking.
-- `src/components/admin/ScheduleCalendar.tsx` — "Mark completed" control on CONFIRMED appointments.
+- `src/app/actions/admin.ts` — `updateAppointmentStatus(appointmentId, status)` (admin-only) marks appointments COMPLETED — the signal that unlocks colour booking. COMPLETED only once the visit has started (`COMPLETE_BEFORE_START`), CONFIRMED only before a request's time (`REQUEST_EXPIRED`); a staff cancellation of a booking that has already started sends no email.
+- `src/components/admin/ScheduleCalendar.tsx` — "Mark completed" control on CONFIRMED appointments that have started, behind a confirm prompt.
+- `src/app/lib/appointment-timing.ts` — `hasAppointmentStarted(date, now)` (pure, client-safe): the one "has this visit begun?" rule shared by the board, the status action and the request lapse.
 - `src/components/admin/AppointmentDialog.tsx` — create/edit bookings; an explicit, confirmed "Cancel booking" action releases pending/confirmed bookings through the existing authenticated status action, audit trail, notification outbox and feed invalidation.
 - `src/components/admin/ServiceForm.tsx` + `src/app/actions/admin-services.ts` — manage `requiresPatchTest`/`isPatchTest` per service.
 
@@ -48,6 +49,11 @@ A customer's move of a CONFIRMED booking is a request; the original time stays b
 - `src/app/actions/admin.ts` — `decideRescheduleRequest(appointmentId, 'APPROVE' | 'DECLINE', requestedAt)`; approval first runs `refreshCalendarFeedsBeforeApproval(stylistId)` (that stylist's feeds older than `APPROVAL_REFRESH_MINUTES` = 5, then every stylist's feeds older than `CALENDAR_POLL_MINUTES` = 30 or failing), exactly as new-booking approval does.
 - `src/app/services/reschedule-request-lapse.ts` — `lapseExpiredRescheduleRequests(now)`, run by the notifications cron; also clears requests on bookings whose original time has passed (audited, no email).
 - Emails: `RESCHEDULE_REQUEST_RECEIVED`, `SALON_RESCHEDULE_ALERT`, `RESCHEDULE_DECLINED`, `RESCHEDULE_LAPSED` (keyed by the request's `requestedAt`).
+
+### Booking-request lapse
+A booking request (PENDING) whose start time comes unanswered lapses (owner policy, 2026-10-13).
+- `src/app/services/pending-request-lapse.ts` — `lapseStartedPendingRequests(now)`: per row, a conditional write to CANCELLED (version bump, Treatwell sync like a staff cancellation), audit `APPOINTMENT.LAPSED`, and a `REQUEST_LAPSED` email only when the customer had a `REQUEST_RECEIVED` (a staff pencil-in is closed silently); drops the busy feed with `invalidateStylistIcalFeedFromCron` (`stylist-ical-cache.ts`, `revalidateTag(..., { expire: 0 })` — `updateTag` throws in Route Handlers). Run by the notifications cron and by `/api/cron/housekeeping` (so it also happens while sending is off).
+- `src/app/services/admin-calendar-data.ts` — the "awaiting confirmation" queue and count list only requests whose time is still ahead; the calendar views still show the rest.
 
 ### Opening Hours (Admin → Opening Hours)
 The hours the booking engine sells from. Before this, `Availability` was written only by `prisma/seed.ts` — production had no way to change it.

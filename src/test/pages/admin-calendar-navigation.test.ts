@@ -30,14 +30,17 @@ async function renderCalendar(query: Query, rows: Row[] = []) {
     '@/app/lib/prisma': { __esModule: true, getDatabaseProvider: () => 'postgresql', default: {
       appointment: {
         findMany: async ({ where }: { where: { date?: Record<string, Date>; status?: string } }) => {
-          if (where.date) dateQueries.push(where.date);
+          // Records the calendar's period queries (the pending queue's "not yet started" filter is not one).
+          if (where.date?.gte) dateQueries.push(where.date);
           return rows.filter((row) => (!where.status || row.status === where.status) &&
             (!where.date?.gte || row.date >= where.date.gte) &&
+            (!where.date?.gt || row.date > where.date.gt) &&
             (!where.date?.lte || row.date <= where.date.lte) &&
             (!where.date?.lt || row.date < where.date.lt)).map((row) => ({ ...row, updatedAt: row.date, stylistId: 'stylist', durationAtBooking: 30, priceAtBooking: 50, user: { name: 'Customer', email: 'customer@example.test' }, service: { name: 'Cut', duration: 30, price: 50, calendarColor: null }, stylist: { name: 'Stylist', calendarColor: null } }));
         },
         groupBy: async () => [],
-        count: async () => rows.filter(row => row.status === 'PENDING').length,
+        count: async ({ where }: { where: { status: string; date?: { gt: Date } } }) =>
+          rows.filter(row => row.status === where.status && (!where.date?.gt || row.date > where.date.gt)).length,
       },
       $queryRaw: async () => [Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`month${i}`, rows.filter(row => row.date.getUTCFullYear() === Number(String(query.date).slice(0, 4)) && row.date.getUTCMonth() === i).length]))],
       stylist: { findMany: async () => [] },
@@ -77,15 +80,24 @@ test('year navigation counts bookings in January and December without loading de
   assert.deepEqual(result.dateQueries, []);
 });
 
-test('the pending queue includes all outstanding requests regardless of the selected period', async () => {
+test('the pending queue includes every request that can still be answered, regardless of the selected period', async () => {
   const result = await renderCalendar({ date: '2020-01-15', view: 'month' }, [
+    // Its time came and went unanswered: it can no longer be confirmed, so it
+    // leaves the queue (the notifications cron closes it).
     { id: 'old-request', date: new Date('2021-02-01T10:00:00Z'), status: 'PENDING' },
     { id: 'future-request', date: new Date('2099-12-01T10:00:00Z'), status: 'PENDING' },
+    { id: 'next-request', date: new Date('2099-12-08T10:00:00Z'), status: 'PENDING' },
     { id: 'confirmed', date: new Date('2099-12-02T10:00:00Z'), status: 'CONFIRMED' },
   ]);
-  assert.deepEqual((result.props.pendingAppointments as Row[] | undefined)?.map((row) => row.id), ['old-request', 'future-request']);
+  assert.deepEqual((result.props.pendingAppointments as Row[] | undefined)?.map((row) => row.id), ['future-request', 'next-request']);
   const pendingCard = elements(result.rendered).find((element) => elements(element.props.children).some((child) => child.props.children === 'Awaiting Confirmation') && elements(element.props.children).some((child) => child.props.children === 2));
-  assert.ok(pendingCard, 'the pending count must also include both requests outside the selected period');
+  assert.ok(pendingCard, 'the pending count must also include both requests outside the selected period, and only those');
+});
+
+test('a request whose time has passed stays on the calendar itself', async () => {
+  const result = await renderCalendar({ date: '2021-02-01', view: 'day' }, [{ id: 'old-request', date: new Date('2021-02-01T10:00:00Z'), status: 'PENDING' }]);
+  assert.deepEqual((result.props.appointments as Row[]).map((row) => row.id), ['old-request']);
+  assert.deepEqual(result.props.pendingAppointments, []);
 });
 
 test('day query follows the 23-hour London day when British Summer Time begins', async () => {

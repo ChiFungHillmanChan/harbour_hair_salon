@@ -185,6 +185,7 @@ const adminOps = {
       empty: 'No notification deliveries have been queued.',
       kind: {
         REQUEST_RECEIVED: 'Booking request received',
+        REQUEST_LAPSED: 'Booking request lapsed',
         SALON_ALERT: 'Salon alert',
         CONFIRMATION: 'Confirmation',
         CANCELLATION: 'Cancellation',

@@ -126,7 +126,10 @@ async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string
   if (!current || current.notificationVersion !== payload.version || current.date.toISOString() !== payload.date) return false;
   const thisRequestOpen = Boolean(payload.options?.requestedAt) && current.rescheduleRequestedAt?.toISOString() === payload.options?.requestedAt;
   switch (kind) {
-    case 'CANCELLATION': return current.status === 'CANCELLED';
+    case 'CANCELLATION':
+    // A booking request closed unanswered (pending-request-lapse.ts); the
+    // version/date match above drops it if anything changed since.
+    case 'REQUEST_LAPSED': return current.status === 'CANCELLED';
     case 'REQUEST_RECEIVED':
     case 'SALON_ALERT': return current.status === 'PENDING' && current.date > now;
     case 'CONFIRMATION':

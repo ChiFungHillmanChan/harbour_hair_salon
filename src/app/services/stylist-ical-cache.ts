@@ -1,5 +1,5 @@
 import 'server-only';
-import { unstable_cache, updateTag } from 'next/cache';
+import { revalidateTag, unstable_cache, updateTag } from 'next/cache';
 import {
   loadBusyEvents,
   loadStylistToken,
@@ -97,6 +97,16 @@ export function invalidateStylistIcalFeed(): void {
   // busy feed is exactly how a marketplace double-books the chair. Every caller
   // is a 'use server' action, which is where updateTag is valid.
   updateTag(EVENTS_TAG);
+}
+
+/**
+ * The same immediate drop for appointment changes made by a cron job. Those
+ * run in a Route Handler, where `updateTag` throws ("can only be called from
+ * within a Server Action"); `revalidateTag` with `{ expire: 0 }` never serves
+ * the stale copy either, so the next marketplace poll reads the database.
+ */
+export function invalidateStylistIcalFeedFromCron(): void {
+  revalidateTag(EVENTS_TAG, { expire: 0 });
 }
 
 /** Call when a stylist's outbound feed secret is regenerated or cleared. */
