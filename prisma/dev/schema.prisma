@@ -37,6 +37,7 @@ model User {
   reviews        Review[]
   oauthAccounts  OAuthAccount[]
   passwordResets PasswordResetToken[]
+  paymentAttempts PaymentAttempt[]
 }
 
 model OAuthAccount {
@@ -126,6 +127,9 @@ model Service {
   priceNote            String?
   priceSource          String? // e.g. "treatwell:2026-09-28" — see prisma/price-catalog
   priceVerifiedAt      DateTime?
+  /// Online booking deposit for this option: null follows the salon policy
+  /// (Admin → Settings), 0 never takes one, N takes N pence (capped at the price).
+  depositOverridePence Int?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   appointments         Appointment[]
@@ -188,6 +192,9 @@ model Appointment {
   notifications       NotificationDelivery[]
 
   review Review?
+
+  /// The deposit taken for this booking request, if any (one card attempt).
+  paymentAttempt PaymentAttempt?
 
   @@index([stylistId, date])
   @@index([userId, status])
@@ -312,6 +319,12 @@ model SiteSettings {
   bookingEnabled    Boolean  @default(false)
   /// Language of the salon's own notification mails (new booking alerts).
   salonNotificationLocale String @default("zh-HK")
+  /// Square deposit policy for customer booking requests. Off by default; a
+  /// whole percentage of the quoted price, none for services cheaper than the
+  /// minimum. Money paths read these from the row, never from the page cache.
+  depositsEnabled            Boolean @default(false)
+  depositPercent             Int     @default(0)
+  depositMinimumServicePence Int     @default(0)
   updatedAt         DateTime @updatedAt
 }
 
@@ -581,4 +594,76 @@ model ContentDraft {
   updatedAt        DateTime @updatedAt
 
   @@unique([entityType, entityId])
+}
+
+// Square deposits — docs/superpowers/specs/2026-10-13-square-deposits-design.md.
+// Money records outlive the people and bookings they belong to: deleting a user
+// or an appointment only unlinks its attempts (SetNull), and an attempt with
+// refunds cannot be deleted at all (Restrict). No personal data is kept here
+// beyond the user link; card details never reach this application.
+
+/// One card submission for a booking request's deposit.
+model PaymentAttempt {
+  /// Also Square's reference_id (at most 40 characters).
+  id               String          @id @default(cuid())
+  userId           String?
+  user             User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// Client UUID for one card tokenization: a repeat returns the stored outcome
+  /// instead of authorizing twice.
+  attemptKey       String
+  /// Square CreatePayment idempotency key (at most 45 characters).
+  idempotencyKey   String          @unique
+  appointmentId    String?         @unique
+  appointment      Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  /// INITIATED → AUTHORIZED → CAPTURING → CAPTURED; INITIATED → FAILED (declined, refused by the Square setup, or never sent)
+  /// or UNKNOWN (no answer; voided by key → VOIDED); AUTHORIZED → VOIDED | EXPIRED;
+  /// CAPTURING → CAPTURE_UNKNOWN; CAPTURED → KEPT (staff kept it when cancelling).
+  status           String          @default("INITIATED")
+  environment      String // sandbox | production
+  locationId       String
+  amountPence      Int
+  currency         String          @default("GBP")
+  /// The quoted price the deposit was taken from.
+  quoteAmountPence Int
+  policyJson       String // percent / minimum / override used
+  requestJson      String // serviceId, stylist choice, date — the request fingerprint
+  squarePaymentId  String?         @unique
+  delayedUntil     DateTime?
+  authorizedAt     DateTime?
+  capturedAt       DateTime?
+  voidedAt         DateTime?
+  /// Our own fixed codes only, never provider text.
+  lastError        String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  refunds          PaymentRefund[]
+
+  @@unique([userId, attemptKey])
+  @@index([status, createdAt])
+}
+
+model PaymentRefund {
+  id             String         @id @default(cuid())
+  attemptId      String
+  attempt        PaymentAttempt @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+  idempotencyKey String         @unique
+  squareRefundId String?        @unique
+  amountPence    Int
+  status         String         @default("REQUESTED") // REQUESTED, SUBMITTING, PENDING, COMPLETED, FAILED, REJECTED, UNKNOWN, UNRESOLVED (retries stopped after 7 days), SETTLED_EXTERNALLY (staff refunded it by hand)
+  reason         String // CUSTOMER_CANCELLED | STAFF_CANCELLED | SLOT_LOST | LATE_CAPTURE | REQUEST_LAPSED
+  requestedById  String? // admin user id; null = customer / system
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([status, createdAt])
+}
+
+/// Square webhook deliveries already accepted. Square retries and reorders
+/// deliveries, so event_id is the dedupe key.
+model SquareWebhookEvent {
+  eventId     String    @id
+  type        String
+  objectId    String?
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
 }

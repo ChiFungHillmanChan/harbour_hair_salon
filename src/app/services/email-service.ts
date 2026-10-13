@@ -21,6 +21,7 @@ import {
 import { emailVerificationContent } from './email-content';
 import { createEmailVerificationToken, EMAIL_VERIFICATION_TTL_HOURS } from '@/app/lib/email-verification';
 import { mailboxAddress } from '@/app/lib/mailbox';
+import { isPreviewEmailBlocked } from '@/app/lib/preview-email';
 import type { IcsOrganizer } from '@/app/lib/calendar-links';
 
 export type { AppointmentEmailKind, AppointmentEmailOptions } from './email-content';
@@ -116,8 +117,19 @@ export async function prepareAppointmentEmail(
     : []);
 }
 
-/** Abort the HTTP request itself; never log provider error bodies or recipient data. */
+/**
+ * Abort the HTTP request itself; never log provider error bodies or recipient data.
+ *
+ * Every email leaves through here. On a Vercel preview — which runs on a copy
+ * of production's customers — only recipients in PREVIEW_EMAIL_ALLOWLIST are
+ * emailed (lib/preview-email.ts; unset: nobody). Anything else is dropped as
+ * if sent, so the notification outbox does not retry it.
+ */
 export async function sendPreparedEmail(email: PreparedEmail, idempotencyKey?: string): Promise<void> {
+  if (isPreviewEmailBlocked(email.to, { VERCEL_ENV: process.env.VERCEL_ENV, PREVIEW_EMAIL_ALLOWLIST: process.env.PREVIEW_EMAIL_ALLOWLIST })) {
+    console.warn('Preview deployment: email not sent — the recipient is not in PREVIEW_EMAIL_ALLOWLIST');
+    return;
+  }
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error('RESEND_API_KEY is required');
   const response = await fetch('https://api.resend.com/emails', {

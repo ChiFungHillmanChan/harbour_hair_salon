@@ -58,6 +58,16 @@ export class SlidingWindow {
     return true;
   }
 
+  /**
+   * Whether `key` is still under its limit right now — the answer `check`
+   * would give — without recording anything (a failure limiter checks often
+   * and records only failures; see rate-limit.ts createFailureLimiter).
+   */
+  allows(key: string, now: number = Date.now()): boolean {
+    const cutoff = now - this.windowMs;
+    return (this.hits.get(key) ?? []).filter((t) => t > cutoff).length < this.limit;
+  }
+
   /** Tracked-key count. Exposed for tests and diagnostics. */
   size(): number {
     return this.hits.size;

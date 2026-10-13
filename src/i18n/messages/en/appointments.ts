@@ -48,6 +48,19 @@ const appointments = {
     downloadCalendarFile: 'Download calendar file (.ics)',
     opensInNewTab: '(opens in a new tab)',
     calendarAfterConfirmation: 'You can add it to your calendar once it’s confirmed.',
+    confirmCancelRefund: 'Cancel this appointment? Your {amount} deposit will be refunded in full.',
+    confirmWithdrawRelease: 'Withdraw this request? The {amount} hold on your card will be released.',
+  },
+  /** The booking's card deposit, by state (lib/deposit-display.ts). */
+  deposit: {
+    HELD: 'Deposit: {amount} held on your card, not taken yet. It is only taken if the salon confirms your booking.',
+    PROCESSING: 'Deposit: {amount}, payment being confirmed.',
+    PAID: 'Deposit paid: {amount}.',
+    REFUND_PENDING: 'Deposit: your {amount} refund is on its way. Most banks show refunds within 5–10 working days; some take up to 14.',
+    REFUNDED: 'Deposit refunded: {amount}.',
+    REFUND_FAILED: 'Deposit: we couldn’t refund {amount} automatically. Please contact the salon.',
+    RELEASED: 'Deposit: the {amount} hold on your card was released. Nothing was taken.',
+    KEPT: 'Deposit: {amount} kept under our booking terms.',
   },
   reschedule: {
     title: 'Request a new time',

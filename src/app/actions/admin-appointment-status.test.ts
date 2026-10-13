@@ -48,6 +48,8 @@ function fixture(options: FixtureOptions = {}) {
         return { count: 1 };
       },
     },
+    // No card deposit on this booking (deposits: admin-deposit.test.ts).
+    paymentAttempt: { findUnique: async () => null },
     notificationDelivery: {
       findFirst: async ({ where }: { where: { appointmentId: string; kind: string } }) =>
         options.announced && where.appointmentId === appointment.id && where.kind === 'REQUEST_RECEIVED' ? { id: 'request-received' } : null,

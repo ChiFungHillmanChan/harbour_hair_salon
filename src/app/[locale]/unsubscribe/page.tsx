@@ -33,7 +33,8 @@ export default async function UnsubscribePage({
     <div className="min-h-screen bg-zinc-50 py-16 px-4">
       <div className="mx-auto max-w-md rounded-xl border border-zinc-200 bg-white p-8 shadow-sm">
         <h1 className="font-serif text-3xl text-zinc-900 mb-3">{t('unsubscribe.title')}</h1>
-        <ClientMessages namespaces={['legal']}>
+        {/* Only the form's own strings: `legal` also holds the privacy notice and booking terms. */}
+        <ClientMessages sections={{ legal: ['unsubscribe'] }}>
           {linkEmail && typeof token === 'string' ? (
             <ConfirmUnsubscribeForm token={token} email={linkEmail} />
           ) : (

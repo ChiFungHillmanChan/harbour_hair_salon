@@ -359,6 +359,13 @@ function refuseDiscountCode(code: string | undefined) {
   if (code && code.trim()) throw new DiscountUnavailableError('DISCOUNTS_PAUSED');
 }
 
+/**
+ * A card deposit Square already holds for this request (services/payment-attempts.ts).
+ * The booking transaction links it to the appointment it creates — atomically,
+ * so a deposit is never attached to a booking that was not made.
+ */
+export type BookingDeposit = { attemptId: string; amountPence: number };
+
 type NewBookingInput = {
   serviceId: string;
   date: Date;
@@ -370,6 +377,8 @@ type NewBookingInput = {
   expectedQuote?: QuoteExpectation | null;
   /** Language the customer booked in; their emails for this booking use it. */
   locale?: Locale;
+  /** The authorized deposit for this request; staff-entered bookings never have one. */
+  deposit?: BookingDeposit;
 };
 
 async function quoteInTx(tx: Prisma.TransactionClient, data: NewBookingInput) {
@@ -411,10 +420,42 @@ const bookingResultInclude = {
  * matches whichever stylist the first attempt was given.
  */
 async function findRepeatRequest(tx: Prisma.TransactionClient, data: NewBookingInput, stylistId?: string) {
-  return tx.appointment.findFirst({
-    where: { userId: data.userId, serviceId: data.serviceId, date: data.date, ...(stylistId ? { stylistId } : {}), status: { in: ['PENDING', 'CONFIRMED'] } },
-    include: bookingResultInclude,
+  return tx.appointment.findFirst({ where: repeatRequestWhere(data, stylistId), include: bookingResultInclude });
+}
+
+/** The one repeat rule, shared by findRepeatRequest and findExistingRequest (see findRepeatRequest). */
+function repeatRequestWhere(data: Pick<NewBookingInput, 'userId' | 'serviceId' | 'date'>, stylistId?: string): Prisma.AppointmentWhereInput {
+  return { userId: data.userId, serviceId: data.serviceId, date: data.date, ...(stylistId ? { stylistId } : {}), status: { in: ['PENDING', 'CONFIRMED'] } };
+}
+
+/**
+ * The request this customer already holds for exactly this service and start
+ * — the named stylist's, or any stylist's for "Anyone" (no `stylistId`) —
+ * read outside any transaction: a repeated submission is answered with it
+ * before any money moves. The same rule as findRepeatRequest, so nothing the
+ * booking transaction would book is answered as a repeat here, and nothing it
+ * would answer as a repeat reaches the card. findRepeatRequest inside the
+ * booking transaction still decides a race.
+ */
+export async function findExistingRequest(data: Pick<NewBookingInput, 'userId' | 'serviceId' | 'date'>, stylistId?: string): Promise<{ id: string } | null> {
+  return prisma.appointment.findFirst({ where: repeatRequestWhere(data, stylistId), select: { id: true } });
+}
+
+/**
+ * Attach the request's authorized deposit to the appointment just created, in
+ * the same transaction: only an AUTHORIZED attempt of this customer that no
+ * booking has claimed yet. Anything else aborts the booking (rolled back) and
+ * the caller releases the hold.
+ */
+async function linkDeposit(tx: Prisma.TransactionClient, data: NewBookingInput, appointmentId: string) {
+  if (!data.deposit) return null;
+  const linked = await tx.paymentAttempt.updateMany({
+    where: { id: data.deposit.attemptId, userId: data.userId, status: 'AUTHORIZED', appointmentId: null },
+    data: { appointmentId },
   });
+  if (linked.count !== 1) throw new Error('The authorized deposit could not be linked to the booking');
+  // What the request emails say about the deposit (notification-outbox-service.ts).
+  return { status: 'AUTHORIZED', amountPence: data.deposit.amountPence };
 }
 
 export async function createBooking(data: NewBookingInput & { stylistId: string }) {
@@ -459,12 +500,51 @@ export async function createBooking(data: NewBookingInput & { stylistId: string 
       },
       include: bookingResultInclude,
     });
-    await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', created, { salonPhone: settings.phone });
-    await enqueueAppointmentNotification(tx, 'SALON_ALERT', created);
+    const paymentAttempt = await linkDeposit(tx, data, created.id);
+    await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', { ...created, paymentAttempt }, { salonPhone: settings.phone });
+    await enqueueAppointmentNotification(tx, 'SALON_ALERT', { ...created, paymentAttempt });
     return { ...created, repeat: false as const };
   });
 
   return appointment;
+}
+
+/**
+ * The first candidate (in priority order) free for the whole appointment, from
+ * one read of the day's appointments and synced busy blocks. Shared by the
+ * "Anyone" booking transaction and the pre-check before a deposit.
+ */
+async function chooseFreeStylist(db: Prisma.TransactionClient, candidateStylistIds: string[], date: Date, durationMinutes: number) {
+  const { start: dayStart, end: dayEnd } = salonDayWindow(date);
+
+  const existing = await db.appointment.findMany({
+    where: {
+      stylistId: { in: candidateStylistIds },
+      date: { gte: dayStart, lte: dayEnd },
+      status: { not: 'CANCELLED' },
+    },
+    select: slotAppointmentSelect,
+  });
+
+  const bookedByStylist = new Map<string, BookedInterval[]>();
+  for (const appt of existing) {
+    const list = bookedByStylist.get(appt.stylistId) ?? [];
+    // Frozen duration wins over the live service duration (see createBooking).
+    list.push({ start: new Date(appt.date), durationMin: appt.durationAtBooking ?? appt.service.duration });
+    bookedByStylist.set(appt.stylistId, list);
+  }
+
+  // Merge Treatwell (external) busy blocks per candidate stylist.
+  const externalBlocks = await loadExternalBusy(db, candidateStylistIds, { start: dayStart, end: dayEnd });
+  for (const row of externalBlocks) {
+    const list = bookedByStylist.get(row.stylistId) ?? [];
+    list.push(toBookedInterval(row));
+    bookedByStylist.set(row.stylistId, list);
+  }
+
+  const stylistId = firstFreeStylist(candidateStylistIds, date, durationMinutes, bookedByStylist);
+  if (!stylistId) throw new SlotUnavailableError('NO_STYLIST_AT_TIME');
+  return { stylistId, blocking: bookedByStylist.get(stylistId) ?? [] };
 }
 
 /**
@@ -484,43 +564,7 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
     await assertActiveBookingLimit(tx, data.userId);
     const { service, quote } = await quoteInTx(tx, data);
 
-    const { start: dayStart, end: dayEnd } = salonDayWindow(data.date);
-
-    const existing = await tx.appointment.findMany({
-      where: {
-        stylistId: { in: data.candidateStylistIds },
-        date: { gte: dayStart, lte: dayEnd },
-        status: { not: 'CANCELLED' },
-      },
-      select: slotAppointmentSelect,
-    });
-
-    const bookedByStylist = new Map<string, BookedInterval[]>();
-    for (const appt of existing) {
-      const list = bookedByStylist.get(appt.stylistId) ?? [];
-      // Frozen duration wins over the live service duration (see createBooking).
-      list.push({ start: new Date(appt.date), durationMin: appt.durationAtBooking ?? appt.service.duration });
-      bookedByStylist.set(appt.stylistId, list);
-    }
-
-    // Merge Treatwell (external) busy blocks per candidate stylist — loaded in-tx.
-    const externalBlocks = await loadExternalBusy(tx, data.candidateStylistIds, { start: dayStart, end: dayEnd });
-    for (const row of externalBlocks) {
-      const list = bookedByStylist.get(row.stylistId) ?? [];
-      list.push(toBookedInterval(row));
-      bookedByStylist.set(row.stylistId, list);
-    }
-
-    const stylistId = firstFreeStylist(
-      data.candidateStylistIds,
-      data.date,
-      service.duration,
-      bookedByStylist,
-    );
-
-    if (!stylistId) {
-      throw new SlotUnavailableError('NO_STYLIST_AT_TIME');
-    }
+    const { stylistId, blocking } = await chooseFreeStylist(tx, data.candidateStylistIds, data.date, service.duration);
 
     const stylist = await tx.stylist.findUnique({
       where: { id: stylistId },
@@ -535,7 +579,7 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
       serviceExternalId: service.treatwellExternalId,
     });
 
-    await assertAppointmentSlotAvailable(tx, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date, bookedByStylist.get(stylistId) ?? []);
+    await assertAppointmentSlotAvailable(tx, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date, blocking);
     const created = await tx.appointment.create({
       data: {
         date: data.date,
@@ -552,12 +596,39 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
       },
       include: bookingResultInclude,
     });
-    await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', created, { salonPhone: settings.phone });
-    await enqueueAppointmentNotification(tx, 'SALON_ALERT', created);
+    const paymentAttempt = await linkDeposit(tx, data, created.id);
+    await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', { ...created, paymentAttempt }, { salonPhone: settings.phone });
+    await enqueueAppointmentNotification(tx, 'SALON_ALERT', { ...created, paymentAttempt });
     return { ...created, repeat: false as const };
   });
 
   return appointment;
+}
+
+/**
+ * Before a deposit is authorized: every check the booking transaction will
+ * make, read without its isolation or any lock — online booking still open,
+ * the customer's upcoming-booking cap, the price they saw, the stylist and the
+ * time free — so a request that would be refused is refused BEFORE money
+ * moves. Throws the same errors the transaction would (PriceChangedError
+ * included). The transaction still decides: a time taken in between is
+ * refused there, and the caller then releases the hold. Not for repeats: the
+ * customer's own existing request would read as a clash, so check
+ * findExistingRequest first.
+ */
+export async function precheckBookingRequest(data: NewBookingInput & ({ stylistId: string } | { candidateStylistIds: string[] })): Promise<void> {
+  refuseDiscountCode(data.discountCode);
+  await assertOnlineBookingReady(prisma);
+  await assertActiveBookingLimit(prisma, data.userId);
+  const { service } = await quoteInTx(prisma, data);
+  if ('candidateStylistIds' in data) {
+    const { stylistId, blocking } = await chooseFreeStylist(prisma, data.candidateStylistIds, data.date, service.duration);
+    await assertAppointmentSlotAvailable(prisma, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date, blocking);
+    return;
+  }
+  const stylist = await prisma.stylist.findUnique({ where: { id: data.stylistId }, select: { isActive: true } });
+  if (!stylist?.isActive) throw new BookingError('STYLIST_UNAVAILABLE');
+  await assertAppointmentSlotAvailable(prisma, { id: '', stylistId: data.stylistId, durationAtBooking: service.duration, service }, data.date);
 }
 
 /**

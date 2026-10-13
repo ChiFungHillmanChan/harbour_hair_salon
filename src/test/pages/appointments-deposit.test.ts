@@ -1,0 +1,154 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { loadServerModule } from '../load-server-module';
+import { translator, type Namespace } from '../../i18n/messages';
+import { formatGBP } from '../../app/services/pricing/money';
+import type { Locale } from '../../i18n/config';
+
+// My Bookings shows each booking's card deposit by what happened to the money
+// (lib/deposit-display.ts): held, paid, refund pending, refunded, released or
+// kept. Only that state and amount reach the browser — never Square ids.
+
+type Card = { id: string; deposit: unknown } & Record<string, unknown>;
+
+async function cards(rows: Record<string, unknown>[]) {
+  const card = () => null;
+  const selects: unknown[] = [];
+  const page = loadServerModule<typeof import('../../app/[locale]/appointments/page')>('src/app/[locale]/appointments/page.tsx', {
+    '@/components/admin/Pagination': { Pagination: () => null },
+    '@/app/lib/prisma': {
+      appointment: { findMany: async ({ where, select }: { where: { OR?: unknown }; select: unknown }) => { selects.push(select); return where.OR ? [] : rows; } },
+    },
+    '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1' }) },
+    '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
+    '@/components/appointments/AppointmentCard': { AppointmentCard: card },
+    '@/i18n/ClientMessages': { ClientMessages: ({ children }: { children: unknown }) => children },
+    '@/i18n/server': { getLocale: async () => 'en-GB', getT: async (namespace: Namespace) => translator('en-GB', namespace) },
+  });
+  const found: Card[] = [];
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (!node || typeof node !== 'object' || !('props' in node)) return;
+    const element = node as { type: unknown; props: { appointment?: Card; children?: unknown } };
+    if (element.type === card && element.props.appointment) found.push(element.props.appointment);
+    visit(element.props.children);
+  };
+  visit(await page.default({}));
+  return { cards: found, selects };
+}
+
+const row = (id: string, status: string, paymentAttempt: unknown) => ({
+  id, status, date: new Date('2099-09-14T12:00:00Z'), stylistId: 'stylist-1', stylist: { name: 'Ivan' }, serviceId: 'service-1',
+  service: { name: 'Cut', duration: 60 }, review: null, priceAtBooking: 100, quoteJson: null, durationAtBooking: 60,
+  rescheduleRequestedDate: null, rescheduleRequestedAt: null, notificationVersion: 1, paymentAttempt,
+});
+const taken = (refunds: { status: string; amountPence: number }[] = []) => ({ status: 'CAPTURED', amountPence: 2000, refunds, squarePaymentId: 'square-secret' });
+
+test('each booking’s deposit reaches My Bookings as a state and an amount only', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') });
+  const { cards: shown, selects } = await cards([
+    row('held', 'PENDING', { status: 'AUTHORIZED', amountPence: 2000, refunds: [], squarePaymentId: 'square-secret' }),
+    row('paid', 'CONFIRMED', taken()),
+    row('refunding', 'CANCELLED', taken([{ status: 'PENDING', amountPence: 2000 }])),
+    row('refunded', 'CANCELLED', taken([{ status: 'COMPLETED', amountPence: 2000 }])),
+    // Staff kept it when they cancelled: recorded on the deposit (KEPT).
+    row('kept', 'CANCELLED', { ...taken(), status: 'KEPT' }),
+    row('released', 'CANCELLED', { status: 'VOIDED', amountPence: 2000, refunds: [] }),
+    row('none', 'CONFIRMED', null),
+  ]);
+  assert.deepEqual(Object.fromEntries(shown.map((card) => [card.id, card.deposit])), {
+    held: { state: 'HELD', amountPence: 2000 },
+    paid: { state: 'PAID', amountPence: 2000 },
+    refunding: { state: 'REFUND_PENDING', amountPence: 2000 },
+    refunded: { state: 'REFUNDED', amountPence: 2000 },
+    kept: { state: 'KEPT', amountPence: 2000 },
+    released: { state: 'RELEASED', amountPence: 2000 },
+    none: null,
+  });
+  assert.ok(!JSON.stringify(shown).includes('square-secret'), 'no Square id reaches the page');
+  // The query asks for the deposit's state and refunds, never its Square ids.
+  for (const select of selects as { paymentAttempt: { select: Record<string, unknown> } }[]) {
+    assert.deepEqual(Object.keys(select.paymentAttempt.select).sort(), ['amountPence', 'refunds', 'status']);
+  }
+});
+
+/** The card itself, with its hooks replaced; `confirmations` records what window.confirm asked. */
+function renderCard(appointment: Record<string, unknown>, locale: Locale = 'en-GB') {
+  const confirmations: string[] = [];
+  const cancelled: string[] = [];
+  const { AppointmentCard } = loadServerModule<typeof import('../../components/appointments/AppointmentCard')>('src/components/appointments/AppointmentCard.tsx', {
+    react: { useState: (value: unknown) => [typeof value === 'function' ? (value as () => unknown)() : value, () => undefined] },
+    'next/navigation': { useRouter: () => ({ refresh: () => undefined }) },
+    '@/app/actions/booking': {
+      cancelAppointment: async (id: string) => { cancelled.push(id); return { success: true }; },
+      withdrawRescheduleRequest: async () => ({ success: true }),
+    },
+    '@/components/pricing/PriceParts': { useFormatPrice: () => (pence: number) => formatGBP(pence, locale === 'zh-HK' ? 'zh-HK' : 'en-GB') },
+    '@/i18n/client': { useT: (namespace: Namespace) => translator(locale, namespace), useLocale: () => locale },
+    '@/i18n/draft-store': { useDraftState: (_key: string, initial: unknown) => [initial, () => undefined] },
+    '@/i18n/link': { default: () => null },
+    './RescheduleModal': { RescheduleModal: () => null },
+  });
+  const tree = AppointmentCard({
+    appointment: {
+      id: 'appointment-1', date: '2099-09-14T12:00:00.000Z', status: 'CONFIRMED', stylist: { name: 'Ivan' }, stylistId: 'stylist-1',
+      service: { name: 'Cut', duration: 60 }, serviceId: 'service-1', price: { known: true, amountPence: 10000, priceType: null, vatDisplay: null, priceNature: null },
+      request: { state: 'none' }, calendar: null, ...appointment,
+    } as never,
+    isUpcoming: true,
+    bookingEnabled: true,
+  });
+  const nodes: { type: unknown; props: Record<string, unknown> }[] = [];
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (!node || typeof node !== 'object' || !('props' in node)) return;
+    const element = node as { type: unknown; props: Record<string, unknown> };
+    nodes.push(element);
+    walk(element.props.children);
+  };
+  walk(tree);
+  const text = (node: unknown): string => {
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) return node.map(text).join('');
+    if (!node || typeof node !== 'object' || !('props' in node)) return '';
+    return text((node as { props: { children?: unknown } }).props.children);
+  };
+  const cancel = async () => {
+    const previous = (globalThis as { window?: unknown }).window;
+    (globalThis as { window?: unknown }).window = { confirm: (message: string) => { confirmations.push(message); return false; } };
+    try {
+      const button = nodes.find((node) => node.type === 'button' && /Cancel|Withdraw|取消|撤回/.test(text(node)));
+      await (button!.props.onClick as () => Promise<void>)();
+    } finally {
+      (globalThis as { window?: unknown }).window = previous;
+    }
+  };
+  return { all: text(tree), confirmations, cancelled, cancel };
+}
+
+test('the card says what happened to the deposit, and cancelling says what will happen to it', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') });
+  const paid = renderCard({ deposit: { state: 'PAID', amountPence: 2000 } });
+  assert.match(paid.all, /Deposit paid: £20\.00\./);
+  await paid.cancel();
+  assert.deepEqual(paid.confirmations, ['Cancel this appointment? Your £20.00 deposit will be refunded in full.']);
+  assert.deepEqual(paid.cancelled, [], 'nothing happens until the customer agrees');
+
+  const held = renderCard({ status: 'PENDING', deposit: { state: 'HELD', amountPence: 2000 } });
+  assert.match(held.all, /Deposit: £20\.00 held on your card, not taken yet\./);
+  await held.cancel();
+  assert.deepEqual(held.confirmations, ['Withdraw this request? The £20.00 hold on your card will be released.']);
+
+  const refunding = renderCard({ status: 'CANCELLED', deposit: { state: 'REFUND_PENDING', amountPence: 2000 } });
+  assert.match(refunding.all, /Most banks show refunds within 5–10 working days; some take up to 14\./);
+
+  const none = renderCard({});
+  assert.doesNotMatch(none.all, /Deposit/);
+  await none.cancel();
+  assert.deepEqual(none.confirmations, ['Are you sure you want to cancel this appointment?']);
+
+  const kept = renderCard({ status: 'CANCELLED', deposit: { state: 'KEPT', amountPence: 2000 } });
+  assert.match(kept.all, /Deposit: £20\.00 kept under our booking terms\./, 'under the terms — never "as agreed"');
+  const chinese = renderCard({ deposit: { state: 'KEPT', amountPence: 2000 } }, 'zh-HK');
+  assert.match(chinese.all, /訂金：根據我們的預約條款，£20\.00 不予退還。/);
+});

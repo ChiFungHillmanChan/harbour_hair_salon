@@ -7,13 +7,18 @@ import { format, addDays, startOfToday } from 'date-fns';
 import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import Link from '@/i18n/link';
 import { fetchBookingDays, submitBooking, type ClientQuote } from '@/app/actions/booking';
+import { previewBookingQuote, type BookingQuotePreview } from '@/app/actions/booking-quote';
 import type { BookingDay } from '@/app/services/booking-days';
 import { DayChip, TimeSlotGrid, UnavailableDayBlock } from './DayAvailability';
 import { BookingClosedNotice, type BookingClosedContact } from './BookingClosedNotice';
 import { isBookingClosedAnswer } from './closed-answer';
 import { reconcileSelection } from './reconcile-selection';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
-import { salonDateKey } from '@/app/services/salon-time';
+import { DepositCardForm } from './DepositCardForm';
+import { DepositRows, DepositTerms, PaymentUnavailableNotice } from './DepositSummary';
+import { depositVerificationDetails, SQUARE_TOKENIZE_TIMEOUT_MS, withTimeout, type DepositCard, type DepositPayer, type SquarePublicConfig } from './square-web-payments';
+import { afterDepositAnswer, PAYMENT_ANSWER_CODES, reusableSubmission, submissionFingerprint, type DepositSubmission } from './deposit-submission';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, meetsMinimumNotice } from '@/app/lib/booking-constants';
+import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
 import { useDraftState, clearDraft } from '@/i18n/draft-store';
@@ -41,17 +46,23 @@ interface BookingWizardProps {
    * pause, or staff switching it off) — what /book itself shows when closed.
    */
   closedContact: BookingClosedContact;
+  /**
+   * Card deposits: Square's public values (null = this site cannot take one
+   * now) and the account holder Square verifies the card against.
+   */
+  payment?: { square: SquarePublicConfig | null; payer: DepositPayer };
 }
 
 const STEPS: Step[] = ['SERVICE', 'STYLIST', 'DATE', 'CONFIRM'];
 const DRAFT = 'booking-wizard';
+const NO_PAYMENT: NonNullable<BookingWizardProps['payment']> = { square: null, payer: { name: null, email: null } };
 
 /** Reached through routing (consultation gates), never browsed directly. */
 const isRoutingTarget = (service: ClientService) => service.isConsultation || service.isPatchTest;
 /** Can be picked in the wizard: bookable, or a consultation-routed service whose price is shown. */
 const isSelectable = (service: ClientService) => service.isBookable || service.requiresConsultation;
 
-export function BookingWizard({ services, offerings, categories, stylists, closedContact }: BookingWizardProps) {
+export function BookingWizard({ services, offerings, categories, stylists, closedContact, payment = NO_PAYMENT }: BookingWizardProps) {
   const t = useT('booking');
   const tp = useT('pricing');
   const tc = useT('common');
@@ -121,6 +132,23 @@ export function BookingWizard({ services, offerings, categories, stylists, close
   }, [bookingClosed]);
   // Colour patch-test gate: populated when a colour service + date are selected
   const [colourGate, setColourGate] = useState<{ eligible: boolean; reason: string; testDate: string | null } | null>(null);
+
+  // Card deposit (docs/superpowers/specs/2026-10-13-square-deposits-design.md).
+  // The review step reads the deposit for the chosen service from the server
+  // (again after a price change); submitBooking works it out once more and
+  // refuses if it changed. No deposit due: the review step is exactly as before.
+  const [quoteVersion, setQuoteVersion] = useState(0);
+  const [depositAnswer, setDepositAnswer] = useState<{ serviceId: string; preview: BookingQuotePreview } | null>(null);
+  const [depositCard, setDepositCard] = useState<DepositCard | null>(null);
+  // The server could not take a card payment after all (PAYMENT_UNAVAILABLE).
+  const [paymentRefused, setPaymentRefused] = useState(false);
+  const [checkingCard, setCheckingCard] = useState(false);
+  // The card authorization a retry must send again unchanged (deposit-submission.ts).
+  const pendingDeposit = useRef<DepositSubmission | null>(null);
+  // Set synchronously, so a second tap cannot start a second authorization
+  // before the disabled button has rendered.
+  const submitting = useRef(false);
+  const [heldDeposit, setHeldDeposit] = useDraftState<number | null>(`${DRAFT}:held`, null);
 
   const serviceById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
   const offeringById = useMemo(() => new Map(offerings.map((offering) => [offering.id, offering])), [offerings]);
@@ -225,15 +253,72 @@ export function BookingWizard({ services, offerings, categories, stylists, close
     };
   }, [selectedService, dayString]);
 
+  // Read whenever the review step opens, and again after a price change
+  // (quoteVersion). While a new answer loads, the last one for the same
+  // service stays on screen, so Square's card field is not torn down and
+  // retyped; if it was out of date the server says so (QUOTE_CHANGED).
+  const quoteServiceId = step === 'CONFIRM' ? selectedServiceId : null;
+  useEffect(() => {
+    if (!quoteServiceId) return;
+    let cancelled = false;
+    previewBookingQuote(quoteServiceId).then(
+      (preview) => { if (!cancelled) setDepositAnswer({ serviceId: quoteServiceId, preview }); },
+      // Unknown is not "none": the server still says if a deposit is due (QUOTE_CHANGED).
+      () => { if (!cancelled) setDepositAnswer({ serviceId: quoteServiceId, preview: { ok: false } }); },
+    );
+    return () => { cancelled = true; };
+  }, [quoteServiceId, quoteVersion]);
+  const depositPreview = depositAnswer && quoteServiceId && depositAnswer.serviceId === quoteServiceId ? depositAnswer.preview : null;
+  const depositDue = depositPreview?.ok && depositPreview.depositPence > 0 ? depositPreview : null;
+  // A deposit can only be paid with Square configured for this site.
+  const cardPayable = Boolean(depositDue && payment.square && !paymentRefused);
+  // Less than 24 hours ahead: once confirmed, it can no longer be cancelled
+  // online for a refund (cancelAppointment), so the review step says so.
+  const startsWithin24Hours = depositDue !== null && selectedTime !== null
+    && !meetsMinimumNotice(resolveSalonDateTime(dayString, selectedTime).utc, new Date(), ONLINE_CANCEL_NOTICE_HOURS * 60);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStylist || !selectedService || !selectedTime) return;
     // Block ineligible colour bookings client-side (server is still source of truth)
     if (colourGate && !colourGate.eligible) return;
+    // One submission at a time: a second tap must never authorize the card twice.
+    if (submitting.current) return;
+    if (depositDue && !cardPayable) return;
+    submitting.current = true;
 
     setIsLoading(true);
     setBookingError(null);
     try {
+      // A deposit is due: the card is tokenized for exactly the amount shown
+      // (Square may ask the bank to verify it with the customer), under a new
+      // attempt key — unless the last submission never got its answer, which
+      // is sent again unchanged so it can only ever be authorized once.
+      let submission: DepositSubmission | null = null;
+      if (depositDue) {
+        const fingerprint = submissionFingerprint({
+          serviceId: selectedService.id, stylistId: selectedStylist.id, date: dayString, time: selectedTime, depositPence: depositDue.depositPence,
+        });
+        submission = reusableSubmission(pendingDeposit.current, fingerprint);
+        if (!submission) {
+          if (!depositCard) {
+            setBookingError(t('deposit.cardNotReady'));
+            return;
+          }
+          setCheckingCard(true);
+          // Bounded, so a stalled SDK cannot hold the button (and this
+          // submission lock) for good: the time-out lands in the catch below.
+          const token = await withTimeout(depositCard.tokenize(depositVerificationDetails(depositDue.depositPence, payment.payer)), SQUARE_TOKENIZE_TIMEOUT_MS);
+          setCheckingCard(false);
+          if (!token) {
+            setBookingError(t('deposit.cardInvalid'));
+            return;
+          }
+          submission = { attemptKey: crypto.randomUUID(), token, fingerprint, pendingAnswers: 0 };
+        }
+        pendingDeposit.current = submission;
+      }
+
       const result = await submitBooking({
         stylistId: selectedStylist.id,
         serviceId: selectedService.id,
@@ -248,12 +333,26 @@ export function BookingWizard({ services, offerings, categories, stylists, close
         expectedQuote: activeQuote
           ? { serviceId: activeQuote.serviceId, priceVersion: activeQuote.priceVersion, amountPence: activeQuote.amountPence }
           : { serviceId: selectedService.id, priceVersion: selectedService.priceVersion, amountPence: selectedService.amountPence },
+        // The deposit on screen, when known; the server refuses if it changed.
+        ...(depositPreview?.ok ? { expectedDepositPence: depositPreview.depositPence } : {}),
+        ...(submission ? { paymentToken: submission.token, attemptKey: submission.attemptKey } : {}),
       });
+      // Any settled answer settles the authorization: the next confirm
+      // tokenizes afresh. So does one still unsettled after repeated tries.
+      let stuck = false;
+      if (submission) {
+        const next = afterDepositAnswer(submission, result);
+        pendingDeposit.current = next.keep;
+        stuck = next.stuck;
+      }
 
       if (result.success) {
         setIsSubmitted(true);
         setAlreadyRequested(result.alreadyRequested === true);
         setRepricedQuote(null);
+        // Only a hold this request actually placed (a repeat of a request
+        // already made places none).
+        setHeldDeposit(result.depositHeldPence ?? null);
       } else if (isBookingClosedAnswer(result)) {
         // Closed between loading the times and confirming: the same answer as
         // a lookup refused for it.
@@ -261,16 +360,30 @@ export function BookingWizard({ services, offerings, categories, stylists, close
       } else if (result.quote) {
         setRepricedQuote(result.quote);
         setBookingError(t('confirm.priceChanged'));
+        // A new price can mean a new deposit: read it again.
+        setQuoteVersion((version) => version + 1);
+      } else if (result.code === 'QUOTE_CHANGED' && result.deposit) {
+        // The deposit the customer must review now; confirming again
+        // authorizes the card afresh for that amount.
+        setDepositAnswer({ serviceId: selectedService.id, preview: { ok: true, ...result.deposit } });
+        setBookingError(result.error);
       } else {
-        setBookingError(result.error || t('confirm.bookingFailed'));
-        // The time may have just been taken: re-read the fortnight.
-        setDaysVersion((version) => version + 1);
+        setBookingError(stuck ? t('deposit.pendingGiveUp') : result.error || t('confirm.bookingFailed'));
+        if (result.code === 'PAYMENT_UNAVAILABLE') setPaymentRefused(true);
+        // The time may have just been taken: re-read the fortnight. An answer
+        // about the card says nothing about the time.
+        if (!result.code || !PAYMENT_ANSWER_CODES.has(result.code)) setDaysVersion((version) => version + 1);
       }
     } catch {
-      // A rejected action (dropped connection, DB error) must not leave the
-      // button stuck on "Processing…" — surface a message and re-enable it.
+      // A rejected action (dropped connection, DB error) — or a card check
+      // that never answered — must not leave the button stuck on
+      // "Processing…": surface a message and re-enable it. A card
+      // authorization stays pending: retrying sends the same key and token,
+      // so the server answers with what the first one did.
       setBookingError(t('confirm.genericError'));
     } finally {
+      submitting.current = false;
+      setCheckingCard(false);
       setIsLoading(false);
     }
   };
@@ -342,19 +455,22 @@ export function BookingWizard({ services, offerings, categories, stylists, close
           </svg>
         </div>
         <h2 className="text-3xl font-serif mb-4 text-zinc-900">{t('done.title')}</h2>
-        <p className={`text-zinc-700 ${alreadyRequested ? 'mb-4' : 'mb-8'}`}>
+        <p className={`text-zinc-700 ${alreadyRequested || heldDeposit ? 'mb-3' : 'mb-8'}`}>
           {t('done.body')}
         </p>
         {alreadyRequested && (
-          <p className="text-zinc-700 mb-8">
+          <p className={`text-zinc-700 ${heldDeposit ? 'mb-3' : 'mb-8'}`}>
             {t('done.alreadyRequested')}
           </p>
         )}
+        {heldDeposit ? (
+          <p className="text-zinc-700 mb-8 max-w-xl mx-auto">{t('done.depositHeld', { amount: formatPrice(heldDeposit) })}</p>
+        ) : null}
         <Link
           href="/appointments"
           onClick={() => {
             // The request is made; a later visit to /book starts fresh.
-            for (const key of ['step', 'service', 'stylist', 'day', 'time', 'origin', 'gate', 'offering', 'option', 'search', 'category', 'submitted', 'alreadyRequested', 'reprice']) clearDraft(`${DRAFT}:${key}`);
+            for (const key of ['step', 'service', 'stylist', 'day', 'time', 'origin', 'gate', 'offering', 'option', 'search', 'category', 'submitted', 'alreadyRequested', 'reprice', 'held']) clearDraft(`${DRAFT}:${key}`);
           }}
           className="bg-zinc-900 text-white px-8 py-3 uppercase tracking-widest text-sm hover:bg-black rounded-md transition-colors"
         >
@@ -798,10 +914,24 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                       <PriceFinePrint service={priceSource} className="mt-1" />
                     </dd>
                   </div>
+                  {depositDue && (
+                    <DepositRows t={t} formatPrice={formatPrice} depositPence={depositDue.depositPence} remainderPence={depositDue.remainderPence} price={priceSource} />
+                  )}
                 </div>
               )}
             </dl>
           </div>
+
+          {depositDue && (
+            <div className="space-y-4">
+              <DepositTerms t={t} amount={formatPrice(depositDue.depositPence)} startsWithin24Hours={startsWithin24Hours} />
+              {cardPayable && payment.square ? (
+                <DepositCardForm square={payment.square} phone={closedContact.phone} onCardChange={setDepositCard} />
+              ) : (
+                <PaymentUnavailableNotice t={t} phone={closedContact.phone} />
+              )}
+            </div>
+          )}
 
           {colourGate && !colourGate.eligible && (
             <div className="rounded-lg border border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-700">
@@ -841,15 +971,19 @@ export function BookingWizard({ services, offerings, categories, stylists, close
              </button>
              <button
                type="submit"
-               disabled={isLoading || !selectedTime || (colourGate !== null && !colourGate.eligible)}
+               disabled={isLoading || !selectedTime || (colourGate !== null && !colourGate.eligible) || (depositDue !== null && (!cardPayable || !depositCard))}
+               aria-busy={isLoading}
                className="bg-zinc-900 text-white px-8 py-3.5 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-black disabled:opacity-70 disabled:cursor-not-allowed shadow-md transition-all transform hover:-translate-y-0.5"
              >
                {isLoading ? (
                  <span className="flex items-center gap-2">
                    <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" aria-hidden="true"></span>
-                   {t('confirm.processing')}
+                   {checkingCard ? t('deposit.verifying') : t('confirm.processing')}
                  </span>
-               ) : activeQuote ? t('confirm.confirmNewPrice') : t('confirm.confirmBooking')}
+               ) : depositDue
+                 // The order button states the obligation to pay — at a new price too.
+                 ? t(activeQuote ? 'deposit.submitNewPrice' : 'deposit.submit', { amount: formatPrice(depositDue.depositPence) })
+                 : activeQuote ? t('confirm.confirmNewPrice') : t('confirm.confirmBooking')}
              </button>
           </div>
         </form>

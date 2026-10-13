@@ -48,6 +48,18 @@ const appointments: Localized<Messages['appointments']> = {
     downloadCalendarFile: '下載日曆檔案（.ics）',
     opensInNewTab: '（於新分頁開啟）',
     calendarAfterConfirmation: '預約確認後，即可將其加入你的日曆。',
+    confirmCancelRefund: '確定要取消此預約嗎？你的 {amount} 訂金會全數退還。',
+    confirmWithdrawRelease: '確定要撤回此預約要求嗎？你信用卡上 {amount} 的預留款項會被解除。',
+  },
+  deposit: {
+    HELD: '訂金：已在你的信用卡預留 {amount}，尚未扣款。只有在本店確認預約後才會扣款。',
+    PROCESSING: '訂金：{amount}，付款確認中。',
+    PAID: '已付訂金：{amount}。',
+    REFUND_PENDING: '訂金：{amount} 退款處理中。大部分銀行會於 5 至 10 個工作天內顯示退款，部分銀行或需長達 14 個工作天。',
+    REFUNDED: '訂金已退還：{amount}。',
+    REFUND_FAILED: '訂金：我們未能自動退還 {amount}，請聯絡本店。',
+    RELEASED: '訂金：你信用卡上 {amount} 的預留款項已經解除，並沒有扣款。',
+    KEPT: '訂金：根據我們的預約條款，{amount} 不予退還。',
   },
   reschedule: {
     title: '申請改期',

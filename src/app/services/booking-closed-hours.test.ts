@@ -44,6 +44,8 @@ function fixture(options: { hours?: Hours; existing?: { date: Date; durationMin:
 
   const tx = {
     service: { findUnique: async () => liveService },
+    // No SiteSettings row: deposits off (services/deposit-quote.ts), so no card deposit is due.
+    siteSettings: { findUnique: async () => null },
     stylist: {
       findUnique: async () => ({ id: 'stylist-1', name: 'Stylist', isActive: true, treatwellExternalId: null }),
       findMany: async () => (hours ? [{ id: 'stylist-1', name: 'Stylist', availabilities: [hours] }] : []),

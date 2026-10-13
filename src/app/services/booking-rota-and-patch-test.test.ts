@@ -33,6 +33,8 @@ function fixture(options: { requiresPatchTest?: boolean; patchTestDate?: Date } 
 
   const tx = {
     service: { findUnique: async () => liveService },
+    // No SiteSettings row: deposits off (services/deposit-quote.ts), so no card deposit is due.
+    siteSettings: { findUnique: async () => null },
     stylist: {
       findUnique: async ({ where }: { where: { id: string } }) => ({ id: where.id, name: where.id, isActive: true, treatwellExternalId: null }),
       // eligibleStylistIds: stylists with a row for that weekday, each with only that weekday's hours.

@@ -116,6 +116,7 @@ export async function Footer() {
           <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
             <span>{t('footer.paymentLanguages')}</span>
             <Link href="/privacy" className="hover:text-zinc-300 transition-colors">{t('footer.privacy')}</Link>
+            <Link href="/booking-terms" className="hover:text-zinc-300 transition-colors">{t('footer.bookingTerms')}</Link>
             <Link href="/unsubscribe" className="hover:text-zinc-300 transition-colors">{t('footer.unsubscribe')}</Link>
           </div>
         </div>

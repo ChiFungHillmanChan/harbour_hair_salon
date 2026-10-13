@@ -240,6 +240,8 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
             user: { select: { email: true, name: true, phone: true } },
             stylist: { select: { name: true } },
             service: { select: { name: true, price: true, duration: true } },
+            // A fresh receipt still mentions the request's card hold.
+            paymentAttempt: { select: { status: true, amountPence: true } },
           },
         });
         if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');

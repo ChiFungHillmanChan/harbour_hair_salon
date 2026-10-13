@@ -26,6 +26,14 @@ export const BOOKING_DAYS_MAX = 14;
 export const MIN_BOOKING_NOTICE_MINUTES = 120;
 
 /**
+ * Until how many hours before its start a customer can cancel a CONFIRMED
+ * booking online, with any card deposit refunded in full (cancelAppointment);
+ * after that they call the salon. The booking page warns when a requested
+ * time is already inside this window.
+ */
+export const ONLINE_CANCEL_NOTICE_HOURS = 24;
+
+/**
  * True when `start` gives at least `minutes` of notice from `now`. Compared
  * as absolute instants, so a clock change in between neither shortens nor
  * stretches the notice.

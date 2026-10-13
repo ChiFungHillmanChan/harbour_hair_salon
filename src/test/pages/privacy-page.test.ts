@@ -62,11 +62,37 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
     const links = page.nodes.filter((node) => node.type === 'a').map((node) => node.props.href);
     assert.ok(links.includes('/contact'));
     assert.ok(links.includes('/unsubscribe'));
+    assert.ok(links.includes('/booking-terms'));
     assert.ok(links.includes('https://ico.org.uk/make-a-complaint/'));
     assert.ok(page.text.includes('0303 123 1113'), 'the ICO helpline');
     assert.ok(!page.nodes.some((node) => node.props.id === 'contact'), 'the site footer already uses id="contact"');
   });
 }
+
+test('online deposits are covered: what is kept, why, who processes the card and for how long', async () => {
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const t = translator(locale, 'legal');
+    const { text: body } = await privacyPage(locale);
+    const plain = (key: Parameters<typeof t>[0]) => t(key).replace(/<\/?\w+>/g, '');
+    for (const key of ['privacy.collect.payments', 'privacy.use.payments', 'privacy.share.square', 'privacy.retention.payments', 'privacy.cookies.square'] as const) {
+      assert.ok(body.includes(plain(key)), `${locale}: ${key}`);
+    }
+    assert.ok(plain('privacy.transfers.body').includes('Square'), `${locale}: Square among the international transfers`);
+  }
+  const en = (await privacyPage('en-GB')).text;
+  assert.ok(en.includes('we never see or store your card number'));
+  assert.ok(en.includes('up to 6 years after the payment'));
+});
+
+test('Square is described as an independent controller, not a processor acting for the salon', async () => {
+  const en = (await privacyPage('en-GB')).text;
+  assert.ok(en.includes('Square handles card payments and its fraud checks as an independent controller, under its own privacy notice — not on our behalf.'));
+  // The other providers still act for the salon.
+  assert.ok(en.includes('We share it only with these service providers. Unless we say otherwise below, they handle it on our behalf and under our instructions:'));
+  const zh = (await privacyPage('zh-HK')).text;
+  assert.ok(zh.includes('Square 以獨立控制者（independent controller）身分') && zh.includes('並非代表本店處理'));
+  assert.ok(zh.includes('除下文另有說明外，他們代表我們並按我們的指示處理'));
+});
 
 test('the notice names every cookie the code sets for visitors', async () => {
   for (const locale of ['en-GB', 'zh-HK'] as const) {

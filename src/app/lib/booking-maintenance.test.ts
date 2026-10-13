@@ -111,11 +111,39 @@ test('the admin booking switch closes booking even when every other gate passes'
   }
 });
 
-test('production stays closed until Square deposits are wired, even with a fully ready database and a warm open cache', async () => {
+const SQUARE_PRODUCTION = {
+  SQUARE_PAYMENTS_ENABLED: 'true',
+  SQUARE_ENVIRONMENT: 'production',
+  SQUARE_ACCESS_TOKEN: 'production-access-token',
+  SQUARE_APPLICATION_ID: 'sq0idp-production-application',
+  SQUARE_LOCATION_ID: 'production-location',
+  SQUARE_WEBHOOK_SIGNATURE_KEY: 'production-signature-key',
+  SQUARE_WEBHOOK_NOTIFICATION_URL: 'https://www.harbourhair.co.uk/api/webhooks/square',
+};
+
+/** A production build with no VERCEL_ENV at runtime, notifications on and exactly these Square variables. */
+async function inProductionRuntime(square: Record<string, string>, run: () => Promise<void>) {
   const env = process.env as Record<string, string | undefined>;
-  const previous = { node: env.NODE_ENV, vercel: env.VERCEL_ENV, notifications: env.NOTIFICATIONS_ENABLED };
+  const keys = ['NODE_ENV', 'VERCEL_ENV', 'NOTIFICATIONS_ENABLED', 'CALENDAR_SYNC_ENABLED', ...Object.keys(SQUARE_PRODUCTION)];
+  const previous = Object.fromEntries(keys.map((key) => [key, env[key]]));
+  for (const key of keys) delete env[key];
+  Object.assign(env, { NODE_ENV: 'production', NOTIFICATIONS_ENABLED: 'true', CALENDAR_SYNC_ENABLED: 'true' }, square);
+  try {
+    await run();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete env[key];
+      else env[key] = value;
+    }
+  }
+}
+
+function readyProductionFixture() {
   let databaseReads = 0;
-  const db = { siteSettings: { findUnique: async () => { databaseReads++; return { bookingEnabled: true, phone: '01234' }; } } };
+  const db = {
+    siteSettings: { findUnique: async () => { databaseReads++; return { bookingEnabled: true, phone: '01234' }; } },
+    calendarConnection: { count: async () => 0 },
+  };
   const maintenance = loadServerModule<typeof import('./booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
     '@/app/lib/prisma': db,
     '@/app/services/integration-readiness': { checkCalendarBookingReadiness: async () => ({ ready: true }) },
@@ -123,21 +151,27 @@ test('production stays closed until Square deposits are wired, even with a fully
     // A cache warmed by a run that saw booking open must not reopen it.
     'next/cache': { unstable_cache: () => async () => true },
   });
-  try {
-    // A production build with no VERCEL_ENV at runtime: still locked.
-    env.NODE_ENV = 'production';
-    delete env.VERCEL_ENV;
-    env.NOTIFICATIONS_ENABLED = 'true';
-    await assert.rejects(maintenance.assertOnlineBookingReady(db as never), (error: unknown) =>
-      error instanceof BookingError && error.message === maintenance.BOOKING_MAINTENANCE_MESSAGE);
-    assert.equal(await maintenance.isBookingEnabled(), false);
-    assert.equal(databaseReads, 0, 'the lock is decided before any database read');
-  } finally {
-    for (const [key, value] of [['NODE_ENV', previous.node], ['VERCEL_ENV', previous.vercel], ['NOTIFICATIONS_ENABLED', previous.notifications]] as const) {
-      if (value === undefined) delete env[key];
-      else env[key] = value;
-    }
+  return { maintenance, db, reads: () => databaseReads };
+}
+
+test('production stays closed without Square production credentials, even with a fully ready database and a warm open cache', async () => {
+  for (const square of [{}, { ...SQUARE_PRODUCTION, SQUARE_ENVIRONMENT: 'sandbox', SQUARE_APPLICATION_ID: 'sandbox-sq0idb-test-application' }]) {
+    await inProductionRuntime(square, async () => {
+      const f = readyProductionFixture();
+      await assert.rejects(f.maintenance.assertOnlineBookingReady(f.db as never), (error: unknown) =>
+        error instanceof BookingError && error.message === f.maintenance.BOOKING_MAINTENANCE_MESSAGE);
+      assert.equal(await f.maintenance.isBookingEnabled(), false);
+      assert.equal(f.reads(), 0, 'the lock is decided before any database read');
+    });
   }
+});
+
+test('with Square production credentials, production opens when the switch and every gate allow it', async () => {
+  await inProductionRuntime(SQUARE_PRODUCTION, async () => {
+    const f = readyProductionFixture();
+    assert.equal((await f.maintenance.assertOnlineBookingReady(f.db as never)).phone, '01234');
+    assert.equal(await f.maintenance.isBookingEnabled(), true);
+  });
 });
 
 /**

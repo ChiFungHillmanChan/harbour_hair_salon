@@ -5,15 +5,22 @@
  *
  * Booking, readiness, notifications, calendar parsing and transactions are real.
  * Session identity, Next cache APIs, provider diagnostics, inbound feed transport,
- * and email rendering/delivery are synthetic. No live provider is contacted.
+ * email rendering/delivery and Square are synthetic. No live provider is contacted.
  * This does not prove that Fresha has subscribed to/polled the website feed.
  */
 import assert from 'node:assert/strict';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { loadServerModule } from '../src/test/load-server-module';
 import { resolveSalonDateTime, salonDateKey } from '../src/app/services/salon-time';
 import { CALENDAR_FRESHNESS_MINUTES } from '../src/app/services/treatwell-sync-coverage';
 import type { AppointmentEmailKind, PreparedEmail } from '../src/app/services/email-service';
+import { depositForQuote } from '../src/app/services/deposit-quote';
+import { SquareGatewayError } from '../src/app/services/square-gateway';
+import { createPaymentReconciliation } from '../src/app/services/payment-reconciliation';
+import { collectPaymentAttention, pageWindows } from '../src/app/services/payment-attention';
+import { refundableRemainderPence, settleRefundOutsideWebsite } from '../src/app/services/payment-refunds';
+import { OPERATIONS_MESSAGES } from '../src/app/services/operations-messages';
+import { CONFIG as SQUARE_S4_CONFIG, fakeSquare, paymentEvent, refundEvent, sign } from '../src/test/payments-fixture';
 
 type RaceMode = 'withdraw-commits-first' | 'approve-writes-first';
 type RaceSide = 'approve' | 'withdraw';
@@ -191,6 +198,8 @@ async function main() {
       unstable_cache: <T extends (...args: never[]) => unknown>(read: T) => read,
       revalidatePath: (path: string) => { revalidatedPaths.push(path); },
       updateTag: (tag: string) => { invalidatedTags.push(tag); },
+      // The cron flavour (invalidateStylistIcalFeedFromCron), used by the lapse step.
+      revalidateTag: (tag: string) => { invalidatedTags.push(tag); },
     };
     const maintenance = loadServerModule<typeof import('../src/app/lib/booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
       '@/app/lib/prisma': db, 'next/cache': nextCache,
@@ -223,6 +232,8 @@ async function main() {
       '@/app/lib/booking-maintenance': maintenance,
       'next/cache': nextCache,
       'next/server': { after: (callback: () => unknown | Promise<unknown>) => { afterResponse.push(callback); } },
+      // A server action always runs inside a request: the client address it reads (deposit decline budget).
+      'next/headers': { headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.50' }) },
     };
     // The lifecycle makes more real requests for one booking than the production
     // per-appointment/per-customer caps allow (and Redis is intentionally absent);
@@ -490,6 +501,554 @@ async function main() {
     assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: closePending.id } })).status, 'CANCELLED', 'Unconfirmed requests may be withdrawn within 24 hours');
     console.log('PASS: confirmed cancellation/rescheduling are refused within 24 hours; pending withdrawal remains permitted.');
 
+    // Card deposits (phase S2): a customer's request authorizes a Square hold
+    // that the real Serializable booking transaction ties to the appointment;
+    // the same submission or the same request never takes a second hold, and a
+    // booking that cannot be made releases its own. Square itself is a fake.
+    {
+      const squareCalls = { authorize: [] as { referenceId: string; amountPence: number }[], cancel: [] as { referenceId: string }[], cancelByKey: [] as string[] };
+      let beforeApproval: (() => Promise<void>) | null = null;
+      let decline = false;
+      const fakeSquare = {
+        authorize: async (input: { amountPence: number; referenceId: string }) => {
+          squareCalls.authorize.push(input);
+          await beforeApproval?.();
+          if (decline) throw new SquareGatewayError('provider_error', 402);
+          return {
+            id: `synthetic-payment-${input.referenceId}`, status: 'APPROVED' as const, amount_money: { amount: input.amountPence, currency: 'GBP' as const },
+            location_id: 'synthetic-location', source_type: 'CARD' as const, reference_id: input.referenceId,
+            delay_action: 'CANCEL' as const, delayed_until: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+          };
+        },
+        cancel: async (input: { paymentId: string; amountPence: number; referenceId: string }) => {
+          squareCalls.cancel.push(input);
+          return { id: input.paymentId, status: 'CANCELED' as const, amount_money: { amount: input.amountPence, currency: 'GBP' as const }, location_id: 'synthetic-location', source_type: 'CARD' as const, reference_id: input.referenceId };
+        },
+        cancelByIdempotencyKey: async (key: string) => { squareCalls.cancelByKey.push(key); },
+      };
+      const depositCustomer = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
+        ...actionDependencies,
+        '@/app/lib/session': { verifySession: async () => ({ userId: ids.other, role: 'USER' }) },
+        '@/app/lib/rate-limit': { ...realRateLimit, bookingLimiter: unlimited },
+        '@/app/services/square-gateway': { createSquareGateway: () => fakeSquare },
+        '@/app/lib/online-booking-lock': {
+          usableSquareConfig: () => ({ environment: 'sandbox', accessToken: 'synthetic-never-sent', applicationId: 'sandbox-sq0idb-synthetic', locationId: 'synthetic-location', webhookSignatureKey: 'synthetic', webhookNotificationUrl: 'https://example.invalid/api/webhooks/square' }),
+        },
+      });
+      await db.user.update({ where: { id: ids.other }, data: { emailVerifiedAt: new Date() } });
+      await db.siteSettings.update({ where: { id: 'singleton' }, data: { depositsEnabled: true, depositPercent: 20, depositMinimumServicePence: 0 } });
+      const priced = await db.service.findUniqueOrThrow({ where: { id: ids.service } });
+      const amountPence = Math.round(Number(priced.price) * 100);
+      const depositPence = depositForQuote({ quoteAmountPence: amountPence, settings: { depositsEnabled: true, depositPercent: 20, depositMinimumServicePence: 0 }, overridePence: null }).depositPence;
+      assert.ok(depositPence > 0);
+      const depositDay = day(23);
+      const submitDeposit = (time: string, attemptKey: string) => depositCustomer.submitBooking({
+        stylistId: ids.stylist, serviceId: ids.service, date: depositDay, time, attemptKey, paymentToken: `cnon:synthetic-${attemptKey}`,
+        expectedQuote: { serviceId: ids.service, priceVersion: priced.priceVersion, amountPence }, expectedDepositPence: depositPence,
+      });
+      const attempt = (attemptKey: string) => db.paymentAttempt.findUnique({ where: { userId_attemptKey: { userId: ids.other, attemptKey } } });
+      const requestAt = (time: string) => db.appointment.findMany({ where: { userId: ids.other, date: instant(depositDay, time), status: { in: ['PENDING', 'CONFIRMED'] } } });
+
+      // Authorized, and linked to the new request in the booking transaction.
+      const first = '0f8fad5b-d9cb-469f-a165-70867728950e';
+      await assertActionSuccess(await submitDeposit('10:00', first));
+      const [booked] = await requestAt('10:00');
+      const held = await attempt(first);
+      assert.equal(held?.status, 'AUTHORIZED');
+      assert.equal(held?.appointmentId, booked.id);
+      assert.equal(held?.amountPence, depositPence);
+      assert.equal(held?.idempotencyKey, `dep_${first.replace(/-/g, '')}`);
+      // Delivered after the response (its stored payload is then scrubbed): the email was built with the hold.
+      const receipt = deliveries.find((delivery) => delivery.eventKey === `appointment/${booked.id}/0/REQUEST_RECEIVED`);
+      assert.ok(receipt, 'the request receipt was sent');
+      assert.deepEqual(JSON.parse(receipt.payload).appointment.deposit, { amountPence: depositPence, status: 'AUTHORIZED' }, 'the receipt mentions the hold');
+      // The same submission again: its outcome, never a second authorization —
+      // already requested, with the hold that same submission placed.
+      assert.deepEqual(await submitDeposit('10:00', first), { success: true, alreadyRequested: true, depositHeldPence: depositPence });
+      assert.equal(squareCalls.authorize.length, 1);
+
+      // The same request twice at once with two card tokens: one booking, one hold kept.
+      const copies = ['7c9e6679-7425-40de-944b-e07fc1f90ae7', '16fd2706-8baf-433b-82eb-8c7fada847da'];
+      const answers = await Promise.all(copies.map((key) => submitDeposit('11:00', key)));
+      for (const answer of answers) await assertActionSuccess(answer);
+      assert.deepEqual(answers.map((answer) => answer.success && answer.alreadyRequested === true).sort(), [false, true], `one new request, one repeat: ${JSON.stringify(answers)}`);
+      const repeated = await requestAt('11:00');
+      assert.equal(repeated.length, 1, 'one appointment for the request');
+      const copyAttempts = (await Promise.all(copies.map(attempt))).filter((row) => row !== null);
+      assert.deepEqual(copyAttempts.filter((row) => row.appointmentId === repeated[0].id).map((row) => row.status), ['AUTHORIZED'], 'exactly one hold is tied to it');
+      const released = copyAttempts.filter((row) => row.appointmentId === null);
+      assert.ok(released.every((row) => row.status === 'VOIDED' && row.voidedAt !== null), JSON.stringify(released));
+      assert.equal(squareCalls.cancel.length, released.length, 'every second hold was released');
+
+      // The time is taken between the pre-check and the transaction: nothing is booked and the hold is released.
+      const lost = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
+      beforeApproval = async () => {
+        beforeApproval = null;
+        await db.appointment.create({ data: { userId: ids.admin, stylistId: ids.stylist, serviceId: ids.service, date: instant(depositDay, '13:00'), status: 'PENDING', durationAtBooking: 60, priceAtBooking: 100 } });
+      };
+      const taken = await submitDeposit('13:00', lost);
+      assert.equal(taken.success, false);
+      assert.equal(!taken.success && taken.code, 'SLOT_UNAVAILABLE', JSON.stringify(taken));
+      assert.deepEqual(await requestAt('13:00'), []);
+      const lostAttempt = await attempt(lost);
+      assert.equal(lostAttempt?.status, 'VOIDED');
+      assert.equal(lostAttempt?.appointmentId, null);
+      assert.equal(squareCalls.cancel.at(-1)?.referenceId, lostAttempt?.id);
+
+      // A declined card books nothing.
+      const declined = '9b2c7f1e-3a4d-4e5f-8a6b-7c8d9e0f1a2b';
+      decline = true;
+      const refused = await submitDeposit('15:00', declined);
+      decline = false;
+      assert.equal(!refused.success && refused.code, 'CARD_DECLINED', JSON.stringify(refused));
+      assert.equal((await attempt(declined))?.status, 'FAILED');
+      assert.deepEqual(await requestAt('15:00'), []);
+      assert.deepEqual(squareCalls.cancelByKey, [], 'no unknown outcome here');
+
+      await db.siteSettings.update({ where: { id: 'singleton' }, data: { depositsEnabled: false } });
+      while (afterResponse.length) await afterResponse.shift()!();
+      console.log(`PASS: card deposits — authorized hold linked in the booking transaction, replayed submission and concurrent repeat take one hold (second hold ${released.length ? 'authorized, then released' : 'never taken'}), a slot lost after authorization releases it, a declined card books nothing. Square was a fake.`);
+    }
+
+    // Card deposits, phase S3: staff confirming a request TAKE its deposit
+    // (capture), declining or lapsing it RELEASE the hold, cancelling a
+    // confirmed booking REFUNDS it — or staff keep it. Real Serializable
+    // transactions, Prisma queries (the lapse step's relation filters
+    // included) and outbox; Square is a fake that behaves like Square: a hold
+    // stays APPROVED until it is captured (COMPLETED) or cancelled, and a
+    // capture needs the payment's current version token.
+    {
+      type S3Payment = { status: 'APPROVED' | 'COMPLETED' | 'CANCELED'; amount: number; referenceId: string; version: number };
+      const squareS3 = new Map<string, S3Payment>();
+      const s3Calls = { getPayment: [] as string[], capture: [] as string[], cancel: [] as string[], refund: [] as { idempotencyKey: string; amountPence: number }[] };
+      let afterCapture: (() => Promise<void>) | null = null;
+      let holdSquare: Promise<unknown> | null = null;
+      const asPayment = (id: string) => {
+        const state = squareS3.get(id);
+        if (!state) throw new SquareGatewayError('provider_error', 404);
+        return {
+          id, status: state.status, amount_money: { amount: state.amount, currency: 'GBP' as const }, location_id: 'synthetic-location', source_type: 'CARD' as const,
+          reference_id: state.referenceId, version_token: `v${state.version}`, delay_action: 'CANCEL' as const, delayed_until: new Date(Date.now() + 5 * 86_400_000).toISOString(),
+        };
+      };
+      const fakeSquareS3 = {
+        getPayment: async (id: string) => {
+          s3Calls.getPayment.push(id);
+          await holdSquare;
+          return asPayment(id);
+        },
+        capture: async (input: { paymentId: string; versionToken: string }) => {
+          s3Calls.capture.push(input.paymentId);
+          const state = squareS3.get(input.paymentId);
+          if (!state || state.status !== 'APPROVED' || input.versionToken !== `v${state.version}`) throw new SquareGatewayError('provider_error', 400);
+          state.status = 'COMPLETED';
+          state.version++;
+          const hook = afterCapture;
+          afterCapture = null;
+          await hook?.();
+          return asPayment(input.paymentId);
+        },
+        cancel: async (input: { paymentId: string }) => {
+          s3Calls.cancel.push(input.paymentId);
+          const state = squareS3.get(input.paymentId);
+          if (!state || state.status !== 'APPROVED') throw new SquareGatewayError('provider_error', 400);
+          state.status = 'CANCELED';
+          state.version++;
+          return asPayment(input.paymentId);
+        },
+        refund: async (input: { paymentId: string; amountPence: number; idempotencyKey: string }) => {
+          s3Calls.refund.push({ idempotencyKey: input.idempotencyKey, amountPence: input.amountPence });
+          return {
+            id: `synthetic-refund-${input.idempotencyKey}`, payment_id: input.paymentId, location_id: 'synthetic-location', status: 'PENDING' as const,
+            amount_money: { amount: input.amountPence, currency: 'GBP' as const },
+          };
+        },
+      };
+      const syntheticConfig = {
+        environment: 'sandbox' as const, accessToken: 'synthetic-never-sent', applicationId: 'sandbox-sq0idb-synthetic', locationId: 'synthetic-location',
+        webhookSignatureKey: 'synthetic', webhookNotificationUrl: 'https://example.invalid/api/webhooks/square',
+      };
+      const depositLifecycle = loadServerModule<typeof import('../src/app/services/deposit-lifecycle')>('src/app/services/deposit-lifecycle.ts', {
+        '@/app/lib/online-booking-lock': { usableSquareConfig: () => syntheticConfig },
+        './square-gateway': { createSquareGateway: () => fakeSquareS3 },
+      });
+      let beforeApprovalTransaction: (() => Promise<void>) | null = null;
+      const depositAdmin = loadServerModule<typeof import('../src/app/actions/admin')>('src/app/actions/admin.ts', {
+        ...actionDependencies, '@/app/actions/admin-services': adminServices,
+        '@/app/services/deposit-lifecycle': depositLifecycle,
+        '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
+        // The feeds were imported moments ago; this hook lets two approvals overlap.
+        '@/app/services/calendar-sync-service': { refreshCalendarFeedsBeforeApproval: async () => { await beforeApprovalTransaction?.(); return []; } },
+      });
+      const depositOwner = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
+        ...actionDependencies, '@/app/services/deposit-lifecycle': depositLifecycle,
+        '@/app/lib/session': { verifySession: async () => ({ userId: ids.other, role: 'USER' }) },
+        '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited },
+      });
+      const lapse = loadServerModule<typeof import('../src/app/services/pending-request-lapse')>('src/app/services/pending-request-lapse.ts', {
+        '@/app/lib/prisma': db, './booking-service': booking, './notification-outbox-service': notifications,
+        './stylist-ical-cache': icalCache, './deposit-lifecycle': depositLifecycle,
+      });
+      let s3Sequence = 0;
+      /** The other customer's request (or booking) holding a £20 deposit, as S2 leaves it; Square knows the payment. */
+      const withDeposit = async (date: Date, options: { status?: string; attempt?: string; delayedUntil?: Date; announced?: boolean } = {}) => {
+        const n = ++s3Sequence;
+        const appointment = await db.appointment.create({ data: {
+          userId: ids.other, stylistId: ids.stylist, serviceId: ids.service, date, status: options.status ?? 'PENDING',
+          durationAtBooking: 60, priceAtBooking: 100, notificationLocale: 'en-GB',
+        } });
+        const paymentId = `synthetic-s3-payment-${n}`;
+        const attempt = await db.paymentAttempt.create({ data: {
+          userId: ids.other, attemptKey: `s3-attempt-${n}`, idempotencyKey: `dep_s3_${n}`, appointmentId: appointment.id, status: options.attempt ?? 'AUTHORIZED',
+          environment: 'sandbox', locationId: 'synthetic-location', amountPence: 2000, quoteAmountPence: 10000, policyJson: '{}', requestJson: '{}',
+          squarePaymentId: paymentId, delayedUntil: options.delayedUntil ?? new Date(Date.now() + 5 * 86_400_000), authorizedAt: new Date(),
+          ...(options.attempt === 'CAPTURED' ? { capturedAt: new Date() } : {}),
+        } });
+        squareS3.set(paymentId, { status: options.attempt === 'CAPTURED' ? 'COMPLETED' : 'APPROVED', amount: 2000, referenceId: attempt.id, version: 1 });
+        if (options.announced) {
+          await db.notificationDelivery.create({ data: { eventKey: `appointment/${appointment.id}/0/REQUEST_RECEIVED`, appointmentId: appointment.id, kind: 'REQUEST_RECEIVED', payloadJson: '{}', status: 'SENT' } });
+        }
+        return { appointment, attempt, paymentId };
+      };
+      const attemptOf = (id: string) => db.paymentAttempt.findUniqueOrThrow({ where: { id } });
+      const statusOf = async (id: string) => (await db.appointment.findUniqueOrThrow({ where: { id } })).status;
+      /** What the synthetic transport was asked to send for this booking's notice (its snapshot and options). */
+      const sentNotice = (appointmentId: string, version: number, kind: string) => {
+        const sent = deliveries.find((delivery) => delivery.eventKey === `appointment/${appointmentId}/${version}/${kind}`);
+        assert.ok(sent, `${kind} was sent for ${appointmentId}`);
+        return JSON.parse(sent.payload) as { appointment: { deposit: unknown }; options: Record<string, unknown> };
+      };
+      const day51 = day(51);
+      const day52 = day(52);
+
+      // Confirming takes the deposit: CONFIRMED and CAPTURED in one transaction; the confirmation says so.
+      const first = await withDeposit(instant(day51, '10:00'));
+      await assertActionSuccess(await depositAdmin.updateAppointmentStatus(first.appointment.id, 'CONFIRMED'));
+      assert.equal(await statusOf(first.appointment.id), 'CONFIRMED');
+      const captured = await attemptOf(first.attempt.id);
+      assert.equal(captured.status, 'CAPTURED');
+      assert.ok(captured.capturedAt instanceof Date);
+      assert.equal(captured.lastError, null);
+      assert.deepEqual(s3Calls.capture, [first.paymentId]);
+      assert.equal(squareS3.get(first.paymentId)?.status, 'COMPLETED');
+      assert.deepEqual(sentNotice(first.appointment.id, 1, 'CONFIRMATION').appointment.deposit, { amountPence: 2000, status: 'CAPTURED' });
+      await assertActionSuccess(await depositAdmin.updateAppointmentStatus(first.appointment.id, 'CONFIRMED'));
+      assert.equal(s3Calls.capture.length, 1, 'confirming again takes nothing');
+
+      // Two staff confirming at once: both pass the check before the transaction, both
+      // claiming transactions are real and overlap; the winner waits at Square until
+      // the other has its answer. One capture, one confirmation.
+      const raced = await withDeposit(instant(day51, '12:00'));
+      let arrivals = 0;
+      let bothChecked!: () => void;
+      const checked = new Promise<void>((resolve) => { bothChecked = resolve; });
+      beforeApprovalTransaction = async () => { if (++arrivals === 2) bothChecked(); await checked; };
+      const racing = [1, 2].map(() => depositAdmin.updateAppointmentStatus(raced.appointment.id, 'CONFIRMED'));
+      holdSquare = Promise.race(racing);
+      const outcomes = await Promise.all(racing);
+      beforeApprovalTransaction = null;
+      holdSquare = null;
+      while (afterResponse.length) await afterResponse.shift()!();
+      assert.equal(outcomes.filter((outcome) => outcome.success).length, 1, JSON.stringify(outcomes));
+      assert.match((outcomes.find((outcome) => !outcome.success) as { error?: string }).error ?? '', /being processed/, JSON.stringify(outcomes));
+      assert.equal(s3Calls.capture.filter((id) => id === raced.paymentId).length, 1, 'the deposit is taken once');
+      assert.equal((await attemptOf(raced.attempt.id)).status, 'CAPTURED');
+      assert.equal(await statusOf(raced.appointment.id), 'CONFIRMED');
+      assert.equal(await db.notificationDelivery.count({ where: { appointmentId: raced.appointment.id, kind: 'CONFIRMATION' } }), 1);
+
+      // The time is taken between the capture and the confirming transaction: the request is
+      // cancelled and the deposit refunded in full, in that same transaction (Square after it).
+      const lost = await withDeposit(instant(day51, '14:00'));
+      afterCapture = async () => {
+        await db.appointment.create({ data: { userId: ids.admin, stylistId: ids.stylist, serviceId: ids.service, date: instant(day51, '14:00'), status: 'CONFIRMED', durationAtBooking: 60, priceAtBooking: 100 } });
+      };
+      const lostAnswer = await depositAdmin.updateAppointmentStatus(lost.appointment.id, 'CONFIRMED');
+      while (afterResponse.length) await afterResponse.shift()!();
+      assert.equal(lostAnswer.success, false);
+      assert.match((lostAnswer as { error?: string }).error ?? '', /£20\.00 deposit is being refunded/);
+      assert.equal(await statusOf(lost.appointment.id), 'CANCELLED');
+      assert.equal((await attemptOf(lost.attempt.id)).status, 'CAPTURED');
+      const slotRefund = await db.paymentRefund.findFirstOrThrow({ where: { attemptId: lost.attempt.id } });
+      assert.deepEqual([slotRefund.reason, slotRefund.amountPence, slotRefund.status, slotRefund.requestedById], ['SLOT_LOST', 2000, 'PENDING', null]);
+      assert.equal(slotRefund.squareRefundId, `synthetic-refund-${slotRefund.idempotencyKey}`);
+      assert.deepEqual(s3Calls.refund.at(-1), { idempotencyKey: slotRefund.idempotencyKey, amountPence: 2000 });
+      const lostNotice = sentNotice(lost.appointment.id, 1, 'CANCELLATION');
+      assert.deepEqual([lostNotice.options.depositOutcome, lostNotice.options.wasConfirmed], ['REFUNDING', false]);
+
+      // Declining a request releases its hold once the decline has committed.
+      const declined = await withDeposit(instant(day51, '16:00'));
+      await assertActionSuccess(await depositAdmin.updateAppointmentStatus(declined.appointment.id, 'CANCELLED'));
+      assert.equal((await attemptOf(declined.attempt.id)).status, 'VOIDED');
+      assert.equal(s3Calls.cancel.at(-1), declined.paymentId);
+      assert.equal(sentNotice(declined.appointment.id, 1, 'CANCELLATION').options.depositOutcome, 'RELEASED');
+      assert.equal(await db.paymentRefund.count({ where: { attemptId: declined.attempt.id } }), 0);
+
+      // A customer cancelling a confirmed booking online (24 hours or more ahead) gets it all back.
+      const paid = await withDeposit(instant(day52, '10:00'), { status: 'CONFIRMED', attempt: 'CAPTURED' });
+      await assertActionSuccess(await depositOwner.cancelAppointment(paid.appointment.id));
+      const customerRefund = await db.paymentRefund.findFirstOrThrow({ where: { attemptId: paid.attempt.id } });
+      assert.deepEqual([customerRefund.reason, customerRefund.amountPence, customerRefund.status, customerRefund.requestedById], ['CUSTOMER_CANCELLED', 2000, 'PENDING', null]);
+      assert.equal(sentNotice(paid.appointment.id, 1, 'CANCELLATION').options.depositOutcome, 'REFUNDING');
+      assertActionError(await depositOwner.cancelAppointment(paid.appointment.id), /Only pending or confirmed/);
+      assert.equal(await db.paymentRefund.count({ where: { attemptId: paid.attempt.id } }), 1, 'never refunded twice');
+
+      // Staff cancelling a confirmed booking refund it by default, or keep it — recorded in the audit.
+      const staffRefunded = await withDeposit(instant(day52, '12:00'), { status: 'CONFIRMED', attempt: 'CAPTURED' });
+      await assertActionSuccess(await depositAdmin.updateAppointmentStatus(staffRefunded.appointment.id, 'CANCELLED'));
+      const staffRefund = await db.paymentRefund.findFirstOrThrow({ where: { attemptId: staffRefunded.attempt.id } });
+      assert.deepEqual([staffRefund.reason, staffRefund.requestedById, staffRefund.status], ['STAFF_CANCELLED', ids.admin, 'PENDING']);
+      const kept = await withDeposit(instant(day52, '14:00'), { status: 'CONFIRMED', attempt: 'CAPTURED' });
+      await assertActionSuccess(await depositAdmin.updateAppointmentStatus(kept.appointment.id, 'CANCELLED', { refundDeposit: false }));
+      assert.equal(await db.paymentRefund.count({ where: { attemptId: kept.attempt.id } }), 0);
+      // Recorded on the deposit, so the attention list (real relation filters) never reports it as unexplained.
+      assert.equal((await attemptOf(kept.attempt.id)).status, 'KEPT');
+      const keptAttention = await collectPaymentAttention(db, new Date(), pageWindows(new Date()));
+      assert.ok(!keptAttention.attempts.some((row) => row.id === kept.attempt.id), 'a deliberate keep needs nobody');
+      const keptAudit = await db.auditEvent.findFirstOrThrow({ where: { targetId: kept.appointment.id, action: 'APPOINTMENT.STATUS' } });
+      assert.deepEqual(JSON.parse(keptAudit.metadataJson), { from: 'CONFIRMED', to: 'CANCELLED', deposit: 'KEPT', depositPence: 2000 });
+      assert.equal(sentNotice(kept.appointment.id, 1, 'CANCELLATION').options.depositOutcome, 'KEPT');
+
+      // The lapse step, through its real relation filters: a request whose hold ran out
+      // closes before its time (EXPIRED, nothing asked of Square); an ended one releases
+      // its live hold; one mid-capture is left to staff; one without a deposit lapses as ever.
+      const expiring = await withDeposit(instant(day(53), '10:00'), { delayedUntil: new Date(Date.now() - 60_000), announced: true });
+      const ended = await withDeposit(new Date(Date.now() - 3 * 3_600_000), { announced: true });
+      const midCapture = await withDeposit(new Date(Date.now() - 4 * 3_600_000), { attempt: 'CAPTURE_UNKNOWN' });
+      const plain = await db.appointment.create({ data: { userId: ids.other, stylistId: ids.stylist, serviceId: ids.service, date: new Date(Date.now() - 5 * 3_600_000), status: 'PENDING', durationAtBooking: 60, priceAtBooking: 100 } });
+      const futureHeld = await withDeposit(instant(day(54), '10:00'));
+      const cancelsBefore = s3Calls.cancel.length;
+      const lapsed = await lapse.lapseStartedPendingRequests(new Date());
+      assert.deepEqual(lapsed, { lapsed: 3, failed: 0 });
+      assert.deepEqual(await Promise.all([expiring, ended, midCapture, futureHeld].map((row) => statusOf(row.appointment.id))), ['CANCELLED', 'CANCELLED', 'PENDING', 'PENDING']);
+      assert.equal(await statusOf(plain.id), 'CANCELLED');
+      assert.deepEqual(await Promise.all([expiring, ended, midCapture, futureHeld].map(async (row) => (await attemptOf(row.attempt.id)).status)), ['EXPIRED', 'VOIDED', 'CAPTURE_UNKNOWN', 'AUTHORIZED']);
+      assert.deepEqual(s3Calls.cancel.slice(cancelsBefore), [ended.paymentId], 'only the live hold of an ended request is released');
+      const expiredNotice = await db.notificationDelivery.findFirstOrThrow({ where: { appointmentId: expiring.appointment.id, kind: 'REQUEST_LAPSED' } });
+      assert.deepEqual(
+        (({ depositOutcome, holdExpired }) => ({ depositOutcome, holdExpired }))(JSON.parse(expiredNotice.payloadJson).options),
+        { depositOutcome: 'RELEASED', holdExpired: true },
+      );
+      const endedNotice = await db.notificationDelivery.findFirstOrThrow({ where: { appointmentId: ended.appointment.id, kind: 'REQUEST_LAPSED' } });
+      assert.equal(JSON.parse(endedNotice.payloadJson).options.holdExpired, undefined);
+      assert.deepEqual(await lapse.lapseStartedPendingRequests(new Date()), { lapsed: 0, failed: 0 }, 're-running is a no-op');
+
+      // Once its appointment ended at least 12 hours ago, the DAILY run (housekeeping,
+      // `takenDeposits`) closes a request whose deposit was taken but never confirmed like a
+      // staff decline: a full REQUEST_LAPSED refund (the row in the lapse's own transaction,
+      // Square after it). One whose capture nobody saw finish is settled with Square first,
+      // once quiet for 2 minutes; the notifications run never touches either (review I-E),
+      // and the fresh one above (4 hours ago) is still left alone.
+      const lapsedTaken = await withDeposit(new Date(Date.now() - 14 * 3_600_000), { attempt: 'CAPTURED', announced: true });
+      const lapsedUnclear = await withDeposit(new Date(Date.now() - 15 * 3_600_000), { attempt: 'CAPTURE_UNKNOWN', announced: true });
+      await db.paymentAttempt.update({ where: { id: lapsedUnclear.attempt.id }, data: { updatedAt: new Date(Date.now() - 10 * 60_000) } });
+      squareS3.get(lapsedUnclear.paymentId)!.status = 'COMPLETED';
+      const lapseRefundsBefore = s3Calls.refund.length;
+      assert.deepEqual(await lapse.lapseStartedPendingRequests(new Date()), { lapsed: 0, failed: 0 }, 'the notifications run leaves taken deposits to staff');
+      assert.deepEqual(await Promise.all([lapsedTaken, lapsedUnclear].map((row) => statusOf(row.appointment.id))), ['PENDING', 'PENDING']);
+      assert.equal(s3Calls.refund.length, lapseRefundsBefore);
+      assert.deepEqual(await lapse.lapseStartedPendingRequests(new Date(), { takenDeposits: true }), { lapsed: 2, failed: 0 });
+      for (const row of [lapsedTaken, lapsedUnclear]) {
+        assert.equal(await statusOf(row.appointment.id), 'CANCELLED');
+        assert.equal((await attemptOf(row.attempt.id)).status, 'CAPTURED');
+        const lapseRefund = await db.paymentRefund.findFirstOrThrow({ where: { attemptId: row.attempt.id } });
+        assert.deepEqual([lapseRefund.reason, lapseRefund.amountPence, lapseRefund.status, lapseRefund.requestedById], ['REQUEST_LAPSED', 2000, 'PENDING', null]);
+        const lapseNotice = await db.notificationDelivery.findFirstOrThrow({ where: { appointmentId: row.appointment.id, kind: 'REQUEST_LAPSED' } });
+        assert.equal(JSON.parse(lapseNotice.payloadJson).options.depositOutcome, 'REFUNDING');
+      }
+      assert.equal(s3Calls.refund.length - lapseRefundsBefore, 2, 'each refunded once, after its lapse committed');
+      assert.deepEqual([await statusOf(midCapture.appointment.id), (await attemptOf(midCapture.attempt.id)).status], ['PENDING', 'CAPTURE_UNKNOWN'], 'a capture still settling waits');
+      assert.deepEqual(await lapse.lapseStartedPendingRequests(new Date(), { takenDeposits: true }), { lapsed: 0, failed: 0 });
+      assert.equal(s3Calls.refund.length - lapseRefundsBefore, 2, 'never refunded twice');
+      while (afterResponse.length) await afterResponse.shift()!();
+      console.log(`PASS: card deposits S3 — approval captures once (a real two-transaction race refused the second with "being processed"), a time lost after capture cancels with a SLOT_LOST refund, decline releases the hold, customer and staff cancellations refund (or staff keep it, audited), and the lapse step expires run-out holds, releases ended ones and leaves a capture in flight alone. Square was a fake.`);
+    }
+
+    // Card deposits, phase S4: the Square webhook route and reconciliation over
+    // real PostgreSQL — the event store's real unique key (a repeated delivery
+    // is applied once), forward-only conditional writes (timestamps compared at
+    // PostgreSQL's precision), the relation filters reconciliation and the
+    // attention lists use, a late-capture refund in a real transaction, and the
+    // lapse step closing a request whose hold Square let go. The signature
+    // check is real; Square is a fake that behaves like Square
+    // (src/test/payments-fixture.ts). Its own Square location keeps S2/S3's
+    // synthetic deposits out of reconciliation's reach.
+    {
+      const config = SQUARE_S4_CONFIG;
+      const square = fakeSquare();
+      const reconciliation = createPaymentReconciliation({ db, config, gatewayFor: () => square.gateway as never });
+      const followUps: (() => Promise<void>)[] = [];
+      const webhook = loadServerModule<typeof import('../src/app/api/webhooks/square/route')>('src/app/api/webhooks/square/route.ts', {
+        'next/server': { after: (callback: () => Promise<void>) => { followUps.push(callback); } },
+        '@/app/lib/online-booking-lock': { usableSquareConfig: () => config },
+        '@/app/lib/prisma': db,
+        '@/app/services/payment-reconciliation': { reconcileSquareEvent: (eventId: string) => reconciliation.reconcileEventById(eventId) },
+      });
+      const deliver = async (body: string) => {
+        const response = await webhook.POST(new Request(config.webhookNotificationUrl, {
+          method: 'POST', headers: { 'content-type': 'application/json', 'x-square-hmacsha256-signature': sign(body) }, body,
+        }));
+        assert.equal(response.status, 200, `Square must be answered 200: ${body.slice(0, 80)}`);
+        while (followUps.length) await followUps.shift()!();
+      };
+      const past = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+      let s4Sequence = 0;
+      /** One of the other customer's bookings (status null: none) and its £20 deposit, as S2/S3 leave them. */
+      const deposit = async (status: string | null, values: Partial<Prisma.PaymentAttemptUncheckedCreateInput> = {}, date?: Date) => {
+        const n = ++s4Sequence;
+        const appointment = status === null ? null : await db.appointment.create({ data: {
+          userId: ids.other, stylistId: ids.stylist, serviceId: ids.service, date: date ?? instant(day(60 + n), '10:00'), status,
+          durationAtBooking: 60, priceAtBooking: 100, notificationLocale: 'en-GB',
+        } });
+        const attempt = await db.paymentAttempt.create({ data: {
+          userId: ids.other, attemptKey: `s4-attempt-${n}`, idempotencyKey: `dep_s4_${n}`, appointmentId: appointment?.id ?? null, status: 'AUTHORIZED',
+          environment: config.environment, locationId: config.locationId, amountPence: 2000, quoteAmountPence: 10000, policyJson: '{}', requestJson: '{}',
+          squarePaymentId: `s4-payment-${n}`, delayedUntil: new Date(Date.now() + 5 * 86_400_000), authorizedAt: past(120),
+          createdAt: past(120), updatedAt: past(60), ...values,
+        } });
+        return { appointment, attempt, paymentId: `s4-payment-${n}` };
+      };
+      const attemptOf = (id: string) => db.paymentAttempt.findUniqueOrThrow({ where: { id } });
+
+      // A capture nobody saw finish, notified twice: applied once (the second
+      // delivery meets PostgreSQL's unique key), the booking untouched; an
+      // older APPROVED notice afterwards changes nothing.
+      const unclear = await deposit('PENDING', { status: 'CAPTURE_UNKNOWN', lastError: OPERATIONS_MESSAGES.PAYMENT_CAPTURE_UNKNOWN });
+      const completed = paymentEvent('s4-evt-capture', 'payment.updated', { id: unclear.paymentId, status: 'COMPLETED', referenceId: unclear.attempt.id });
+      await deliver(completed);
+      const capturedAt = (await attemptOf(unclear.attempt.id)).updatedAt;
+      await deliver(completed);
+      assert.equal(await db.squareWebhookEvent.count({ where: { eventId: 's4-evt-capture' } }), 1);
+      const taken = await attemptOf(unclear.attempt.id);
+      assert.deepEqual([taken.status, taken.lastError], ['CAPTURED', OPERATIONS_MESSAGES.PAYMENT_CAPTURED_NOT_CONFIRMED]);
+      assert.equal(taken.updatedAt.getTime(), capturedAt.getTime(), 'the duplicate wrote nothing');
+      assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: unclear.appointment!.id } })).status, 'PENDING', 'a webhook never changes a booking');
+      await deliver(paymentEvent('s4-evt-old', 'payment.created', { id: unclear.paymentId, status: 'APPROVED', referenceId: unclear.attempt.id }));
+      assert.equal((await attemptOf(unclear.attempt.id)).status, 'CAPTURED');
+
+      // A declined request whose release failed: Square's APPROVED notice makes
+      // the site release it — after the answer, on a fresh read.
+      const declined = await deposit('CANCELLED', { lastError: OPERATIONS_MESSAGES.PAYMENT_RELEASE_FAILED });
+      square.hold(declined.paymentId, declined.attempt.id);
+      await deliver(paymentEvent('s4-evt-release', 'payment.updated', { id: declined.paymentId, status: 'APPROVED', referenceId: declined.attempt.id }));
+      assert.deepEqual(square.calls.order, [`getPayment:${declined.paymentId}`, `cancel:${declined.paymentId}`]);
+      assert.equal((await attemptOf(declined.attempt.id)).status, 'VOIDED');
+      assert.ok((await db.squareWebhookEvent.findUniqueOrThrow({ where: { eventId: 's4-evt-release' } })).processedAt);
+
+      // A payment no deposit knows: recorded, open, answered 200.
+      await deliver(paymentEvent('s4-evt-stranger', 'payment.created', { id: 's4-stranger', status: 'APPROVED', referenceId: 's4-nobody' }));
+      assert.equal((await db.squareWebhookEvent.findUniqueOrThrow({ where: { eventId: 's4-evt-stranger' } })).processedAt, null);
+
+      // A refund whose answer was lost is found by its payment and amount, then
+      // moves forward only.
+      const refunded = await deposit('CANCELLED', { status: 'CAPTURED', capturedAt: past(100) });
+      const lostRefund = await db.paymentRefund.create({ data: { attemptId: refunded.attempt.id, idempotencyKey: 'rfd_s4_lost', amountPence: 2000, status: 'UNKNOWN', reason: 'STAFF_CANCELLED' } });
+      await deliver(refundEvent('s4-evt-refund-1', 'refund.created', { id: 's4-refund-1', status: 'PENDING', paymentId: refunded.paymentId }));
+      assert.deepEqual(await db.paymentRefund.findUniqueOrThrow({ where: { id: lostRefund.id }, select: { status: true, squareRefundId: true } }), { status: 'PENDING', squareRefundId: 's4-refund-1' });
+      await deliver(refundEvent('s4-evt-refund-2', 'refund.updated', { id: 's4-refund-1', status: 'COMPLETED', paymentId: refunded.paymentId }));
+      await deliver(refundEvent('s4-evt-refund-3', 'refund.updated', { id: 's4-refund-1', status: 'PENDING', paymentId: refunded.paymentId }));
+      assert.equal((await db.paymentRefund.findUniqueOrThrow({ where: { id: lostRefund.id } })).status, 'COMPLETED');
+
+      // The daily run, through its real queries.
+      const orphan = await deposit(null);
+      square.hold(orphan.paymentId, orphan.attempt.id);
+      const late = await deposit('CANCELLED', { lastError: OPERATIONS_MESSAGES.PAYMENT_RELEASE_FAILED });
+      square.hold(late.paymentId, late.attempt.id, 'COMPLETED');
+      const unknown = await deposit(null, { status: 'UNKNOWN', squarePaymentId: null, lastError: OPERATIONS_MESSAGES.PAYMENT_OUTCOME_UNKNOWN, createdAt: past(24 * 60), updatedAt: past(24 * 60) });
+      const open = await deposit('PENDING');
+      const pending = await deposit('CANCELLED', { status: 'CAPTURED', capturedAt: past(200) });
+      square.knownRefund('rfd_s4_pending', pending.paymentId, 'COMPLETED');
+      const pendingRefund = await db.paymentRefund.create({ data: {
+        attemptId: pending.attempt.id, idempotencyKey: 'rfd_s4_pending', squareRefundId: 'sq-refund-rfd_s4_pending', amountPence: 2000,
+        status: 'PENDING', reason: 'STAFF_CANCELLED', createdAt: past(180), updatedAt: past(180),
+      } });
+      const summary = await reconciliation.reconcileAll();
+      assert.equal(summary.failed, 0, JSON.stringify(summary));
+      assert.deepEqual([(await attemptOf(orphan.attempt.id)).status, (await attemptOf(orphan.attempt.id)).lastError], ['VOIDED', OPERATIONS_MESSAGES.PAYMENT_ORPHAN_RELEASED]);
+      const lateRow = await attemptOf(late.attempt.id);
+      assert.deepEqual([lateRow.status, lateRow.lastError], ['CAPTURED', OPERATIONS_MESSAGES.PAYMENT_LATE_CAPTURE_REFUNDED]);
+      const lateRefund = await db.paymentRefund.findFirstOrThrow({ where: { attemptId: late.attempt.id } });
+      assert.deepEqual([lateRefund.reason, lateRefund.amountPence, lateRefund.status], ['LATE_CAPTURE', 2000, 'PENDING']);
+      assert.equal(await db.auditEvent.count({ where: { action: 'PAYMENT.LATE_CAPTURE_REFUND', targetId: late.attempt.id } }), 1);
+      assert.deepEqual([(await attemptOf(unknown.attempt.id)).status, (await attemptOf(unknown.attempt.id)).lastError], ['UNKNOWN', OPERATIONS_MESSAGES.PAYMENT_UNKNOWN_CANCELLING]);
+      assert.ok(square.calls.cancelByKey.includes(unknown.attempt.idempotencyKey), 'cancelled by its key');
+      assert.equal((await attemptOf(open.attempt.id)).status, 'AUTHORIZED', 'a hold its request needs is left alone');
+      assert.equal((await db.paymentRefund.findUniqueOrThrow({ where: { id: pendingRefund.id } })).status, 'COMPLETED');
+      // Run again: nothing more is refunded or released.
+      const refundsBefore = square.calls.refund.length;
+      assert.equal((await reconciliation.reconcileAll()).failed, 0);
+      assert.equal(square.calls.refund.length, refundsBefore);
+      assert.equal(await db.paymentRefund.count({ where: { attemptId: late.attempt.id } }), 1);
+
+      // What still needs a person, through the real relation filters.
+      const attention = await collectPaymentAttention(db, new Date(), pageWindows(new Date()));
+      const problemOf = (id: string) => attention.attempts.find((row) => row.id === id)?.problem;
+      assert.equal(problemOf(unclear.attempt.id), 'TAKEN_NOT_CONFIRMED');
+      assert.equal(problemOf(unknown.attempt.id), undefined, 'being cancelled by key every day: handled');
+      assert.equal(problemOf(open.attempt.id), undefined);
+      assert.ok(attention.refunds.some((row) => row.id === lateRefund.id && row.problem === 'LATE_CAPTURE'));
+      assert.ok(!attention.notifications.some((row) => row.eventId === 's4-evt-stranger'), 'an unmatched notice is listed once it is an hour old');
+
+      // Review fixes over real PostgreSQL (timestamps compared at its precision).
+      // W-B: an in-salon refund at this location — its payment none of ours — is settled at once.
+      await deliver(refundEvent('s4-evt-counter', 'refund.created', { id: 's4-counter-refund', status: 'PENDING', paymentId: 's4-counter-sale' }));
+      assert.ok((await db.squareWebhookEvent.findUniqueOrThrow({ where: { eventId: 's4-evt-counter' } })).processedAt, 'not ours: settled, never listed');
+      // W-C: a retry Square refuses is dated on its row (the batch rotates); 7 days after the
+      // refund was requested the daily run hands it to staff (UNRESOLVED), who settle it
+      // outside the website (audited, still counted, never sent again).
+      const given = await deposit('CANCELLED', { status: 'CAPTURED', capturedAt: past(8 * 24 * 60) });
+      const givenRefund = await db.paymentRefund.create({ data: {
+        attemptId: given.attempt.id, idempotencyKey: 'rfd_s4_given', amountPence: 2000, status: 'UNKNOWN', reason: 'STAFF_CANCELLED', createdAt: past(8 * 24 * 60), updatedAt: past(60),
+      } });
+      const refused = await deposit('CANCELLED', { status: 'CAPTURED', capturedAt: past(2 * 24 * 60) });
+      const refusedRefund = await db.paymentRefund.create({ data: {
+        attemptId: refused.attempt.id, idempotencyKey: 'rfd_s4_refused', amountPence: 2000, status: 'UNKNOWN', reason: 'STAFF_CANCELLED', createdAt: past(2 * 24 * 60), updatedAt: past(60),
+      } });
+      const refundScript = square.script.refund;
+      square.script.refund = async () => { throw new SquareGatewayError('provider_error', 401); };
+      const retriedBefore = square.calls.refund.length;
+      assert.equal((await reconciliation.reconcileAll()).failed, 0);
+      square.script.refund = refundScript;
+      assert.deepEqual(square.calls.refund.slice(retriedBefore).map((call) => call.idempotencyKey), ['rfd_s4_refused'], 'the given-up one is not asked');
+      const refusedAfter = await db.paymentRefund.findUniqueOrThrow({ where: { id: refusedRefund.id } });
+      assert.equal(refusedAfter.status, 'UNKNOWN');
+      assert.ok(refusedAfter.updatedAt.getTime() > past(5).getTime(), 'the try is dated on its row');
+      assert.equal((await db.paymentRefund.findUniqueOrThrow({ where: { id: givenRefund.id } })).status, 'UNRESOLVED');
+      const unresolvedAttention = await collectPaymentAttention(db, new Date(), pageWindows(new Date()));
+      assert.ok(unresolvedAttention.refunds.some((row) => row.id === givenRefund.id && row.problem === 'UNRESOLVED'));
+      assert.deepEqual(
+        await settleRefundOutsideWebsite(db, { appointmentId: given.appointment!.id, refundId: givenRefund.id, adminId: ids.admin, now: new Date() }),
+        { kind: 'SETTLED', amountPence: 2000 },
+      );
+      assert.equal((await db.paymentRefund.findUniqueOrThrow({ where: { id: givenRefund.id } })).status, 'SETTLED_EXTERNALLY');
+      assert.equal(await db.auditEvent.count({ where: { action: 'PAYMENT.REFUND_SETTLED_OUTSIDE', targetId: givenRefund.id } }), 1);
+      assert.equal(await refundableRemainderPence(db, given.attempt.id), 0, 'never refundable twice');
+      // I-D: Square shows a hold this site still records taken, on an open request: recorded taken and flagged.
+      const takenOpen = await deposit('PENDING');
+      square.hold(takenOpen.paymentId, takenOpen.attempt.id, 'COMPLETED');
+      await deliver(paymentEvent('s4-evt-taken-open', 'payment.updated', { id: takenOpen.paymentId, status: 'COMPLETED', referenceId: takenOpen.attempt.id }));
+      const takenOpenRow = await attemptOf(takenOpen.attempt.id);
+      assert.deepEqual([takenOpenRow.status, takenOpenRow.lastError], ['CAPTURED', OPERATIONS_MESSAGES.PAYMENT_CAPTURED_NOT_CONFIRMED]);
+      assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: takenOpen.appointment!.id } })).status, 'PENDING', 'the booking is staff\'s to confirm or decline');
+
+      // A request whose hold Square let go (EXPIRED, as the webhook records it)
+      // closes before its time, through the lapse step's real relation filter.
+      const lapse = loadServerModule<typeof import('../src/app/services/pending-request-lapse')>('src/app/services/pending-request-lapse.ts', {
+        '@/app/lib/prisma': db, './booking-service': booking, './notification-outbox-service': notifications, './stylist-ical-cache': icalCache,
+      });
+      const gone = await deposit('PENDING', { status: 'EXPIRED', lastError: OPERATIONS_MESSAGES.PAYMENT_HOLD_CANCELLED });
+      // …and one whose hold this site released already (VOIDED: a booking whose answer was lost).
+      const releasedEarly = await deposit('PENDING', { status: 'VOIDED', lastError: OPERATIONS_MESSAGES.PAYMENT_RELEASED_NOT_BOOKED });
+      const lapsed = await lapse.lapseStartedPendingRequests(new Date());
+      assert.ok(lapsed.lapsed >= 2 && lapsed.failed === 0, JSON.stringify(lapsed));
+      assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: gone.appointment!.id } })).status, 'CANCELLED');
+      assert.equal((await attemptOf(gone.attempt.id)).status, 'EXPIRED');
+      assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: releasedEarly.appointment!.id } })).status, 'CANCELLED');
+      assert.equal((await attemptOf(releasedEarly.attempt.id)).status, 'VOIDED');
+      assert.equal((await db.appointment.findUniqueOrThrow({ where: { id: open.appointment!.id } })).status, 'PENDING');
+      while (afterResponse.length) await afterResponse.shift()!();
+      console.log('PASS: card deposits S4 — a repeated Square notification is applied once (PostgreSQL unique key), an older one never regresses a capture, a hold no booking wants is released after the answer on a fresh read, a refund that lost its answer is found and moves forward only; the daily reconciliation releases orphans, refunds a late capture in full once, keeps cancelling an unconfirmed authorization by key and follows a pending refund; the attention list and the lapse step read the real relation filters. Square was a fake.');
+    }
+
     // Fresha may acquire a slot after the website request but before approval.
     const lateDay = day(16);
     const pending = await create(lateDay, '10:00');
@@ -553,6 +1112,11 @@ async function main() {
     try {
       if (fixturesStarted) {
         await db.auditEvent.deleteMany({ where: { actorUserId: { in: userIds } } });
+        // The system's own audits (no actor: lapses, late-capture refunds) and the Square notifications.
+        await db.auditEvent.deleteMany({ where: { actorUserId: null, action: { in: ['APPOINTMENT.LAPSED', 'PAYMENT.LATE_CAPTURE_REFUND'] } } });
+        await db.squareWebhookEvent.deleteMany({ where: { eventId: { startsWith: 's4-' } } });
+        await db.paymentRefund.deleteMany({ where: { attempt: { userId: { in: userIds } } } });
+        await db.paymentAttempt.deleteMany({ where: { userId: { in: userIds } } });
         await db.notificationDelivery.deleteMany({ where: { appointment: { userId: { in: userIds } } } });
         await db.appointment.deleteMany({ where: { userId: { in: userIds } } });
         await db.calendarConnection.deleteMany({ where: { stylistId: ids.stylist } });

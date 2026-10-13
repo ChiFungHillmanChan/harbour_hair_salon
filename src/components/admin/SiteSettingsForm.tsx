@@ -1,12 +1,14 @@
 'use client';
 
-import { useActionState, useEffect } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import Link from '@/i18n/link';
 import {
   updateSiteSettings,
   type SettingsActionState,
 } from '@/app/actions/admin-settings';
 import type { SiteSettings } from '@/app/services/site-settings-service';
+import { penceToDecimalString } from '@/app/services/pricing/money';
+import { HIGH_DEPOSIT_PERCENT, isHighDepositPercent } from '@/app/services/deposit-policy';
 import { LOCALES } from '@/i18n/config';
 import { useT } from '@/i18n/client';
 import { rich } from '@/i18n/rich';
@@ -17,13 +19,64 @@ type OperationalSettings = Omit<SiteSettings, 'heroEyebrow' | 'heroTitleLine1' |
 
 interface SiteSettingsFormProps {
   settings: OperationalSettings;
-  /** Production cannot open online booking before Square deposits are wired (lib/online-booking-lock.ts). */
+  /** Production cannot open online booking without Square production credentials (lib/online-booking-lock.ts). */
   bookingLockedForPayments?: boolean;
 }
 
 const DRAFT_KEY = 'site-settings-form';
 const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
 const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2';
+
+/**
+ * The salon's deposit percentage (0–100), with a standing reminder to keep it
+ * proportionate and a warning above HIGH_DEPOSIT_PERCENT: UK consumer law can
+ * treat a large deposit the salon keeps as unfair. It follows what is typed,
+ * and a value the form restores after a language switch (`draft-restored`).
+ */
+export function DepositPercentField({ defaultValue }: { defaultValue: number }) {
+  const t = useT('adminContent');
+  const input = useRef<HTMLInputElement>(null);
+  const [value, setValue] = useState(String(defaultValue));
+  useEffect(() => {
+    const form = input.current?.form;
+    if (!form) return;
+    const sync = () => setValue(input.current?.value ?? '');
+    form.addEventListener('draft-restored', sync);
+    return () => form.removeEventListener('draft-restored', sync);
+  }, []);
+  const high = value.trim() !== '' && isHighDepositPercent(Number(value));
+  return (
+    <div>
+      <label htmlFor="settings-deposit-percent" className={labelClass}>
+        {t('settings.fields.depositPercent')}
+      </label>
+      <input
+        ref={input}
+        id="settings-deposit-percent"
+        type="number"
+        name="depositPercent"
+        required
+        min={0}
+        max={100}
+        step={1}
+        inputMode="numeric"
+        defaultValue={defaultValue}
+        onChange={(event) => setValue(event.target.value)}
+        aria-describedby={`settings-deposit-percent-help settings-deposit-percent-hint${high ? ' settings-deposit-percent-warning' : ''}`}
+        className={`${fieldClass} font-mono`}
+      />
+      <p id="settings-deposit-percent-help" className="text-xs text-zinc-500 mt-1">{t('settings.deposits.percentHelp')}</p>
+      <p id="settings-deposit-percent-hint" className="text-xs text-zinc-500 mt-1">{t('settings.deposits.proportionate')}</p>
+      <div role="status">
+        {high && (
+          <p id="settings-deposit-percent-warning" className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+            {t('settings.deposits.percentHigh', { percent: HIGH_DEPOSIT_PERCENT })}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function SiteSettingsForm({ settings, bookingLockedForPayments = false }: SiteSettingsFormProps) {
   const t = useT('adminContent');
@@ -118,6 +171,53 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
             })}
           </div>
         )}
+      </section>
+
+      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+        <div>
+          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.deposits.title')}</h2>
+          <p className="text-xs text-zinc-500 mt-1">{t('settings.deposits.help')}</p>
+        </div>
+
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            name="depositsEnabled"
+            defaultChecked={settings.depositsEnabled}
+            className="mt-1 h-5 w-5 rounded border-zinc-300 text-zinc-900 focus:ring-2 focus:ring-zinc-900"
+          />
+          <span>
+            <span className="block text-sm font-medium text-zinc-900">{t('settings.deposits.label')}</span>
+            <span className="block text-xs text-zinc-500 mt-1">{t('settings.deposits.explain')}</span>
+          </span>
+        </label>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          <DepositPercentField defaultValue={settings.depositPercent} />
+          <div>
+            <label htmlFor="settings-deposit-minimum" className={labelClass}>
+              {t('settings.fields.depositMinimumServicePence')}
+            </label>
+            <input
+              id="settings-deposit-minimum"
+              type="text"
+              inputMode="decimal"
+              name="depositMinimumServicePounds"
+              pattern="\d{1,6}(\.\d{1,2})?"
+              placeholder="0.00"
+              defaultValue={penceToDecimalString(settings.depositMinimumServicePence)}
+              aria-describedby="settings-deposit-minimum-help"
+              className={`${fieldClass} font-mono`}
+            />
+            <p id="settings-deposit-minimum-help" className="text-xs text-zinc-500 mt-1">{t('settings.deposits.minimumHelp')}</p>
+          </div>
+        </div>
+
+        <p className="rounded border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs leading-5 text-zinc-700" role="note">
+          {rich(t('settings.deposits.squareNote'), {
+            strong: (text) => <strong>{text}</strong>,
+          })}
+        </p>
       </section>
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">

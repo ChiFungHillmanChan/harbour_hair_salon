@@ -111,6 +111,42 @@ test('the board carries each booking\'s recorded price and only bookable options
   assert.deepEqual(result.services.map((service) => [service.id, service.amountPence, service.isBookable]), [['open', 4000, true], ['retired', 3500, false]]);
 });
 
+// Review W-C: the booking dialog offers "Mark refund as settled outside the
+// website" for a refund Square has not confirmed, so the board names it.
+test('the board names a refund staff may mark settled outside the website, with its amount', async () => {
+  const base = { date: new Date('2026-10-23T10:00:00Z'), status: 'CANCELLED', stylistId: 's1', serviceId: 'svc', updatedAt: new Date('2026-10-01T00:00:00Z'),
+    durationAtBooking: 60, notes: null, priceAtBooking: null, quoteJson: null, user: { id: 'u1', name: 'Mei', email: 'mei@example.test' },
+    stylist: { name: 'Ivan', calendarColor: null }, service: { name: 'Colour', duration: 60, calendarColor: null } };
+  let select: { paymentAttempt?: unknown } = {};
+  const db = {
+    appointment: {
+      count: async () => 0,
+      groupBy: async () => [],
+      findMany: async (args: { where: { status?: string }; select: { paymentAttempt?: unknown } }) => {
+        if (args.where.status === 'PENDING') return [];
+        if (args.select?.paymentAttempt) select = args.select;
+        return [
+          { ...base, id: 'stuck', paymentAttempt: { status: 'CAPTURED', amountPence: 2000, refunds: [{ id: 'refund-1', status: 'UNRESOLVED', amountPence: 2000 }] } },
+          { ...base, id: 'moving', paymentAttempt: { status: 'CAPTURED', amountPence: 2000, refunds: [{ id: 'refund-2', status: 'PENDING', amountPence: 2000 }] } },
+        ];
+      },
+    },
+    stylist: { findMany: async () => [] },
+    externalBusyBlock: { findMany: async () => [] },
+    service: { findMany: async () => [] },
+  };
+  const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
+    '@/app/lib/prisma': { __esModule: true, default: db, getDatabaseProvider: () => 'postgresql' },
+    '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
+    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
+  });
+  const result = await getAdminCalendarData({ date: '2026-10-23', view: 'day' });
+  const byId = new Map(result.appointments.map((row) => [row.id, row]));
+  assert.deepEqual(byId.get('stuck')?.deposit, { state: 'REFUND_PENDING', amountPence: 2000, refundToSettle: { id: 'refund-1', amountPence: 2000 } });
+  assert.deepEqual(byId.get('moving')?.deposit, { state: 'REFUND_PENDING', amountPence: 2000 }, 'Square is still handling it');
+  assert.doesNotMatch(JSON.stringify(select.paymentAttempt), /squarePaymentId|squareRefundId|idempotencyKey/, 'never Square ids or keys');
+});
+
 test('the board lists open reschedule requests by request age and counts only unexpired ones', async (t) => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') });
   const requests = [

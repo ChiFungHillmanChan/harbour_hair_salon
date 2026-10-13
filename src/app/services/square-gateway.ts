@@ -1,11 +1,13 @@
 import 'server-only';
 
-// STATUS: NOT WIRED. Square deposit foundation only — nothing in the booking
-// flow calls this yet, and production online booking is locked closed until it
-// does. See lib/online-booking-lock.ts (SQUARE_DEPOSITS_WIRED).
+// A customer's booking request authorizes its deposit through this gateway
+// (services/payment-attempts.ts, phase S2); staff approval captures it, and a
+// declined, withdrawn or lapsed request releases it, a cancelled booking
+// refunds it (services/deposit-lifecycle.ts, phase S3 of
+// docs/superpowers/specs/2026-10-13-square-deposits-design.md).
 
 import { z } from 'zod';
-import { getSquareConfig, type SquareConfig } from '../lib/square-config';
+import type { SquareConfig } from '../lib/square-config';
 
 export const SQUARE_API_VERSION = '2026-09-16';
 
@@ -66,12 +68,18 @@ const expectationSchema = z.object({ paymentId: identifier, amountPence: pence, 
  * The caller must persist an attempt/key before authorizing and reconcile an
  * unknown outcome with that SAME attempt. Never call inside a retried DB tx.
  * Dependencies allow offline contract tests without a Square account.
+ *
+ * `loadConfig` is required, and must come from the guarded path —
+ * `usableSquareConfig()` (lib/online-booking-lock.ts) or, for money a deposit
+ * already holds, `depositGatewayFor(attempt)` (deposit-lifecycle.ts) — never
+ * the raw `getSquareConfig()`, which would let sandbox credentials act in a
+ * production build, or a preview send a production payment id to the sandbox.
  */
 export function createSquareGateway(dependencies: {
-  loadConfig?: () => Promise<SquareConfig | null>;
+  loadConfig: () => Promise<SquareConfig | null>;
   transport?: typeof fetch;
-} = {}) {
-  const loadConfig = dependencies.loadConfig ?? getSquareConfig;
+}) {
+  const loadConfig = dependencies.loadConfig;
   const transport = dependencies.transport ?? fetch;
 
   async function request(path: string, method: 'GET' | 'POST', makeBody?: (config: SquareConfig) => unknown) {
@@ -134,10 +142,15 @@ export function createSquareGateway(dependencies: {
   }
 
   return {
-    async authorize(input: { sourceId: string; amountPence: number; idempotencyKey: string; referenceId: string }): Promise<SquarePayment> {
+    /**
+     * `note` is shown to the salon in Square (at most 500 characters): what the
+     * deposit is for, never who paid it — no customer name, email or phone.
+     */
+    async authorize(input: { sourceId: string; amountPence: number; idempotencyKey: string; referenceId: string; note?: string }): Promise<SquarePayment> {
       const data = validate(z.object({
         sourceId: z.string().min(1).max(192).refine((value) => !/\s/.test(value) && value !== 'CASH' && value !== 'EXTERNAL'),
         amountPence: pence, idempotencyKey, referenceId,
+        note: z.string().min(1).max(500).refine((value) => value.trim().length > 0).optional(),
       }), input, 'invalid_input');
       const { envelope, config } = await request('/payments', 'POST', (config) => ({
         source_id: data.sourceId,
@@ -148,6 +161,7 @@ export function createSquareGateway(dependencies: {
         autocomplete: false,
         delay_action: 'CANCEL',
         accept_partial_authorization: false,
+        ...(data.note !== undefined ? { note: data.note } : {}),
       }));
       const result = readPayment(envelope, config, data);
       if (result.status !== 'APPROVED' || result.delay_action !== 'CANCEL' || !result.delayed_until) {
@@ -185,15 +199,18 @@ export function createSquareGateway(dependencies: {
       await request('/payments/cancel', 'POST', () => ({ idempotency_key: key }));
     },
 
-    async refund(input: { paymentId: string; amountPence: number; idempotencyKey: string; reason?: string }): Promise<SquareRefund> {
-      const data = validate(z.object({
-        paymentId: identifier, amountPence: pence, idempotencyKey, reason: z.string().max(192).optional(),
-      }), input, 'invalid_input');
+    /**
+     * The payment, the amount and the key, nothing else. A retry with the same
+     * key must be byte-for-byte the same request or Square refuses it
+     * (IDEMPOTENCY_KEY_REUSED) although the first one may have refunded, so a
+     * refund carries no free text that a later deploy could word differently.
+     */
+    async refund(input: { paymentId: string; amountPence: number; idempotencyKey: string }): Promise<SquareRefund> {
+      const data = validate(z.object({ paymentId: identifier, amountPence: pence, idempotencyKey }), input, 'invalid_input');
       const { envelope, config } = await request('/refunds', 'POST', () => ({
         payment_id: data.paymentId,
         idempotency_key: data.idempotencyKey,
         amount_money: { amount: data.amountPence, currency: 'GBP' },
-        ...(data.reason !== undefined ? { reason: data.reason } : {}),
       }));
       const result = readRefund(envelope, config);
       if (result.payment_id !== data.paymentId || result.amount_money.amount !== data.amountPence) {

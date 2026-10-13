@@ -298,3 +298,139 @@ test('the attached file: PUBLISH with the queued SEQUENCE for confirmed times, C
   assert.match(ics, /\r\nUID:appointment-appointment-abcdefgh@harbourhair\.co\.uk\r\n/);
   assert.match(ics, /\r\nSUMMARY:Cut & Blow-dry｜Harbour Hair Salon\r\n/, 'in the language of the email');
 });
+
+// A request that holds a card deposit (services/payment-attempts.ts): the
+// receipt says how much is held, that it is only taken if the salon confirms,
+// and that the rest — not the whole price — is paid in the salon.
+const depositWording = {
+  'en-GB': {
+    row: { label: 'Deposit', value: '£12.50 held on your card — not taken yet' },
+    hold: 'We’ve placed a £12.50 hold on your card. It is only taken if we confirm your booking; if we can’t, the hold is released.',
+    rest: 'You can withdraw this request at any time from My Bookings. The rest of the price is due at the salon; cash and card are accepted.',
+    whole: 'You can withdraw this request at any time from My Bookings. Payment is due at the salon; cash and card are accepted.',
+  },
+  'zh-HK': {
+    row: { label: '訂金', value: '已在你的信用卡預留 £12.50，尚未扣款' },
+    hold: '我們已在你的信用卡預留 £12.50 訂金。只有在本店確認你的預約後才會扣款；如未能確認，預留款項會被解除。',
+    rest: '你可隨時在「我的預約」撤回此申請。餘款於店內繳付，接受現金及信用卡。',
+    whole: '你可隨時在「我的預約」撤回此申請。費用於店內繳付，接受現金及信用卡。',
+  },
+} as const;
+
+for (const locale of ['en-GB', 'zh-HK'] as const) {
+  test(`the request receipt mentions a held deposit (${locale})`, () => {
+    const words = depositWording[locale];
+    const content = appointmentEmailContent('REQUEST_RECEIVED', { ...requestAppointment, deposit: { amountPence: 1250, status: 'AUTHORIZED' } }, locale, { salonPhone: '07831 830898' });
+    assert.deepEqual(content.details.at(-1), words.row);
+    assert.deepEqual(content.footnotes, [words.hold, words.rest]);
+    const text = renderPlainText(content);
+    assert.ok(text.includes(words.hold), 'the plain-text part says it too');
+    assert.ok(text.includes(`${words.row.label}: ${words.row.value}`));
+  });
+
+  test(`without a held deposit the receipt is unchanged (${locale})`, () => {
+    const words = depositWording[locale];
+    const plain = appointmentEmailContent('REQUEST_RECEIVED', requestAppointment, locale);
+    for (const deposit of [undefined, null, { amountPence: 1250, status: 'VOIDED' }, { amountPence: 0, status: 'AUTHORIZED' }]) {
+      const content = appointmentEmailContent('REQUEST_RECEIVED', { ...requestAppointment, deposit }, locale);
+      assert.deepEqual(content, plain, JSON.stringify(deposit));
+      assert.deepEqual(content.footnotes, [words.whole]);
+      assert.ok(!content.details.some((detail) => detail.label === words.row.label));
+    }
+  });
+}
+
+test('a hold alone changes no other mail: only a taken deposit or a queued outcome does', () => {
+  const held = { ...requestAppointment, deposit: { amountPence: 1250, status: 'AUTHORIZED' } };
+  for (const kind of ['SALON_ALERT', 'CONFIRMATION', 'REMINDER', 'CANCELLATION', 'REQUEST_LAPSED'] as const) {
+    assert.deepEqual(appointmentEmailContent(kind, held, 'en-GB'), appointmentEmailContent(kind, requestAppointment, 'en-GB'), kind);
+  }
+});
+
+// Phase S3 (services/deposit-lifecycle.ts): the confirmation says what was
+// paid and what is left; a cancellation or a lapsed request says what became
+// of the deposit — refunded, released or kept. The amount is the queued
+// snapshot's; the outcome is a queued option (no database read at send time).
+const priced = { ...requestAppointment, price: { known: true, amountPence: 10000, priceType: null, vatDisplay: null, priceNature: null } as const };
+const taken = { ...priced, deposit: { amountPence: 2000, status: 'CAPTURED' } };
+
+const s3Wording = {
+  'en-GB': {
+    paidRow: { label: 'Deposit', value: '£20.00 paid' },
+    paid: 'Your £20.00 deposit is paid; £80.00 is left to pay in the salon. Cash and card are accepted.',
+    paidNoTotal: 'Your £20.00 deposit is paid; the rest is due at the salon. Cash and card are accepted.',
+    paidInFull: 'Your £100.00 deposit covers the full price: there is nothing left to pay in the salon.',
+    change: 'Need to make a change? You can cancel (your deposit is refunded in full) or request a new time from My Bookings up to 24 hours before your appointment.',
+    refunding: ['£20.00 — being refunded', 'Your £20.00 deposit is being refunded. Most banks show refunds within 5–10 working days; some take up to 14.'],
+    released: ['£20.00 hold released — nothing taken', 'The £20.00 hold on your card has been released — nothing was taken. Your bank may take a few days to remove it.'],
+    kept: ['£20.00 kept', 'The £20.00 deposit is kept under our booking terms.'],
+    holdExpired: /couldn’t confirm your booking request for .+ while the hold on your card was still valid/,
+  },
+  'zh-HK': {
+    paidRow: { label: '訂金', value: '已付 £20.00' },
+    paid: '你已繳付 £20.00 訂金；餘下 £80.00 於店內繳付，接受現金及信用卡。',
+    paidNoTotal: '你已繳付 £20.00 訂金；餘款於店內繳付，接受現金及信用卡。',
+    paidInFull: '你已繳付的 £100.00 訂金已包括全部費用，到店時無須再付款。',
+    change: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消（訂金全數退還）或申請改期。',
+    refunding: ['£20.00——正在退款', '你的 £20.00 訂金正在退還。大部分銀行會於 5 至 10 個工作天內顯示退款，部分銀行或需長達 14 個工作天。'],
+    released: ['已解除 £20.00 預留款項——沒有扣款', '你信用卡上 £20.00 的預留款項已經解除——並沒有扣款。銀行或需數天才會更新紀錄。'],
+    kept: ['£20.00——不予退還', '根據我們的預約條款，£20.00 訂金不予退還。'],
+    holdExpired: /未能在你信用卡的預留款項仍然有效時確認你/,
+  },
+} as const;
+
+for (const locale of ['en-GB', 'zh-HK'] as const) {
+  const words = s3Wording[locale];
+
+  test(`the confirmation says what the deposit paid and what is left to pay in the salon (${locale})`, () => {
+    const content = appointmentEmailContent('CONFIRMATION', taken, locale);
+    assert.deepEqual(content.details.at(-1), words.paidRow);
+    assert.deepEqual(content.footnotes.slice(0, 2), [words.change, words.paid]);
+    assert.equal(content.footnotes.length, 3, 'and the calendar file note');
+    assert.ok(renderPlainText(content).includes(words.paid));
+    // A booking whose price was never recorded: no remainder is invented.
+    assert.ok(appointmentEmailContent('CONFIRMATION', { ...taken, price: { known: false } }, locale).footnotes.includes(words.paidNoTotal));
+    // A deposit covering the whole price leaves nothing to pay.
+    assert.ok(appointmentEmailContent('CONFIRMATION', { ...priced, deposit: { amountPence: 10000, status: 'CAPTURED' } }, locale).footnotes.includes(words.paidInFull));
+  });
+
+  test(`a cancellation says the deposit is being refunded, released or kept (${locale})`, () => {
+    for (const [outcome, [row, sentence]] of [['REFUNDING', words.refunding], ['RELEASED', words.released], ['KEPT', words.kept]] as const) {
+      const content = appointmentEmailContent('CANCELLATION', taken, locale, { wasConfirmed: true, depositOutcome: outcome });
+      assert.equal(content.details.at(-1)?.value, row, outcome);
+      assert.equal(content.footnotes[0], sentence, outcome);
+      assert.ok(renderPlainText(content).includes(sentence));
+    }
+  });
+
+  test(`a lapsed request mentions the released hold, and why when the hold ran out first (${locale})`, () => {
+    const held = { ...priced, deposit: { amountPence: 2000, status: 'AUTHORIZED' } };
+    const lapsed = appointmentEmailContent('REQUEST_LAPSED', held, locale, { depositOutcome: 'RELEASED' });
+    assert.equal(lapsed.details.at(-1)?.value, words.released[0]);
+    assert.equal(lapsed.footnotes[0], words.released[1]);
+    assert.doesNotMatch(lapsed.intro, words.holdExpired);
+    const expired = appointmentEmailContent('REQUEST_LAPSED', held, locale, { depositOutcome: 'RELEASED', holdExpired: true });
+    assert.match(expired.intro, words.holdExpired);
+  });
+}
+
+test('the amount left to pay carries the price’s own fine print when it is not exact', () => {
+  const remainder = (locale: 'en-GB' | 'zh-HK', vatDisplay: string | null, priceNature: string | null) => appointmentEmailContent('CONFIRMATION', {
+    ...taken, price: { known: true, amountPence: 10000, priceType: null, vatDisplay, priceNature } as EmailAppointment['price'],
+  }, locale).footnotes[1];
+  assert.equal(remainder('en-GB', 'UNSPECIFIED', 'LISTED'), 'Your £20.00 deposit is paid; £80.00 is left to pay in the salon. Cash and card are accepted.', 'an exact price: as before');
+  assert.equal(remainder('en-GB', null, 'SUBJECT_TO_CONSULTATION'), 'Your £20.00 deposit is paid; £80.00 (may be adjusted after consultation) is left to pay in the salon. Cash and card are accepted.');
+  assert.equal(remainder('en-GB', 'EXCLUDED', null), 'Your £20.00 deposit is paid; £80.00 (VAT excluded) is left to pay in the salon. Cash and card are accepted.');
+  assert.equal(remainder('en-GB', 'EXCLUDED', 'SUBJECT_TO_CONSULTATION'), 'Your £20.00 deposit is paid; £80.00 (VAT excluded · may be adjusted after consultation) is left to pay in the salon. Cash and card are accepted.');
+  assert.equal(remainder('zh-HK', 'EXCLUDED', 'SUBJECT_TO_CONSULTATION'), '你已繳付 £20.00 訂金；餘下 £80.00（未含 VAT · 或會於諮詢後調整） 於店內繳付，接受現金及信用卡。');
+});
+
+test('mail queued before deposit outcomes existed renders exactly as it always did', () => {
+  for (const kind of ['CANCELLATION', 'REQUEST_LAPSED'] as const) {
+    // A deposit in the snapshot but no outcome option: no deposit wording.
+    assert.deepEqual(appointmentEmailContent(kind, taken, 'en-GB', { wasConfirmed: true }), appointmentEmailContent(kind, priced, 'en-GB', { wasConfirmed: true }), kind);
+    // An outcome with no deposit in the snapshot says nothing it cannot back up.
+    assert.deepEqual(appointmentEmailContent(kind, priced, 'en-GB', { depositOutcome: 'REFUNDING' }), appointmentEmailContent(kind, priced, 'en-GB'), kind);
+  }
+  assert.deepEqual(appointmentEmailContent('CONFIRMATION', { ...priced, deposit: null }, 'zh-HK'), appointmentEmailContent('CONFIRMATION', priced, 'zh-HK'));
+});

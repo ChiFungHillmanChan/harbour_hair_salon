@@ -72,19 +72,34 @@ Work top to bottom. The order in §3 is **load-bearing**.
 
 ## 2. Square deposits (release 2)
 
-Design: `docs/superpowers/specs/2026-10-13-square-deposits-design.md`. Runbook:
-`docs/square-payments-setup.md`.
+Design: `docs/superpowers/specs/2026-10-13-square-deposits-design.md`. **Runbook — what the site
+does at each step, env vars, sandbox setup and tests, go-live, operations:
+`docs/square-payments-setup.md`.** Customer terms: `/booking-terms`; privacy notice updated for
+Square and payment records.
 
-- [ ] Developer: free Square Developer account → Sandbox application → set the sandbox env vars
-      on **Preview** only → run the sandbox acceptance list in the runbook.
+- [ ] Preview database: apply `20261013120000_square_deposits` (runbook §7) — until then every
+      PR's "Deploy Preview" fails.
+- [ ] Developer: sandbox setup on **Preview** only (runbook §3 — free Square Developer account, UK
+      test account, Vercel Protection Bypass for Automation + an alias for the webhook URL;
+      `PREVIEW_EMAIL_ALLOWLIST` = your own address **before** notifications go on there, because the
+      preview database holds real customers), then the sandbox acceptance checklist (runbook §4).
 - [ ] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
-- [ ] Production env vars (`SQUARE_PAYMENTS_ENABLED=true`, `SQUARE_ENVIRONMENT=production`,
-      application ID `sq0idp-…`, access token, Leeds location ID, webhook signature key,
-      `SQUARE_WEBHOOK_NOTIFICATION_URL=https://www.harbourhair.co.uk/api/webhooks/square`).
+- [ ] Production credentials — **only once the sandbox acceptance checklist (runbook §4) has
+      passed on the release candidate**. S1–S4 are built: S3 captures a hold on approval, releases
+      it on decline, withdrawal, lapse or expiry, and refunds cancellations; S4 (the Square webhook
+      and the daily reconciliation) follows up a payment whose outcome was unclear, a failed
+      release and a refund left pending. Production application in the **salon's** Square
+      account; the seven
+      `SQUARE_*` variables on Production only (`SQUARE_PAYMENTS_ENABLED=true`,
+      `SQUARE_ENVIRONMENT=production`, application ID `sq0idp-…`, access token, Leeds location ID,
+      webhook signature key,
+      `SQUARE_WEBHOOK_NOTIFICATION_URL=https://www.harbourhair.co.uk/api/webhooks/square`) —
+      runbook §2 and §5.
 - [ ] Webhook subscription at exactly that URL (www, no trailing slash): `payment.created`,
       `payment.updated`, `refund.created`, `refund.updated`.
-- [ ] Admin → Settings → Deposits: percentage / minimum; Admin → Services: per-service overrides.
-- [ ] One real low-value test booking in production (approve, then cancel → refund).
+- [ ] Admin → Site Settings → Deposits: percentage / minimum; Admin → Services & Pricing:
+      per-service overrides.
+- [ ] One real low-value test booking in production (approve, then cancel → refund) — runbook §5.
 
 ---
 
@@ -116,8 +131,12 @@ Design: `docs/superpowers/specs/2026-10-13-square-deposits-design.md`. Runbook:
 ## 4. Business decisions — owner input needed
 
 - [ ] Deposit amount (percentage / fixed / minimum), which services, refund and no-show rules.
+      `/booking-terms` currently says a late cancellation (under 24 hours) or a no-show "may" lose
+      the deposit, and that a salon cancellation is refunded in full — confirm or reword
+      (`legal.bookingTerms.cancelling`, en + zh).
 - [ ] Staff approval time (holds expire after 7 days; aim for same-day replies).
-- [ ] Legal entity name and retention periods for the privacy notice.
+- [ ] Legal entity name and retention periods for the privacy notice (payment records: 6 years)
+      and the booking terms.
 - [ ] Minimum notice for online requests (default 2 hours).
 
 ---
@@ -144,4 +163,6 @@ Design: `docs/superpowers/specs/2026-10-13-square-deposits-design.md`. Runbook:
 - [ ] Remove the duplicate `NEON2_*` env set once confirmed unused.
 - [ ] Before the first records turn 6 years old (2032): decide and implement what happens to booking
       records after 6 years (delete or anonymise; deleting an appointment also deletes its review) —
-      the privacy notice says "up to 6 years". Account-event records are already deleted by housekeeping.
+      the privacy notice says "up to 6 years". The same applies to deposit payment records
+      (`PaymentAttempt` / `PaymentRefund`, "up to 6 years after the payment"; a refund row blocks
+      deleting its attempt). Account-event records are already deleted by housekeeping.

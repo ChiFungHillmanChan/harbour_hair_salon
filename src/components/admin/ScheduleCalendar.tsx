@@ -16,6 +16,10 @@ import { calendarBusyForDay, calendarBusyLabel, isWholeDayBlock, salonWorkingWin
 import { payloadArrival, shouldRefreshCalendar } from '@/app/services/calendar-sync-window';
 import { describeBoardPrice } from '@/app/lib/board-price';
 import { hasAppointmentStarted } from '@/app/lib/appointment-timing';
+import type { DepositView } from '@/app/lib/deposit-display';
+import { formatGBP } from '@/app/services/pricing/money';
+import { HTML_LANG } from '@/i18n/config';
+import { DepositChip } from './DepositChip';
 import { useLocale, useT } from '@/i18n/client';
 import { useLocalizedRouter } from '@/i18n/navigation';
 import { useDraftState } from '@/i18n/draft-store';
@@ -68,7 +72,11 @@ async function setAppointmentStatus(
 ) {
   const { updateAppointmentStatus } = await import('@/app/actions/admin');
   const res = await updateAppointmentStatus(apptId, status);
-  if (res.success) { onDone(); } else { alert(res.error ?? failed); }
+  if (res.success) { onDone(); return; }
+  alert(res.error ?? failed);
+  // Refused, but something moved (a deposit's state, or the request was
+  // cancelled because its time was taken): show the board as it now is.
+  if (res.refresh) onDone();
 }
 
 // Approve / decline buttons for a PENDING booking request (double-confirm flow:
@@ -78,11 +86,14 @@ async function setAppointmentStatus(
 // time has come the request can no longer be confirmed (the server refuses it,
 // and the notifications cron closes it once the appointment has ended), so only
 // Decline is offered here — beside "Mark completed" where the board shows it.
-function PendingActions({ apptId, started, onDone }: { apptId: string; started: boolean; onDone: () => void }) {
+// A request holding a card deposit says so: confirming takes it, declining
+// releases the hold (actions/admin.ts updateAppointmentStatus).
+function PendingActions({ apptId, started, deposit, onDone }: { apptId: string; started: boolean; deposit?: DepositView | null; onDone: () => void }) {
   const [pending, startTransition] = useTransition();
   const t = useT('adminSchedule');
   const run = (status: 'CONFIRMED' | 'CANCELLED') =>
     startTransition(async () => { await setAppointmentStatus(apptId, status, onDone, t('appointment.updateFailed')); });
+  const held = deposit?.state === 'HELD' ? formatGBP(deposit.amountPence, HTML_LANG[t.locale]) : null;
   return (
     <div className="flex flex-wrap items-center gap-2" aria-busy={pending}>
       {started ? (
@@ -94,14 +105,14 @@ function PendingActions({ apptId, started, onDone }: { apptId: string; started: 
           onClick={() => run('CONFIRMED')}
           className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
         >
-          {pending ? t('pending.checking') : t('pending.confirm')}
+          {pending ? t('pending.checking') : held ? t('deposit.confirm', { amount: held }) : t('pending.confirm')}
         </button>
       )}
       <button
         type="button"
         disabled={pending}
         onClick={() => {
-          if (window.confirm(t('pending.declineConfirm'))) {
+          if (window.confirm(held ? t('deposit.declineConfirm', { amount: held }) : t('pending.declineConfirm'))) {
             run('CANCELLED');
           }
         }}
@@ -113,10 +124,22 @@ function PendingActions({ apptId, started, onDone }: { apptId: string; started: 
   );
 }
 
+/**
+ * What "Mark completed" asks first. Completing releases a deposit hold nobody
+ * took (deposit-lifecycle.ts planDepositForClosing), so staff are told to take
+ * the full price in the salon; a deposit already taken counts towards it.
+ */
+function markCompletedQuestion(t: ScheduleT, customer: string, deposit?: DepositView | null): string {
+  const amount = deposit ? formatGBP(deposit.amountPence, HTML_LANG[t.locale]) : '';
+  if (deposit?.state === 'HELD') return t('deposit.completeHeldConfirm', { customer, amount });
+  if (deposit?.state === 'PAID') return t('deposit.completePaidConfirm', { customer, amount });
+  return t('appointment.markCompletedConfirm', { customer });
+}
+
 // Completion cannot be undone (and the server refuses it before the start
 // time), so the control appears only once the visit has begun and asks first.
 // "Now" is the browser's clock at render; the board re-renders on refresh.
-function MarkCompletedButton({ apptId, customer, onDone, className }: { apptId: string; customer: string; onDone: () => void; className: string }) {
+function MarkCompletedButton({ apptId, customer, deposit, onDone, className }: { apptId: string; customer: string; deposit?: DepositView | null; onDone: () => void; className: string }) {
   const [pending, startTransition] = useTransition();
   const t = useT('adminSchedule');
   return (
@@ -124,7 +147,7 @@ function MarkCompletedButton({ apptId, customer, onDone, className }: { apptId: 
       type="button"
       disabled={pending}
       onClick={() => {
-        if (!window.confirm(t('appointment.markCompletedConfirm', { customer }))) return;
+        if (!window.confirm(markCompletedQuestion(t, customer, deposit))) return;
         startTransition(async () => { await setAppointmentStatus(apptId, 'COMPLETED', onDone, t('appointment.updateFailed')); });
       }}
       className={`${className} disabled:cursor-wait disabled:opacity-60`}
@@ -325,17 +348,19 @@ const DayView = ({ dateStr, dayAppts, busyBlocks, stylists, onRefresh, onEdit }:
                                 <span className="font-medium text-zinc-700 tabular-nums">{price.amount}</span>
                                 {price.notes.length > 0 && <span className="ml-1">({price.notes.join(' · ')})</span>}
                               </span>
+                              {appt.deposit && <DepositChip deposit={appt.deposit} t={t} />}
                           </div>
                           <button type="button" onClick={() => onEdit(appt)} className="mt-2 mr-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-900 hover:bg-white">{t('appointment.edit')}</button>
                           {appt.status === 'PENDING' && (
                             <div className="mt-2">
-                              <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} onDone={onRefresh} />
+                              <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} deposit={appt.deposit} onDone={onRefresh} />
                             </div>
                           )}
                           {canMarkCompleted(appt) && (
                             <MarkCompletedButton
                               apptId={appt.id}
                               customer={appt.user.name ?? t('appointment.customerFallback')}
+                              deposit={appt.deposit}
                               onDone={onRefresh}
                               className="mt-2 rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
                             />
@@ -477,6 +502,7 @@ export function ScheduleCalendar({
       serviceColor: appt.service.calendarColor,
       updatedAt: new Date(appt.updatedAt).toISOString(),
       moveRequested: Boolean(appt.rescheduleRequestedAt),
+      ...(appt.deposit ? { deposit: appt.deposit } : {}),
     }));
   const weekKeys = weekDayKeys(dateStr);
   const weekAppointments: GridAppointment[] = appointments.map((appt) => ({
@@ -490,6 +516,7 @@ export function ScheduleCalendar({
     serviceColor: appt.service.calendarColor,
     updatedAt: new Date(appt.updatedAt).toISOString(),
     moveRequested: Boolean(appt.rescheduleRequestedAt),
+    ...(appt.deposit ? { deposit: appt.deposit } : {}),
   }));
   const weekStylists: WeekStylist[] = stylists.map((stylist) => ({
     id: stylist.id,
@@ -524,6 +551,8 @@ export function ScheduleCalendar({
       date: appt.date,
       rescheduleRequestedDate: appt.rescheduleRequestedDate,
       rescheduleRequestedAt: appt.rescheduleRequestedAt,
+      // Only a booking with a card deposit carries one.
+      ...(appt.deposit ? { deposit: appt.deposit } : {}),
     });
   };
   const closeDialog = () => setDialog(null);
@@ -575,8 +604,9 @@ export function ScheduleCalendar({
                     {t('pending.item', { date: formatSalonLongDate(locale, new Date(appt.date)), time: formatSalonClock(locale, new Date(appt.date)), customer: appt.user.name ?? t('appointment.customerFallback') })}
                   </button>
                   <p className="text-sm text-zinc-600">{t('appointment.withStylist', { service: appt.service.name, stylist: appt.stylist.name })}</p>
+                  {appt.deposit && <DepositChip deposit={appt.deposit} t={t} className="mt-1" />}
                 </div>
-                <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} onDone={() => router.refresh()} />
+                <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} deposit={appt.deposit} onDone={() => router.refresh()} />
               </div>
             ))}
           </div>
@@ -723,6 +753,7 @@ export function ScheduleCalendar({
                             <span className="font-medium text-zinc-900">{formatSalonClock(locale, new Date(appt.date))}</span>
                             <span className="ml-2 text-zinc-700">{appt.user.name}</span>
                             <span className={`ml-2 inline-block rounded px-2 py-1 text-xs font-medium ${statusChipClass(appt.status)}`}>{statusLabel(t, appt.status)}</span>
+                            {appt.deposit && <DepositChip deposit={appt.deposit} t={t} className="ml-2" />}
                             <span className="block text-xs text-zinc-500">{t('appointment.withStylist', { service: appt.service.name, stylist: appt.stylist.name })}</span>
                             <button type="button" onClick={() => openEditor(appt)} className="mt-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-900 hover:bg-zinc-50">{t('appointment.edit')}</button>
                           </li>
@@ -783,13 +814,15 @@ export function ScheduleCalendar({
                                      <div className={`text-xs px-2 py-1 rounded font-medium ${statusChipClass(appt.status)}`}>
                                          {statusLabel(t, appt.status)}
                                      </div>
+                                     {appt.deposit && <DepositChip deposit={appt.deposit} t={t} />}
                                      {appt.status === 'PENDING' && (
-                                       <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} onDone={() => router.refresh()} />
+                                       <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} deposit={appt.deposit} onDone={() => router.refresh()} />
                                      )}
                                      {canMarkCompleted(appt) && (
                                        <MarkCompletedButton
                                          apptId={appt.id}
                                          customer={appt.user.name ?? t('appointment.customerFallback')}
+                                         deposit={appt.deposit}
                                          onDone={() => router.refresh()}
                                          className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
                                        />

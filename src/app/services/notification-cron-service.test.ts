@@ -64,8 +64,9 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: str
   const service = loadServerModule<typeof import('./notification-cron-service')>('src/app/services/notification-cron-service.ts', {
     '@/app/lib/prisma': db,
     './reschedule-request-lapse': { lapseExpiredRescheduleRequests: async () => { lapseCalls++; if (lapseFails) throw new Error('boom'); return { lapsed: 0, failed: 0 }; } },
-    './pending-request-lapse': { lapseStartedPendingRequests: async (at: Date) => {
-      steps.push(`request-lapse@${at.toISOString()}`);
+    './pending-request-lapse': { lapseStartedPendingRequests: async (at: Date, options?: { takenDeposits?: boolean }) => {
+      // Review I-E: a taken deposit is only ever lapsed (and refunded) by the daily housekeeping run.
+      steps.push(`request-lapse@${at.toISOString()}${options?.takenDeposits ? '+taken-deposits' : ''}`);
       if (requestLapseFails) throw new Error('boom');
       return { lapsed: 2, failed: 0 };
     } },
@@ -179,7 +180,7 @@ test('a failing lapse step never blocks discovery or delivery and is recorded', 
 test('each claimed run closes started booking requests before delivery, so their emails go out in the same tick', async () => {
   const f = fixture(0);
   const [first, second] = await Promise.all([f.service.runNotificationCron('notifications'), f.service.runNotificationCron('reminders')]);
-  assert.deepEqual(f.steps, [`request-lapse@${now.toISOString()}`, 'dispatch'], 'once per claimed run, before dispatch; a busy run does not');
+  assert.deepEqual(f.steps, [`request-lapse@${now.toISOString()}`, 'dispatch'], 'once per claimed run, before dispatch; a busy run does not; never taken deposits');
   const claimed = 'busy' in first ? second : first;
   assert.equal('requestsLapsed' in claimed ? claimed.requestsLapsed : undefined, 2);
 });

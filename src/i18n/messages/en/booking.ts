@@ -100,10 +100,42 @@ const booking = {
     genericError: 'Something went wrong. Please try again, or call the salon.',
     bookingFailed: 'Booking failed. Please try again.',
   },
+  deposit: {
+    now: 'Deposit, taken if we confirm',
+    rest: 'Pay the rest in the salon',
+    /** Fine print under the rest, as the price carries it (pricing.vatExcluded / subjectToConsultation). */
+    restVatExcluded: 'VAT excluded',
+    restMayChange: 'May change after your consultation',
+    /**
+     * What the customer agrees to, shown before the card form (Consumer
+     * Contracts Regulations 2013): nothing is paid now, when the deposit is
+     * taken, and when it can be lost. Keep in step with legal.bookingTerms.
+     */
+    payNothingNow: 'You pay nothing now. We place a hold on your card and take the {amount} deposit only when we confirm your booking; if we decline or don’t confirm your request, the hold is released.',
+    refund: 'Cancel at least 24 hours before your appointment for a full refund.',
+    lateOrNoShow: 'If you cancel less than 24 hours before your appointment, or miss it, we may keep the deposit.',
+    soonWarning: 'Your appointment is less than 24 hours away: once we confirm it, the deposit can’t be refunded online if you cancel.',
+    termsLink: 'Read the full <link>booking terms</link>.',
+    opensInNewTab: '(opens in a new tab)',
+    cardLegend: 'Card details',
+    cardLoading: 'Loading the secure card form…',
+    cardLoadFailed: 'The card form could not be loaded. Please reload the page, or call the salon on {phone} to book.',
+    cardSecure: 'Your card details go straight to Square, our payment provider. They never reach this website.',
+    cardInvalid: 'Please check your card details and try again.',
+    cardNotReady: 'The card form is still loading. Please wait a moment and try again.',
+    unavailable: 'Online payment isn’t available right now, so this booking can’t be made online. Please call the salon on <link>{phone}</link> to book.',
+    /** The order button states the obligation to pay (Consumer Contracts Regulations 2013, reg. 14(3)). */
+    submit: 'Request booking – pay {amount} deposit if confirmed',
+    submitNewPrice: 'Confirm new price – pay {amount} deposit if confirmed',
+    verifying: 'Checking your card…',
+    /** The same card submission was still being checked twice in a row: it is dropped, and the next try starts afresh. */
+    pendingGiveUp: 'We still can’t confirm your card payment. Please check My Bookings — if your request isn’t there, reload this page and try again.',
+  },
   done: {
     title: 'Booking Request Received!',
     body: "Your request has been sent to the salon. We'll email you as soon as it's confirmed.",
     alreadyRequested: 'You already have a request for this time — see My Bookings.',
+    depositHeld: 'We’ve placed a {amount} hold on your card. It is only taken if the salon confirms your booking.',
     viewBookings: 'View My Bookings',
   },
 } satisfies MessageTree;

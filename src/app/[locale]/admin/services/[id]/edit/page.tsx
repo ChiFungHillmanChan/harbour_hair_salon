@@ -58,6 +58,7 @@ export default async function EditServicePage({
     isPublic: service.isPublic,
     isBookable: service.isBookable,
     durationConfirmed: service.durationConfirmed,
+    depositOverridePence: service.depositOverridePence,
     composite,
   };
 

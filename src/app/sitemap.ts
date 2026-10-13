@@ -50,6 +50,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Static copy has no stored revision timestamp; do not invent one per crawl.
     { url: `${SITE_URL}/try-color`, changeFrequency: 'monthly', priority: 0.5 },
     { url: `${SITE_URL}/about`, changeFrequency: 'monthly', priority: 0.7 },
+    { url: `${SITE_URL}/booking-terms`, changeFrequency: 'yearly', priority: 0.3 },
     { url: `${SITE_URL}/hair-salon-leeds-city-centre`, lastModified: settings?.updatedAt, changeFrequency: 'monthly', priority: 0.8 },
     { url: `${SITE_URL}/reviews`, lastModified: reviews._max.updatedAt ?? undefined, changeFrequency: 'weekly', priority: 0.6 },
     { url: `${SITE_URL}/blog`, lastModified: blogMod, changeFrequency: 'weekly', priority: 0.7 },

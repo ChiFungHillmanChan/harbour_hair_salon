@@ -56,6 +56,10 @@ someone.)
 - **Appointments** (date, service, stylist, duration, price, status). These are
   the salon's business records (takings, stylist pay, disputes), now linked to
   "Erased customer" instead of a person.
+- **Payment records** (`PaymentAttempt` / `PaymentRefund`: deposit amounts, status, dates and
+  Square's references) — accounting records the salon must keep (privacy notice: up to 6 years
+  after the payment). They hold no name, email or card details of their own and stay linked to
+  the anonymised account.
 - **Delivery log rows** (email type, status, times) without any content.
 - **Audit events** — they never contain personal data.
 
@@ -69,6 +73,11 @@ someone.)
   that platform's client list too. Imported busy blocks can carry Fresha event
   titles; they are not linked to the account and housekeeping deletes them 30
   days after the event.
+- **Square**: a customer who paid a deposit also appears in the salon's Square account (the
+  payment with the card's brand and last digits, and possibly the name and email sent with the
+  card for verification). Square keeps payment records under its own legal duties; ask Square
+  support what it can erase, and tell the customer that Square holds that copy under its own
+  privacy notice.
 - **Mailboxes**: salon alert emails (`SALON_NOTIFY_EMAIL`) contain the
   customer's details — delete them. Resend keeps its own sent-email log for its
   retention period.

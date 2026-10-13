@@ -8,6 +8,10 @@ import { describeBoardPrice, type BoardPrice } from '@/app/lib/board-price';
 import { MIN_DURATION_MINUTES } from '@/app/lib/calendar-geometry';
 import { formatGBP } from '@/app/services/pricing/money';
 import { RescheduleRequestActions } from './RescheduleRequestActions';
+import { DepositChip } from './DepositChip';
+import { DepositRecheckButton } from './DepositRecheckButton';
+import { DepositSettleRefundButton } from './DepositSettleRefundButton';
+import type { DepositView } from '@/app/lib/deposit-display';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useLocale, useT } from '@/i18n/client';
@@ -56,6 +60,8 @@ export type DialogTarget =
       /** An open customer reschedule request (ISO instants), if any. */
       rescheduleRequestedDate: string | null;
       rescheduleRequestedAt: string | null;
+      /** The booking's card deposit (lib/deposit-display.ts), when it has one. */
+      deposit?: DepositView | null;
     };
 
 /**
@@ -79,6 +85,8 @@ type DialogForm = {
   customerLocale: Locale;
   /** A newer price the server reported for the chosen service; saving again confirms it. */
   priceChange: AdminQuote | null;
+  /** Cancelling a confirmed booking whose deposit was taken: refund it (ticked by default) or keep it. */
+  refundDeposit: boolean;
 };
 
 const inputClass =
@@ -132,9 +140,12 @@ export function AppointmentDialog({
     phone: '',
     customerLocale: DEFAULT_LOCALE,
     priceChange: null,
+    refundDeposit: true,
   }));
   const update = (patch: Partial<DialogForm>) => setForm((previous) => ({ ...previous, ...patch }));
   const { serviceId, stylistId, dateStr, time, durationMin, notes, status, notifyCustomer, customerQuery, picked, name, email, phone, customerLocale, priceChange } = form;
+  // A draft saved before this field existed has none: refund, the default.
+  const refundDeposit = form.refundDeposit !== false;
 
   // Results carry the query they answered, so a slow reply for an abandoned
   // query is never rendered under a newer one.
@@ -258,12 +269,13 @@ export function AppointmentDialog({
 
   const cancelBooking = async () => {
     if (target.mode !== 'edit' || saving) return;
-    if (!window.confirm(t('dialog.cancelConfirm', { customer: target.customerName }))) return;
+    if (!window.confirm(cancelConfirmText())) return;
     setSaving(true);
     setError(null);
     try {
       const { updateAppointmentStatus } = await import('@/app/actions/admin');
-      const result = await updateAppointmentStatus(target.appointmentId, 'CANCELLED');
+      // Only a confirmed booking's taken deposit may be kept; a request's always goes back.
+      const result = await updateAppointmentStatus(target.appointmentId, 'CANCELLED', { refundDeposit: !keepChoice || refundDeposit });
       if (result.success) return saved();
       setError(result.error ?? t('dialog.cancelFailed'));
     } catch {
@@ -274,6 +286,20 @@ export function AppointmentDialog({
   };
 
   const formatPrice = (pence: number) => formatGBP(pence, HTML_LANG[locale]);
+
+  // The booking's card deposit: a confirmed booking's taken deposit can be
+  // refunded (default) or kept; a request's hold is released.
+  const deposit = target.mode === 'edit' ? target.deposit ?? null : null;
+  const keepChoice = target.mode === 'edit' && target.status === 'CONFIRMED' && deposit?.state === 'PAID';
+  function cancelConfirmText() {
+    const customer = target.mode === 'edit' ? target.customerName : '';
+    if (deposit?.state === 'PAID') {
+      const amount = formatPrice(deposit.amountPence);
+      return keepChoice && !refundDeposit ? t('deposit.cancelKeepConfirm', { customer, amount }) : t('deposit.cancelRefundConfirm', { customer, amount });
+    }
+    if (deposit?.state === 'HELD') return t('deposit.cancelReleaseConfirm', { customer, amount: formatPrice(deposit.amountPence) });
+    return t('dialog.cancelConfirm', { customer });
+  }
   const optionLabel = (service: DialogService) => {
     // Length and NHS come from the option's stable fields, not its name, so
     // the menu reads the same in either language.
@@ -375,6 +401,11 @@ export function AppointmentDialog({
             <div className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm">
               <span className="font-medium text-zinc-900">{target.customerName}</span>
               <span className="ml-2 text-zinc-500">· {t.dynamic(`status.${target.status}`, undefined, target.status)}</span>
+              {deposit && <DepositChip deposit={deposit} t={t} className="ml-2 align-middle" />}
+              {/* Asks Square now: a stuck hold, an unclear capture or a pending refund. */}
+              {deposit && <DepositRecheckButton appointmentId={target.appointmentId} />}
+              {/* A refund Square has not confirmed, which staff refunded themselves (Square Dashboard or cash). */}
+              {deposit?.refundToSettle && <DepositSettleRefundButton appointmentId={target.appointmentId} refund={deposit.refundToSettle} />}
             </div>
           ) : (
             <fieldset>
@@ -499,6 +530,19 @@ export function AppointmentDialog({
             <label className={labelClass} htmlFor="appt-notes">{t('dialog.notes')}</label>
             <textarea id="appt-notes" rows={2} className={inputClass} value={notes} onChange={(event) => update({ notes: event.target.value })} placeholder={t('dialog.notesPlaceholder')} />
           </div>
+
+          {keepChoice && deposit && (
+            <div className="rounded border border-zinc-200 bg-zinc-50 px-3 py-3">
+              <label className="flex items-center gap-2 text-sm text-zinc-800">
+                <input type="checkbox" checked={refundDeposit} onChange={(event) => update({ refundDeposit: event.target.checked })} />
+                {t('deposit.refund', { amount: formatPrice(deposit.amountPence) })}
+              </label>
+              <p className="mt-1 text-xs text-zinc-500">{t('deposit.refundHelp')}</p>
+            </div>
+          )}
+          {isEdit && target.status === 'PENDING' && deposit?.state === 'HELD' && (
+            <p className="text-xs text-zinc-500">{t('deposit.releaseNote', { amount: formatPrice(deposit.amountPence) })}</p>
+          )}
 
           {!isEdit && (
             <div className="space-y-2 rounded border border-zinc-200 bg-zinc-50 px-3 py-3">

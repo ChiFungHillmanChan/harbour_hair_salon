@@ -59,6 +59,7 @@ const common: Localized<Messages['common']> = {
     rights: '© {year} Harbour Hair Salon。版權所有。',
     paymentLanguages: '付款方式：現金及信用卡 · 服務語言：英語、中文（廣東話）',
     privacy: '私隱政策',
+    bookingTerms: '預約條款',
     unsubscribe: '取消訂閱',
     promoLabel: '預約',
     promoTitle: '想換個新造型？',

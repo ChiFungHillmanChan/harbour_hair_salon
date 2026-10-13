@@ -11,10 +11,10 @@ import { rich } from '@/i18n/rich';
 const LAST_UPDATED = '2026-10-13';
 
 // Each list's items, in the order the page shows them (keys of legal.privacy.*).
-const COLLECTED = ['account', 'google', 'bookings', 'patchTests', 'staffBookings', 'emails', 'reviews', 'marketing', 'security', 'visits', 'tryColour'] as const;
-const USES = ['service', 'safety', 'reviewRequests', 'reviewsPublished', 'marketing', 'security', 'improvement', 'records'] as const;
-const PROVIDERS = ['vercel', 'neon', 'resend', 'upstash', 'google', 'marketplaces'] as const;
-const RETENTION = ['account', 'bookings', 'security', 'reviews', 'emails', 'rateLimits', 'links', 'marketing'] as const;
+const COLLECTED = ['account', 'google', 'bookings', 'payments', 'patchTests', 'staffBookings', 'emails', 'reviews', 'marketing', 'security', 'visits', 'tryColour'] as const;
+const USES = ['service', 'payments', 'safety', 'reviewRequests', 'reviewsPublished', 'marketing', 'security', 'improvement', 'records'] as const;
+const PROVIDERS = ['vercel', 'neon', 'resend', 'upstash', 'square', 'google', 'marketplaces'] as const;
+const RETENTION = ['account', 'bookings', 'payments', 'security', 'reviews', 'emails', 'rateLimits', 'links', 'marketing'] as const;
 const RIGHTS = ['access', 'rectification', 'erasure', 'restriction', 'objection', 'portability', 'consent'] as const;
 const COOKIES = ['session', 'sessionHint', 'loginDevice', 'googleState', 'locale'] as const;
 
@@ -54,6 +54,7 @@ export default async function PrivacyPage() {
     b: (chunk) => <strong className="font-semibold text-zinc-900">{chunk}</strong>,
     link: (chunk) => <Link href="/contact" className={linkClass}>{chunk}</Link>,
     unsubscribe: (chunk) => <Link href="/unsubscribe" className={linkClass}>{chunk}</Link>,
+    terms: (chunk) => <Link href="/booking-terms" className={linkClass}>{chunk}</Link>,
     ico: (chunk) => <a href={ICO_COMPLAINTS_URL} className={linkClass} target="_blank" rel="noopener noreferrer">{chunk}</a>,
   });
 
@@ -119,6 +120,7 @@ export default async function PrivacyPage() {
           <List items={COOKIES.map((key) => text(t(`privacy.cookies.${key}`)))} />
           <p>{t('privacy.cookies.staff')}</p>
           <p>{t('privacy.cookies.map')}</p>
+          <p>{t('privacy.cookies.square')}</p>
         </Section>
 
         <Section id="automated" title={t('privacy.automated.title')}>

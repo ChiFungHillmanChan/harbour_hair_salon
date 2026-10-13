@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatGBP, penceToDecimalString, toPence } from './money';
+import { formatGBP, parsePoundsInput, penceToDecimalString, toPence } from './money';
 import { buildQuote, parseQuote, QuoteIntegrityError, quoteMatches, serializeQuote, type QuotableService } from './quote';
 import { recordedPrice } from './recorded-price';
 import { DISCOUNTS_PAUSED, menuItemDescription } from './policy';
@@ -23,6 +23,17 @@ test('money converts Decimal strings exactly, never through a float', () => {
   assert.equal(formatGBP(19400, 'en-GB'), '£194.00');
   assert.equal(formatGBP(19400, 'zh-HK', { wholePounds: true }), '£194');
   assert.throws(() => toPence('abc'));
+});
+
+test('an admin pounds box accepts whole pounds with optional pence, and nothing else', () => {
+  assert.equal(parsePoundsInput('49'), 4900);
+  assert.equal(parsePoundsInput('49.5'), 4950);
+  assert.equal(parsePoundsInput(' 12.30 '), 1230);
+  assert.equal(parsePoundsInput('0'), 0);
+  assert.equal(parsePoundsInput('999999.99'), 99999999);
+  for (const text of ['', ' ', '-1', '1.234', '1234567', '£10', '1e3', '10p', '1,000', '.5']) {
+    assert.equal(parsePoundsInput(text), null, JSON.stringify(text));
+  }
 });
 
 test('a quote carries amount, type, VAT wording and version — never a discount', () => {

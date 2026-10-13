@@ -48,7 +48,7 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
           page the salon actually opens every day. */}
       <CalendarSetupNotice
         coverage={syncCoverage}
-        // Effective state: the Square lock keeps production closed whatever the setting says.
+        // Effective state: without Square production credentials the payments lock keeps production closed whatever the setting says.
         bookingEnabled={settings.bookingEnabled && !isOnlineBookingLockedForPayments()}
         scheduledSyncEnabled={process.env.CALENDAR_SYNC_ENABLED === 'true'}
       />

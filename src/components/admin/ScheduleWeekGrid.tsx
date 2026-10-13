@@ -14,6 +14,7 @@ import { salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
 import { describeClash } from '@/app/lib/describe-clash';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
 import type { GridAppointment, GridBusyBlock, GridStylist, MoveResult } from './ScheduleDayGrid';
+import { DepositChip } from './DepositChip';
 import { calendarBusyForDay, calendarBusyLabel, isWholeDayBlock, salonWorkingWindow } from '@/app/lib/calendar-busy-display';
 import { useT } from '@/i18n/client';
 import { formatCalendarDay } from '@/i18n/dates';
@@ -505,6 +506,7 @@ export function ScheduleWeekGrid({
                       <div className="font-semibold tabular-nums">{timeLabel(place.startMin)}</div>
                       <div className="truncate">{firstName(appt.customerName, customerFallback)}</div>
                       {appt.moveRequested && <div className="truncate uppercase">{t('rescheduleRequests.badge')}</div>}
+                      {appt.deposit && <div className="truncate"><DepositChip deposit={appt.deposit} t={t} onColour /></div>}
                     </div>
                     <div
                       onPointerDown={beginDrag(appt, 'bottom')}

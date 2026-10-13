@@ -6,7 +6,7 @@ import type { Namespace } from '../../i18n/messages';
 
 type Element = { type: unknown; props: Record<string, unknown> };
 type Query = Record<string, string | string[] | undefined>;
-type Row = { id: string; date: Date; status: string };
+type Row = { id: string; date: Date; status: string; paymentAttempt?: unknown };
 
 function elements(node: unknown): Element[] {
   if (Array.isArray(node)) return node.flatMap(elements);
@@ -94,6 +94,22 @@ test('the pending queue includes every request that can still be answered, regar
   assert.ok(pendingCard, 'the pending count must also include both requests outside the selected period, and only those');
 });
 
+test('bookings and pending requests carry their card deposit as a state and an amount, never Square ids', async () => {
+  const deposit = (status: string) => ({ status, amountPence: 2000, refunds: [], squarePaymentId: 'square-secret' });
+  const result = await renderCalendar({ date: '2099-12-01', view: 'day' }, [
+    { id: 'held', date: new Date('2099-12-01T10:00:00Z'), status: 'PENDING', paymentAttempt: deposit('AUTHORIZED') },
+    { id: 'paid', date: new Date('2099-12-01T11:00:00Z'), status: 'CONFIRMED', paymentAttempt: deposit('CAPTURED') },
+    { id: 'plain', date: new Date('2099-12-01T12:00:00Z'), status: 'CONFIRMED' },
+  ] as Row[]);
+  const byId = (rows: unknown) => Object.fromEntries((rows as { id: string; deposit: unknown }[]).map((row) => [row.id, row.deposit]));
+  assert.deepEqual(byId(result.props.appointments), {
+    held: { state: 'HELD', amountPence: 2000 }, paid: { state: 'PAID', amountPence: 2000 }, plain: null,
+  });
+  assert.deepEqual(byId(result.props.pendingAppointments), { held: { state: 'HELD', amountPence: 2000 } });
+  const serialized = JSON.stringify([result.props.appointments, result.props.pendingAppointments]);
+  assert.ok(!serialized.includes('square-secret') && !serialized.includes('paymentAttempt'), 'only the deposit view reaches the board');
+});
+
 test('a request whose time has passed stays on the calendar itself', async () => {
   const result = await renderCalendar({ date: '2021-02-01', view: 'day' }, [{ id: 'old-request', date: new Date('2021-02-01T10:00:00Z'), status: 'PENDING' }]);
   assert.deepEqual((result.props.appointments as Row[]).map((row) => row.id), ['old-request']);
@@ -124,7 +140,7 @@ test('invalid and duplicate query parameters fall back to a valid salon date and
   }
 });
 
-function renderClient(dateStr: string, view: string, pendingAppointments: Record<string, unknown>[] = [], appointments: Record<string, unknown>[] = []) {
+function renderClient(dateStr: string, view: string, pendingAppointments: Record<string, unknown>[] = [], appointments: Record<string, unknown>[] = [], locale: 'en-GB' | 'zh-HK' = 'en-GB') {
   const urls: string[] = [];
   const statuses: string[][] = [];
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
@@ -132,7 +148,7 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     // The localized router adds /zh-hk on Chinese pages; the board itself only
     // ever asks for language-free /admin URLs.
     '@/i18n/navigation': { useLocalizedRouter: () => ({ push: (url: string) => urls.push(url), refresh: () => undefined }) },
-    '@/i18n/client': { useT: (namespace: Namespace) => translator('en-GB', namespace), useLocale: () => 'en-GB' },
+    '@/i18n/client': { useT: (namespace: Namespace) => translator(locale, namespace), useLocale: () => locale },
     '@/i18n/draft-store': { useDraftState: (_key: string, initial: unknown) => [initial, () => undefined] },
     './ScheduleDayGrid': { ScheduleDayGrid: () => null },
     './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
@@ -190,6 +206,43 @@ test('Mark completed is offered only once a confirmed booking has started, and a
 
   await withConfirm(true, () => (button.props.onClick as () => unknown)());
   assert.deepEqual(statuses, [['started', 'COMPLETED']]);
+});
+
+// Completing releases a hold nobody took (deposit-lifecycle.ts), so staff
+// are told to take the full price; a deposit already taken counts towards it.
+test('Mark completed says what becomes of the card deposit before it is confirmed', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-16T12:00:00Z') });
+  const rows = [
+    { ...boardAppointment('held', 'PENDING', '2026-09-16T11:30:00.000Z'), deposit: { state: 'HELD', amountPence: 2000 } },
+    { ...boardAppointment('paid', 'CONFIRMED', '2026-09-16T11:00:00.000Z'), deposit: { state: 'PAID', amountPence: 2500 } },
+    { ...boardAppointment('plain', 'CONFIRMED', '2026-09-16T10:30:00.000Z'), deposit: null },
+  ];
+  const expected = {
+    'en-GB': {
+      held: 'Mark Customer held’s appointment as completed? This cannot be undone. The £20.00 hold will be released — collect the full price in the salon.',
+      paid: 'Mark Customer paid’s appointment as completed? This cannot be undone. The £25.00 deposit already paid counts towards the price.',
+      plain: 'Mark Customer plain’s appointment as completed? This cannot be undone.',
+    },
+    'zh-HK': {
+      held: '確定將Customer held的預約標示為已完成？此操作無法復原。£20.00 的預留款項會被解除——請於店內收取全數費用。',
+      paid: '確定將Customer paid的預約標示為已完成？此操作無法復原。已付的 £25.00 訂金會計入服務價錢。',
+      plain: '確定將Customer plain的預約標示為已完成？此操作無法復原。',
+    },
+  } as const;
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    for (const view of ['month', 'day'] as const) {
+      const { rendered } = renderClient('2026-09-16', view, [], rows, locale);
+      // The day view's phone list is its own component; the month list is inline.
+      const list = view === 'day' ? run(byName(elements(rendered), 'DayView')[0]) : rendered;
+      const controls = byName(elements(list), 'MarkCompletedButton');
+      assert.deepEqual(controls.map((element) => element.props.apptId).sort(), ['held', 'paid', 'plain'], `${locale} ${view}`);
+      for (const control of controls) {
+        const button = elements(run(control))[0];
+        const asked = await withConfirm(false, () => (button.props.onClick as () => unknown)());
+        assert.deepEqual(asked, [expected[locale][control.props.apptId as 'held' | 'paid' | 'plain']], `${locale} ${view} ${String(control.props.apptId)}`);
+      }
+    }
+  }
 });
 
 test('a booking request whose time has come offers Decline but not Confirm', async (t) => {

@@ -1,8 +1,9 @@
 import 'server-only';
 
-// STATUS: NOT WIRED. Square deposit foundation only — nothing in the booking
-// flow calls this yet, and production online booking is locked closed until it
-// does. See lib/online-booking-lock.ts (SQUARE_DEPOSITS_WIRED).
+// Read by lib/online-booking-lock.ts: production online booking stays closed
+// unless this parses to a PRODUCTION configuration, and a booking request's
+// card deposit uses only the configuration that rule allows (usableSquareConfig;
+// docs/superpowers/specs/2026-10-13-square-deposits-design.md).
 
 /** Contains credentials: never pass this object to a client component. */
 export type SquareConfig = {

@@ -17,6 +17,16 @@ export function toPence(value: { toString(): string } | number | string): Pence 
   return pence;
 }
 
+/**
+ * An admin money box in pounds ("49", "49.5" or "49.50"; at most six whole
+ * digits, the same rule as the service price box) as pence, or null when the
+ * text is not such an amount. Blank is null too: callers decide what it means.
+ */
+export function parsePoundsInput(text: string): Pence | null {
+  const trimmed = text.trim();
+  return /^\d{1,6}(\.\d{1,2})?$/.test(trimmed) ? toPence(trimmed) : null;
+}
+
 /** For Prisma Decimal writes: an exact two-decimal string. */
 export function penceToDecimalString(pence: Pence): string {
   const sign = pence < 0 ? '-' : '';

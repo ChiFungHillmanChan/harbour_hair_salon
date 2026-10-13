@@ -54,6 +54,17 @@ test('every public page is listed in both languages with hreflang alternates', a
 test('static sitemap entries do not invent modification dates from generation time', async () => {
   const entries = await fixture().default();
   assert.equal(entries.find((entry) => entry.url.endsWith('/try-color'))?.lastModified, undefined);
+  assert.equal(entries.find((entry) => entry.url.endsWith('/booking-terms'))?.lastModified, undefined);
+});
+
+test('the booking terms are listed in both languages', async () => {
+  const entries = await fixture().default();
+  const zh = entries.find((entry) => entry.url === 'https://salon.example/zh-hk/booking-terms');
+  assert.ok(entries.some((entry) => entry.url === 'https://salon.example/booking-terms'));
+  assert.deepEqual(zh?.alternates?.languages, {
+    'en-GB': 'https://salon.example/booking-terms',
+    'zh-HK': 'https://salon.example/zh-hk/booking-terms',
+  });
 });
 
 test('the local guide and About replace the standalone tour in both language sitemaps', async () => {

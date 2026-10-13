@@ -6,16 +6,23 @@ const isDev = process.env.NODE_ENV !== 'production';
 // Prod keeps the strict CSP — eval is only allowed when running `next dev`.
 const scriptSrcEval = isDev ? " 'unsafe-eval'" : '';
 
+// Square Web Payments SDK, from Square's CSP guide (deposit design,
+// docs/superpowers/specs/2026-10-13-square-deposits-design.md): its script,
+// card-field frames and styles come from these CDNs, its fonts from these
+// hosts. Its API calls are covered by connect-src, which already allows https:.
+const squareSdk = 'https://web.squarecdn.com https://sandbox.web.squarecdn.com';
+const squareFonts = 'https://square-fonts-production-f.squarecdn.com https://d1g145x70srn7h.cloudfront.net';
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${scriptSrcEval} https://www.googletagmanager.com https://www.google-analytics.com https://cdn.jsdelivr.net`,
-  "script-src-elem 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://cdn.jsdelivr.net",
-  "style-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${scriptSrcEval} https://www.googletagmanager.com https://www.google-analytics.com https://cdn.jsdelivr.net ${squareSdk}`,
+  `script-src-elem 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://cdn.jsdelivr.net ${squareSdk}`,
+  `style-src 'self' 'unsafe-inline' ${squareSdk}`,
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob:",
-  "font-src 'self' data:",
+  `font-src 'self' data: ${squareFonts}`,
   "connect-src 'self' https:",
-  "frame-src 'self' https://www.google.com",
+  `frame-src 'self' https://www.google.com ${squareSdk}`,
   "worker-src 'self' blob:",
 ].join('; ') + ';';
 

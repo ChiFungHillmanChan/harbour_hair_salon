@@ -64,6 +64,24 @@ test('authorization uses delayed capture, GBP, a stable attempt, and sandbox end
   assert.ok(requests[0].init.signal instanceof AbortSignal);
 });
 
+test('an authorization note travels to Square verbatim; without one the body has no note field', async () => {
+  const { gateway, requests } = harness({ payment: payment() });
+  await gateway.authorize({ ...authorization, note: 'Booking deposit: Cut on 2026-10-06 at 11:00 (salon time)' });
+  assert.equal(JSON.parse(String(requests[0].init.body)).note, 'Booking deposit: Cut on 2026-10-06 at 11:00 (salon time)');
+  await gateway.authorize(authorization);
+  assert.equal('note' in JSON.parse(String(requests[1].init.body)), false);
+});
+
+test('a blank or oversized note is refused before network I/O', async () => {
+  for (const note of ['', '   ', 'x'.repeat(501)]) {
+    const { gateway, requests } = harness({ payment: payment() });
+    await assert.rejects(gateway.authorize({ ...authorization, note }), isKind('invalid_input'));
+    assert.equal(requests.length, 0);
+  }
+  const { gateway } = harness({ payment: payment() });
+  assert.equal((await gateway.authorize({ ...authorization, note: 'x'.repeat(500) })).status, 'APPROVED', 'exactly 500 characters is Square’s limit');
+});
+
 test('repeat authorization preserves the request body and caller idempotency key', async () => {
   const { gateway, requests } = harness({ payment: payment() });
   await gateway.authorize(authorization);
@@ -142,12 +160,20 @@ test('cancel by idempotency key can recover creation with a lost response', asyn
 
 test('refund preserves asynchronous status and omits location_id for linked refunds', async () => {
   const { gateway, requests } = harness({ refund: refund() });
-  const result = await gateway.refund({ paymentId: 'payment-1', amountPence: 500, idempotencyKey: 'refund-attempt-1', reason: 'Customer cancellation' });
+  const result = await gateway.refund({ paymentId: 'payment-1', amountPence: 500, idempotencyKey: 'refund-attempt-1' });
   assert.equal(result.status, 'PENDING');
   assert.deepEqual(JSON.parse(String(requests[0].init.body)), {
-    payment_id: 'payment-1', idempotency_key: 'refund-attempt-1',
-    amount_money: { amount: 500, currency: 'GBP' }, reason: 'Customer cancellation',
+    payment_id: 'payment-1', idempotency_key: 'refund-attempt-1', amount_money: { amount: 500, currency: 'GBP' },
   });
+});
+
+// A retry with the same idempotency key must be the same request, byte for
+// byte, or Square refuses it (IDEMPOTENCY_KEY_REUSED) although the first one
+// may have refunded: so a refund carries no free text that a deploy could change.
+test('a refund request is only the payment, the amount and the key: free text never reaches Square', async () => {
+  const { gateway, requests } = harness({ refund: refund() });
+  await gateway.refund({ paymentId: 'payment-1', amountPence: 500, idempotencyKey: 'refund-attempt-1', reason: 'Customer cancellation' } as never);
+  assert.deepEqual(Object.keys(JSON.parse(String(requests[0].init.body))).sort(), ['amount_money', 'idempotency_key', 'payment_id']);
 });
 
 test('refund rejects a response for a different payment, amount, location, or currency', async () => {

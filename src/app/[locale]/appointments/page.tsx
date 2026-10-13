@@ -8,6 +8,7 @@ import { pageNumber } from '@/app/lib/pagination';
 import { recordedPrice } from '@/app/services/pricing/recorded-price';
 import { loadPublishedTranslations, overlay } from '@/app/services/content/translations';
 import { appointmentCalendarEvent } from '@/app/services/appointment-calendar';
+import { depositView, depositViewSelect } from '@/app/lib/deposit-display';
 import { Pagination } from '@/components/admin/Pagination';
 import { ClientMessages } from '@/i18n/ClientMessages';
 import { getLocale, getT } from '@/i18n/server';
@@ -42,6 +43,8 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
     rescheduleRequestedDate: true, rescheduleRequestedAt: true,
     // The calendar entry's SEQUENCE, so a downloaded file updates an older one.
     notificationVersion: true,
+    // The card deposit's state (held, paid, refunded, …), never Square ids.
+    paymentAttempt: { select: depositViewSelect },
   } as const;
   const [bookingEnabled, upcomingRows, pastRows] = await Promise.all([
     isBookingEnabled(),
@@ -81,6 +84,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
           duration,
         },
         price,
+        deposit: depositView(a.paymentAttempt),
         hasReview: Boolean(a.review),
         request: rescheduleRequestView(a, now),
         // Only a confirmed, upcoming time goes into the customer's own calendar;

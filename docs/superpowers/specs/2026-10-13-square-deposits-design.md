@@ -37,7 +37,7 @@ model PaymentAttempt {
   appointmentId     String?   @unique
   appointment       Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
   status            String    @default("INITIATED")
-  // INITIATED → AUTHORIZED → CAPTURING → CAPTURED
+  // INITIATED → AUTHORIZED → CAPTURING → CAPTURED (→ KEPT: staff kept it on cancelling)
   //           ↘ FAILED (declined)   AUTHORIZED ↘ VOIDED | EXPIRED
   //           ↘ UNKNOWN (no answer; voided by key, then VOIDED)   CAPTURING ↘ CAPTURE_UNKNOWN
   environment       String                         // sandbox | production
@@ -67,8 +67,8 @@ model PaymentRefund {
   idempotencyKey  String   @unique
   squareRefundId  String?  @unique
   amountPence     Int
-  status          String   @default("REQUESTED") // REQUESTED, PENDING, COMPLETED, FAILED, REJECTED, UNKNOWN
-  reason          String                          // CUSTOMER_CANCELLED | STAFF_CANCELLED | SLOT_LOST
+  status          String   @default("REQUESTED") // REQUESTED, SUBMITTING, PENDING, COMPLETED, FAILED, REJECTED, UNKNOWN
+  reason          String                          // CUSTOMER_CANCELLED | STAFF_CANCELLED | SLOT_LOST | LATE_CAPTURE | REQUEST_LAPSED
   requestedById   String?                         // admin user id; null = customer / system
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -151,6 +151,72 @@ Housekeeping (daily): `INITIATED`/`UNKNOWN` > 15 min, no appointment ⇒ `cancel
 same key; `PENDING` refunds ⇒ `getRefund`; `CAPTURE_UNKNOWN` ⇒ `getPayment`. Admin
 "Re-check payment" does the same for one appointment. The daily ops alert lists anything still
 unresolved.
+
+**As built (S4, 2026-10-13)** — refinements from the money-safety review, kept in
+`docs/square-payments-setup.md` §1.7–1.8:
+- The webhook drops event types it does not act on, other locations and payments without a
+  deposit reference (in-salon card-reader sales) before the database is opened — Square notifies
+  every payment on the account (Neon compute budget).
+- Notices move payment rows only where Square's word is final (COMPLETED / CANCELED / FAILED);
+  APPROVED never changes a status. When a notice says Square holds money no booking wants, or took
+  money the site believed held or released, the event stays open and the site reads Square afresh
+  after answering (`after()`), then releases the hold or refunds in full; the daily run picks up
+  what did not finish.
+- "Orphan" holds are `AUTHORIZED` attempts whose appointment is missing or not `PENDING` (a failed
+  release, a lapse that ran out of time) — not only those with no appointment.
+- `UNKNOWN` authorizations are cancelled by key every day for 7 days (cancel-by-key answers `{}`
+  even when nothing has landed yet), then settled `VOIDED`.
+- A deposit Square took after its booking closed or was never made is recorded `CAPTURED` and
+  refunded in full with reason `LATE_CAPTURE`; one taken for a request still `PENDING` is left to
+  staff (confirming keeps it, declining refunds it) and flagged.
+- Every gateway comes from the guarded configuration (`createSquareGateway` has no default).
+
+**As built (money-safety review fixes, 2026-10-13)** — no schema change (status columns are plain
+strings; only the Prisma comments list the new values):
+- **Refunds (W1).** The Square request is only the payment, the amount and the row's key — no
+  free-text reason — so a retry after any deploy is the identical request. The first send is
+  claimed `REQUESTED → SUBMITTING` before Square is called; only a refusal of that provably first
+  send records `FAILED`. A refusal of a retry (`UNKNOWN`, or a `SUBMITTING` row whose sender went
+  quiet for 2 minutes, taken over as `UNKNOWN`) keeps it `UNKNOWN`, untouched, so the attention list
+  and daily email keep showing it. `SUBMITTING` counts in the refundable remainder, is matched by
+  refund notices and is retried by reconciliation and "Re-check payment".
+- **Credentials per environment (W2).** `usableSquareConfig`: production credentials only in a
+  production build, sandbox credentials only everywhere else (previews, development, tests).
+- **Lapse (W3, W4).** Once its appointment has ended, a request whose deposit was taken or whose
+  capture is unclear is settled with Square (only once quiet for 2 minutes) and closed like a staff
+  decline: `CANCELLED`, a full refund with reason `REQUEST_LAPSED` (sent after the commit), the
+  request-lapsed email saying the deposit is being refunded. A request whose hold is gone —
+  `EXPIRED` or `VOIDED` — lapses at once with the hold-ended wording.
+- **Unanswered captures and keeps (I1).** `CAPTURE_UNKNOWN`, like `CAPTURING`, is settled only once
+  quiet for `CAPTURE_STALE_MS` (2 minutes); closings refuse `DEPOSIT_IN_PROGRESS` until then (a
+  timed-out CompletePayment can still land). Confirming again may retry at once. Staff keeping a
+  deposit on cancelling records `CAPTURED → KEPT`; the display, refundable remainder,
+  reconciliation (never a late-capture refund), attention list and Operations all read it.
+- **Lost booking answers (I3).** A non-refusal error from the booking transaction re-reads the
+  attempt: tied to its appointment ⇒ answered as booked, hold kept; not tied ⇒ released; unreadable
+  ⇒ left for reconciliation, customer told `PAYMENT_PENDING`.
+- **Card testing (I4).** A decline budget (`lib/rate-limit.ts` `createFailureLimiter`, never fails
+  open): 3 declined deposit cards per account or 5 per address in 24 hours, checked before an
+  attempt is written or Square is asked (`PAYMENT_UNAVAILABLE`). Operations counts the last day's
+  declines; the daily email raises them from 5.
+
+**As built (review round 2, 2026-10-13)** — no schema change:
+- **Setup refusals are not declines (W-A).** Only HTTP 400/402 is a card decline. 401/403/404 and any
+  other 4xx are the website's own Square setup: `FAILED` + `PAYMENT_SETUP_REFUSED`, the customer is
+  told `PAYMENT_UNAVAILABLE`, no decline budget is used, the log names the status once per
+  instance, and Operations / the daily email raise it as a configuration problem.
+- **In-salon refunds (W-B).** Events the schema cannot read are dropped before the database when they
+  name another location; a refund whose payment is none of our attempts is processed at once
+  (`NOT_OURS`), never listed or re-read.
+- **Refund retries (W-C).** Each retry is dated on its row (the daily batch rotates); 7 days after the
+  refund was requested a sent one becomes `UNRESOLVED` (counted, never resent, listed for staff,
+  still matched by Square's notices). Staff record a refund they settled themselves with the audited
+  "Mark refund as settled outside the website" ⇒ `SETTLED_EXTERNALLY` (counted, final).
+- **A hold Square shows taken (I-D)** on a still-PENDING request is recorded `CAPTURED` + flagged, so a
+  decline refunds it at once.
+- **Lapse grace (I-E).** A taken deposit on an unconfirmed request is lapsed and refunded only by the
+  daily housekeeping run, 12 hours after its appointment ended (staff may mark it completed first).
+- **State-key sentences (I-F)** are pinned in `operations-messages.test.ts`.
 
 ## UI and copy (en + zh)
 - Wizard review step: price, deposit now, remainder in salon, refund rules, link to
