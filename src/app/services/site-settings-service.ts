@@ -92,7 +92,7 @@ function mapRow(row: {
 // production logs several times a day) — silently replacing whatever the salon
 // had set in Admin → Settings. Now a failed revalidation keeps serving the last
 // good settings, and DEFAULTS only cover a request with nothing cached yet.
-const getSiteSettingsFromStore = unstable_cache(async (): Promise<SiteSettings> => {
+async function readSiteSettingsRow(): Promise<SiteSettings> {
   // Read-first, create-on-miss. Using upsert races under concurrent
   // pre-rendering because two workers can both attempt INSERT.
   const existing = await prisma.siteSettings.findUnique({ where: { id: SINGLETON_ID } });
@@ -109,11 +109,23 @@ const getSiteSettingsFromStore = unstable_cache(async (): Promise<SiteSettings> 
     if (!row) throw new Error('SiteSettings singleton missing after a create race');
     return mapRow(row);
   }
-  // A day, not an hour: every expiry made the next visit to /contact, /about etc.
-  // re-read settings, waking Neon overnight. Admin → Settings → Save drops the
-  // 'site-settings' tag, so edits there still show at once; a direct DB write
-  // needs that Save (or `vercel cache invalidate --tag site-settings`).
-}, ['site-settings'], { revalidate: 86400, tags: ['site-settings'] });
+}
+
+// A day, not an hour: every expiry made the next visit to /contact, /about etc.
+// re-read settings, waking Neon overnight. Admin → Settings → Save drops the
+// 'site-settings' tag, so edits there still show at once; a direct DB write
+// needs that Save (or `vercel cache invalidate --tag site-settings`) to reach
+// public pages.
+const getSiteSettingsFromStore = unstable_cache(readSiteSettingsRow, ['site-settings'], { revalidate: 86400, tags: ['site-settings'] });
+
+/**
+ * The live row, never the cache and never DEFAULTS — for Admin → Settings,
+ * whose Save writes back every field the form shows. Reading the day-long
+ * cache there would let a stale copy (e.g. after a direct database write)
+ * silently overwrite newer values, booking on/off included. Throws if the
+ * database can't be read: an editable form must not show made-up values.
+ */
+export const getSiteSettingsForEditing = readSiteSettingsRow;
 
 async function getSiteSettingsOrDefaults(): Promise<SiteSettings> {
   try {
