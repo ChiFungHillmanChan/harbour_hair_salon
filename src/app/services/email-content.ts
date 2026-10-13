@@ -8,7 +8,7 @@ import { formatGBP, toPence } from './pricing/money';
 import type { PriceNature, PriceType, VatDisplay } from './pricing/policy';
 import { salonRelativeDay } from './salon-time';
 import { appointmentCalendarEvent } from './appointment-calendar';
-import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod } from '@/app/lib/calendar-links';
+import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod, type IcsOrganizer } from '@/app/lib/calendar-links';
 
 /**
  * What an email may say about a booking's price. Built from the booking's own
@@ -93,22 +93,30 @@ export type AppointmentEmailOptions = {
   salonPhone?: string; oldDate?: Date; requestedDate?: Date; now?: Date;
   /** The appointment's notificationVersion when the event was queued: the calendar entry's SEQUENCE. */
   sequence?: number;
+  /**
+   * CANCELLATION only: whether the booking had been confirmed when it was
+   * cancelled. A request nobody confirmed was never offered to the customer's
+   * calendar, so its cancellation carries no calendar file and no "remove it"
+   * note. Undefined — mail queued before this was recorded — counts as confirmed.
+   */
+  wasConfirmed?: boolean;
 };
 
 /**
  * The calendar file a customer email carries. A confirmed time (confirmation,
  * approved move, reminder) adds or updates the customer's own calendar entry;
- * a cancellation removes it. Never for a request that is not confirmed yet,
- * nor for staff mail.
+ * a confirmed booking's cancellation removes it. Never for a request that is
+ * not confirmed yet — nor for its cancellation (`wasConfirmed: false`) — nor
+ * for staff mail.
  */
-export function calendarMethodFor(kind: AppointmentEmailKind): IcsMethod | null {
+export function calendarMethodFor(kind: AppointmentEmailKind, options: Pick<AppointmentEmailOptions, 'wasConfirmed'> = {}): IcsMethod | null {
   switch (kind) {
     case 'CONFIRMATION':
     case 'RESCHEDULE':
     case 'REMINDER':
       return 'PUBLISH';
     case 'CANCELLATION':
-      return 'CANCEL';
+      return options.wasConfirmed === false ? null : 'CANCEL';
     default:
       return null;
   }
@@ -122,17 +130,21 @@ function calendarEventFor(appointment: EmailAppointment, locale: Locale, options
   }, locale);
 }
 
-/** The .ics attachment for an appointment email, or null when the kind carries none (see calendarMethodFor). */
+/**
+ * The .ics attachment for an appointment email, or null when the kind carries
+ * none (see calendarMethodFor). `organizer`: the sender (email-service.ts).
+ */
 export function appointmentCalendarFile(
   kind: AppointmentEmailKind,
   appointment: EmailAppointment,
   locale: Locale,
   options: AppointmentEmailOptions = {},
+  organizer?: IcsOrganizer,
 ): { filename: string; method: IcsMethod; ics: string } | null {
-  const method = calendarMethodFor(kind);
+  const method = calendarMethodFor(kind, options);
   if (!method) return null;
   const event = calendarEventFor(appointment, locale, options);
-  return { filename: event.filename, method, ics: appointmentIcsFile(event, method, options.now) };
+  return { filename: event.filename, method, ics: appointmentIcsFile(event, method, options.now, organizer) };
 }
 
 /** The words of every appointment email, in one language, from one place (HTML and plain text share them). */
@@ -203,8 +215,9 @@ export function appointmentEmailContent(
         eyebrow: t('cancellation.eyebrow'), title: t('cancellation.title'), intro: t('cancellation.intro'),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time)],
         cta: { label: t('cancellation.cta'), href: url(locale, '/book') },
-        // A Google link can only add; the attached CANCEL file removes the entry elsewhere.
-        footnotes: [t('calendar.cancelled'), t('cancellation.footnote')],
+        // A Google link can only add; the attached CANCEL file removes the entry
+        // elsewhere. A request never confirmed is in no calendar: nothing to remove.
+        footnotes: [...(calendarMethodFor(kind, options) ? [t('calendar.cancelled')] : []), t('cancellation.footnote')],
       };
     case 'RESCHEDULE': {
       if (!options.oldDate) throw new Error('Reschedule notification requires the original date');

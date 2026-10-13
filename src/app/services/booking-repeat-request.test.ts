@@ -9,7 +9,8 @@ import { resolveSalonDateTime } from './salon-time';
  * second tap on Confirm) after the request was saved. The customer then sends
  * the very same request again. It must come back as the request already made:
  * never a second appointment, and for "Anyone" never the same time again with
- * the next free stylist.
+ * the next free stylist. A request naming a DIFFERENT stylist is not the same
+ * request: one account booking two people at once is deliberate.
  */
 
 before(() => mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-01T09:00:00Z') }));
@@ -41,13 +42,38 @@ test('a named-stylist retry returns the request already made instead of refusing
   assert.equal(f.notices.length, 2);
 });
 
-test('the same request is a repeat whichever stylist the retry names', async () => {
+test('an "Anyone" retry finds the request whichever stylist it was made with', async () => {
   const f = fixture();
   const first = await f.service.createBooking({ ...request(), stylistId: 'lox' });
   const anyone = await f.service.createBookingForFirstAvailable({ ...request(), candidateStylistIds: STYLISTS });
   assert.equal(anyone.id, first.id);
+  assert.equal(anyone.repeat, true);
   assert.equal(anyone.stylistId, 'lox');
   assert.equal(f.rows.length, 1);
+});
+
+test('a second booking naming a different stylist at the same time is a new booking, not a repeat', async () => {
+  const f = fixture();
+  const first = await f.service.createBooking({ ...request(), stylistId: 'lox' });
+  const second = await f.service.createBooking({ ...request(), stylistId: 'funky' });
+  assert.equal(second.repeat, false);
+  assert.notEqual(second.id, first.id);
+  assert.deepEqual(f.rows.map((row) => row.stylistId), ['lox', 'funky']);
+  assert.deepEqual(f.notices, [
+    'appointment-1/REQUEST_RECEIVED', 'appointment-1/SALON_ALERT', 'appointment-2/REQUEST_RECEIVED', 'appointment-2/SALON_ALERT',
+  ], 'each booking gets its own receipt and salon alert');
+});
+
+test('after an "Anyone" request, naming the stylist it was given is a repeat; naming another is a new booking', async () => {
+  const f = fixture();
+  const anyone = await f.service.createBookingForFirstAvailable({ ...request(), candidateStylistIds: STYLISTS });
+  assert.equal(anyone.stylistId, 'funky');
+  const same = await f.service.createBooking({ ...request(), stylistId: 'funky' });
+  assert.equal(same.repeat, true);
+  assert.equal(same.id, anyone.id);
+  const other = await f.service.createBooking({ ...request(), stylistId: 'lox' });
+  assert.equal(other.repeat, false);
+  assert.equal(f.rows.length, 2);
 });
 
 test('a different time is a new request and still books', async () => {
@@ -79,14 +105,40 @@ test('a cancelled request does not count: the same time can be requested again',
 });
 
 for (const stylistId of [ANY_STYLIST_ID, 'lox']) {
-  test(`submitBooking: a repeated ${stylistId === ANY_STYLIST_ID ? 'Anyone' : 'named-stylist'} request succeeds without a new booking, notice or feed refresh`, async () => {
+  test(`submitBooking: a repeated ${stylistId === ANY_STYLIST_ID ? 'Anyone' : 'named-stylist'} request books and queues nothing new, but refreshes the feed and delivers again`, async () => {
     const f = fixture();
     const input = { stylistId, serviceId: 'service-1', date: TUESDAY, time: '11:00', expectedQuote: { serviceId: 'service-1', priceVersion: 1, amountPence: 10000 } };
     assert.deepEqual(await f.actions.submitBooking(input), { success: true });
-    assert.deepEqual(await f.actions.submitBooking(input), { success: true });
+    assert.deepEqual(await f.actions.submitBooking(input), { success: true, alreadyRequested: true }, 'the wizard says the request already exists');
     assert.equal(f.rows.length, 1);
-    assert.deepEqual(f.notices, ['appointment-1/REQUEST_RECEIVED', 'appointment-1/SALON_ALERT']);
-    assert.equal(f.effects.feedInvalidations, 1, 'only the request that booked refreshes the busy feed');
-    assert.equal(f.effects.dispatches, 1, 'nothing new to deliver for the repeat');
+    assert.deepEqual(f.notices, ['appointment-1/REQUEST_RECEIVED', 'appointment-1/SALON_ALERT'], 'no second receipt and no second salon alert');
+    // Both are idempotent: a second refresh costs one feed rebuild, and the
+    // dispatch finds the first attempt's emails already sent.
+    assert.equal(f.effects.feedInvalidations, 2, 'the repeat refreshes the busy feed too');
+    assert.deepEqual(f.effects.dispatchedFor, ['appointment-1', 'appointment-1'], 'and delivers whatever is still queued for that booking');
   });
 }
+
+// The first attempt's transaction can commit and its answer still be lost (the
+// connection drops on COMMIT): its post-commit steps never ran. The retry is
+// the only request left to run them.
+test('submitBooking: a retry after a committed-but-lost first attempt refreshes the busy feed and sends its queued emails', async () => {
+  const f = fixture();
+  const committed = await f.service.createBooking({ ...request(), stylistId: 'lox' });
+  assert.equal(f.effects.feedInvalidations + f.effects.dispatches, 0, 'the lost attempt ran none of its post-commit steps');
+  const input = { stylistId: 'lox', serviceId: 'service-1', date: TUESDAY, time: '11:00', expectedQuote: { serviceId: 'service-1', priceVersion: 1, amountPence: 10000 } };
+  assert.deepEqual(await f.actions.submitBooking(input), { success: true, alreadyRequested: true });
+  assert.equal(f.rows.length, 1);
+  assert.equal(f.effects.feedInvalidations, 1);
+  assert.deepEqual(f.effects.dispatchedFor, [committed.id]);
+});
+
+test('submitBooking: a second booking naming a different stylist is made, and not flagged as already requested', async () => {
+  const f = fixture();
+  const input = (stylistId: string) => ({ stylistId, serviceId: 'service-1', date: TUESDAY, time: '11:00', expectedQuote: { serviceId: 'service-1', priceVersion: 1, amountPence: 10000 } });
+  assert.deepEqual(await f.actions.submitBooking(input('lox')), { success: true });
+  assert.deepEqual(await f.actions.submitBooking(input('funky')), { success: true });
+  assert.deepEqual(f.rows.map((row) => row.stylistId), ['lox', 'funky']);
+  assert.equal(f.effects.feedInvalidations, 2);
+  assert.equal(f.effects.dispatches, 2);
+});

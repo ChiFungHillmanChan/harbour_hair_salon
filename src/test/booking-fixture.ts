@@ -22,7 +22,7 @@ type Where = { userId?: string; serviceId?: string; date?: Date | { gte?: Date; 
 export function bookingFixture(options: { locale?: Locale; enabled?: boolean; ready?: boolean } = {}) {
   const rows: Row[] = [];
   const notices: string[] = [];
-  const effects = { feedInvalidations: 0, dispatches: 0 };
+  const effects = { feedInvalidations: 0, dispatches: 0, dispatchedFor: [] as string[] };
   const liveService = {
     id: 'service-1', name: 'Cut', price: '100.00', duration: 60, treatwellExternalId: null, requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false,
     offeringId: null, hairLength: null, priceType: 'STANDARD', priceVersion: 1, vatDisplay: 'EXCLUDED', priceNature: 'LISTED',
@@ -82,7 +82,7 @@ export function bookingFixture(options: { locale?: Locale; enabled?: boolean; re
       notices.push(`${appointment.id}/${kind}`);
       return { id: `event-${notices.length}` };
     },
-    dispatchAppointmentNotifications: async () => { effects.dispatches++; },
+    dispatchAppointmentNotifications: async (appointmentId: string) => { effects.dispatches++; effects.dispatchedFor.push(appointmentId); },
   };
   const readiness = {
     isBookingEnabled: async () => options.enabled !== false,

@@ -80,6 +80,26 @@ export function foldIcsLine(line: string): string {
 export type IcsMethod = 'PUBLISH' | 'CANCEL';
 
 /**
+ * Who sends an emailed calendar file. RFC 5546 (iTIP) requires an ORGANIZER on
+ * PUBLISH and CANCEL objects, so mail carries one; a file the customer
+ * downloads from My Bookings is not an iTIP message and has none.
+ */
+export type IcsOrganizer = { name: string; email: string };
+
+/**
+ * RFC 5545 §3.8.4.3 ORGANIZER with its common name. A parameter value has no
+ * escape syntax: as a quoted string it may hold anything but a double quote or
+ * a control character (§3.1 QSAFE-CHAR), so those are dropped. The address is
+ * a mailto: URI, never TEXT-escaped (callers pass a validated address; a
+ * control character could only break the line, so it is dropped too).
+ */
+function organizerLine(organizer: IcsOrganizer): string {
+  const name = organizer.name.replace(/[\p{Cc}"]/gu, '');
+  const email = organizer.email.replace(/[\p{Cc}\s]/gu, '');
+  return `ORGANIZER;CN="${name}":mailto:${email}`;
+}
+
+/**
  * One appointment as an iCalendar file. PUBLISH adds (or, with a higher
  * SEQUENCE, updates) the entry; CANCEL with the same UID marks it cancelled.
  */
@@ -96,6 +116,8 @@ export function appointmentIcs(input: {
   method: IcsMethod;
   /** When this file was made (DTSTAMP); now unless given. */
   stamp?: Date;
+  /** The sender, for a file sent by email (see IcsOrganizer). */
+  organizer?: IcsOrganizer;
 }): string {
   const lines = [
     'BEGIN:VCALENDAR',
@@ -106,6 +128,7 @@ export function appointmentIcs(input: {
     'BEGIN:VEVENT',
     `UID:${input.uid}`,
     `DTSTAMP:${icsUtc(input.stamp ?? new Date())}`,
+    ...(input.organizer ? [organizerLine(input.organizer)] : []),
     `DTSTART:${icsUtc(input.start)}`,
     `DTEND:${icsUtc(input.end)}`,
     `SEQUENCE:${Math.max(0, Math.trunc(input.sequence))}`,
@@ -145,14 +168,18 @@ export function appointmentGoogleCalendarUrl(event: AppointmentCalendarEvent): s
   return googleCalendarUrl({ title: event.title, start: new Date(event.start), end: new Date(event.end), details: event.details, location: event.location });
 }
 
-export function appointmentIcsFile(event: AppointmentCalendarEvent, method: IcsMethod, stamp?: Date): string {
+/** `organizer`: only for a file sent by email (see IcsOrganizer). */
+export function appointmentIcsFile(event: AppointmentCalendarEvent, method: IcsMethod, stamp?: Date, organizer?: IcsOrganizer): string {
   return appointmentIcs({
     uid: event.uid, sequence: event.sequence, start: new Date(event.start), end: new Date(event.end),
-    summary: event.title, description: event.details, location: event.location, url: event.url, method, stamp,
+    summary: event.title, description: event.details, location: event.location, url: event.url, method, stamp, organizer,
   });
 }
 
-/** The .ics file as a Blob, for a download made on the customer's device (no request, no database). */
+/**
+ * The .ics file as a Blob, for a download made on the customer's device (no
+ * request, no database). Not an email, so no ORGANIZER (see IcsOrganizer).
+ */
 export function appointmentIcsBlob(event: AppointmentCalendarEvent, stamp?: Date): Blob {
   return new Blob([appointmentIcsFile(event, 'PUBLISH', stamp)], { type: 'text/calendar;charset=utf-8' });
 }

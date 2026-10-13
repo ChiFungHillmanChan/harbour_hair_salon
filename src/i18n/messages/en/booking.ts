@@ -103,6 +103,7 @@ const booking = {
   done: {
     title: 'Booking Request Received!',
     body: "Your request has been sent to the salon. We'll email you as soon as it's confirmed.",
+    alreadyRequested: 'You already have a request for this time — see My Bookings.',
     viewBookings: 'View My Bookings',
   },
 } satisfies MessageTree;

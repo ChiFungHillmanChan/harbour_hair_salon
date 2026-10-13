@@ -18,6 +18,7 @@ import { refreshCalendarFeedsBeforeApproval } from '@/app/services/calendar-sync
 import { assertAppointmentSlotAvailable, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { hasAppointmentStarted } from '@/app/lib/appointment-timing';
+import { isRequestLapseNoticeDue, readSalonPhoneForLapseNotice } from '@/app/services/request-lapse-notice';
 import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
 import { getActionLocale } from '@/i18n/request';
 import { translator } from '@/i18n/messages';
@@ -487,7 +488,8 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       if (current.status === 'CANCELLED') {
         throw new BookingError('CANCELLED_CANNOT_REINSTATE');
       }
-      const started = hasAppointmentStarted(current.date);
+      const now = new Date();
+      const started = hasAppointmentStarted(current.date, now);
       // Nobody can be told "confirmed" for a time that has already come; the
       // notifications cron closes such a request instead (pending-request-lapse.ts).
       if (status === 'CONFIRMED' && started) throw new BookingError('REQUEST_EXPIRED');
@@ -529,10 +531,25 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       // diary afterwards (a no-show, a duplicate) must not tell the customer
       // their appointment "has been cancelled"; the version bump above still
       // retires anything queued earlier for this booking.
-      const notice = status === 'CONFIRMED' ? 'CONFIRMATION' : status === 'CANCELLED' && !started ? 'CANCELLATION' : null;
-      if (notice) await enqueueAppointmentNotification(tx, notice, updated);
+      let notified = false;
+      if (status === 'CONFIRMED') {
+        await enqueueAppointmentNotification(tx, 'CONFIRMATION', updated);
+        notified = true;
+      } else if (status === 'CANCELLED' && !started) {
+        // A declined request was never in the customer's calendar: no file to remove it.
+        await enqueueAppointmentNotification(tx, 'CANCELLATION', updated, { wasConfirmed: current.status === 'CONFIRMED' });
+        notified = true;
+      } else if (status === 'CANCELLED' && current.status === 'PENDING' && await isRequestLapseNoticeDue(tx, current, now)) {
+        // Declining a request whose time has come closes it exactly as the
+        // lapse step would, which then skips it (no longer PENDING): the
+        // customer gets the same "couldn't confirm in time" email. The phone
+        // read is best effort (on PostgreSQL a failed statement aborts the
+        // transaction, so the decline then fails whole and is simply retried).
+        await enqueueAppointmentNotification(tx, 'REQUEST_LAPSED', updated, { salonPhone: await readSalonPhoneForLapseNotice(tx) });
+        notified = true;
+      }
       await appendAuditEvent({ actorUserId: session.userId, action: 'APPOINTMENT.STATUS', targetType: 'Appointment', targetId: appointmentId, metadata: { from: current.status, to: status } }, tx);
-      return { appointment: updated, notified: notice !== null };
+      return { appointment: updated, notified };
     });
 
     // Finish the action's cache invalidation before external email delivery.

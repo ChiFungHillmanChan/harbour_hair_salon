@@ -1,9 +1,10 @@
 import 'server-only';
 import prisma from '@/app/lib/prisma';
 import { appendAuditEvent } from '@/app/lib/audit';
-import { hasAppointmentStarted, isRequestLapseNoticeTimely } from '@/app/lib/appointment-timing';
+import { hasAppointmentEnded } from '@/app/lib/appointment-timing';
 import { runSerializableWithRetry } from './booking-service';
 import { enqueueAppointmentNotification } from './notification-outbox-service';
+import { isRequestLapseNoticeDue, readSalonPhoneForLapseNotice } from './request-lapse-notice';
 import { invalidateStylistIcalFeedFromCron } from './stylist-ical-cache';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from './treatwell-api';
 
@@ -14,17 +15,27 @@ const lapseInclude = {
 } as const;
 
 /**
- * Close booking requests (PENDING) nobody confirmed before their start time
- * came. Owner policy: a request lapses when its time passes unanswered — it can
- * no longer be confirmed (updateAppointmentStatus refuses), so leaving it open
- * only kept it at the top of the admin "awaiting confirmation" list forever.
+ * Close booking requests (PENDING) nobody confirmed in time, once their
+ * appointment has ENDED. Owner policy: a request lapses when its time passes
+ * unanswered — from its start it can no longer be confirmed
+ * (updateAppointmentStatus refuses), so leaving it open only kept it at the top
+ * of the admin "awaiting confirmation" list forever. It is closed at the end,
+ * not the start: a staff "pencil in" is PENDING too and its customer may be in
+ * the chair, and a cancelled booking leaves the stylist busy feed at once, so
+ * closing it mid-visit would let a marketplace resell the rest of that time.
+ * Meanwhile staff can mark it completed (or decline it) from the board. The
+ * query takes every started request (`date <= now`, cheap); one that has not
+ * ended is re-checked inside its transaction and skipped — neither lapsed nor
+ * a failure — until a later run.
  *
  * Each request is cancelled (version bumped, so earlier queued request mail is
  * retired), audited and — if the customer was told it was awaiting
  * confirmation — sent one REQUEST_LAPSED email, all in one transaction and only
  * if it is still the same unanswered request, so a re-run or a racing staff
- * decision never doubles anything. A staff "pencil in" (also PENDING) was never
- * announced to the customer, who has often simply come in: it is closed
+ * decision never doubles anything. Whether that email goes is decided by
+ * isRequestLapseNoticeDue (request-lapse-notice.ts), the rule staff declining a
+ * started request also follows: a staff "pencil in" (also PENDING) was never
+ * announced to the customer, who has often simply come in, so it is closed
  * silently, as is a backlog older than REQUEST_LAPSE_NOTICE_HOURS. A row that
  * throws is logged and skipped (it stays due and is retried next run); a
  * failed salon-phone read only drops the phone callout.
@@ -46,18 +57,13 @@ export async function lapseStartedPendingRequests(now: Date, limit = 50): Promis
   if (due.length === 0) return { lapsed, failed };
   // Once per run: the email tells the customer how to call the salon. A failed
   // read sends the emails without the phone rather than leaving requests open.
-  let salonPhone: string | undefined;
-  try {
-    const settings = await prisma.siteSettings.findUnique({ where: { id: 'singleton' }, select: { phone: true } });
-    salonPhone = settings?.phone || undefined;
-  } catch (error) {
-    console.error('Reading the salon phone for request-lapse emails failed:', error instanceof Error ? error.name : 'unknown');
-  }
+  const salonPhone = await readSalonPhoneForLapseNotice(prisma);
   for (const { id } of due) {
     try {
       const done = await runSerializableWithRetry(async (tx) => {
         const current = await tx.appointment.findUnique({ where: { id }, include: lapseInclude });
-        if (!current || current.status !== 'PENDING' || !hasAppointmentStarted(current.date, now)) return false;
+        if (!current || current.status !== 'PENDING') return false;
+        if (!hasAppointmentEnded(current.date, current.durationAtBooking ?? current.service.duration, now)) return false;
         const api = getTreatwellApiConfiguration();
         const closed = await tx.appointment.updateMany({
           where: { id, status: 'PENDING', date: current.date },
@@ -77,9 +83,7 @@ export async function lapseStartedPendingRequests(now: Date, limit = 50): Promis
           },
         });
         if (closed.count !== 1) return false;
-        const announced = isRequestLapseNoticeTimely(current.date, now)
-          ? await tx.notificationDelivery.findFirst({ where: { appointmentId: id, kind: 'REQUEST_RECEIVED' }, select: { id: true } })
-          : null;
+        const announced = await isRequestLapseNoticeDue(tx, current, now);
         const updated = announced ? await tx.appointment.findUnique({ where: { id }, include: lapseInclude }) : null;
         // The outbox itself skips an undeliverable (walk-in or erased) address.
         const queued = updated ? await enqueueAppointmentNotification(tx, 'REQUEST_LAPSED', updated, { salonPhone }) : null;

@@ -20,6 +20,8 @@ import {
 } from './email-content';
 import { emailVerificationContent } from './email-content';
 import { createEmailVerificationToken, EMAIL_VERIFICATION_TTL_HOURS } from '@/app/lib/email-verification';
+import { mailboxAddress } from '@/app/lib/mailbox';
+import type { IcsOrganizer } from '@/app/lib/calendar-links';
 
 export type { AppointmentEmailKind, AppointmentEmailOptions } from './email-content';
 
@@ -58,6 +60,17 @@ function getFromAddress(): string {
   return 'Harbour Hair Salon <onboarding@resend.dev>';
 }
 
+/**
+ * The ORGANIZER of an emailed calendar file (RFC 5546 requires one on PUBLISH
+ * and CANCEL): the salon, at the mailbox replies go to (EMAIL_REPLY_TO), else
+ * at the sender (EMAIL_FROM) — either as a bare address or "Name <address>".
+ * Omitted when neither holds a usable address.
+ */
+function calendarOrganizer(): IcsOrganizer | undefined {
+  const email = mailboxAddress(process.env.EMAIL_REPLY_TO, true) ?? mailboxAddress(process.env.EMAIL_FROM, true);
+  return email ? { name: 'Harbour Hair Salon', email } : undefined;
+}
+
 /** HTML and plain text are rendered from the same words. */
 async function prepareEmail(to: string, content: EmailContent, attachments: EmailAttachment[] = []): Promise<PreparedEmail> {
   const replyTo = process.env.EMAIL_REPLY_TO?.trim();
@@ -93,11 +106,13 @@ export async function prepareAppointmentEmail(
     return prepareEmail(address, content);
   }
   // A confirmed time carries an .ics that adds it to the customer's calendar; a
-  // cancellation, one that removes it. Built from the queued snapshot alone, and
-  // frozen with the rest of the request so a retry sends the identical file.
-  const calendar = appointmentCalendarFile(kind, normalized, locale, options);
+  // confirmed booking's cancellation, one that removes it. Built from the queued
+  // snapshot alone, and frozen with the rest of the request so a retry sends
+  // the identical file. RFC 5545 §3.7.2: an iCalendar object with METHOD goes
+  // out with the same `method` parameter on its Content-Type.
+  const calendar = appointmentCalendarFile(kind, normalized, locale, options, calendarOrganizer());
   return prepareEmail(normalized.user.email, content, calendar
-    ? [{ filename: calendar.filename, content: Buffer.from(calendar.ics, 'utf8').toString('base64'), content_type: 'text/calendar' }]
+    ? [{ filename: calendar.filename, content: Buffer.from(calendar.ics, 'utf8').toString('base64'), content_type: `text/calendar; charset=utf-8; method=${calendar.method}` }]
     : []);
 }
 

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { resolveRedisCredentials } from '@/app/lib/redis-credentials';
+import { mailboxAddress as mailbox } from '@/app/lib/mailbox';
 
 export const OPERATIONS_READINESS_JOB = 'operations-readiness';
 const REQUIRED_CHECKS = ['configuration', 'database', 'email', 'resend', 'redis', 'notifications', 'cron'];
@@ -33,12 +34,6 @@ export function parseOperationsChecks(json: string | null | undefined): Operatio
     const parsed = z.array(checkSchema).safeParse(JSON.parse(json ?? 'null'));
     return parsed.success ? parsed.data : [];
   } catch { return []; }
-}
-
-function mailbox(value: string | undefined, allowName = false): string | null {
-  const text = value?.trim() ?? '';
-  const address = allowName && text.includes('<') ? text.match(/^[^<>\r\n]*<([^<>]+)>$/)?.[1] : text;
-  return address && z.email().safeParse(address).success ? address.toLowerCase() : null;
 }
 
 // Every key here invalidates the stored diagnostics report, so each one must

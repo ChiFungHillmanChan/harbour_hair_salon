@@ -41,7 +41,8 @@ type NotificationPayload = {
   locale?: Locale;
   email?: PreparedEmail;
   appointment?: SnapshotV1 | SnapshotV2;
-  options?: { salonPhone?: string; oldDate?: string; requestedDate?: string; requestedAt?: string };
+  /** `wasConfirmed`: CANCELLATION only, see AppointmentEmailOptions (absent on mail queued before it existed). */
+  options?: { salonPhone?: string; oldDate?: string; requestedDate?: string; requestedAt?: string; wasConfirmed?: boolean };
 };
 
 /** The customer's language for their own mail; never the language of whoever triggered the event. */
@@ -112,7 +113,7 @@ export async function enqueueAppointmentNotification(
     price: emailPrice(appointment),
   };
   // Saving a booking/cancellation must not depend on email configuration or rendering.
-  const payload: NotificationPayload = { version: appointment.notificationVersion, date: appointment.date.toISOString(), locale, appointment: snapshot, options: { salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString(), requestedDate: options.requestedDate?.toISOString(), requestedAt: options.requestedAt?.toISOString() } };
+  const payload: NotificationPayload = { version: appointment.notificationVersion, date: appointment.date.toISOString(), locale, appointment: snapshot, options: { salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString(), requestedDate: options.requestedDate?.toISOString(), requestedAt: options.requestedAt?.toISOString(), wasConfirmed: options.wasConfirmed } };
   return db.notificationDelivery.upsert({
     where: { eventKey },
     create: { eventKey, appointmentId: appointment.id, kind, payloadJson: JSON.stringify(payload) },

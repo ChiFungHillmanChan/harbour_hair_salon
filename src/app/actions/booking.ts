@@ -264,7 +264,8 @@ function toClientQuote(quote: PriceQuote): ClientQuote {
 }
 
 export type SubmitBookingResult =
-  | { success: true }
+  /** `alreadyRequested`: the same request was already made (see findRepeatRequest); nothing new was booked. */
+  | { success: true; alreadyRequested?: true }
   | { success: false; code?: BookingErrorCode; error: string; quote?: ClientQuote };
 
 export async function submitBooking(data: z.infer<typeof createBookingSchema>): Promise<SubmitBookingResult> {
@@ -423,9 +424,18 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
         });
 
     // The same request again (the answer to the first was lost, or a second
-    // tap): it is already made, so there is no feed to refresh and nothing new
-    // to send.
-    if (appointment.repeat) return { success: true };
+    // tap): nothing new is booked or queued, and the wizard tells the customer
+    // it was already requested. The first attempt's commit can succeed and its
+    // answer still be lost, so its steps below may never have run: refresh the
+    // busy feed and deliver whatever is still queued for this booking now, or
+    // the feed waits for its one-day safety net and the emails for the next
+    // cron tick. Both are idempotent (an extra feed rebuild; sent mail is not
+    // sent again).
+    if (appointment.repeat) {
+      invalidateStylistIcalFeed();
+      after(() => dispatchAppointmentNotifications(appointment.id));
+      return { success: true, alreadyRequested: true };
+    }
 
     // The marketplaces poll a cached feed; drop it so the new busy period is
     // visible on their next poll rather than whenever the window expires.
@@ -506,7 +516,8 @@ export async function cancelAppointment(appointmentId: string) {
       if (changed.count !== 1) throw new BookingError('STALE');
       const cancelled = await tx.appointment.findUnique({ where: { id: appointmentId }, include: { user: true, stylist: true, service: true } });
       if (!cancelled) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      await enqueueAppointmentNotification(tx, 'CANCELLATION', cancelled);
+      // A withdrawn request was never in the customer's calendar: no file to remove it.
+      await enqueueAppointmentNotification(tx, 'CANCELLATION', cancelled, { wasConfirmed: appointment.status === 'CONFIRMED' });
     });
     invalidateStylistIcalFeed();
     after(() => dispatchAppointmentNotifications(appointmentId));

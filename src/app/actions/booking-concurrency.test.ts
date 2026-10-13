@@ -397,6 +397,23 @@ test('an unexpected cancellation failure is logged with the appointment id; an e
   assert.equal(logged.mock.callCount(), 1, 'a concurrency refusal is a normal answer, not an error');
 });
 
+// Only a confirmed booking was ever offered to the customer's calendar, so the
+// queued cancellation records whether there is an entry for its email to remove.
+for (const by of ['customer', 'staff'] as const) {
+  test(`a ${by} cancellation records in the queued email whether the booking had been confirmed`, async () => {
+    for (const [status, wasConfirmed] of [['PENDING', false], ['CONFIRMED', true]] as const) {
+      const f = fixture({ status });
+      const result = by === 'customer'
+        ? await f.actions.cancelAppointment(f.appointment.id)
+        : await f.admin.updateAppointmentStatus(f.appointment.id, 'CANCELLED');
+      assert.equal(result.success, true, `${by} ${status}`);
+      const queued = f.events.filter((event) => event.kind === 'CANCELLATION');
+      assert.equal(queued.length, 1, `${by} ${status}`);
+      assert.equal(JSON.parse(queued[0].payloadJson).options.wasConfirmed, wasConfirmed, `${by} ${status}`);
+    }
+  });
+}
+
 test('customer cancellation cannot use stale pending status to bypass a concurrent confirmation', async () => {
   const { actions, appointment, messages } = fixture({ status: 'PENDING', changeAfterRead: 'confirm' });
   assert.equal((await actions.cancelAppointment(appointment.id)).success, false);

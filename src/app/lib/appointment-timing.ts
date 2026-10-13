@@ -11,6 +11,17 @@ export function hasAppointmentStarted(date: Date | string, now: Date = new Date(
   return new Date(date).getTime() <= now.getTime();
 }
 
+/**
+ * True once the whole visit is over: its start plus `minutes` (the booking's
+ * frozen `durationAtBooking`, else the service's duration) has come — the same
+ * instant the stylist busy feed stops holding the chair. Until then a booking
+ * request is left open, because its customer may be in the chair (a staff
+ * "pencil in" is PENDING too) and closing it would free that time for resale.
+ */
+export function hasAppointmentEnded(date: Date | string, minutes: number, now: Date = new Date()): boolean {
+  return new Date(date).getTime() + minutes * 60_000 <= now.getTime();
+}
+
 /** "We couldn't confirm your request in time" is only worth sending this soon after the requested time. */
 export const REQUEST_LAPSE_NOTICE_HOURS = 72;
 

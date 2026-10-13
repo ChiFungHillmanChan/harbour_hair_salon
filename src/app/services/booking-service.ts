@@ -396,18 +396,23 @@ const bookingResultInclude = {
 
 /**
  * The request this customer already holds for exactly this service and start
- * time, with ANY stylist, if it still stands. Seeing it again means the answer
- * to the first attempt was lost (a dropped connection, a second tap) and the
- * customer sent the same request twice. It is returned as the result instead of
- * booking again: "Anyone" would otherwise take the same time with the next free
+ * time, if it still stands. Seeing it again means the answer to the first
+ * attempt was lost (a dropped connection, a second tap) and the customer sent
+ * the same request twice. It is returned as the result instead of booking
+ * again: "Anyone" would otherwise take the same time with the next free
  * stylist, and a named stylist would be refused their own slot. Read inside the
  * booking transaction and before the booking cap — a retry of the sixth
  * booking is not a seventh — so two concurrent copies still serialize and the
  * loser's retry finds the winner's row.
+ *
+ * `stylistId` (a request naming a stylist) matches only that stylist: the same
+ * time with a DIFFERENT named stylist is a deliberate second booking (one
+ * account booking for two people), not a repeat. "Anyone" passes none and
+ * matches whichever stylist the first attempt was given.
  */
-async function findRepeatRequest(tx: Prisma.TransactionClient, data: NewBookingInput) {
+async function findRepeatRequest(tx: Prisma.TransactionClient, data: NewBookingInput, stylistId?: string) {
   return tx.appointment.findFirst({
-    where: { userId: data.userId, serviceId: data.serviceId, date: data.date, status: { in: ['PENDING', 'CONFIRMED'] } },
+    where: { userId: data.userId, serviceId: data.serviceId, date: data.date, ...(stylistId ? { stylistId } : {}), status: { in: ['PENDING', 'CONFIRMED'] } },
     include: bookingResultInclude,
   });
 }
@@ -417,7 +422,7 @@ export async function createBooking(data: NewBookingInput & { stylistId: string 
   // Use Serializable transaction to prevent double-booking race conditions
   const appointment = await runSerializableWithRetry(async (tx) => {
     const settings = await assertOnlineBookingReady(tx);
-    const made = await findRepeatRequest(tx, data);
+    const made = await findRepeatRequest(tx, data, data.stylistId);
     if (made) return { ...made, repeat: true as const };
     await assertActiveBookingLimit(tx, data.userId);
     const [{ service, quote }, stylist] = await Promise.all([
@@ -473,6 +478,7 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
   const appointment = await runSerializableWithRetry(async (tx) => {
     const settings = await assertOnlineBookingReady(tx);
     // Before choosing a stylist: a repeat must not be given the next free one.
+    // Any stylist matches — the first attempt may have been given any of them.
     const made = await findRepeatRequest(tx, data);
     if (made) return { ...made, repeat: true as const };
     await assertActiveBookingLimit(tx, data.userId);
