@@ -4,6 +4,7 @@ import prisma from '@/app/lib/prisma';
 import { pageNumber } from '@/app/lib/pagination';
 import { Pagination } from '@/components/admin/Pagination';
 import { OPERATIONS_READINESS_JOB, parseOperationsChecks } from '@/app/services/operations-readiness';
+import { operationsMessageKey } from '@/app/services/operations-messages';
 import { OperationsControls } from '@/components/admin/OperationsControls';
 import { formatSalonDateTime } from '@/i18n/dates';
 import { getLocale, getT } from '@/i18n/server';
@@ -29,13 +30,20 @@ export default async function OperationsPage({ searchParams }: { searchParams: P
   const checks = parseOperationsChecks(report?.lastResultJson).filter((check) => check.id !== 'configuration');
   const cronJobs = jobs.filter((job) => job.name !== OPERATIONS_READINESS_JOB);
   const none = t('operations.none');
-  // Job names, error text, delivery IDs and audit action codes are raw
-  // diagnostics and stay exactly as recorded.
+  // Our own fixed lastError sentences are translated; anything else (older
+  // rows, feed or provider text) stays exactly as recorded, marked English.
+  const lastError = (text: string | null) => {
+    if (!text) return none;
+    const key = operationsMessageKey(text);
+    return key ? t(`operations.messages.${key}`) : <span lang="en">{text}</span>;
+  };
+  // Job names, delivery IDs and audit action codes are raw diagnostics and
+  // stay exactly as recorded.
   return <div className="mx-auto max-w-6xl space-y-7 p-4 sm:p-6 lg:p-8">
     <header>
       <h1 className="text-3xl font-serif font-bold text-zinc-900">{t('operations.title')}</h1>
       <p className="mt-2 text-zinc-600">{t('operations.intro')}</p>
-      <div className="mt-3 flex gap-5 text-sm text-[#174F7F]"><Link className="underline" href="/admin/integrations">{t('operations.links.integrations')}</Link><Link className="underline" href="/admin/settings">{t('operations.links.settings')}</Link></div>
+      <div className="mt-3 flex gap-5 text-sm text-zinc-900"><Link className="underline" href="/admin/integrations">{t('operations.links.integrations')}</Link><Link className="underline" href="/admin/settings">{t('operations.links.settings')}</Link></div>
     </header>
     <OperationsControls notificationsEnabled={process.env.NOTIFICATIONS_ENABLED === 'true'} />
     <section className="rounded-xl border border-zinc-200 bg-white p-5">
@@ -50,12 +58,12 @@ export default async function OperationsPage({ searchParams }: { searchParams: P
     </section>
     <section className="rounded-xl border border-zinc-200 bg-white p-5">
       <h2 className="text-lg font-semibold text-zinc-900">{t('operations.jobs.title')}</h2>
-      {cronJobs.length ? <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-zinc-500"><th className="p-2">{t('operations.jobs.columns.job')}</th><th className="p-2">{t('operations.jobs.columns.started')}</th><th className="p-2">{t('operations.jobs.columns.succeeded')}</th><th className="p-2">{t('operations.jobs.columns.failed')}</th><th className="p-2">{t('operations.jobs.columns.lastError')}</th></tr></thead><tbody>{cronJobs.map((job) => <tr key={job.name} className="border-b border-zinc-100"><td className="p-2 font-medium">{job.name}</td><td className="p-2">{date(job.lastStartedAt)}</td><td className="p-2">{date(job.lastSucceededAt)}</td><td className="p-2">{date(job.lastFailedAt)}</td><td className="max-w-sm break-words p-2">{job.lastError ?? none}</td></tr>)}</tbody></table></div> : <p className="mt-3 text-sm text-zinc-600">{t('operations.jobs.empty')}</p>}
+      {cronJobs.length ? <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-zinc-500"><th className="p-2">{t('operations.jobs.columns.job')}</th><th className="p-2">{t('operations.jobs.columns.started')}</th><th className="p-2">{t('operations.jobs.columns.succeeded')}</th><th className="p-2">{t('operations.jobs.columns.failed')}</th><th className="p-2">{t('operations.jobs.columns.lastError')}</th></tr></thead><tbody>{cronJobs.map((job) => <tr key={job.name} className="border-b border-zinc-100"><td className="p-2 font-medium">{job.name}</td><td className="p-2">{date(job.lastStartedAt)}</td><td className="p-2">{date(job.lastSucceededAt)}</td><td className="p-2">{date(job.lastFailedAt)}</td><td className="max-w-sm break-words p-2">{lastError(job.lastError)}</td></tr>)}</tbody></table></div> : <p className="mt-3 text-sm text-zinc-600">{t('operations.jobs.empty')}</p>}
     </section>
     <section className="rounded-xl border border-zinc-200 bg-white p-5">
       <h2 className="text-lg font-semibold text-zinc-900">{t('operations.deliveries.title')}</h2>
       <p className="mt-2 text-sm text-zinc-600">{t('operations.deliveries.intro')}</p>
-      {deliveries.length ? <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-zinc-500"><th className="p-2">{t('operations.deliveries.columns.id')}</th><th className="p-2">{t('operations.deliveries.columns.type')}</th><th className="p-2">{t('operations.deliveries.columns.status')}</th><th className="p-2">{t('operations.deliveries.columns.attempts')}</th><th className="p-2">{t('operations.deliveries.columns.lastError')}</th></tr></thead><tbody>{deliveries.map((delivery) => <tr key={delivery.id} className="border-b border-zinc-100"><td className="p-2 font-mono text-xs">{delivery.id}</td><td className="p-2">{t.dynamic(`operations.deliveries.kind.${delivery.kind}`, undefined, delivery.kind)}</td><td className="p-2">{t.dynamic(`operations.deliveries.status.${delivery.status}`, undefined, delivery.status)}</td><td className="p-2">{delivery.attempts}</td><td className="max-w-sm break-words p-2">{delivery.lastError ?? none}</td></tr>)}</tbody></table></div> : <p className="mt-3 text-sm text-zinc-600">{t('operations.deliveries.empty')}</p>}
+      {deliveries.length ? <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-zinc-500"><th className="p-2">{t('operations.deliveries.columns.id')}</th><th className="p-2">{t('operations.deliveries.columns.type')}</th><th className="p-2">{t('operations.deliveries.columns.status')}</th><th className="p-2">{t('operations.deliveries.columns.attempts')}</th><th className="p-2">{t('operations.deliveries.columns.lastError')}</th></tr></thead><tbody>{deliveries.map((delivery) => <tr key={delivery.id} className="border-b border-zinc-100"><td className="p-2 font-mono text-xs">{delivery.id}</td><td className="p-2">{t.dynamic(`operations.deliveries.kind.${delivery.kind}`, undefined, delivery.kind)}</td><td className="p-2">{t.dynamic(`operations.deliveries.status.${delivery.status}`, undefined, delivery.status)}</td><td className="p-2">{delivery.attempts}</td><td className="max-w-sm break-words p-2">{lastError(delivery.lastError)}</td></tr>)}</tbody></table></div> : <p className="mt-3 text-sm text-zinc-600">{t('operations.deliveries.empty')}</p>}
     </section>
     <section className="rounded-xl border border-zinc-200 bg-white p-5">
       <h2 className="text-lg font-semibold text-zinc-900">{t('operations.audit.title')}</h2>

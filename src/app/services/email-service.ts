@@ -38,6 +38,13 @@ export function getSalonNotifyAddress(): string | null {
   return process.env.SALON_NOTIFY_EMAIL?.trim() || process.env.EMAIL_REPLY_TO?.trim() || null;
 }
 
+/** A one-off mail to the salon's own inbox (the daily ops alert). Never queued. */
+export async function sendSalonNotice(content: EmailContent, idempotencyKey?: string): Promise<void> {
+  const address = getSalonNotifyAddress();
+  if (!address) throw new Error('SALON_NOTIFY_EMAIL or EMAIL_REPLY_TO is required');
+  await sendPreparedEmail(await prepareEmail(address, content), idempotencyKey);
+}
+
 function getFromAddress(): string {
   const from = process.env.EMAIL_FROM?.trim();
   if (from) return from;
