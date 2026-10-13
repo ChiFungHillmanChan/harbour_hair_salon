@@ -56,6 +56,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - `SESSION_SECRET` — JWT signing key (required, no fallback)
 - `RESEND_API_KEY` — Email service
 - `CRON_SECRET` — Vercel cron auth (auto-injected)
+- `HOUSEKEEPING_ENABLED` — the daily housekeeping cron runs unless this is `"false"` (retention in the privacy notice, delivery-lease recovery and request lapsing depend on it).
 - `TREATWELL_SYNC_ENABLED` — kill-switch for `/api/cron/treatwell-sync`. Unset/anything but `"true"` makes the route return before touching the DB. Deliberately off (see below).
 
 ### Neon compute budget (read before scheduling anything)

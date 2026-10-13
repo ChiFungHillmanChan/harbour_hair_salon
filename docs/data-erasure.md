@@ -47,14 +47,15 @@ erased, and customers with upcoming PENDING/CONFIRMED bookings.
 
 ## What is kept, and why
 
+(Their reviews are deleted, not kept: the privacy notice keeps a review only
+while the account is open, and review text plus the visit details can identify
+someone.)
+
 - **The account row itself, anonymised.** Every appointment points to it;
   deleting it would cascade-delete the salon's appointment history.
 - **Appointments** (date, service, stylist, duration, price, status). These are
   the salon's business records (takings, stylist pay, disputes), now linked to
   "Erased customer" instead of a person.
-- **Reviews** keep their rating and text; the public page shows them as
-  "Harbour Hair client". If the text itself names or identifies the customer,
-  reject it in Admin → Reviews so it is no longer shown.
 - **Delivery log rows** (email type, status, times) without any content.
 - **Audit events** — they never contain personal data.
 

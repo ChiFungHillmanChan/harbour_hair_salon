@@ -68,7 +68,7 @@ const adminOps = {
     },
     erasure: {
       title: 'Erase a customer’s personal data',
-      intro: 'Use this when a customer asks you to delete their data (UK GDPR). Their name, email, phone, password, sign-in links and booking notes are removed and cannot be recovered. Their past appointments stay as anonymised business records. Cancel any upcoming bookings first.',
+      intro: 'Use this when a customer asks you to delete their data (UK GDPR). Their name, email, phone, password, sign-in links, booking notes and reviews are removed and cannot be recovered. Their past appointments stay as anonymised business records. Cancel any upcoming bookings first.',
       searchLabel: 'Find the customer',
       searchPlaceholder: 'Name, email or phone',
       search: 'Search',
@@ -308,7 +308,7 @@ const adminOps = {
       requests: 'Booking requests',
     },
     findings: {
-      HOUSEKEEPING_OFF: 'Housekeeping is switched off (HOUSEKEEPING_ENABLED), so a stuck email is never retried and old personal data is never cleared from the email queue. Turn it on in Vercel and redeploy.',
+      HOUSEKEEPING_OFF: 'Housekeeping is switched off (HOUSEKEEPING_ENABLED=false), so a stuck email is never retried and old personal data is never cleared from the email queue, breaking the retention periods in the privacy notice. Remove that setting in Vercel and redeploy.',
       DELIVERIES_FAILED: { one: '1 email could not be sent in the last 24 hours.', other: '{count} emails could not be sent in the last 24 hours.' },
       JOB_FAILING: '“{job}” has been failing since {time}.',
       CALENDAR_ERROR: '{stylist}’s {provider} calendar could not be read at the last attempt. Busy times from before are kept, but new bookings there are not seen.',

@@ -30,8 +30,9 @@ class ErasureRaced extends Error {}
  * password (replaced by a hash of a secret nobody holds), verification,
  * language, MFA material, every session (version bump), linked Google
  * sign-in, reset links, the free-text notes on their bookings and every copy
- * of them held in the notification outbox. Their reviews keep rating and text
- * and now show the anonymised name.
+ * of them held in the notification outbox. Their reviews are deleted: the
+ * privacy notice keeps a review only while the account is open, and its text
+ * (with the visit's date, service and stylist) can identify the person.
  *
  * Refused for administrators, for the acting admin, and while the customer has
  * an upcoming PENDING/CONFIRMED booking (staff cancel those first, so no
@@ -103,7 +104,8 @@ export async function eraseCustomerData(userId: string, confirmation: string): P
         });
         notifications = stopped.count + redacted.count;
       }
-      const reviews = await tx.review.count({ where: { userId } });
+      // Published reviews go with the account (privacy notice: kept while the account is open).
+      const reviews = (await tx.review.deleteMany({ where: { userId } })).count;
       // Counts only: the audit trail must not become a copy of what was erased.
       await appendAuditEvent({
         actorUserId: session.userId, action: 'USER.ERASED', targetType: 'User', targetId: userId,

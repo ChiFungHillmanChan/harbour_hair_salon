@@ -66,7 +66,7 @@ const adminOps: Localized<Messages['adminOps']> = {
     },
     erasure: {
       title: '刪除顧客的個人資料',
-      intro: '顧客要求刪除其個人資料（英國 GDPR）時使用。其姓名、電郵、電話、密碼、登入連結及預約備註會被刪除，無法復原。過往預約會以匿名方式保留，作為營業紀錄。請先取消其所有未來預約。',
+      intro: '顧客要求刪除其個人資料（英國 GDPR）時使用。其姓名、電郵、電話、密碼、登入連結、預約備註及評價會被刪除，無法復原。過往預約會以匿名方式保留，作為營業紀錄。請先取消其所有未來預約。',
       searchLabel: '搜尋顧客',
       searchPlaceholder: '姓名、電郵或電話',
       search: '搜尋',
@@ -295,7 +295,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       requests: '預約申請',
     },
     findings: {
-      HOUSEKEEPING_OFF: '資料清理程序（HOUSEKEEPING_ENABLED）未啟用：卡住的電郵不會重試，電郵佇列中的舊個人資料亦不會清除。請在 Vercel 啟用並重新部署。',
+      HOUSEKEEPING_OFF: '資料清理程序已被關閉（HOUSEKEEPING_ENABLED=false）：卡住的電郵不會重試，電郵佇列中的舊個人資料亦不會清除，違反私隱政策所列的保留期。請在 Vercel 移除此設定並重新部署。',
       DELIVERIES_FAILED: { other: '過去 24 小時有 {count} 封電郵未能寄出。' },
       JOB_FAILING: '「{job}」自 {time} 起一直失敗。',
       CALENDAR_ERROR: '{stylist} 的 {provider} 日曆上次未能讀取。之前的忙碌時段會保留，但看不到那邊的新預約。',

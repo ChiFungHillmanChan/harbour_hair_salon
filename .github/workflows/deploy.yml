@@ -11,11 +11,13 @@ env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
-# One run per ref at a time. A newer push to a PR cancels that PR's older run;
-# runs on main are never cancelled mid-flight (a half-finished production build
-# may already have applied migrations) — they queue, and a queued run is
-# superseded by an even newer one. On its own this still lets an older commit
-# deploy last, so deploy-production also re-checks that it is main's head.
+# One run per ref at a time. A newer push to a PR cancels that PR's older run.
+# Runs on main are never cancelled mid-flight (a half-finished production build
+# may already have applied migrations): they queue, a queued run is superseded
+# by an even newer one, and a newer run only starts after the older one has
+# finished — so the newest commit always deploys last. (2026-09-29: five pushes
+# in 19 s each started a parallel run and the slowest one won.) Never "re-run"
+# an old main run to roll back — promote an older deployment in Vercel instead.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -173,41 +175,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Several merges seconds apart each start a run, and whichever deploys
-      # last wins production — possibly an older commit (2026-09-29: five
-      # pushes in 19 s). Only main's current head may build (the build applies
-      # migrations) or deploy; an older run stops here and the newest run ships
-      # everything. Checked again right before the deploy step.
-      - name: Check this commit is still main's head
-        id: head
-        run: |
-          head=$(git ls-remote origin refs/heads/main | cut -f1)
-          if [ "$head" = "$GITHUB_SHA" ]; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::main is now at $head; skipping the deploy of $GITHUB_SHA (the newer run deploys it)."
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Node.js
-        if: steps.head.outputs.deploy == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
 
       - name: Install pnpm
-        if: steps.head.outputs.deploy == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
 
       - name: Install Vercel CLI
-        if: steps.head.outputs.deploy == 'true'
         # Pinned: an unpinned CLI changes under us between two deploys. Bump on purpose.
         run: pnpm add -g vercel@63.1.2
 
       - name: Pull Vercel Environment
-        if: steps.head.outputs.deploy == 'true'
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       # The build below runs `prisma migrate deploy` against production. When
@@ -216,7 +198,7 @@ jobs:
       # copy-on-write, no CU-hours) so a bad migration can be undone even after
       # the free plan's 6-hour restore window. Keeps the newest three.
       - name: Snapshot the production database
-        if: steps.head.outputs.deploy == 'true' && env.NEON_API_KEY != '' && env.NEON_PROJECT_ID != ''
+        if: env.NEON_API_KEY != '' && env.NEON_PROJECT_ID != ''
         run: |
           set -euo pipefail
           api="https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches"
@@ -232,21 +214,7 @@ jobs:
               done
 
       - name: Build
-        if: steps.head.outputs.deploy == 'true'
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
-      - name: Check this commit is still main's head
-        id: head_again
-        if: steps.head.outputs.deploy == 'true'
-        run: |
-          head=$(git ls-remote origin refs/heads/main | cut -f1)
-          if [ "$head" = "$GITHUB_SHA" ]; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::main moved to $head during the build; leaving production to that run."
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Deploy Production
-        if: steps.head_again.outputs.deploy == 'true'
         run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}

@@ -215,7 +215,7 @@ test('erasure anonymises the account, removes sign-in routes and free text, and 
   }
   assert.equal(delivery('d-other').payloadJson, '{"to":"ben@example.com"}');
 
-  assert.deepEqual(rows.review.map((row) => [row.userId, row.rating, row.comment]), [['customer-1', 5, 'Lovely cut']], 'the review stays, now under the anonymised name');
+  assert.deepEqual(rows.review, [], 'their reviews are deleted with the account (privacy notice: kept while the account is open)');
 
   assert.equal(rows.auditEvent.length, 1);
   const audit = rows.auditEvent[0];

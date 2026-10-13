@@ -32,7 +32,7 @@ async function runOpsAlert(): Promise<{ sent: boolean; findings: number } | { er
       db: prisma,
       now: new Date(),
       calendarSyncEnabled: process.env.CALENDAR_SYNC_ENABLED === 'true',
-      housekeepingEnabled: process.env.HOUSEKEEPING_ENABLED === 'true',
+      housekeepingEnabled: process.env.HOUSEKEEPING_ENABLED !== 'false',
       send: sendSalonNotice,
     });
   } catch (error) {

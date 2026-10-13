@@ -26,7 +26,7 @@ Work top to bottom. The order in §3 is **load-bearing**.
 | Calendar sync | `CALENDAR_SYNC_ENABLED=true`; Fresha inbound OK for all 4 stylists |
 | Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals |
 | Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed) |
-| Housekeeping | `HOUSEKEEPING_ENABLED` unset (off) |
+| Housekeeping | `HOUSEKEEPING_ENABLED` unset — off until the follow-ups release, which makes it **on unless set to `false`** (the privacy notice's retention periods depend on it) |
 | Operations diagnostics | Last run 2026-09-20, **never passed** |
 | Neon | Free plan (100 CU-h/month, overrun **suspends** the database until next month); Oct 1–12 used 17.6 CU-h (~45/month pace); 6-hour restore history |
 | Crons (UTC) | reminders `0 8` (+ daily ops alert), notifications `*/30 8-19`, calendar-sync `*/30` (staff hours ±15 min), housekeeping `15 3` |
@@ -55,7 +55,7 @@ Work top to bottom. The order in §3 is **load-bearing**.
 - Deploy pipeline: concurrency, head-of-main check, pinned Vercel CLI, optional Neon snapshot
   before migrations (needs `NEON_API_KEY` secret + `NEON_PROJECT_ID` variable in GitHub).
 - Daily "needs attention" email to the salon (failed emails, failing jobs, dead feeds, waiting
-  requests, housekeeping off) — sent from the 08:00 UTC reminders run, so only while
+  requests, housekeeping switched off) — sent from the 08:00 UTC reminders run, so only while
   notifications are on.
 - Monochrome confirmation email and admin controls; click-to-load map; image optimizer limited
   to local files; translated Operations messages, share-card alt text, placeholders and delete
@@ -95,7 +95,7 @@ Design: `docs/superpowers/specs/2026-10-13-square-deposits-design.md`. Runbook:
       outbound confirmations in Admin → Integrations.
 - [ ] **3.4 Second admin account** (Admin → Users).
 - [ ] **3.5 Environment, then redeploy** (env changes only reach the runtime after a deploy):
-      `HOUSEKEEPING_ENABLED=true` first, then `NOTIFICATIONS_ENABLED=true` (sends real email);
+      leave `HOUSEKEEPING_ENABLED` unset (on), then `NOTIFICATIONS_ENABLED=true` (sends real email);
       `SALON_NOTIFY_EMAIL` if salon alerts should not go to `EMAIL_REPLY_TO`.
 - [ ] **3.6 Square** — §2 complete.
 - [ ] **3.7 Run Admin → Operations diagnostics LAST.** The report is invalidated by changes to

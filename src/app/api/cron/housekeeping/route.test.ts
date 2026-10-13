@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { NextRequest } from 'next/server';
 import { loadServerModule } from '../../../../test/load-server-module';
 
-test('housekeeping requires its own enable flag and authentication, independent of sending email', async () => {
+test('housekeeping runs by default, needs authentication, and stops only when explicitly switched off', async () => {
   const previous = { cron: process.env.CRON_SECRET, housekeeping: process.env.HOUSEKEEPING_ENABLED, notifications: process.env.NOTIFICATIONS_ENABLED };
   process.env.CRON_SECRET = 'fixture-secret';
   delete process.env.HOUSEKEEPING_ENABLED;
@@ -17,9 +17,11 @@ test('housekeeping requires its own enable flag and authentication, independent 
     });
     const request = new NextRequest('https://example.invalid/api/cron/housekeeping', { headers: { authorization: 'Bearer fixture-secret' } });
     assert.equal((await route.GET(new NextRequest(request.url))).status, 401);
+    process.env.HOUSEKEEPING_ENABLED = 'false';
     assert.deepEqual(await (await route.GET(request)).json(), { enabled: false });
     assert.equal(runs + lapses, 0, 'no database work before the gates');
-    process.env.HOUSEKEEPING_ENABLED = 'true';
+    // Unset means ON: the privacy notice's retention periods depend on this job.
+    delete process.env.HOUSEKEEPING_ENABLED;
     const response = await route.GET(request);
     assert.equal(response.status, 200);
     // With email sending (and so the notifications cron) still off, unanswered
