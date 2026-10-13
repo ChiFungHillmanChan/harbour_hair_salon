@@ -56,10 +56,12 @@ export type OfferActionState = { error?: string; success?: boolean };
 export type DiscountActionState = { error?: string; success?: boolean };
 export type AdminUserActionState = { error?: string; success?: boolean };
 
-// Messages are codes, translated by adminUserError() below.
+// Messages are codes, translated by adminUserError() below. The email is stored
+// trimmed and lower-case — the form sign-in looks it up in (actions/auth.ts) —
+// or an address typed with capitals could never sign in.
 const adminUserSchema = z.object({
   name: z.string('NAME_TOO_SHORT').min(2, 'NAME_TOO_SHORT').max(100, 'NAME_TOO_LONG'),
-  email: z.string('EMAIL_INVALID').email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
+  email: z.string('EMAIL_INVALID').trim().toLowerCase().email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
   password: z.string('PASSWORD_TOO_SHORT').min(8, 'PASSWORD_TOO_SHORT').refine(fitsBcryptLimit, { message: 'PASSWORD_TOO_LONG' }),
 });
 

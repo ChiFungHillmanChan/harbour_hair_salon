@@ -29,7 +29,9 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
   }), prisma.user.findMany({
     where: {
       role: 'USER',
-      ...(q ? { OR: [{ name: { contains: q } }, { email: { contains: q } }] } : {}),
+      // Addresses are stored lower-case (sign-in, registration and admin forms
+      // all normalise them), so search them that way.
+      ...(q ? { OR: [{ name: { contains: q } }, { email: { contains: q.toLowerCase() } }] } : {}),
       oauthAccounts: { some: { provider: 'google' } },
     },
     select: { id: true, name: true, email: true, createdAt: true },
