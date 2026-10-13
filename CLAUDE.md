@@ -174,7 +174,8 @@ Rules that follow from this:
 - **Every fixed `lastError` sentence a job writes is catalogued** in `services/operations-messages.ts` (a test enforces it) so Admin → Operations can translate it.
 - **No `images.remotePatterns`.** Remote images render as plain `<img>`; a remote pattern lets anyone run billed optimisations on that host.
 - **The monochrome brand is enforced by `src/app/brand-monochrome.test.ts`.**
-- **Deploys are serialised** (`deploy.yml` concurrency; deploy-production only ships main's current head; the Vercel CLI is pinned — bump it on purpose). With the `NEON_API_KEY` secret and `NEON_PROJECT_ID` variable set, each production deploy first takes a compute-less Neon branch (`predeploy-*`, newest three kept).
+- **Deploys are serialised** (`deploy.yml` concurrency: runs on main queue and are never cancelled mid-flight; a queued run is superseded by a newer one, so the newest commit deploys last; the Vercel CLI is pinned — bump it on purpose). With the `NEON_API_KEY` secret and `NEON_PROJECT_ID` variable set, each production deploy first takes a compute-less Neon branch (`predeploy-*`, newest three kept).
+- **A skip-CI marker in main's head commit message deploys nothing.** GitHub runs no workflow for a push whose head commit message contains `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` or `[actions skip]` — even quoted inside an explanation — and a squash merge copies every commit message of the PR into one body. On 2026-10-13 #62's squash body quoted the marker, so its push ran no CI and no deploy, and production silently stayed on the old code until the next push. In commit messages write "skip-ci marker", never the bracketed form; before merging, check the squash body (or pass `gh pr merge --squash --body …`); after merging, confirm a `push` run for the new main SHA appears in Actions.
 
 ### Security guardrails (2026-09-29 audit, PRs #48–#55 — keep them)
 

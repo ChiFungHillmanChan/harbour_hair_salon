@@ -9,8 +9,10 @@ Last verified against production: **2026-10-12 23:56 UTC** (read-only checks, `m
 > "review follow-ups" release (§1); Square deposits are built in a separate release (§2).
 >
 > **Deploys:** merge to `main`; GitHub Actions tests and deploys. Runs on `main` queue
-> (never cancel mid-flight) and only main's current head builds and deploys. Local
-> `vercel --prod` is refused by `scripts/production-build-guard.mjs`.
+> (never cancel mid-flight); a queued run is superseded by a newer one, so the newest commit
+> deploys last. A head commit message containing a skip-CI marker (`[skip ci]` and friends)
+> runs nothing at all — check the squash body before merging, and that a `push` run appears
+> after. Local `vercel --prod` is refused by `scripts/production-build-guard.mjs`.
 
 Work top to bottom. The order in §3 is **load-bearing**.
 
@@ -56,8 +58,9 @@ Work top to bottom. The order in §3 is **load-bearing**.
 - "Add to Google Calendar" + `.ics` for confirmed bookings (emails and My appointments); the emailed
   file carries an ORGANIZER and a matching `method` on its MIME type, and a cancelled request that was
   never confirmed gets no calendar file.
-- Deploy pipeline: concurrency, head-of-main check, pinned Vercel CLI, optional Neon snapshot
-  before migrations (needs `NEON_API_KEY` secret + `NEON_PROJECT_ID` variable in GitHub).
+- Deploy pipeline: concurrency (main queues; the newest commit deploys last), pinned Vercel CLI,
+  optional Neon snapshot before migrations (needs `NEON_API_KEY` secret + `NEON_PROJECT_ID`
+  variable in GitHub).
 - Daily "needs attention" email to the salon (failed emails, failing jobs, dead feeds, waiting
   requests, housekeeping switched off) — sent from the 08:00 UTC reminders run, so only while
   notifications are on.
