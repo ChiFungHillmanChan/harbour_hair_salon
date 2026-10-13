@@ -424,9 +424,18 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
         });
 
     // The same request again (the answer to the first was lost, or a second
-    // tap): it is already made, so there is no feed to refresh and nothing new
-    // to send. The wizard tells the customer it was already requested.
-    if (appointment.repeat) return { success: true, alreadyRequested: true };
+    // tap): nothing new is booked or queued, and the wizard tells the customer
+    // it was already requested. The first attempt's commit can succeed and its
+    // answer still be lost, so its steps below may never have run: refresh the
+    // busy feed and deliver whatever is still queued for this booking now, or
+    // the feed waits for its one-day safety net and the emails for the next
+    // cron tick. Both are idempotent (an extra feed rebuild; sent mail is not
+    // sent again).
+    if (appointment.repeat) {
+      invalidateStylistIcalFeed();
+      after(() => dispatchAppointmentNotifications(appointment.id));
+      return { success: true, alreadyRequested: true };
+    }
 
     // The marketplaces poll a cached feed; drop it so the new busy period is
     // visible on their next poll rather than whenever the window expires.
