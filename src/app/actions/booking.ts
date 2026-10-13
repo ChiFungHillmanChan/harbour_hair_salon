@@ -12,7 +12,8 @@ import { PriceChangedError } from '@/app/services/booking-service';
 import { getActionLocale } from '@/i18n/request';
 import type { Locale } from '@/i18n/config';
 import type { PriceQuote } from '@/app/services/pricing/quote';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
+import type { MessageParams } from '@/i18n/format';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { verifySession } from '@/app/lib/session';
 import { appendAuditEvent } from '@/app/lib/audit';
@@ -34,8 +35,8 @@ import { headers } from 'next/headers';
 // paused no code is ever looked up, so there is nothing to enumerate.)
 
 /** A failed action result in the caller's language. */
-function failure(locale: Locale, code: BookingErrorCode) {
-  return { success: false as const, code, error: bookingErrorText(locale, code) };
+function failure(locale: Locale, code: BookingErrorCode, params?: MessageParams) {
+  return { success: false as const, code, error: bookingErrorText(locale, code, params) };
 }
 
 // The availability lookups need no session, so they are limited per address.
@@ -350,9 +351,12 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
     patchTestReason,
     bookingInstant: fullDate,
     now: new Date(),
+    // Online requests only: staff approve them, so they need notice. Bookings
+    // staff enter themselves (admin-schedule.ts) never pass through here.
+    minNoticeMinutes: MIN_BOOKING_NOTICE_MINUTES,
   });
   if (!gate.ok) {
-    return failure(locale, gate.code);
+    return failure(locale, gate.code, gate.params);
   }
 
   // Resolve which stylist(s) can take this slot. For a named stylist we validate

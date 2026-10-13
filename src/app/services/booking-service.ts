@@ -16,7 +16,7 @@ import { penceToDecimalString } from './pricing/money';
 import type { Locale } from '@/i18n/config';
 import { bookingCoverageEndsAt, isBookableDateWindow, isWithinBookingHorizon } from './booking-horizon';
 import { buildBookingDays, type BookingDay, type WorkingHours } from './booking-days';
-import { ANY_STYLIST_ID } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, meetsMinimumNotice } from '@/app/lib/booking-constants';
 import { getTreatwellApiConfiguration, initialTreatwellSyncStatus } from './treatwell-api';
 
 /**
@@ -195,7 +195,15 @@ export async function getAvailableSlots(
   ];
 
   return buildStylistSlots(availability, busy, dateStr, serviceDuration, now)
-    .filter((slot) => isWithinBookingHorizon(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now));
+    .filter((slot) => isRequestableOnline(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now));
+}
+
+/**
+ * A free start a customer may request online: inside the booking horizon and
+ * with enough notice for staff to approve it (MIN_BOOKING_NOTICE_MINUTES).
+ */
+function isRequestableOnline(start: Date, durationMinutes: number, now: Date): boolean {
+  return isWithinBookingHorizon(start, durationMinutes, now) && meetsMinimumNotice(start, now);
 }
 
 /**
@@ -261,7 +269,7 @@ export async function getAvailableSlotsUnion(
       now,
     );
     for (const slot of slots) {
-      if (slot.available && isWithinBookingHorizon(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now)) times.add(slot.time);
+      if (slot.available && isRequestableOnline(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now)) times.add(slot.time);
     }
   }
 
@@ -322,6 +330,8 @@ export async function getBookingDays(stylistId: string, dates: string[], service
   return buildBookingDays({
     dates, duration: serviceDuration, now, hoursByStylist, busyByStylist,
     bookable: (start, duration) => isWithinBookingHorizon(start, duration, now),
+    // Too soon for staff to approve: still shown, greyed like a taken time.
+    requestable: (start) => meetsMinimumNotice(start, now),
   });
 }
 

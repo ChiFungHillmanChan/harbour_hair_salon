@@ -1,6 +1,6 @@
 import { test, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadServerModule } from '../../test/load-server-module';
+import { bookingFixture as fixture, FIXTURE_STYLISTS as STYLISTS } from '../../test/booking-fixture';
 import { ANY_STYLIST_ID } from '../lib/booking-constants';
 import { resolveSalonDateTime } from './salon-time';
 
@@ -17,91 +17,6 @@ after(() => mock.timers.reset());
 
 const TUESDAY = '2026-10-06';
 const at = (time: string) => resolveSalonDateTime(TUESDAY, time).utc;
-const STYLISTS = ['funky', 'lox'];
-const HOURS = { startTime: '10:00', endTime: '19:00' };
-
-type Row = { id: string; userId: string; serviceId: string; stylistId: string; date: Date; status: string; durationAtBooking: number; notificationVersion: number };
-type Where = { userId?: string; serviceId?: string; date?: Date; stylistId?: string | { in: string[] }; status?: { in?: string[]; not?: string } };
-
-function fixture() {
-  const rows: Row[] = [];
-  const notices: string[] = [];
-  const effects = { feedInvalidations: 0, dispatches: 0 };
-  const liveService = {
-    id: 'service-1', name: 'Cut', price: '100.00', duration: 60, treatwellExternalId: null, requiresPatchTest: false, requiresConsultation: false, isConsultation: false, isPatchTest: false,
-    offeringId: null, hairLength: null, priceType: 'STANDARD', priceVersion: 1, vatDisplay: 'EXCLUDED', priceNature: 'LISTED',
-    durationConfirmed: true, surchargeBaseServiceId: null, surchargeAmount: null, priceSource: 'test', isPublic: true, isBookable: true,
-  };
-  const withRelations = (row: Row) => ({
-    ...row,
-    user: { name: 'Customer', email: 'customer@example.test', phone: null },
-    stylist: { name: row.stylistId },
-    service: { name: liveService.name, price: liveService.price, duration: liveService.duration },
-  });
-  const stylistMatches = (filter: Where['stylistId'], id: string) => filter === undefined || (typeof filter === 'string' ? filter === id : filter.in.includes(id));
-  const statusMatches = (filter: Where['status'], status: string) => !filter || (filter.in ? filter.in.includes(status) : status !== filter.not);
-  const tx = {
-    service: { findUnique: async () => liveService },
-    stylist: {
-      findUnique: async ({ where }: { where: { id: string } }) => ({ id: where.id, name: where.id, isActive: true, treatwellExternalId: null }),
-      // eligibleStylistIds: everyone works Tuesdays, in name order.
-      findMany: async () => STYLISTS.map((id) => ({ id, availabilities: [HOURS] })),
-    },
-    availability: {
-      findFirst: async () => HOURS,
-      findMany: async () => STYLISTS.map((stylistId) => ({ stylistId, dayOfWeek: 2, ...HOURS })),
-    },
-    appointment: {
-      count: async ({ where }: { where: Where }) => rows.filter((row) => row.userId === where.userId && statusMatches(where.status, row.status)).length,
-      findFirst: async ({ where }: { where: Where }) => {
-        const row = rows.find((candidate) => candidate.userId === where.userId && candidate.serviceId === where.serviceId
-          && candidate.date.getTime() === where.date?.getTime() && stylistMatches(where.stylistId, candidate.stylistId)
-          && statusMatches(where.status, candidate.status));
-        return row ? withRelations(row) : null;
-      },
-      findMany: async ({ where }: { where: Where }) => rows
-        .filter((row) => stylistMatches(where.stylistId, row.stylistId) && statusMatches(where.status, row.status))
-        .map((row) => ({ ...row, service: { duration: row.durationAtBooking } })),
-      create: async ({ data }: { data: Omit<Row, 'id' | 'notificationVersion'> }) => {
-        const row: Row = { id: `appointment-${rows.length + 1}`, notificationVersion: 0, ...data };
-        rows.push(row);
-        return withRelations(row);
-      },
-    },
-    externalBusyBlock: { findMany: async () => [] },
-    user: { findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }), update: async () => ({}) },
-  };
-  const db = { ...tx, $transaction: async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx) };
-  const queue = {
-    enqueueAppointmentNotification: async (_db: unknown, kind: string, appointment: { id: string }) => {
-      notices.push(`${appointment.id}/${kind}`);
-      return { id: `event-${notices.length}` };
-    },
-    dispatchAppointmentNotifications: async () => { effects.dispatches++; },
-  };
-  const readiness = {
-    isBookingEnabled: async () => true,
-    assertOnlineBookingReady: async () => ({ bookingEnabled: true, phone: '0113 000 0000' }),
-  };
-  const service = loadServerModule<typeof import('./booking-service')>('src/app/services/booking-service.ts', {
-    '@/app/lib/prisma': db,
-    '@/app/lib/booking-maintenance': readiness,
-    './notification-outbox-service': queue,
-  });
-  const actions = loadServerModule<typeof import('../actions/booking')>('src/app/actions/booking.ts', {
-    '@/app/lib/prisma': db,
-    '@/app/services/booking-service': service,
-    '@/app/lib/booking-maintenance': readiness,
-    '@/app/services/notification-outbox-service': queue,
-    '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
-    '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true } },
-    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { effects.feedInvalidations++; } },
-    'next/server': { after: (callback: () => unknown) => callback() },
-    'next/cache': { revalidatePath: () => undefined },
-  });
-  return { service, actions, rows, notices, effects };
-}
-
 const request = (time = '11:00', userId = 'user-1') => ({ serviceId: 'service-1', date: at(time), userId });
 
 test('an "Anyone" retry returns the request already made instead of booking the next free stylist', async () => {

@@ -10,7 +10,8 @@ import { fetchBookingDays, submitBooking, type ClientQuote } from '@/app/actions
 import type { BookingDay } from '@/app/services/booking-days';
 import { DayChip, TimeSlotGrid, UnavailableDayBlock } from './DayAvailability';
 import { reconcileSelection } from './reconcile-selection';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
+import { salonDateKey } from '@/app/services/salon-time';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
 import { useDraftState, clearDraft } from '@/i18n/draft-store';
@@ -125,6 +126,9 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
 
   const dayString = selectedDay;
   const days = useMemo(() => Array.from({ length: BOOKING_DAYS_MAX }, (_, offset) => format(addDays(startOfToday(), offset), 'yyyy-MM-dd')), []);
+  // The salon's (London) today: the only day whose times the online notice
+  // period can grey out, so the only day that explains it.
+  const [salonToday] = useState(() => salonDateKey(new Date()));
 
   // One request per stylist/service fills the whole date strip and every day's
   // times; changing the day is then instant and costs no extra database work.
@@ -665,6 +669,9 @@ export function BookingWizard({ services, offerings, categories, stylists }: Boo
                   <p className="font-medium">{slotLoadFailed ? t('date.loadFailed') : t('date.noneAvailable')}</p>
                   <p className="text-sm text-zinc-500 mt-1">{slotLoadFailed ? t('date.loadFailedHelp') : t('date.noneAvailableHelp')}</p>
                 </div>
+              )}
+              {dayString === salonToday && !daysLoading && !slotLoadFailed && (
+                <p className="mt-4 text-xs text-zinc-500">{t('date.noticeHint', { count: MIN_BOOKING_NOTICE_MINUTES / 60 })}</p>
               )}
             </div>
           </div>

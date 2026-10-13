@@ -39,6 +39,10 @@ const errors = {
     TOO_MANY_ATTEMPTS: 'Too many attempts. Please try again shortly.',
     BOOKING_FAILED: 'Failed to create booking',
     PAST_TIME: 'Cannot book a time in the past',
+    BOOKING_TOO_SOON: {
+      one: 'Online requests need at least {count} hour’s notice so the salon can confirm them in time. For an earlier time, please call the salon.',
+      other: 'Online requests need at least {count} hours’ notice so the salon can confirm them in time. For an earlier time, please call the salon.',
+    },
     CONSULTATION_ONLY: 'This service is by consultation only. Please book a consultation to discuss it.',
     PATCH_TEST_TOO_SOON: 'Your patch test must be at least 48 hours before a colour appointment.',
     PATCH_TEST_EXPIRED: 'Your patch test has expired (valid for 6 months). Please book a new Consultation & Patch Test.',

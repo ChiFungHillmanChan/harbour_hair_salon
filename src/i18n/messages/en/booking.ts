@@ -76,6 +76,10 @@ const booking = {
     slotUnavailableLabel: '{time}, unavailable',
     unavailableHelp: '{name} isn’t available on this day. Please choose another day.',
     unavailableHelpAnyone: 'No stylist is available on this day. Please choose another day.',
+    noticeHint: {
+      one: 'Online requests need at least {count} hour’s notice. For an earlier time today, please call the salon.',
+      other: 'Online requests need at least {count} hours’ notice. For an earlier time today, please call the salon.',
+    },
   },
   confirm: {
     summary: 'Booking Summary',

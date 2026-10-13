@@ -34,6 +34,7 @@ const errors: Localized<Messages['errors']> = {
     TOO_MANY_ATTEMPTS: '嘗試次數過多，請稍後再試。',
     BOOKING_FAILED: '未能建立預約',
     PAST_TIME: '不能預約已過去的時間',
+    BOOKING_TOO_SOON: { other: '網上預約申請須最少提前 {count} 小時提出，本店才能及時確認。如需更早的時間，請致電本店。' },
     CONSULTATION_ONLY: '此服務須先諮詢，請預約諮詢以作商討。',
     PATCH_TEST_TOO_SOON: '皮膚敏感測試須於染髮預約最少 48 小時前完成。',
     PATCH_TEST_EXPIRED: '你的皮膚敏感測試已過期（有效期 6 個月），請重新預約諮詢及皮膚敏感測試。',
