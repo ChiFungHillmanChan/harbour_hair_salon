@@ -37,10 +37,11 @@ Work top to bottom. The order in §3 is **load-bearing**.
 
 ## 1. Code — 2026-10-13 review follow-ups (release 1)
 
-- Mark completed only once an appointment has started (with confirmation); the busy feed keeps
-  completed bookings until they end, so Fresha cannot resell the slot.
-- PENDING requests lapse when their start time passes (notifications cron, and daily housekeeping while
-  notifications are off; the customer is told if they had a request email); staff cannot approve them.
+- Mark completed only once an appointment has started (with confirmation), started requests
+  included; the busy feed keeps completed bookings until they end, so Fresha cannot resell the slot.
+- PENDING requests lapse once their appointment has ended (notifications cron, and daily housekeeping
+  while notifications are off; the customer is told if they had a request email). From the start staff
+  cannot approve them; declining one then sends the same "couldn't confirm in time" email.
 - No "cancelled" email for bookings that already happened; admin emails stored lowercase;
   customer erasure tool in Admin → Users (`docs/data-erasure.md`).
 - Customer email language saved at sign-up / Google sign-in / booking; staff choose it for
@@ -49,9 +50,12 @@ Work top to bottom. The order in §3 is **load-bearing**.
   from sign-in and registration. **Owner to confirm** the legal entity name and retention periods.
 - Email verification needs a click on a confirm page (mail scanners can no longer verify);
   per-IP daily caps on registration, verification and reset emails.
-- Duplicate "Anyone" retries no longer create two requests; the wizard says "closed" when the
+- Duplicate retries no longer create two requests (the wizard says it was already requested; a
+  different named stylist at the same time is a real second booking); the wizard says "closed" when the
   gate closes mid-session; 2-hour minimum notice for online requests (`MIN_BOOKING_NOTICE_MINUTES`).
-- "Add to Google Calendar" + `.ics` for confirmed bookings (emails and My appointments).
+- "Add to Google Calendar" + `.ics` for confirmed bookings (emails and My appointments); the emailed
+  file carries an ORGANIZER and a matching `method` on its MIME type, and a cancelled request that was
+  never confirmed gets no calendar file.
 - Deploy pipeline: concurrency, head-of-main check, pinned Vercel CLI, optional Neon snapshot
   before migrations (needs `NEON_API_KEY` secret + `NEON_PROJECT_ID` variable in GitHub).
 - Daily "needs attention" email to the salon (failed emails, failing jobs, dead feeds, waiting
