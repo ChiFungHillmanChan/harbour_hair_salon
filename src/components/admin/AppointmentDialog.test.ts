@@ -59,7 +59,12 @@ function dialog(target: DialogTarget, actions: Record<string, (input: Record<str
   const render = () => elements(AppointmentDialog({
     target, services: SERVICES, stylists: [{ id: 's1', name: 'Ivan' }], onClose: () => undefined, onSaved: () => undefined,
   }));
-  return { render, calls };
+  /** Edit the open draft the way the dialog's own controls would (e.g. picking a search result). */
+  const patchDraft = (patch: Record<string, unknown>) => {
+    const key = `schedule-dialog:${target.mode === 'edit' ? target.appointmentId : 'new'}`;
+    store.set(key, { ...(store.get(key) as Record<string, unknown>), ...patch });
+  };
+  return { render, calls, patchDraft };
 }
 
 const submitButton = (nodes: Element[]) => nodes.filter((node) => node.type === 'button').at(-1)!;
@@ -147,4 +152,39 @@ test('the dialog offers no Approve once the booking\'s original time has passed'
   };
   assert.equal(expiredProp(base), false, 'original and requested time both ahead');
   assert.equal(expiredProp({ ...base, dateStr: '2020-01-15', date: '2020-01-15T10:00:00.000Z' }), true, 'the visit already happened');
+});
+
+const MEI = { id: 'user-9', name: 'Mei', email: 'mei@example.test', phone: null };
+
+test('a customer on file with no saved language is asked for one, and the choice is sent with the booking', async () => {
+  const { render, calls, patchDraft } = dialog({ mode: 'create', dateStr: '2099-09-15', time: '10:00' }, {
+    create: async () => ({ success: true, appointmentId: 'new' }),
+  });
+  render();
+  patchDraft({ picked: { ...MEI, preferredLocale: null } });
+  let nodes = render();
+  const language = nodes.find((node) => node.props.id === 'appt-customer-locale');
+  assert.ok(language, 'the language select is offered');
+  assert.equal(language.props.value, 'en-GB', 'English unless the admin changes it');
+  assert.match(text(nodes), /no saved email language yet/);
+  (language.props.onChange as (event: unknown) => void)({ target: { value: 'zh-HK' } });
+  nodes = render();
+
+  await (submitButton(nodes).props.onClick as () => Promise<void>)();
+  assert.deepEqual(calls[0].customer, { kind: 'existing', userId: 'user-9' });
+  assert.equal(calls[0].customerLocale, 'zh-HK');
+});
+
+test('a customer on file with a saved language is shown it and never asked', async () => {
+  const { render, calls, patchDraft } = dialog({ mode: 'create', dateStr: '2099-09-15', time: '10:00' }, {
+    create: async () => ({ success: true, appointmentId: 'new' }),
+  });
+  render();
+  patchDraft({ picked: { ...MEI, preferredLocale: 'zh-HK' }, customerLocale: 'en-GB' });
+  const nodes = render();
+  assert.equal(nodes.find((node) => node.props.id === 'appt-customer-locale'), undefined);
+  assert.match(text(nodes), /Emails go out in 繁體中文/);
+
+  await (submitButton(nodes).props.onClick as () => Promise<void>)();
+  assert.equal(calls[0].customerLocale, undefined, 'their own saved language is used, not the dialog\'s');
 });

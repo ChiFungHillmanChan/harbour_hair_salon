@@ -163,6 +163,10 @@ export function AppointmentDialog({
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
+  // A customer's own saved email language always wins; the dialog asks only
+  // when none is on file (a new walk-in, or an account without one yet).
+  const savedLocale = picked && isLocale(picked.preferredLocale) ? picked.preferredLocale : null;
+
   const needle = customerQuery.trim();
   const searchable = !isEdit && !picked && needle.length >= 2;
   const matches = results.query === needle ? results.rows : [];
@@ -241,7 +245,7 @@ export function AppointmentDialog({
         notifyCustomer,
         overrideClashes,
         expectedQuote: expectedQuote(),
-        ...(customer.kind === 'new' ? { customerLocale } : {}),
+        ...(savedLocale ? {} : { customerLocale }),
       });
       if (result.success) return saved();
       if ('clashes' in result) return setClashes(result.clashes);
@@ -302,6 +306,23 @@ export function AppointmentDialog({
     ? (shownPrice && !shownPrice.known ? t('dialog.price.unknownHelp') : null)
     : isEdit ? t('dialog.price.changeHelp') : null;
 
+  const languageField = savedLocale ? (
+    <p className="mt-2 text-xs text-zinc-500">{t('dialog.emailLanguageSaved', { language: LOCALE_LABEL[savedLocale] })}</p>
+  ) : (
+    <div className="mt-3">
+      <label className={labelClass} htmlFor="appt-customer-locale">{t('dialog.emailLanguage')}</label>
+      <select
+        id="appt-customer-locale"
+        className={inputClass}
+        value={customerLocale}
+        onChange={(event) => { if (isLocale(event.target.value)) update({ customerLocale: event.target.value }); }}
+      >
+        {LOCALES.map((option) => <option key={option} value={option} lang={option}>{LOCALE_LABEL[option]}</option>)}
+      </select>
+      <p className="mt-1 text-xs text-zinc-500">{picked ? t('dialog.emailLanguageUnsetHelp') : t('dialog.emailLanguageHelp')}</p>
+    </div>
+  );
+
   const title = isEdit ? t('dialog.editTitle') : t('dialog.newTitle');
   const submitLabel = saving
     ? t('dialog.saving')
@@ -359,15 +380,18 @@ export function AppointmentDialog({
             <fieldset>
               <legend className={labelClass}>{t('dialog.customer')}</legend>
               {picked ? (
-                <div className="flex items-center justify-between rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm">
-                  <span>
-                    <span className="font-medium text-zinc-900">{picked.name ?? t('appointment.customerFallback')}</span>
-                    {picked.phone && <span className="ml-2 text-zinc-500">{picked.phone}</span>}
-                  </span>
-                  <button type="button" onClick={() => update({ picked: null, customerQuery: '' })} className="text-xs font-medium text-zinc-600 underline">
-                    {t('dialog.change')}
-                  </button>
-                </div>
+                <>
+                  <div className="flex items-center justify-between rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm">
+                    <span>
+                      <span className="font-medium text-zinc-900">{picked.name ?? t('appointment.customerFallback')}</span>
+                      {picked.phone && <span className="ml-2 text-zinc-500">{picked.phone}</span>}
+                    </span>
+                    <button type="button" onClick={() => update({ picked: null, customerQuery: '' })} className="text-xs font-medium text-zinc-600 underline">
+                      {t('dialog.change')}
+                    </button>
+                  </div>
+                  {languageField}
+                </>
               ) : (
                 <>
                   <input
@@ -394,18 +418,7 @@ export function AppointmentDialog({
                     <input className={inputClass} type="email" placeholder={t('dialog.emailPlaceholder')} aria-label={t('dialog.emailPlaceholder')} value={email} onChange={(event) => update({ email: event.target.value })} />
                   </div>
                   <p className="mt-1 text-xs text-zinc-500">{t('dialog.noEmailHelp')}</p>
-                  <div className="mt-3">
-                    <label className={labelClass} htmlFor="appt-customer-locale">{t('dialog.emailLanguage')}</label>
-                    <select
-                      id="appt-customer-locale"
-                      className={inputClass}
-                      value={customerLocale}
-                      onChange={(event) => { if (isLocale(event.target.value)) update({ customerLocale: event.target.value }); }}
-                    >
-                      {LOCALES.map((option) => <option key={option} value={option} lang={option}>{LOCALE_LABEL[option]}</option>)}
-                    </select>
-                    <p className="mt-1 text-xs text-zinc-500">{t('dialog.emailLanguageHelp')}</p>
-                  </div>
+                  {languageField}
                 </>
               )}
             </fieldset>

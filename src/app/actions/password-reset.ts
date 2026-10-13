@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { headers } from 'next/headers';
 import prisma from '@/app/lib/prisma';
 import { fitsBcryptLimit, hashPassword } from '@/app/lib/password';
-import { accountRateLimitKey, passwordResetAccountLimiter, passwordResetLimiter } from '@/app/lib/rate-limit';
+import { accountRateLimitKey, emailSendDailyLimiter, passwordResetAccountLimiter, passwordResetLimiter } from '@/app/lib/rate-limit';
 import { sendPasswordReset } from '@/app/services/email-service';
 import { appendAuditEvent } from '@/app/lib/audit';
 import {
@@ -72,6 +72,14 @@ export async function requestPasswordReset(
   const parsed = requestSchema.safeParse({ email: formData.get('email') });
   if (!parsed.success) {
     return { status: 'error', message: issueText(t, parsed.error.issues) };
+  }
+
+  // This client's daily email budget, shared with registration and
+  // verification resends. Spent by every valid request, before the lookup and
+  // for every address alike, so the answer never says whether an account
+  // exists — and a client past it cannot drain other accounts' budgets below.
+  if (!(await emailSendDailyLimiter.check(ip))) {
+    return { status: 'error', message: t('errors.EMAIL_DAILY_LIMIT') };
   }
 
   // Each request emails the account and retires its previous link, so the

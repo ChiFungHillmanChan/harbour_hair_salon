@@ -52,6 +52,7 @@ const auth = {
     submitting: 'Signing in...',
     noAccount: "Don't have an account?",
     register: 'Register here',
+    privacy: 'How we use your details: see our <link>privacy policy</link>.',
   },
   register: {
     title: 'Create Account',
@@ -69,6 +70,7 @@ const auth = {
     haveAccount: 'Already have an account?',
     signIn: 'Sign in',
     recover: 'Recover access by email',
+    privacy: 'We use your details to run your account and bookings. See our <link>privacy policy</link>.',
   },
   forgot: {
     title: 'Forgot your password?',
@@ -134,6 +136,12 @@ const auth = {
     },
   },
   verifyEmail: {
+    /** The page the emailed link opens: nothing is confirmed until the button is pressed. */
+    confirmTitle: 'Confirm your email address',
+    confirmBody: 'Press the button to confirm that {email} is your email address.',
+    confirm: 'Confirm my email',
+    confirming: 'Confirming…',
+    CONFIRM_FAILED: 'We could not confirm your email address just now. Please try again in a moment.',
     verifiedTitle: 'Email address confirmed',
     verifiedBody: 'Thank you — your email address is confirmed. You can now book online.',
     bookNow: 'Book an appointment',
@@ -163,6 +171,7 @@ const auth = {
     PHONE_TOO_LONG: 'Phone number must be 20 characters or fewer.',
     LOGIN_RATE_LIMITED: 'Too many login attempts. Please try again in 15 minutes.',
     REGISTER_RATE_LIMITED: 'Too many registration attempts. Please try again in 15 minutes.',
+    EMAIL_DAILY_LIMIT: 'Too many emails have been requested from your connection today. Please try again tomorrow, or call the salon.',
     INCORRECT_CREDENTIALS: 'Incorrect email or password. Please try again.',
     ALREADY_REGISTERED: 'This email is already registered. Please sign in or use Forgot password to verify your email and recover access.',
     USE_GOOGLE: 'This email is already registered with Google. Please use "Continue with Google" to sign in.',

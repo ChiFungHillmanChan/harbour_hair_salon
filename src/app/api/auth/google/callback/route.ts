@@ -68,6 +68,9 @@ export async function GET(request: NextRequest) {
       getGoogleCallbackUrl(request.nextUrl.origin)
     );
     const profile = await verifyGoogleIdToken(idToken, state.nonce);
+    // The language of the page sign-in started from: also the language of mail
+    // the salon later sends on this customer's behalf (e.g. a booking staff enter).
+    const signInLocale = state.locale ?? locale;
 
     const user = await prisma.$transaction(async (tx) => {
       const linkedAccount = await tx.oAuthAccount.findUnique({
@@ -90,7 +93,7 @@ export async function GET(request: NextRequest) {
 
       if (!matchedUser) {
         matchedUser = await tx.user.create({
-          data: { email: profile.email, name: profile.name, role: 'USER' },
+          data: { email: profile.email, name: profile.name, role: 'USER', preferredLocale: signInLocale },
         });
       } else if (decision.kind === 'LINK') {
         // Linking Google to an existing customer. If that row already has a
@@ -125,10 +128,17 @@ export async function GET(request: NextRequest) {
       return matchedUser;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
+    if (!user.preferredLocale) {
+      // An existing account with no language saved yet (made before languages
+      // were recorded): fill the gap, never overwrite a saved one. Best effort —
+      // a preference must never fail a sign-in.
+      await prisma.user.updateMany({ where: { id: user.id, preferredLocale: null }, data: { preferredLocale: signInLocale } })
+        .catch((localeError) => console.error('Could not save the sign-in language:', localeError));
+    }
     await appendAuditEvent({ actorUserId: user.id, action: 'AUTH.LOGIN', targetType: 'User', targetId: user.id, metadata: { method: 'google' } });
     // Google is the only factor for an admin too — see lib/session.ts.
     await createSession(user.id, user.role, user.sessionVersion, true);
-    const destination = postSignInPath(state.locale ?? locale, state.redirectTo, user.role);
+    const destination = postSignInPath(signInLocale, state.redirectTo, user.role);
     const response = NextResponse.redirect(new URL(destination, request.url));
     response.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, '', {
       ...getGoogleOAuthStateCookieOptions(),

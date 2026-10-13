@@ -10,6 +10,7 @@ import {
   readEmailVerificationToken,
 } from '../lib/email-verification';
 import { translator } from '../../i18n/messages';
+import { localizeHref } from '../../i18n/paths';
 
 function withSecret(t: TestContext) {
   const prior = process.env.SESSION_SECRET;
@@ -63,54 +64,163 @@ test('an address counts as proven by a used link, a redeemed reset or a linked G
   assert.equal(hasVerifiedEmail({ emailVerifiedAt: null, oauthAccounts: [{ provider: 'google' }] }), true);
 });
 
-function routeFixture(user: { id: string; email: string; emailVerifiedAt: Date | null } | null) {
-  const calls = { updates: 0, audits: [] as string[] };
+/** Anything that touches it fails the test: opening a link must not reach the database. */
+function untouchable(name: string): unknown {
+  return new Proxy({}, {
+    get: (_target, property) => {
+      // Module interop probes these while importing; using the module is what counts.
+      if (property === '__esModule' || property === 'then' || typeof property === 'symbol') return undefined;
+      throw new Error(`${name}.${String(property)} was used`);
+    },
+  });
+}
+
+/** The address emailed links have always used. It may only forward, never verify. */
+function linkFixture() {
   const route = loadServerModule<typeof import('../api/auth/verify-email/route')>('src/app/api/auth/verify-email/route.ts', {
-    '@/app/lib/prisma': { user: {
+    '@/app/lib/prisma': untouchable('prisma'),
+    '@/app/lib/audit': untouchable('audit'),
+    '@/i18n/request': { getRequestLocale: async () => 'en-GB' },
+  });
+  return async (token: string) => {
+    const response = await route.GET(new NextRequest(`https://salon.example/api/auth/verify-email?token=${encodeURIComponent(token)}`));
+    const location = new URL(response.headers.get('location')!);
+    return { path: location.pathname, token: location.searchParams.get('token'), status: location.searchParams.get('status') };
+  };
+}
+
+test('opening an emailed link confirms nothing: it forwards to the confirm page in the link\'s language', async (t) => {
+  withSecret(t);
+  const open = linkFixture();
+  const token = await createEmailVerificationToken(customer, 'zh-HK');
+  // A mail scanner may fetch it any number of times; the database is never touched.
+  for (let i = 0; i < 3; i++) {
+    assert.deepEqual(await open(token), { path: '/zh-hk/auth/verify-email/confirm', token, status: null });
+  }
+});
+
+test('a forged link is sent to the "not valid" page without any database work', async (t) => {
+  withSecret(t);
+  assert.deepEqual(await linkFixture()('not-a-token'), { path: '/auth/verify-email', token: null, status: 'invalid' });
+});
+
+type FixtureAccount = { id: string; email: string; emailVerifiedAt: Date | null };
+
+/** The confirm page's button: the only thing that records the proof. */
+function confirmFixture(user: FixtureAccount | null, options: { allowed?: boolean; locale?: 'en-GB' | 'zh-HK'; failWrite?: boolean; noDatabase?: boolean } = {}) {
+  const calls = { writes: 0, audits: [] as string[], limiterKeys: [] as string[] };
+  const tx = {
+    user: {
       updateMany: async ({ where, data }: { where: { id: string; email: string; emailVerifiedAt: null }; data: { emailVerifiedAt: Date } }) => {
-        calls.updates++;
+        if (options.failWrite) throw new Error('database unavailable');
         if (!user || user.id !== where.id || user.email !== where.email || user.emailVerifiedAt !== null) return { count: 0 };
+        calls.writes++;
         user.emailVerifiedAt = data.emailVerifiedAt;
         return { count: 1 };
       },
-      findUnique: async () => (user ? { email: user.email, emailVerifiedAt: user.emailVerifiedAt } : null),
-    } },
-    '@/app/lib/audit': { appendAuditEvent: async ({ action }: { action: string }) => { calls.audits.push(action); } },
-    '@/i18n/request': { getRequestLocale: async () => 'en-GB' },
-  });
-  const open = async (token: string) => {
-    const response = await route.GET(new NextRequest(`https://salon.example/api/auth/verify-email?token=${encodeURIComponent(token)}`));
-    const location = new URL(response.headers.get('location')!);
-    return `${location.pathname}${location.search}`;
+    },
   };
-  return { open, calls, user };
+  const db = {
+    user: { ...tx.user, findUnique: async () => (user ? { email: user.email, emailVerifiedAt: user.emailVerifiedAt } : null) },
+    $transaction: async (run: (client: typeof tx) => Promise<unknown>) => run(tx),
+  };
+  const locale = options.locale ?? 'en-GB';
+  const actions = loadServerModule<typeof import('./email-verification')>('src/app/actions/email-verification.ts', {
+    '@/app/lib/prisma': options.noDatabase ? untouchable('prisma') : db,
+    '@/app/lib/audit': {
+      appendAuditEvent: async ({ action }: { action: string }, client: unknown) => {
+        assert.equal(client, tx, 'recorded in the same transaction as the proof');
+        calls.audits.push(action);
+      },
+    },
+    '@/app/lib/session': {},
+    'next/headers': { headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.9' }) },
+    'next/navigation': { redirect: (path: string) => { throw new Error(`redirect:${path}`); } },
+    '@/app/lib/rate-limit': {
+      createRateLimiter: ({ prefix }: { prefix: string }) => ({
+        check: async (key: string) => { calls.limiterKeys.push(`${prefix}|${key}`); return prefix !== 'rl:verify-email-confirm' || (options.allowed ?? true); },
+      }),
+      emailSendDailyLimiter: { check: async () => true },
+    },
+    '@/app/services/email-service': {},
+    '@/i18n/request': {
+      getActionT: async (namespace: 'auth') => translator(locale, namespace),
+      localizedPath: async (path: string) => localizeHref(locale, path),
+    },
+  });
+  /** The redirect target, or the state the form shows. */
+  const confirm = async (token: string | null) => {
+    const form = new FormData();
+    if (token !== null) form.set('token', token);
+    try {
+      return await actions.confirmEmailVerification({ status: 'idle' }, form);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('redirect:')) return error.message.slice('redirect:'.length);
+      throw error;
+    }
+  };
+  return { confirm, calls, user };
 }
 
-test('the emailed link confirms the address once, in the language it was sent in', async (t) => {
+test('the confirm button records the address exactly once; pressing it again just shows "confirmed"', async (t) => {
   withSecret(t);
-  const f = routeFixture({ ...customer, emailVerifiedAt: null });
+  const f = confirmFixture({ ...customer, emailVerifiedAt: null }, { locale: 'zh-HK' });
   const token = await createEmailVerificationToken(customer, 'zh-HK');
-  assert.equal(await f.open(token), '/zh-hk/auth/verify-email?status=verified');
-  assert.ok(f.user!.emailVerifiedAt);
+  assert.equal(await f.confirm(token), '/zh-hk/auth/verify-email?status=verified');
+  const confirmedAt = f.user!.emailVerifiedAt;
+  assert.ok(confirmedAt);
   assert.deepEqual(f.calls.audits, ['AUTH.EMAIL_VERIFIED']);
-  // A mail scanner opening it again still lands on "confirmed", and writes nothing.
-  assert.equal(await f.open(token), '/zh-hk/auth/verify-email?status=verified');
+
+  // A used link: same outcome, nothing written or audited again.
+  assert.equal(await f.confirm(token), '/zh-hk/auth/verify-email?status=verified');
+  assert.equal(f.calls.writes, 1);
+  assert.equal(f.user!.emailVerifiedAt, confirmedAt);
   assert.deepEqual(f.calls.audits, ['AUTH.EMAIL_VERIFIED']);
+  assert.ok(f.calls.limiterKeys.every((key) => key === 'rl:verify-email-confirm|203.0.113.9'), 'limited per client address');
+});
+
+test('an expired link proves nothing and touches no account', async (t) => {
+  withSecret(t);
+  const { createHmac } = await import('node:crypto');
+  const key = createHmac('sha256', process.env.SESSION_SECRET!).update('email-verification').digest();
+  const expired = await new SignJWT({ purpose: 'email-verification', email: customer.email, locale: 'en-GB' })
+    .setProtectedHeader({ alg: 'HS256' }).setSubject(customer.id).setExpirationTime(Math.floor(Date.now() / 1000) - 60).sign(key);
+  const f = confirmFixture({ ...customer, emailVerifiedAt: null }, { noDatabase: true });
+  assert.equal(await f.confirm(expired), '/auth/verify-email?status=invalid');
+  assert.equal(f.user!.emailVerifiedAt, null);
+  assert.deepEqual(f.calls.audits, []);
 });
 
 test('a link for an address the account no longer has proves nothing', async (t) => {
   withSecret(t);
-  const f = routeFixture({ ...customer, email: 'new-address@example.invalid', emailVerifiedAt: null });
+  const f = confirmFixture({ ...customer, email: 'new-address@example.invalid', emailVerifiedAt: null });
   const token = await createEmailVerificationToken(customer, 'en-GB');
-  assert.equal(await f.open(token), '/auth/verify-email?status=invalid');
+  assert.equal(await f.confirm(token), '/auth/verify-email?status=invalid');
   assert.equal(f.user!.emailVerifiedAt, null);
 });
 
-test('a forged link is refused before any database work', async (t) => {
+for (const [label, token] of [['a forged', 'not-a-token'], ['an empty', ''], ['a missing', null]] as const) {
+  test(`${label} token is refused before any database work`, async (t) => {
+    withSecret(t);
+    const f = confirmFixture({ ...customer, emailVerifiedAt: null }, { noDatabase: true });
+    assert.equal(await f.confirm(token), '/auth/verify-email?status=invalid');
+    assert.equal(f.user!.emailVerifiedAt, null);
+  });
+}
+
+test('a client that keeps pressing is limited, and nothing is recorded', async (t) => {
   withSecret(t);
-  const f = routeFixture({ ...customer, emailVerifiedAt: null });
-  assert.equal(await f.open('not-a-token'), '/auth/verify-email?status=invalid');
-  assert.equal(f.calls.updates, 0);
+  const f = confirmFixture({ ...customer, emailVerifiedAt: null }, { allowed: false, noDatabase: true });
+  const result = await f.confirm(await createEmailVerificationToken(customer, 'en-GB'));
+  assert.deepEqual(result, { status: 'error', message: translator('en-GB', 'auth')('verifyEmail.RATE_LIMITED') });
+  assert.equal(f.user!.emailVerifiedAt, null);
+});
+
+test('a database failure asks the customer to try again instead of calling the link invalid', async (t) => {
+  withSecret(t);
+  const f = confirmFixture({ ...customer, emailVerifiedAt: null }, { failWrite: true });
+  const result = await f.confirm(await createEmailVerificationToken(customer, 'en-GB'));
+  assert.deepEqual(result, { status: 'error', message: translator('en-GB', 'auth')('verifyEmail.CONFIRM_FAILED') });
 });
 
 function resendFixture(user: { emailVerifiedAt: Date | null; oauthAccounts: { provider: string }[] }, allowed = true) {
@@ -118,7 +228,10 @@ function resendFixture(user: { emailVerifiedAt: Date | null; oauthAccounts: { pr
   const actions = loadServerModule<typeof import('./email-verification')>('src/app/actions/email-verification.ts', {
     '@/app/lib/prisma': { user: { findUnique: async () => ({ ...customer, ...user }) } },
     '@/app/lib/session': { verifySession: async () => ({ userId: customer.id, role: 'USER' }) },
-    '@/app/lib/rate-limit': { createRateLimiter: () => ({ check: async () => allowed }) },
+    'next/headers': { headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.5' }) },
+    'next/navigation': { redirect: (path: string) => { throw new Error(`redirect:${path}`); } },
+    '@/app/lib/audit': {},
+    '@/app/lib/rate-limit': { createRateLimiter: () => ({ check: async () => allowed }), emailSendDailyLimiter: { check: async () => true } },
     '@/app/services/email-service': { sendEmailVerification: async (to: { email: string }) => { sent.push(to.email); } },
   });
   return { resend: () => actions.resendVerificationEmail(), sent };
@@ -164,7 +277,7 @@ test('registering sends the confirmation link after the response', async () => {
     'next/headers': { headers: async () => new Headers() },
     'next/server': { after: (callback: () => unknown) => callback() },
     'next/navigation': { redirect: (path: string) => { throw new Error(`redirect:${path}`); } },
-    '@/app/lib/rate-limit': { registerLimiter: { check: async () => true } },
+    '@/app/lib/rate-limit': { registerLimiter: { check: async () => true }, emailSendDailyLimiter: { check: async () => true } },
     '@/app/services/email-service': { sendEmailVerification: async (user: { email: string }, locale: string) => { sent.push({ email: user.email, locale }); } },
   });
   const form = new FormData();

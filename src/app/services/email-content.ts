@@ -251,9 +251,9 @@ export function appointmentEmailContent(
 }
 
 /**
- * The link that proves an account receives mail at its address. It opens an
- * API route, not a page: the route records the proof, then sends the visitor
- * on in the language carried inside the signed token.
+ * The link that proves an account receives mail at its address. It opens the
+ * confirm page in the mail's language, where a button records the proof:
+ * opening the link alone changes nothing, so mail scanners cannot confirm it.
  */
 export function emailVerificationContent(token: string, expiresInHours: number, locale: Locale): EmailContent {
   const t = translator(locale, 'emails');
@@ -268,7 +268,7 @@ export function emailVerificationContent(token: string, expiresInHours: number, 
     greeting: t('common.greetingNoName'),
     intro: t('emailVerification.intro'),
     details: [],
-    cta: { label: t('emailVerification.cta'), href: `${SITE_URL}/api/auth/verify-email?token=${encodeURIComponent(token)}` },
+    cta: { label: t('emailVerification.cta'), href: `${url(locale, '/auth/verify-email/confirm')}?token=${encodeURIComponent(token)}` },
     footnotes: [t('emailVerification.expiry', { hours: expiresInHours }), t('emailVerification.ignore')],
     address: t('common.address'),
   };

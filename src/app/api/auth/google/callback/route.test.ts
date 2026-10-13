@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { loadServerModule } from '../../../../../test/load-server-module';
 import { decideGoogleLink, isGoogleAuthoritativeEmail, type GoogleProfile } from '../../../../lib/google-oauth';
 
-type FixtureUser = { id: string; email: string; name: string | null; role: string; password: string | null; sessionVersion: number };
+type FixtureUser = { id: string; email: string; name: string | null; role: string; password: string | null; sessionVersion: number; preferredLocale?: string | null };
 
 /**
  * The real callback and link policy; only Google's network calls and the
@@ -12,10 +12,17 @@ type FixtureUser = { id: string; email: string; name: string | null; role: strin
  * would carry — the attack needs no forged signature, only a Google account
  * whose third-party email Google once verified.
  */
-function callbackFixture(profile: Omit<GoogleProfile, 'emailAuthoritative'>, users: FixtureUser[], linked: { providerAccountId: string; userId: string }[] = []) {
+function callbackFixture(
+  profile: Omit<GoogleProfile, 'emailAuthoritative'>,
+  users: FixtureUser[],
+  linked: { providerAccountId: string; userId: string }[] = [],
+  /** The language of the page sign-in started from, as the signed state carries it. */
+  stateLocale?: 'en-GB' | 'zh-HK',
+) {
   const resetTokens = users.map((user) => ({ userId: user.id, usedAt: null as Date | null }));
   const sessions: { userId: string; role: string }[] = [];
   const audits: { action: string; targetId?: string | null; metadata?: Record<string, unknown> }[] = [];
+  let localeWrites = 0;
   const tx = {
     oAuthAccount: {
       findUnique: async ({ where }: { where: { provider_providerAccountId: { providerAccountId: string } } }) => {
@@ -38,6 +45,13 @@ function callbackFixture(profile: Omit<GoogleProfile, 'emailAuthoritative'>, use
         if (data.sessionVersion) user.sessionVersion += data.sessionVersion.increment;
         return { ...user };
       },
+      updateMany: async ({ where, data }: { where: { id: string; preferredLocale: null }; data: { preferredLocale: string } }) => {
+        const user = users.find((row) => row.id === where.id && !row.preferredLocale);
+        if (!user) return { count: 0 };
+        user.preferredLocale = data.preferredLocale;
+        localeWrites++;
+        return { count: 1 };
+      },
     },
     passwordResetToken: {
       deleteMany: async ({ where }: { where: { userId: string; usedAt: null } }) => {
@@ -56,7 +70,7 @@ function callbackFixture(profile: Omit<GoogleProfile, 'emailAuthoritative'>, use
       getGoogleOAuthStateCookieOptions: () => ({ httpOnly: true, path: '/api/auth/google' }),
       getGoogleCallbackUrl: () => 'https://salon.example/api/auth/google/callback',
       readGoogleStateLocale: async () => null,
-      readGoogleState: async () => ({ state: 's', nonce: 'n', codeVerifier: 'v', redirectTo: '/appointments' }),
+      readGoogleState: async () => ({ state: 's', nonce: 'n', codeVerifier: 'v', redirectTo: '/appointments', ...(stateLocale ? { locale: stateLocale } : {}) }),
       exchangeGoogleCode: async () => 'signed-id-token',
       verifyGoogleIdToken: async () => ({ ...profile, emailAuthoritative: isGoogleAuthoritativeEmail(profile.email, undefined) }),
       decideGoogleLink,
@@ -67,7 +81,7 @@ function callbackFixture(profile: Omit<GoogleProfile, 'emailAuthoritative'>, use
     const response = await route.GET(new NextRequest('https://salon.example/api/auth/google/callback?code=c&state=s', { headers: { cookie: 'google_oauth_state=signed' } }));
     return new URL(response.headers.get('location')!);
   };
-  return { run, users, linked, resetTokens, sessions, audits };
+  return { run, users, linked, resetTokens, sessions, audits, localeWrites: () => localeWrites };
 }
 
 const admin = (): FixtureUser => ({ id: 'admin-1', email: 'owner@outlook.example', name: 'Owner', role: 'ADMIN', password: 'admin-hash', sessionVersion: 3 });
@@ -128,4 +142,48 @@ test('an identity already linked by Google id keeps signing in, whatever its add
   assert.equal(location.pathname, '/admin');
   assert.deepEqual(f.sessions, [{ userId: 'admin-1', role: 'ADMIN' }]);
   assert.equal(f.users[0].password, 'admin-hash');
+});
+
+// The language of the page sign-in started from is the language of the mail
+// the salon later sends on the customer's behalf (see customer-language.test.ts).
+
+test('an account Google creates keeps the language the sign-in started from', async () => {
+  const f = callbackFixture({ id: 'google-sub-new', email: 'mei@gmail.com', name: 'Mei' }, [], [], 'zh-HK');
+  const location = await f.run();
+  assert.equal(location.pathname, '/zh-hk/appointments');
+  assert.equal(f.users[0].preferredLocale, 'zh-HK');
+  assert.equal(f.localeWrites(), 0, 'saved as part of creating the account');
+});
+
+test('signing in to, or linking, an account with no saved language fills it in', async () => {
+  const signIn = callbackFixture(
+    { id: 'google-sub-linked', email: 'mei@gmail.com', name: 'Mei' },
+    [{ id: 'user-1', email: 'mei@gmail.com', name: 'Mei', role: 'USER', password: null, sessionVersion: 0, preferredLocale: null }],
+    [{ providerAccountId: 'google-sub-linked', userId: 'user-1' }],
+    'zh-HK',
+  );
+  await signIn.run();
+  assert.equal(signIn.users[0].preferredLocale, 'zh-HK');
+
+  const link = callbackFixture(
+    { id: 'google-sub-2', email: 'client@gmail.com', name: 'Client' },
+    [{ id: 'user-2', email: 'client@gmail.com', name: 'Client', role: 'USER', password: 'hash', sessionVersion: 0, preferredLocale: null }],
+    [],
+    'en-GB',
+  );
+  await link.run();
+  assert.equal(link.linked.length, 1);
+  assert.equal(link.users[0].preferredLocale, 'en-GB');
+});
+
+test('a language the customer already saved is never overwritten by a Google sign-in', async () => {
+  const f = callbackFixture(
+    { id: 'google-sub-linked', email: 'mei@gmail.com', name: 'Mei' },
+    [{ id: 'user-1', email: 'mei@gmail.com', name: 'Mei', role: 'USER', password: null, sessionVersion: 0, preferredLocale: 'en-GB' }],
+    [{ providerAccountId: 'google-sub-linked', userId: 'user-1' }],
+    'zh-HK',
+  );
+  await f.run();
+  assert.equal(f.users[0].preferredLocale, 'en-GB');
+  assert.equal(f.localeWrites(), 0);
 });
