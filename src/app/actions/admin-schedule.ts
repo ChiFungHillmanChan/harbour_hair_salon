@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
 import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, User } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { runSerializableWithRetry } from '@/app/services/booking-service';
@@ -306,8 +306,10 @@ const createSchema = z.object({
   /** The price the dialog showed for the chosen service/option. */
   expectedQuote: expectedQuoteSchema.optional(),
   /**
-   * Email language for a NEW customer (an existing customer's own preference,
-   * or English, is used otherwise). Never the admin's interface language.
+   * Email language the admin chose for a customer with none saved — a new
+   * walk-in, or one on file whose account has no language yet. It is saved on
+   * the account. A customer's own saved language always wins; with neither,
+   * English. Never the admin's interface language.
    */
   customerLocale: z.string().optional(),
 });
@@ -355,7 +357,8 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
       if (!stylist) throw new BookingError('STYLIST_NOT_FOUND');
       if (!stylist.isActive) throw new BookingError('STYLIST_RETIRED_ADMIN');
 
-      const user = await resolveCustomer(tx, customer, isLocale(customerLocale) ? customerLocale : null);
+      const chosenLocale = isLocale(customerLocale) ? customerLocale : null;
+      const user = await resolveCustomer(tx, customer, chosenLocale);
 
       const clashes = await describeAdminMoveClashes(tx, {
         // No row to exclude yet; '' never matches a cuid.
@@ -381,7 +384,7 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
           priceAtBooking: penceToDecimalString(quote.amountPence),
           quoteJson: serializeQuote(quote),
           // The CUSTOMER's language for their mail, never the admin's screen.
-          notificationLocale: user.preferredLocale ?? 'en-GB',
+          notificationLocale: user.preferredLocale ?? chosenLocale ?? 'en-GB',
           durationAtBooking: durationMin,
           notes: notes.trim() || null,
           treatwellSyncStatus: initialTreatwellSyncStatus({
@@ -430,24 +433,17 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
 async function resolveCustomer(
   tx: Prisma.TransactionClient,
   customer: z.infer<typeof customerSchema>,
-  newCustomerLocale: Locale | null,
+  chosenLocale: Locale | null,
 ): Promise<{ id: string; email: string; preferredLocale: string | null }> {
   if (customer.kind === 'existing') {
-    const existing = await tx.user.findUnique({ where: { id: customer.userId }, select: { id: true, email: true, preferredLocale: true } });
+    const existing = await tx.user.findUnique({ where: { id: customer.userId }, select: { id: true, email: true, role: true, preferredLocale: true } });
     if (!existing) throw new BookingError('CUSTOMER_GONE');
-    return existing;
+    return fillCustomerGaps(tx, existing, { locale: chosenLocale });
   }
 
   if (customer.email) {
     const existing = await tx.user.findUnique({ where: { email: customer.email }, select: { id: true, email: true, role: true, phone: true, preferredLocale: true } });
-    if (existing) {
-      // Fill a blank phone number in, but never overwrite what the customer
-      // themselves set, and never edit an administrator's record.
-      if (customer.phone && !existing.phone && existing.role !== 'ADMIN') {
-        await tx.user.update({ where: { id: existing.id }, data: { phone: customer.phone } });
-      }
-      return { id: existing.id, email: existing.email, preferredLocale: existing.preferredLocale };
-    }
+    if (existing) return fillCustomerGaps(tx, existing, { phone: customer.phone, locale: chosenLocale });
   }
 
   return tx.user.create({
@@ -457,13 +453,36 @@ async function resolveCustomer(
       email: customer.email || placeholderEmailFor(randomUUID()),
       name: customer.name,
       phone: customer.phone || null,
-      preferredLocale: newCustomerLocale,
+      preferredLocale: chosenLocale,
     },
     select: { id: true, email: true, preferredLocale: true },
   });
 }
 
-export type AdminCustomerMatch = { id: string; name: string | null; email: string; phone: string | null };
+/**
+ * Fill in a blank phone number or email language on a customer already on
+ * file, in one write. Never overwrites what the customer themselves set, and
+ * never edits an administrator's record.
+ */
+async function fillCustomerGaps(
+  tx: Prisma.TransactionClient,
+  row: Pick<User, 'id' | 'email' | 'role' | 'preferredLocale'> & { phone?: string | null },
+  fill: { phone?: string; locale: Locale | null },
+): Promise<{ id: string; email: string; preferredLocale: string | null }> {
+  const editable = row.role !== 'ADMIN';
+  const phone = editable && !row.phone && fill.phone ? fill.phone : null;
+  const preferredLocale = editable && !row.preferredLocale ? fill.locale : null;
+  if (phone || preferredLocale) {
+    await tx.user.update({
+      where: { id: row.id },
+      data: { ...(phone ? { phone } : {}), ...(preferredLocale ? { preferredLocale } : {}) },
+    });
+  }
+  return { id: row.id, email: row.email, preferredLocale: row.preferredLocale ?? preferredLocale };
+}
+
+/** `preferredLocale` lets the booking dialog ask for a language only when none is saved. */
+export type AdminCustomerMatch = Pick<User, 'id' | 'name' | 'email' | 'phone' | 'preferredLocale'>;
 
 /**
  * Type-ahead over the salon's customers for the booking form.
@@ -483,7 +502,7 @@ export async function searchAdminCustomers(query: string): Promise<AdminCustomer
 
   const candidates = await prisma.user.findMany({
     where: { role: 'USER' },
-    select: { id: true, name: true, email: true, phone: true, createdAt: true },
+    select: { id: true, name: true, email: true, phone: true, preferredLocale: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
     take: 2000,
   });
@@ -494,7 +513,7 @@ export async function searchAdminCustomers(query: string): Promise<AdminCustomer
         .some((field) => field?.toLowerCase().includes(needle)),
     )
     .slice(0, 8)
-    .map(({ id, name, email, phone }) => ({ id, name, email, phone }));
+    .map(({ id, name, email, phone, preferredLocale }) => ({ id, name, email, phone, preferredLocale }));
 }
 
 function revalidateSchedule() {

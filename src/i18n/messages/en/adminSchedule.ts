@@ -140,6 +140,8 @@ const adminSchedule = {
     noEmailHelp: 'No email is fine — a phone or WhatsApp booking is saved without one, and no email is sent.',
     emailLanguage: 'Customer email language',
     emailLanguageHelp: 'Used for this customer’s booking emails. A customer already on file keeps the language saved on their account.',
+    emailLanguageUnsetHelp: 'This customer has no saved email language yet. Your choice is used for this booking and saved on their account.',
+    emailLanguageSaved: 'Emails go out in {language}, the language saved on this customer’s account.',
     service: 'Service',
     option: '{label} ({duration}, {price})',
     retiredOption: '{label} — not offered for new bookings',

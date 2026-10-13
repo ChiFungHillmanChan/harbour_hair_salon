@@ -151,6 +151,9 @@ export async function register(prevState: unknown, formData: FormData) {
         name,
         phone,
         role: 'USER',
+        // The language they signed up in: mail the salon later sends on their
+        // behalf (e.g. a booking staff enter for them) uses it.
+        preferredLocale: t.locale,
       },
     });
   } catch (error) {

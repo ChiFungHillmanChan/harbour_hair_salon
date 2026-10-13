@@ -288,7 +288,7 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
   // A request holds a real slot and emails the address on the account, and
   // registering needs no mailbox: without this, throwaway accounts could each
   // hold their full allowance of slots. See lib/email-verification.ts.
-  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: EMAIL_VERIFICATION_SELECT });
+  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: { ...EMAIL_VERIFICATION_SELECT, preferredLocale: true } });
   if (!account || !hasVerifiedEmail(account)) {
     return failure(locale, 'EMAIL_NOT_VERIFIED');
   }
@@ -420,13 +420,15 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
     after(async () => {
       await dispatchAppointmentNotifications(appointment.id);
       // Remember the language for mail the salon later sends on the customer's
-      // behalf (e.g. a booking an administrator enters for them). Best effort
-      // and after the response: the booking already records its own language,
-      // so this can never turn a made booking into an error.
-      try {
-        await prisma.user.update({ where: { id: session.userId }, data: { preferredLocale: locale } });
-      } catch {
-        // Preference only.
+      // behalf (e.g. a booking an administrator enters for them) — only when it
+      // changed. Best effort and after the response: the booking already records
+      // its own language, so this can never turn a made booking into an error.
+      if (account.preferredLocale !== locale) {
+        try {
+          await prisma.user.update({ where: { id: session.userId }, data: { preferredLocale: locale } });
+        } catch {
+          // Preference only.
+        }
       }
     });
     revalidateAllLocales(revalidatePath, '/book');

@@ -138,6 +138,8 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     noEmailHelp: '沒有電郵亦可以——電話或 WhatsApp 預約可以不填電郵儲存，系統不會發出電郵。',
     emailLanguage: '顧客電郵語言',
     emailLanguageHelp: '用於此顧客的預約電郵。已有記錄的顧客會沿用其帳戶已儲存的語言。',
+    emailLanguageUnsetHelp: '此顧客尚未儲存電郵語言。你的選擇會用於這次預約，並儲存到其帳戶。',
+    emailLanguageSaved: '電郵會以{language}發送，即此顧客帳戶已儲存的語言。',
     service: '服務',
     option: '{label}（{duration}，{price}）',
     retiredOption: '{label}——已停止接受新預約',
