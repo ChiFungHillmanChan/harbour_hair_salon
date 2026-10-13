@@ -50,6 +50,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     checking: '正在檢查日曆…',
     decline: '拒絕',
     declineConfirm: '確定拒絕此預約申請？顧客需要重新預約。',
+    expired: '時間已過，無法再確認',
   },
   rescheduleRequests: {
     stat: '改期申請',
@@ -73,6 +74,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     stylist: '髮型師：{name}',
     edit: '編輯預約',
     markCompleted: '標示為已完成',
+    markCompletedConfirm: '確定將{customer}的預約標示為已完成？此操作無法復原。',
     updateFailed: '更新失敗',
   },
   year: {
@@ -138,6 +140,8 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     noEmailHelp: '沒有電郵亦可以——電話或 WhatsApp 預約可以不填電郵儲存，系統不會發出電郵。',
     emailLanguage: '顧客電郵語言',
     emailLanguageHelp: '用於此顧客的預約電郵。已有記錄的顧客會沿用其帳戶已儲存的語言。',
+    emailLanguageUnsetHelp: '此顧客尚未儲存電郵語言。你的選擇會用於這次預約，並儲存到其帳戶。',
+    emailLanguageSaved: '電郵會以{language}發送，即此顧客帳戶已儲存的語言。',
     service: '服務',
     option: '{label}（{duration}，{price}）',
     retiredOption: '{label}——已停止接受新預約',

@@ -10,6 +10,8 @@ import { loadContentStatus } from '@/app/services/admin-content-status';
 import { getActionT } from '@/i18n/request';
 import { getT } from '@/i18n/server';
 import { rich } from '@/i18n/rich';
+import { adminFacingMessage } from '@/app/lib/admin-notice';
+import { describeFault } from '@/app/lib/fault';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,9 +31,9 @@ async function deleteStylistRow(id: string): Promise<RowActionResult> {
     await deleteStylist(formData);
   } catch (error) {
     unstable_rethrow(error);
-    console.error('deleteStylist failed:', error);
+    console.error('deleteStylist failed:', describeFault(error));
     const t = await getActionT('adminContent');
-    return { error: error instanceof Error ? error.message : t('stylists.list.deleteFailed') };
+    return { error: adminFacingMessage(error, t('stylists.list.deleteFailed')) };
   }
 
   return { success: true };

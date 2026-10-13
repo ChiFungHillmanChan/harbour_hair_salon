@@ -67,6 +67,15 @@ const emails: Localized<Messages['emails']> = {
     cta: '查看我的申請',
     footnote: '你可隨時在「我的預約」撤回此申請。費用於店內繳付，接受現金及信用卡。',
   },
+  requestLapsed: {
+    subject: '未能確認你的預約申請 — Harbour Hair Salon',
+    preview: '我們未能及時確認你{date}的{service}預約申請',
+    eyebrow: '申請未獲確認',
+    title: '我們未能及時確認你的申請。',
+    intro: '很抱歉，我們未能在{date} {time}之前確認你的預約申請，申請現已結束。請致電本店或另約時間。',
+    cta: '另約時間',
+    footnote: '如你已與本店另行約定時間，請忽略此電郵。',
+  },
   cancellation: {
     subject: '你的預約已取消 — Harbour Hair Salon',
     preview: '你的預約已取消——{date}的{service}',
@@ -108,6 +117,14 @@ const emails: Localized<Messages['emails']> = {
     intro: '多謝你光臨 Harbour Hair Salon。我們很想知道你對今次服務的感受，只需一分鐘。',
     cta: '留下評價',
     footnote: '你的意見有助我們照顧好每一位客人。',
+  },
+  calendar: {
+    title: '{service}｜Harbour Hair Salon',
+    details: '髮型師：{stylist}\n查看或更改預約：{url}',
+    addToGoogle: '加入 Google 日曆',
+    attached: '此電郵附有日曆檔案（.ics），開啟後即可將預約加入 Apple 日曆、Outlook 或其他日曆應用程式。',
+    moved: '如你已將原定時間加入日曆，請刪除該項目，再加入新的時間。',
+    cancelled: '如你已將此預約加入日曆，請將其刪除——開啟附上的檔案（.ics）或可自動為你刪除。',
   },
   salonAlert: {
     subject: '有新預約申請 — Harbour Hair Salon',

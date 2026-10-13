@@ -48,6 +48,7 @@ test('a passwordless guest receives an ownership-proof reset link without creati
     '@/app/lib/rate-limit': {
       passwordResetLimiter: { check: async () => true },
       passwordResetAccountLimiter: { check: async () => true },
+      emailSendDailyLimiter: { check: async () => true },
       accountRateLimitKey: (email: string) => email,
     },
     '@/app/services/email-service': { sendPasswordReset: async (_user: unknown, token: string) => { sentToken = token; } },

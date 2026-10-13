@@ -1,7 +1,7 @@
 import { requireAdmin } from '@/app/lib/session';
 import Link from '@/i18n/link';
 import prisma from '@/app/lib/prisma';
-import { getSiteSettings } from '@/app/services/site-settings-service';
+import { getSiteSettingsForEditing } from '@/app/services/site-settings-service';
 import { getEditorState } from '@/app/services/content/drafts';
 import { SiteSettingsForm } from '@/components/admin/SiteSettingsForm';
 import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  const [settings, t] = await Promise.all([getSiteSettings(), getT('adminContent')]);
+  // The live row, not the day-long public cache: Save writes every field back.
+  const [settings, t] = await Promise.all([getSiteSettingsForEditing(), getT('adminContent')]);
   // The settings row is created on first read above; if the database was
   // unreachable the hero editor is left out rather than failing the page.
   const hero = await prisma.$transaction((tx) => getEditorState(tx, 'SITE_SETTINGS', 'singleton')).catch((error: unknown) => {

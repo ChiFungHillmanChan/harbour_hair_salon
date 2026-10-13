@@ -7,6 +7,8 @@ import { SITE_URL } from '@/app/lib/site-url';
 import { formatGBP, toPence } from './pricing/money';
 import type { PriceNature, PriceType, VatDisplay } from './pricing/policy';
 import { salonRelativeDay } from './salon-time';
+import { appointmentCalendarEvent } from './appointment-calendar';
+import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod, type IcsOrganizer } from '@/app/lib/calendar-links';
 
 /**
  * What an email may say about a booking's price. Built from the booking's own
@@ -44,7 +46,7 @@ export function toEmailAppointment(input: LegacyEmailAppointment | EmailAppointm
 }
 
 export type AppointmentEmailKind = 'REQUEST_RECEIVED' | 'SALON_ALERT' | 'CONFIRMATION' | 'CANCELLATION' | 'RESCHEDULE' | 'REMINDER' | 'REVIEW_REQUEST'
-  | 'RESCHEDULE_REQUEST_RECEIVED' | 'SALON_RESCHEDULE_ALERT' | 'RESCHEDULE_DECLINED' | 'RESCHEDULE_LAPSED';
+  | 'RESCHEDULE_REQUEST_RECEIVED' | 'SALON_RESCHEDULE_ALERT' | 'RESCHEDULE_DECLINED' | 'RESCHEDULE_LAPSED' | 'REQUEST_LAPSED';
 
 /** Kinds addressed to the salon (its address and language), never the customer. */
 export function isSalonEmailKind(kind: AppointmentEmailKind): boolean {
@@ -56,8 +58,8 @@ export const RESCHEDULE_REQUEST_EMAIL_KINDS: readonly AppointmentEmailKind[] = [
 
 export type EmailContent = {
   locale: Locale;
-  /** 'brand' keeps the confirmation mail's existing colour scheme; everything else is monochrome. */
-  palette: 'ink' | 'brand';
+  /** Every mail uses the monochrome salon look (client requirement: no blue or gold). */
+  palette: 'ink';
   subject: string;
   preview: string;
   eyebrow: string;
@@ -67,6 +69,8 @@ export type EmailContent = {
   details: { label: string; value: string }[];
   callout?: { title: string; body: string };
   cta?: { label: string; href: string };
+  /** Smaller text links under the button (e.g. "Add to Google Calendar"). */
+  links?: { label: string; href: string }[];
   footnotes: string[];
   reference?: string;
   address: string;
@@ -85,7 +89,63 @@ export function describeEmailPrice(price: EmailPrice, locale: Locale): string {
   return parts.join(' · ');
 }
 
-export type AppointmentEmailOptions = { salonPhone?: string; oldDate?: Date; requestedDate?: Date; now?: Date };
+export type AppointmentEmailOptions = {
+  salonPhone?: string; oldDate?: Date; requestedDate?: Date; now?: Date;
+  /** The appointment's notificationVersion when the event was queued: the calendar entry's SEQUENCE. */
+  sequence?: number;
+  /**
+   * CANCELLATION only: whether the booking had been confirmed when it was
+   * cancelled. A request nobody confirmed was never offered to the customer's
+   * calendar, so its cancellation carries no calendar file and no "remove it"
+   * note. Undefined — mail queued before this was recorded — counts as confirmed.
+   */
+  wasConfirmed?: boolean;
+};
+
+/**
+ * The calendar file a customer email carries. A confirmed time (confirmation,
+ * approved move, reminder) adds or updates the customer's own calendar entry;
+ * a confirmed booking's cancellation removes it. Never for a request that is
+ * not confirmed yet — nor for its cancellation (`wasConfirmed: false`) — nor
+ * for staff mail.
+ */
+export function calendarMethodFor(kind: AppointmentEmailKind, options: Pick<AppointmentEmailOptions, 'wasConfirmed'> = {}): IcsMethod | null {
+  switch (kind) {
+    case 'CONFIRMATION':
+    case 'RESCHEDULE':
+    case 'REMINDER':
+      return 'PUBLISH';
+    case 'CANCELLATION':
+      return options.wasConfirmed === false ? null : 'CANCEL';
+    default:
+      return null;
+  }
+}
+
+/** Built at dispatch from the queued snapshot alone: no database read. */
+function calendarEventFor(appointment: EmailAppointment, locale: Locale, options: AppointmentEmailOptions) {
+  return appointmentCalendarEvent({
+    id: appointment.id, date: appointment.date, durationMinutes: appointment.service.duration,
+    serviceName: appointment.service.name, stylistName: appointment.stylist.name, sequence: options.sequence ?? 0,
+  }, locale);
+}
+
+/**
+ * The .ics attachment for an appointment email, or null when the kind carries
+ * none (see calendarMethodFor). `organizer`: the sender (email-service.ts).
+ */
+export function appointmentCalendarFile(
+  kind: AppointmentEmailKind,
+  appointment: EmailAppointment,
+  locale: Locale,
+  options: AppointmentEmailOptions = {},
+  organizer?: IcsOrganizer,
+): { filename: string; method: IcsMethod; ics: string } | null {
+  const method = calendarMethodFor(kind, options);
+  if (!method) return null;
+  const event = calendarEventFor(appointment, locale, options);
+  return { filename: event.filename, method, ics: appointmentIcsFile(event, method, options.now, organizer) };
+}
 
 /** The words of every appointment email, in one language, from one place (HTML and plain text share them). */
 export function appointmentEmailContent(
@@ -95,6 +155,9 @@ export function appointmentEmailContent(
   options: AppointmentEmailOptions = {},
 ): EmailContent {
   const t = translator(locale, 'emails');
+  // A confirmed time can go straight into the customer's Google Calendar; the
+  // attached file (email-service) covers every other calendar app.
+  const calendarLinks = () => [{ label: t('calendar.addToGoogle'), href: appointmentGoogleCalendarUrl(calendarEventFor(appointment, locale, options)) }];
   const date = formatSalonLongDate(locale, appointment.date);
   const time = formatSalonClock(locale, appointment.date);
   const reference = appointment.id.slice(-8).toUpperCase();
@@ -109,14 +172,15 @@ export function appointmentEmailContent(
   switch (kind) {
     case 'CONFIRMATION':
       return {
-        ...base, palette: 'brand',
+        ...base,
         subject: t('confirmation.subject'),
         preview: t('confirmation.preview', { service, date }),
         eyebrow: t('confirmation.eyebrow'), title: t('confirmation.title'), intro: t('confirmation.intro'),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration), labels('price', price)],
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('confirmation.cta'), href: url(locale, '/appointments') },
-        footnotes: [t('confirmation.footnote')],
+        links: calendarLinks(),
+        footnotes: [t('confirmation.footnote'), t('calendar.attached')],
       };
     case 'REQUEST_RECEIVED':
       return {
@@ -130,6 +194,19 @@ export function appointmentEmailContent(
         footnotes: [t('request.footnote')],
         reference: t('common.referenceShort', { reference }),
       };
+    case 'REQUEST_LAPSED':
+      // A booking request nobody confirmed before its time came (pending-request-lapse.ts).
+      return {
+        ...base,
+        subject: t('requestLapsed.subject'),
+        preview: t('requestLapsed.preview', { service, date }),
+        eyebrow: t('requestLapsed.eyebrow'), title: t('requestLapsed.title'), intro: t('requestLapsed.intro', { date, time }),
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('requestedDate', date), labels('requestedTime', time)],
+        callout: options.salonPhone ? { title: t('rescheduleAnotherTime.calloutTitle'), body: t('rescheduleAnotherTime.calloutBody', { phone: options.salonPhone }) } : undefined,
+        cta: { label: t('requestLapsed.cta'), href: url(locale, '/book') },
+        footnotes: [t('requestLapsed.footnote')],
+        reference: t('common.referenceShort', { reference }),
+      };
     case 'CANCELLATION':
       return {
         ...base,
@@ -138,7 +215,9 @@ export function appointmentEmailContent(
         eyebrow: t('cancellation.eyebrow'), title: t('cancellation.title'), intro: t('cancellation.intro'),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time)],
         cta: { label: t('cancellation.cta'), href: url(locale, '/book') },
-        footnotes: [t('cancellation.footnote')],
+        // A Google link can only add; the attached CANCEL file removes the entry
+        // elsewhere. A request never confirmed is in no calendar: nothing to remove.
+        footnotes: [...(calendarMethodFor(kind, options) ? [t('calendar.cancelled')] : []), t('cancellation.footnote')],
       };
     case 'RESCHEDULE': {
       if (!options.oldDate) throw new Error('Reschedule notification requires the original date');
@@ -155,7 +234,8 @@ export function appointmentEmailContent(
         eyebrow: t('reschedule.eyebrow'), title: t('reschedule.title'), intro: t('reschedule.intro', { previous }),
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('previousDate', previous)],
         cta: { label: t('reschedule.cta'), href: url(locale, '/appointments') },
-        footnotes: [...requestNote, t('reschedule.footnote')],
+        links: calendarLinks(),
+        footnotes: [...requestNote, t('reschedule.footnote'), t('calendar.moved'), t('calendar.attached')],
       };
     }
     case 'REMINDER': {
@@ -170,7 +250,8 @@ export function appointmentEmailContent(
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration)],
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('reminder.cta'), href: url(locale, '/appointments') },
-        footnotes: [t('reminder.footnote')],
+        links: calendarLinks(),
+        footnotes: [t('reminder.footnote'), t('calendar.attached')],
       };
     }
     case 'REVIEW_REQUEST':
@@ -251,9 +332,9 @@ export function appointmentEmailContent(
 }
 
 /**
- * The link that proves an account receives mail at its address. It opens an
- * API route, not a page: the route records the proof, then sends the visitor
- * on in the language carried inside the signed token.
+ * The link that proves an account receives mail at its address. It opens the
+ * confirm page in the mail's language, where a button records the proof:
+ * opening the link alone changes nothing, so mail scanners cannot confirm it.
  */
 export function emailVerificationContent(token: string, expiresInHours: number, locale: Locale): EmailContent {
   const t = translator(locale, 'emails');
@@ -268,7 +349,7 @@ export function emailVerificationContent(token: string, expiresInHours: number, 
     greeting: t('common.greetingNoName'),
     intro: t('emailVerification.intro'),
     details: [],
-    cta: { label: t('emailVerification.cta'), href: `${SITE_URL}/api/auth/verify-email?token=${encodeURIComponent(token)}` },
+    cta: { label: t('emailVerification.cta'), href: `${url(locale, '/auth/verify-email/confirm')}?token=${encodeURIComponent(token)}` },
     footnotes: [t('emailVerification.expiry', { hours: expiresInHours }), t('emailVerification.ignore')],
     address: t('common.address'),
   };
@@ -333,6 +414,7 @@ export function renderPlainText(content: EmailContent): string {
     '',
     ...(content.callout ? [`${content.callout.title}: ${content.callout.body}`, ''] : []),
     ...(content.cta ? [`${content.cta.label}: ${content.cta.href}`, ''] : []),
+    ...(content.links?.length ? [...content.links.map((link) => `${link.label}: ${link.href}`), ''] : []),
     ...content.footnotes,
     '',
     `${t('labels.location')}: ${content.address}`,

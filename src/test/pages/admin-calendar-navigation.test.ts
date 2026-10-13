@@ -30,14 +30,17 @@ async function renderCalendar(query: Query, rows: Row[] = []) {
     '@/app/lib/prisma': { __esModule: true, getDatabaseProvider: () => 'postgresql', default: {
       appointment: {
         findMany: async ({ where }: { where: { date?: Record<string, Date>; status?: string } }) => {
-          if (where.date) dateQueries.push(where.date);
+          // Records the calendar's period queries (the pending queue's "not yet started" filter is not one).
+          if (where.date?.gte) dateQueries.push(where.date);
           return rows.filter((row) => (!where.status || row.status === where.status) &&
             (!where.date?.gte || row.date >= where.date.gte) &&
+            (!where.date?.gt || row.date > where.date.gt) &&
             (!where.date?.lte || row.date <= where.date.lte) &&
             (!where.date?.lt || row.date < where.date.lt)).map((row) => ({ ...row, updatedAt: row.date, stylistId: 'stylist', durationAtBooking: 30, priceAtBooking: 50, user: { name: 'Customer', email: 'customer@example.test' }, service: { name: 'Cut', duration: 30, price: 50, calendarColor: null }, stylist: { name: 'Stylist', calendarColor: null } }));
         },
         groupBy: async () => [],
-        count: async () => rows.filter(row => row.status === 'PENDING').length,
+        count: async ({ where }: { where: { status: string; date?: { gt: Date } } }) =>
+          rows.filter(row => row.status === where.status && (!where.date?.gt || row.date > where.date.gt)).length,
       },
       $queryRaw: async () => [Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`month${i}`, rows.filter(row => row.date.getUTCFullYear() === Number(String(query.date).slice(0, 4)) && row.date.getUTCMonth() === i).length]))],
       stylist: { findMany: async () => [] },
@@ -77,15 +80,24 @@ test('year navigation counts bookings in January and December without loading de
   assert.deepEqual(result.dateQueries, []);
 });
 
-test('the pending queue includes all outstanding requests regardless of the selected period', async () => {
+test('the pending queue includes every request that can still be answered, regardless of the selected period', async () => {
   const result = await renderCalendar({ date: '2020-01-15', view: 'month' }, [
+    // Its time came and went unanswered: it can no longer be confirmed, so it
+    // leaves the queue (the notifications cron closes it).
     { id: 'old-request', date: new Date('2021-02-01T10:00:00Z'), status: 'PENDING' },
     { id: 'future-request', date: new Date('2099-12-01T10:00:00Z'), status: 'PENDING' },
+    { id: 'next-request', date: new Date('2099-12-08T10:00:00Z'), status: 'PENDING' },
     { id: 'confirmed', date: new Date('2099-12-02T10:00:00Z'), status: 'CONFIRMED' },
   ]);
-  assert.deepEqual((result.props.pendingAppointments as Row[] | undefined)?.map((row) => row.id), ['old-request', 'future-request']);
+  assert.deepEqual((result.props.pendingAppointments as Row[] | undefined)?.map((row) => row.id), ['future-request', 'next-request']);
   const pendingCard = elements(result.rendered).find((element) => elements(element.props.children).some((child) => child.props.children === 'Awaiting Confirmation') && elements(element.props.children).some((child) => child.props.children === 2));
-  assert.ok(pendingCard, 'the pending count must also include both requests outside the selected period');
+  assert.ok(pendingCard, 'the pending count must also include both requests outside the selected period, and only those');
+});
+
+test('a request whose time has passed stays on the calendar itself', async () => {
+  const result = await renderCalendar({ date: '2021-02-01', view: 'day' }, [{ id: 'old-request', date: new Date('2021-02-01T10:00:00Z'), status: 'PENDING' }]);
+  assert.deepEqual((result.props.appointments as Row[]).map((row) => row.id), ['old-request']);
+  assert.deepEqual(result.props.pendingAppointments, []);
 });
 
 test('day query follows the 23-hour London day when British Summer Time begins', async () => {
@@ -112,7 +124,7 @@ test('invalid and duplicate query parameters fall back to a valid salon date and
   }
 });
 
-function renderClient(dateStr: string, view: string, pendingAppointments: Record<string, unknown>[] = []) {
+function renderClient(dateStr: string, view: string, pendingAppointments: Record<string, unknown>[] = [], appointments: Record<string, unknown>[] = []) {
   const urls: string[] = [];
   const statuses: string[][] = [];
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
@@ -129,8 +141,93 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': { updateAppointmentStatus: async (id: string, status: string) => { statuses.push([id, status]); return { success: true }; } },
   });
-  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments: [], pendingAppointments, rescheduleRequests: [], stylists: [], busyBlocks: [] }), urls, statuses };
+  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments, pendingAppointments, rescheduleRequests: [], stylists: [], busyBlocks: [] }), urls, statuses };
 }
+
+/** A board row (CalendarAppointment) for the client renderer. */
+function boardAppointment(id: string, status: string, date: string) {
+  return {
+    id, status, date, stylistId: 'stylist', serviceId: 'service', updatedAt: date, durationAtBooking: 60, notes: null,
+    rescheduleRequestedDate: null, rescheduleRequestedAt: null, price: { known: false },
+    user: { id: `user-${id}`, name: `Customer ${id}`, email: null },
+    stylist: { name: 'Stylist', calendarColor: null }, service: { name: 'Cut', duration: 60, calendarColor: null },
+  };
+}
+
+/** Runs a client handler that uses window.confirm, answering `answer`. */
+async function withConfirm(answer: boolean, run: () => unknown) {
+  const previous = (globalThis as { window?: unknown }).window;
+  const asked: string[] = [];
+  (globalThis as { window?: unknown }).window = { confirm: (message: string) => { asked.push(message); return answer; } };
+  try {
+    await run();
+    await new Promise((resolve) => setImmediate(resolve)); // let the status action settle
+  } finally {
+    (globalThis as { window?: unknown }).window = previous;
+  }
+  return asked;
+}
+
+const byName = (nodes: Element[], name: string) => nodes.filter((element) => typeof element.type === 'function' && element.type.name === name);
+const run = (element: Element) => (element.type as (props: Record<string, unknown>) => unknown)(element.props);
+
+test('Mark completed is offered only once a confirmed booking has started, and asks before completing it', async (t) => {
+  // 12:00Z is 13:00 in London (BST) on 16 September.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-16T12:00:00Z') });
+  const { rendered, statuses } = renderClient('2026-09-16', 'month', [], [
+    boardAppointment('started', 'CONFIRMED', '2026-09-16T11:30:00.000Z'),
+    boardAppointment('later', 'CONFIRMED', '2026-09-16T14:00:00.000Z'),
+    boardAppointment('done', 'COMPLETED', '2026-09-16T09:00:00.000Z'),
+  ]);
+  const controls = byName(elements(rendered), 'MarkCompletedButton');
+  assert.deepEqual(controls.map((element) => element.props.apptId), ['started'], 'a booking still ahead (or already completed) has no completion control');
+  const button = elements(run(controls[0]))[0];
+  assert.equal(button.props.children, 'Mark completed');
+
+  const declined = await withConfirm(false, () => (button.props.onClick as () => unknown)());
+  assert.deepEqual(declined, ['Mark Customer started’s appointment as completed? This cannot be undone.']);
+  assert.deepEqual(statuses, [], 'nothing changes unless the admin confirms');
+
+  await withConfirm(true, () => (button.props.onClick as () => unknown)());
+  assert.deepEqual(statuses, [['started', 'COMPLETED']]);
+});
+
+test('a booking request whose time has come offers Decline but not Confirm', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-16T12:00:00Z') });
+  const { rendered } = renderClient('2026-09-16', 'month', [], [
+    boardAppointment('lapsing', 'PENDING', '2026-09-16T11:00:00.000Z'),
+    boardAppointment('open', 'PENDING', '2026-09-16T15:00:00.000Z'),
+  ]);
+  const actions = byName(elements(rendered), 'PendingActions');
+  assert.deepEqual(actions.map((element) => [element.props.apptId, element.props.started]), [['lapsing', true], ['open', false]]);
+  const labels = (element: Element) => elements(run(element)).filter((node) => node.type === 'button').map((node) => node.props.children);
+  assert.deepEqual(labels(actions[0]), ['Decline']);
+  assert.ok(elements(run(actions[0])).some((node) => node.props.children === 'Time passed — can no longer be confirmed'));
+  assert.deepEqual(labels(actions[1]), ['Confirm booking', 'Decline']);
+});
+
+// The lapse step leaves a request open until its appointment ends, because the
+// customer may be in the chair (often a staff pencil-in): staff can record the
+// visit as completed instead of leaving it to be cancelled.
+test('a booking request whose time has come can be marked completed, on the month list and the phone day list', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-16T12:00:00Z') });
+  const rows = [
+    boardAppointment('in-the-chair', 'PENDING', '2026-09-16T11:30:00.000Z'),
+    boardAppointment('open', 'PENDING', '2026-09-16T15:00:00.000Z'),
+    boardAppointment('declined', 'CANCELLED', '2026-09-16T11:00:00.000Z'),
+  ];
+  const month = renderClient('2026-09-16', 'month', [], rows);
+  const monthControls = byName(elements(month.rendered), 'MarkCompletedButton');
+  assert.deepEqual(monthControls.map((element) => element.props.apptId), ['in-the-chair']);
+  const button = elements(run(monthControls[0]))[0];
+  await withConfirm(true, () => (button.props.onClick as () => unknown)());
+  assert.deepEqual(month.statuses, [['in-the-chair', 'COMPLETED']]);
+
+  const day = renderClient('2026-09-16', 'day', [], rows);
+  const [list] = byName(elements(day.rendered), 'DayView');
+  assert.ok(list, 'the phone day list is rendered');
+  assert.deepEqual(byName(elements(run(list)), 'MarkCompletedButton').map((element) => element.props.apptId), ['in-the-chair']);
+});
 
 test('calendar arrows request another server-loaded month via the URL', () => {
   const { rendered, urls } = renderClient('2026-12-01', 'month');
@@ -170,7 +267,9 @@ test('day and year arrows preserve their requested view in the server URL', () =
   }
 });
 
-test('an outstanding request outside the current month can be opened and approved from the global queue', async () => {
+test('an outstanding request outside the current month can be opened and approved from the global queue', async (t) => {
+  // A request can only be approved before its time, so pin "now" ahead of it.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-16T12:00:00Z') });
   const { rendered, urls, statuses } = renderClient('2026-09-16', 'month', [{
     id: 'future-request', date: new Date('2026-11-30T10:00:00Z'), status: 'PENDING',
     user: { name: 'Future Customer' }, stylist: { name: 'Stylist' }, service: { name: 'Cut' },

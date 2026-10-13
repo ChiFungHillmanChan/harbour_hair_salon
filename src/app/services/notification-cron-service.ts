@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { enqueueAppointmentNotification, dispatchPendingNotifications } from './notification-outbox-service';
 import { lapseExpiredRescheduleRequests } from './reschedule-request-lapse';
+import { lapseStartedPendingRequests } from './pending-request-lapse';
 import { reminderWindowEnd, reviewWindow } from '@/app/api/cron/reminders/reminder-window';
 
 type EnqueueCursors = { REMINDER: string | null; REVIEW_REQUEST: string | null };
@@ -56,6 +57,15 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
       console.error('Reschedule-request lapse step failed:', error instanceof Error ? error.name : 'unknown');
       lapse = { lapsed: 0, failed: 1 };
     }
+    // Booking requests nobody confirmed before their time came: close them the
+    // same way, also before this run's dispatch, and just as non-blocking.
+    let requestLapse = { lapsed: 0, failed: 0 };
+    try {
+      requestLapse = await lapseStartedPendingRequests(now);
+    } catch (error) {
+      console.error('Booking-request lapse step failed:', error instanceof Error ? error.name : 'unknown');
+      requestLapse = { lapsed: 0, failed: 1 };
+    }
     const { start, end } = reviewWindow(now);
     let queued = 0;
     let scanned = 0;
@@ -97,7 +107,10 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
     }
     // Newly inserted rows become due after discovery began; use a fresh cutoff.
     const delivery = await dispatchPendingNotifications({ budgetMs: Math.max(0, 45_000 - (Date.now() - started)), limit: 30 });
-    const result = { queued, scanned, lapsed: lapse.lapsed, lapseFailed: lapse.failed, ...delivery, deferred: delivery.deferred + deferred, durationMs: Date.now() - started };
+    const result = {
+      queued, scanned, lapsed: lapse.lapsed, lapseFailed: lapse.failed, requestsLapsed: requestLapse.lapsed, requestLapseFailed: requestLapse.failed,
+      ...delivery, deferred: delivery.deferred + deferred, durationMs: Date.now() - started,
+    };
     await prisma.backgroundJobState.update({ where: { name }, data: {
       ...(delivery.failed ? { lastFailedAt: new Date(), lastError: 'Some notifications failed; inspect the notification queue.' } : { lastSucceededAt: new Date(), lastError: null }),
       lastResultJson: JSON.stringify(result),

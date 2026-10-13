@@ -1,13 +1,15 @@
-// Which third-party booking marketplaces are live, derived from the URLs the
-// salon has filled in under Admin -> Site Settings. Pure and dependency-free so
-// both callers can share one definition:
+// Which third-party booking marketplaces the site ADVERTISES, derived from the
+// URLs the salon has filled in under Admin -> Site Settings. Pure and
+// dependency-free so its callers share one definition:
 //
-//   - /book renders a CTA per active marketplace while booking is closed
-//   - the readiness gate treats "no active marketplace" as nothing to reconcile
+//   - /book renders a CTA per advertised marketplace while booking is closed
+//   - the home page's booking quick links do the same
 //
-// Deriving this from the URLs (rather than a separate flag) means clearing
-// Treatwell's URL in the admin panel both removes the dead button AND clears
-// the double-booking warning — one lever, no deploy, no migration.
+// Display only. It says nothing about double-booking safety: the online-booking
+// readiness gate (integration-readiness.ts) checks each stylist's calendar
+// connections with receivesBookings = true, and ignores these URLs. Clearing a
+// URL here hides the button; it does not stop that marketplace selling slots —
+// a channel that still takes bookings must keep (or gain) a working feed.
 
 export type MarketplaceLink = { name: string; url: string };
 

@@ -53,7 +53,7 @@ const home: Localized<Messages['home']> = {
   },
   visit: {
     title: '歡迎到訪及關注我們',
-    body: '歡迎光臨我們位於列斯市中心的店舖，經 Treatwell 預約，或於 Instagram 關注我們。',
+    body: '歡迎光臨我們位於列斯市中心的店舖，預約下次到訪，或於 Instagram 關注我們。',
     bookOnTreatwell: '於 Treatwell 預約',
     directions: '路線及 Google 評價',
   },

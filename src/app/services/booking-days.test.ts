@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildBookingDays, type WorkingHours } from './booking-days';
 import { resolveSalonDateTime } from './salon-time';
+import { meetsMinimumNotice } from '../lib/booking-constants';
 import type { BookedInterval } from './scheduling';
 
 const NOW = new Date('2026-10-01T00:00:00Z');
@@ -15,9 +16,9 @@ const block = (fromDate: string, fromTime: string, toDate: string, toTime: strin
 const weekdays = (days: number[], startTime = '10:15', endTime = '19:00'): WorkingHours[] =>
   days.map((dayOfWeek) => ({ dayOfWeek, startTime, endTime }));
 
-function days(dates: string[], hours: Record<string, WorkingHours[]>, busy: Record<string, BookedInterval[]> = {}, duration = 60, now = NOW, bookable: (start: Date, duration: number) => boolean = always) {
+function days(dates: string[], hours: Record<string, WorkingHours[]>, busy: Record<string, BookedInterval[]> = {}, duration = 60, now = NOW, bookable: (start: Date, duration: number) => boolean = always, requestable?: (start: Date) => boolean) {
   return buildBookingDays({
-    dates, duration, now, bookable,
+    dates, duration, now, bookable, requestable,
     hoursByStylist: new Map(Object.entries(hours)),
     busyByStylist: new Map(Object.entries(busy)),
   });
@@ -94,4 +95,45 @@ test('a day whose times have all passed is Unavailable', () => {
 test('times the booking horizon refuses are left out, not greyed', () => {
   const [day] = days(['2026-10-05'], { lox: weekdays([1], '10:00', '11:00') }, {}, 30, NOW, (start) => start < at('2026-10-05', '10:30'));
   assert.deepEqual(day.slots, [{ time: '10:00', available: true }]);
+});
+
+// Online requests need MIN_BOOKING_NOTICE_MINUTES (two hours) of notice. A time
+// inside that period stays on the grid, greyed like a taken one.
+const withNotice = (now: Date) => (start: Date) => meetsMinimumNotice(start, now);
+
+test('times inside the online notice period stay on the grid but cannot be picked (BST, Sat 24 Oct 2026)', () => {
+  // 08:30Z is 09:30 BST, so 11:30 BST (10:30Z) is the first time two hours away.
+  const now = new Date('2026-10-24T08:30:00Z');
+  const [day] = days(['2026-10-24'], { ivan: weekdays([6], '10:00', '13:00') }, {}, 60, now, always, withNotice(now));
+  assert.equal(day.status, 'OPEN');
+  assert.deepEqual(day.slots, [
+    { time: '10:00', available: false }, { time: '10:30', available: false }, { time: '11:00', available: false },
+    { time: '11:30', available: true }, { time: '12:00', available: true },
+  ]);
+});
+
+test('the notice period follows the clock change (GMT, Sun 25 Oct 2026)', () => {
+  // 08:30Z is 08:30 GMT now, so 10:30 is the first time two hours away.
+  const now = new Date('2026-10-25T08:30:00Z');
+  const [day] = days(['2026-10-25'], { ivan: weekdays([0], '10:00', '12:00') }, {}, 60, now, always, withNotice(now));
+  assert.deepEqual(day.slots, [{ time: '10:00', available: false }, { time: '10:30', available: true }, { time: '11:00', available: true }]);
+});
+
+test('a day whose remaining times are all inside the notice period is Unavailable', () => {
+  const now = new Date('2026-10-24T16:30:00Z'); // 17:30 BST; the last 60-minute start is 18:00
+  const [day] = days(['2026-10-24'], { ivan: weekdays([6], '10:00', '19:00') }, {}, 60, now, always, withNotice(now));
+  assert.equal(day.status, 'UNAVAILABLE');
+  assert.deepEqual(day.slots, []);
+});
+
+test('Anyone: a time too soon for one stylist is too soon for all of them', () => {
+  const now = new Date('2026-10-24T08:30:00Z');
+  const [day] = days(['2026-10-24'], { a: weekdays([6], '10:00', '12:00'), b: weekdays([6], '11:00', '13:00') }, {}, 60, now, always, withNotice(now));
+  assert.deepEqual(day.slots.filter((slot) => slot.available).map((slot) => slot.time), ['11:30', '12:00']);
+});
+
+test('later days are untouched by the notice period', () => {
+  const now = new Date('2026-10-24T08:30:00Z');
+  const [day] = days(['2026-10-26'], { ivan: weekdays([1], '10:00', '11:00') }, {}, 30, now, always, withNotice(now));
+  assert.ok(day.slots.every((slot) => slot.available));
 });

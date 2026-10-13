@@ -7,7 +7,7 @@ import { fitsBcryptLimit, hashPassword, verifyPassword } from '@/app/lib/passwor
 import { createSession, deleteSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { accountRateLimitKey, loginAccountLimiter, loginLimiter, registerLimiter } from '@/app/lib/rate-limit';
+import { accountRateLimitKey, emailSendDailyLimiter, loginAccountLimiter, loginLimiter, registerLimiter } from '@/app/lib/rate-limit';
 import { postSignInPath } from '@/app/lib/post-auth-redirect';
 import { isRecognisedLoginDevice, rememberLoginDevice } from '@/app/lib/login-device';
 import { decideRegistration } from '@/app/lib/register-gate';
@@ -134,6 +134,12 @@ export async function register(prevState: unknown, formData: FormData) {
     return { error: t(`errors.${decision.code}`) };
   }
 
+  // Every new account is emailed a confirmation link: spend this client's
+  // daily email budget (shared with resends and reset requests) only now.
+  if (!(await emailSendDailyLimiter.check(ip))) {
+    return { error: t('errors.EMAIL_DAILY_LIMIT') };
+  }
+
   const hashedPassword = await hashPassword(password);
 
   let user;
@@ -145,6 +151,9 @@ export async function register(prevState: unknown, formData: FormData) {
         name,
         phone,
         role: 'USER',
+        // The language they signed up in: mail the salon later sends on their
+        // behalf (e.g. a booking staff enter for them) uses it.
+        preferredLocale: t.locale,
       },
     });
   } catch (error) {

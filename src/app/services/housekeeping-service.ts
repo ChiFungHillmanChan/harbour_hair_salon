@@ -5,6 +5,8 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 const DAY_MS = 86_400_000;
 const BATCH_SIZE = 250;
 const LEASE_MS = 5 * 60_000;
+/** Six years (privacy notice: "the record of account events: up to 6 years"). */
+export const AUDIT_RETENTION_DAYS = 6 * 365 + 2;
 
 /** Independent of email delivery. Every phase is bounded and rechecks eligibility on mutation. */
 export async function runHousekeeping(options: { db?: PrismaClient; now?: Date } = {}) {
@@ -12,7 +14,7 @@ export async function runHousekeeping(options: { db?: PrismaClient; now?: Date }
   const now = options.now ?? new Date();
   const name = 'housekeeping';
   const lockToken = randomUUID();
-  const result = { busy: false, recovered: 0, scrubbed: 0, deletedNotifications: 0, deletedBusyBlocks: 0, deletedKiosks: 0 };
+  const result = { busy: false, recovered: 0, scrubbed: 0, deletedNotifications: 0, deletedBusyBlocks: 0, deletedKiosks: 0, deletedAuditEvents: 0 };
   await db.backgroundJobState.upsert({ where: { name }, create: { name }, update: {} });
   const claim = await db.backgroundJobState.updateMany({
     where: { name, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] },
@@ -53,6 +55,11 @@ export async function runHousekeeping(options: { db?: PrismaClient; now?: Date }
     const oldKiosks: Prisma.KioskSessionWhereInput = { OR: [{ expiresAt: { lt: kioskCutoff } }, { revokedAt: { lt: kioskCutoff } }] };
     const kiosks = await db.kioskSession.findMany({ where: oldKiosks, select: { id: true }, orderBy: { id: 'asc' }, take: BATCH_SIZE });
     if (kiosks.length) result.deletedKiosks = (await db.kioskSession.deleteMany({ where: { ...oldKiosks, id: { in: kiosks.map((row) => row.id) } } })).count;
+
+    // The privacy notice keeps the record of account events for up to 6 years.
+    const oldAudit: Prisma.AuditEventWhereInput = { createdAt: { lt: new Date(now.getTime() - AUDIT_RETENTION_DAYS * DAY_MS) } };
+    const audits = await db.auditEvent.findMany({ where: oldAudit, select: { id: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: BATCH_SIZE });
+    if (audits.length) result.deletedAuditEvents = (await db.auditEvent.deleteMany({ where: { ...oldAudit, id: { in: audits.map((row) => row.id) } } })).count;
 
     await db.backgroundJobState.updateMany({ where: { name, lockToken }, data: { lastSucceededAt: now, lastError: null, lastResultJson: JSON.stringify(result) } });
     return result;

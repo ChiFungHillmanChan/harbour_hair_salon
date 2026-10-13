@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { fetchSlots, requestReschedule } from '@/app/actions/booking';
+import { isBookingClosedAnswer } from '@/components/booking/closed-answer';
 import type { TimeSlot } from '@/app/services/booking-service';
 import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import { useLocale, useT } from '@/i18n/client';
@@ -48,21 +49,27 @@ export function RescheduleModal({
     onClose();
   }
 
-  // Times for one salon-local day; null when they could not be loaded.
-  async function fetchDay(dateStr: string): Promise<TimeSlot[] | null> {
+  // Times for one salon-local day; 'CLOSED' while online booking is closed;
+  // null when they could not be loaded.
+  async function fetchDay(dateStr: string): Promise<TimeSlot[] | 'CLOSED' | null> {
     try {
       // dateStr is the salon-local calendar day (YYYY-MM-DD) from the date input;
       // pass it straight through so slots share the server's salon day frame.
       const result = await fetchSlots(stylistId, dateStr, serviceDuration);
-      return result.ok ? result.slots : null;
+      if (result.ok) return result.slots;
+      return isBookingClosedAnswer(result) ? 'CLOSED' : null;
     } catch {
       return null;
     }
   }
 
-  function showDay(daySlots: TimeSlot[] | null) {
+  function showDay(day: TimeSlot[] | 'CLOSED' | null) {
+    const daySlots = Array.isArray(day) ? day : null;
     setSlots(daySlots ?? []);
-    if (!daySlots) setError(t('reschedule.slotsFailed'));
+    // Closed since the page loaded (the nightly pause, or staff switched it
+    // off): say so, rather than "no times" or "couldn't load".
+    if (day === 'CLOSED') setError(t('card.rescheduleUnavailable'));
+    else if (!daySlots) setError(t('reschedule.slotsFailed'));
     // A time kept across a language switch may have been taken since.
     setSelectedSlot((slot) => (slot && daySlots?.some((s) => s.available && s.time === slot) ? slot : null));
     setLoadingSlots(false);
@@ -172,7 +179,7 @@ export function RescheduleModal({
 
         {loadingSlots && <p className="text-sm text-zinc-500 mb-4">{t('reschedule.loadingSlots')}</p>}
 
-        {!loadingSlots && selectedDate && availableSlots.length === 0 && (
+        {!loadingSlots && selectedDate && availableSlots.length === 0 && !error && (
           <p className="text-sm text-zinc-500 mb-4">{t('reschedule.noSlots')}</p>
         )}
 

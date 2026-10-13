@@ -252,6 +252,7 @@ const adminContent: Localized<Messages['adminContent']> = {
       slug: '網址代稱',
       slugPlaceholder: '留空會按姓名自動產生',
       imageUrl: '圖片網址',
+      imageUrlPlaceholder: '/images/stylists/chan.webp 或 https://...',
       scheduleBoard: '預約排程',
       calendarColour: '日曆顏色',
       calendarColourHelp: '於後台預約排程中，以此顏色顯示此髮型師的預約。只供員工查看——公開網站維持黑白設計。',

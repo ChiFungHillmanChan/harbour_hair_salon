@@ -5,6 +5,7 @@ import { RESET_TOKEN_TTL_MS } from '@/app/lib/password-reset';
 import { createUnsubscribeUrl, UNSUBSCRIBE_TOKEN_TTL_DAYS } from '@/app/lib/unsubscribe-token';
 import { DEFAULT_LOCALE, type Locale } from '@/i18n/config';
 import {
+  appointmentCalendarFile,
   appointmentEmailContent,
   isSalonEmailKind,
   marketingUnsubscribeContent,
@@ -19,11 +20,16 @@ import {
 } from './email-content';
 import { emailVerificationContent } from './email-content';
 import { createEmailVerificationToken, EMAIL_VERIFICATION_TTL_HOURS } from '@/app/lib/email-verification';
+import { mailboxAddress } from '@/app/lib/mailbox';
+import type { IcsOrganizer } from '@/app/lib/calendar-links';
 
 export type { AppointmentEmailKind, AppointmentEmailOptions } from './email-content';
 
 /** @deprecated kept for old callers; see EmailAppointment in email-content.ts. */
 export type AppointmentWithDetails = LegacyEmailAppointment;
+
+/** Resend's attachment shape: `content` is base64. */
+export type EmailAttachment = { filename: string; content: string; content_type?: string };
 
 export type PreparedEmail = {
   from: string;
@@ -32,10 +38,19 @@ export type PreparedEmail = {
   html: string;
   text?: string;
   reply_to?: string;
+  /** The customer's calendar file on booking mail (see calendarMethodFor in email-content.ts). */
+  attachments?: EmailAttachment[];
 };
 
 export function getSalonNotifyAddress(): string | null {
   return process.env.SALON_NOTIFY_EMAIL?.trim() || process.env.EMAIL_REPLY_TO?.trim() || null;
+}
+
+/** A one-off mail to the salon's own inbox (the daily ops alert). Never queued. */
+export async function sendSalonNotice(content: EmailContent, idempotencyKey?: string): Promise<void> {
+  const address = getSalonNotifyAddress();
+  if (!address) throw new Error('SALON_NOTIFY_EMAIL or EMAIL_REPLY_TO is required');
+  await sendPreparedEmail(await prepareEmail(address, content), idempotencyKey);
 }
 
 function getFromAddress(): string {
@@ -45,8 +60,19 @@ function getFromAddress(): string {
   return 'Harbour Hair Salon <onboarding@resend.dev>';
 }
 
+/**
+ * The ORGANIZER of an emailed calendar file (RFC 5546 requires one on PUBLISH
+ * and CANCEL): the salon, at the mailbox replies go to (EMAIL_REPLY_TO), else
+ * at the sender (EMAIL_FROM) — either as a bare address or "Name <address>".
+ * Omitted when neither holds a usable address.
+ */
+function calendarOrganizer(): IcsOrganizer | undefined {
+  const email = mailboxAddress(process.env.EMAIL_REPLY_TO, true) ?? mailboxAddress(process.env.EMAIL_FROM, true);
+  return email ? { name: 'Harbour Hair Salon', email } : undefined;
+}
+
 /** HTML and plain text are rendered from the same words. */
-async function prepareEmail(to: string, content: EmailContent): Promise<PreparedEmail> {
+async function prepareEmail(to: string, content: EmailContent, attachments: EmailAttachment[] = []): Promise<PreparedEmail> {
   const replyTo = process.env.EMAIL_REPLY_TO?.trim();
   return {
     from: getFromAddress(),
@@ -55,6 +81,7 @@ async function prepareEmail(to: string, content: EmailContent): Promise<Prepared
     html: await render(EmailFrame({ content })),
     text: renderPlainText(content),
     ...(replyTo ? { reply_to: replyTo } : {}),
+    ...(attachments.length ? { attachments } : {}),
   };
 }
 
@@ -78,7 +105,15 @@ export async function prepareAppointmentEmail(
     if (!address) throw new Error('SALON_NOTIFY_EMAIL or EMAIL_REPLY_TO is required');
     return prepareEmail(address, content);
   }
-  return prepareEmail(normalized.user.email, content);
+  // A confirmed time carries an .ics that adds it to the customer's calendar; a
+  // confirmed booking's cancellation, one that removes it. Built from the queued
+  // snapshot alone, and frozen with the rest of the request so a retry sends
+  // the identical file. RFC 5545 §3.7.2: an iCalendar object with METHOD goes
+  // out with the same `method` parameter on its Content-Type.
+  const calendar = appointmentCalendarFile(kind, normalized, locale, options, calendarOrganizer());
+  return prepareEmail(normalized.user.email, content, calendar
+    ? [{ filename: calendar.filename, content: Buffer.from(calendar.ics, 'utf8').toString('base64'), content_type: `text/calendar; charset=utf-8; method=${calendar.method}` }]
+    : []);
 }
 
 /** Abort the HTTP request itself; never log provider error bodies or recipient data. */

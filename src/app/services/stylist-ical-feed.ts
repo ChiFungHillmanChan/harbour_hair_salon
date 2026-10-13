@@ -55,13 +55,19 @@ export async function loadStylistToken(stylistId: string, db?: PrismaClient): Pr
   return stylist?.icalToken ?? null;
 }
 
-/** Bookable appointments that may still occupy the chair, oldest first. */
+/**
+ * Appointments that may still occupy the chair, oldest first: every booking
+ * except a cancelled one, exactly the rule the website's own availability uses
+ * (booking-service.ts). A COMPLETED booking counts until its end has passed —
+ * staff can mark a visit completed while it is still running, and dropping it
+ * here would let a marketplace resell the rest of that time.
+ */
 export async function loadBusyEvents(stylistId: string, now: Date, db?: PrismaClient): Promise<BusyEvent[]> {
   const client = await resolveDb(db);
   const appointments = await client.appointment.findMany({
     where: {
       stylistId,
-      status: { in: ['PENDING', 'CONFIRMED'] },
+      status: { not: 'CANCELLED' },
       date: { gte: new Date(now.getTime() - LOOKBACK_MS) },
     },
     select: { id: true, date: true, durationAtBooking: true, service: { select: { duration: true } } },

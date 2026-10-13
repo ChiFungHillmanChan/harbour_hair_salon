@@ -15,6 +15,7 @@ import { PUBLIC_OPENING_HOURS, dayKey, formatRange } from '@/app/lib/opening-hou
 import { getLocale, getT } from '@/i18n/server';
 import { alternatesFor, ogLocale } from '@/i18n/metadata';
 import { localizeHref } from '@/i18n/paths';
+import { ConsentMap } from '@/components/contact/ConsentMap';
 
 export async function generateMetadata(): Promise<Metadata> {
   const [locale, t] = await Promise.all([getLocale(), getT('contact')]);
@@ -143,17 +144,14 @@ export default async function ContactPage() {
 
           {/* Map */}
           <div className="h-full min-h-[400px] bg-zinc-100 rounded-lg overflow-hidden relative shadow-lg">
-            <iframe 
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2356.2!2d-1.544255!3d53.7965911!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x48795d7c1f30e4cf%3A0xad74be12e1f34d1a!2sHarbour%20Hair!5e0!3m2!1sen!2suk!4v1710000000000!5m2!1sen!2suk" 
-              width="100%" 
-              height="100%" 
-              style={{ border: 0, minHeight: '500px' }} 
-              allowFullScreen 
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
+            <ConsentMap
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2356.2!2d-1.544255!3d53.7965911!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x48795d7c1f30e4cf%3A0xad74be12e1f34d1a!2sHarbour%20Hair!5e0!3m2!1sen!2suk!4v1710000000000!5m2!1sen!2suk"
               title={t('map.title')}
-              className="transition-all duration-500"
-            ></iframe>
+              notice={t('map.notice')}
+              showLabel={t('map.show')}
+              openLabel={t('map.open')}
+              openHref={settings.googleBusinessUrl || 'https://www.google.com/maps/search/?api=1&query=Harbour+Hair+Salon+Central+Arcade+Leeds+LS1+6DX'}
+            />
           </div>
         </div>
 

@@ -37,8 +37,12 @@ async function main() {
     // Discounts are paused: a code is refused before anything is written or counted.
     await assert.rejects(booking.createBooking({ stylistId: stylist.id, serviceId: service.id, userId: user.id, date, discountCode: 'VERIFY20' }), /paused/i);
     assert.equal((await db.discountCode.findUniqueOrThrow({ where: { id: 'verify-discount' } })).usedCount, 0, 'A paused code is never counted');
+    // The same request twice at once (a lost answer, a second tap) is one
+    // request: both calls return the booking it made, and nothing is doubled.
     const attempts = await Promise.allSettled(Array.from({ length: 2 }, () => booking.createBooking({ stylistId: stylist.id, serviceId: service.id, userId: user.id, date, expectedQuote: { serviceId: service.id, priceVersion: 1, amountPence: 10000 } })));
-    assert.equal(attempts.filter((attempt) => attempt.status === 'fulfilled').length, 1, 'Concurrent requests must reserve one slot only');
+    assert.ok(attempts.every((attempt) => attempt.status === 'fulfilled'), `A repeated request returns the booking already made: ${attempts.map((attempt) => attempt.status === 'rejected' ? String(attempt.reason) : 'fulfilled').join('; ')}`);
+    assert.equal(new Set(attempts.map((attempt) => attempt.status === 'fulfilled' ? attempt.value.id : null)).size, 1, 'Both answers are the same booking');
+    assert.equal(await db.appointment.count({ where: { userId: user.id } }), 1, 'Concurrent requests must reserve one slot only');
     const booked = await db.appointment.findFirstOrThrow({ where: { userId: user.id } });
     assert.equal(Number(booked.priceAtBooking), 100, 'The listed price is frozen; no offer or code applies');
     assert.equal(booked.durationAtBooking, 60);

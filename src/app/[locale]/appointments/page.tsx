@@ -7,6 +7,7 @@ import { rescheduleRequestView } from '@/app/lib/reschedule-request';
 import { pageNumber } from '@/app/lib/pagination';
 import { recordedPrice } from '@/app/services/pricing/recorded-price';
 import { loadPublishedTranslations, overlay } from '@/app/services/content/translations';
+import { appointmentCalendarEvent } from '@/app/services/appointment-calendar';
 import { Pagination } from '@/components/admin/Pagination';
 import { ClientMessages } from '@/i18n/ClientMessages';
 import { getLocale, getT } from '@/i18n/server';
@@ -39,6 +40,8 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
     service: { select: { name: true, duration: true } },
     review: { select: { id: true } },
     rescheduleRequestedDate: true, rescheduleRequestedAt: true,
+    // The calendar entry's SEQUENCE, so a downloaded file updates an older one.
+    notificationVersion: true,
   } as const;
   const [bookingEnabled, upcomingRows, pastRows] = await Promise.all([
     isBookingEnabled(),
@@ -64,6 +67,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
         ? { known: true, amountPence: booked.amountPence, priceType: booked.priceType, vatDisplay: booked.vatDisplay, priceNature: booked.priceNature }
         : { known: false };
       const { name, translated } = overlay({ name: a.service.name }, serviceNames.get(a.serviceId), ['name']);
+      const duration = a.durationAtBooking ?? a.service.duration;
       return {
         id: a.id,
         date: a.date.toISOString(),
@@ -74,11 +78,19 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
         service: {
           name,
           nameIsEnglish: locale !== 'en-GB' && !translated,
-          duration: a.durationAtBooking ?? a.service.duration,
+          duration,
         },
         price,
         hasReview: Boolean(a.review),
         request: rescheduleRequestView(a, now),
+        // Only a confirmed, upcoming time goes into the customer's own calendar;
+        // a pending request is not agreed yet. Built from this row: no query.
+        calendar: a.status === 'CONFIRMED' && a.date > now
+          ? appointmentCalendarEvent({
+              id: a.id, date: a.date, durationMinutes: duration,
+              serviceName: name, stylistName: a.stylist.name, sequence: a.notificationVersion,
+            }, locale)
+          : null,
       };
     });
 

@@ -86,12 +86,18 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
     user: {
       findUnique: async ({ where }: { where: Row }) =>
         users.find((row) => (where.id && row.id === where.id) || (where.email && row.email === where.email)) ?? null,
+      findMany: async () => users.map((row) => ({ ...row, createdAt: UPDATED_AT })),
       create: async ({ data }: { data: Row }) => {
         const row = { ...data, id: `user-${users.length + 1}` };
         users.push(row);
         return row;
       },
-      update: async ({ data }: { data: Row }) => { updates.push(data); return users[0]; },
+      update: async ({ where, data }: { where: Row; data: Row }) => {
+        updates.push(data);
+        const row = users.find((user) => user.id === where.id);
+        if (row) Object.assign(row, data);
+        return row ?? users[0];
+      },
     },
     availability: { findFirst: async () => ({ startTime: '09:00', endTime: '18:00' }) },
     externalBusyBlock: { findMany: async () => [] },
@@ -345,6 +351,67 @@ test('a new customer\'s email language is the one the admin chose, not the admin
 
   assert.equal(users[0].preferredLocale, 'zh-HK');
   assert.equal(created[0].notificationLocale, 'zh-HK');
+});
+
+const onFile = (overrides: Row = {}): Row => ({ id: 'user-9', email: 'mei@example.test', name: 'Mei', role: 'USER', phone: null, preferredLocale: null, ...overrides });
+
+test('a customer on file with no saved language gets the one the admin chose, kept on their account', async () => {
+  const { actions, created, users } = fixture({ existingUser: onFile() });
+
+  await actions.createAppointmentByAdmin(newBooking({ customer: { kind: 'existing', userId: 'user-9' }, customerLocale: 'zh-HK' }));
+
+  assert.equal(users[0].preferredLocale, 'zh-HK', 'later mail uses it too');
+  assert.equal(created[0].notificationLocale, 'zh-HK');
+});
+
+test('a customer\'s own saved language always wins over the dialog', async () => {
+  const { actions, created, users, updates } = fixture({ existingUser: onFile({ preferredLocale: 'en-GB' }) });
+
+  await actions.createAppointmentByAdmin(newBooking({ customer: { kind: 'existing', userId: 'user-9' }, customerLocale: 'zh-HK' }));
+
+  assert.equal(users[0].preferredLocale, 'en-GB');
+  assert.equal(created[0].notificationLocale, 'en-GB');
+  assert.deepEqual(updates, [], 'nothing on the customer row changes');
+});
+
+test('a new-customer entry whose email is already on file fills in a missing language', async () => {
+  const { actions, created, users } = fixture({ existingUser: onFile() });
+
+  await actions.createAppointmentByAdmin(newBooking({
+    customer: { kind: 'new', name: 'Mei', email: 'mei@example.test', phone: '07700900999' },
+    customerLocale: 'zh-HK',
+  }));
+
+  assert.equal(users.length, 1);
+  assert.equal(users[0].preferredLocale, 'zh-HK');
+  assert.equal(users[0].phone, '07700900999', 'the blank phone is filled in the same write');
+  assert.equal(created[0].notificationLocale, 'zh-HK');
+});
+
+test('an existing customer booked without a language choice still defaults to English', async () => {
+  const { actions, created, users } = fixture({ existingUser: onFile() });
+
+  await actions.createAppointmentByAdmin(newBooking({ customer: { kind: 'existing', userId: 'user-9' } }));
+
+  assert.equal(users[0].preferredLocale, null);
+  assert.equal(created[0].notificationLocale, 'en-GB');
+});
+
+test('an administrator\'s own row is never edited by a booking entered for them', async () => {
+  const { actions, created, users } = fixture({ existingUser: onFile({ role: 'ADMIN' }) });
+
+  await actions.createAppointmentByAdmin(newBooking({ customer: { kind: 'existing', userId: 'user-9' }, customerLocale: 'zh-HK' }));
+
+  assert.equal(users[0].preferredLocale, null);
+  assert.equal(created[0].notificationLocale, 'zh-HK', 'this booking\'s mail still follows the choice');
+});
+
+test('the customer search tells the dialog which language each customer has saved', async () => {
+  const { actions } = fixture({ existingUser: onFile({ preferredLocale: 'zh-HK' }) });
+
+  assert.deepEqual(await actions.searchAdminCustomers('mei'), [
+    { id: 'user-9', name: 'Mei', email: 'mei@example.test', phone: null, preferredLocale: 'zh-HK' },
+  ]);
 });
 
 test('editing only the notes leaves the price and the customer undisturbed', async () => {

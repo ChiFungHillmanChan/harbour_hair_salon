@@ -41,8 +41,11 @@ test('calendar refuses unauthorized reads before accessing the database', async 
   await assert.rejects(getAdminCalendarData({ view: 'year' }), /Unauthorized/);
 });
 
-test('pending cursor is bounded, deterministic and independent of selected calendar dates', async () => {
+test('pending cursor is bounded, deterministic and independent of selected calendar dates', async (t) => {
+  const now = new Date('2026-09-16T12:00:00Z');
+  t.mock.timers.enable({ apis: ['Date'], now });
   const calls: Record<string, unknown>[] = [];
+  const counts: Record<string, unknown>[] = [];
   const pending = Array.from({ length: 26 }, (_, i) => ({ id: `pending-${i.toString().padStart(2, '0')}`, date: new Date('2027-01-01T10:00:00Z'), status: 'PENDING', user: { name: 'Customer' }, stylist: { name: 'Stylist' }, service: { name: 'Cut' } }));
   const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
     '@/app/lib/prisma': { __esModule: true, getDatabaseProvider: () => 'postgresql', default: { appointment: {
@@ -51,7 +54,7 @@ test('pending cursor is bounded, deterministic and independent of selected calen
         calls.push(query);
         return pending;
       },
-      groupBy: async () => [], count: async () => 26,
+      groupBy: async () => [], count: async (query: Record<string, unknown>) => { counts.push(query); return 26; },
     }, $queryRaw: async () => [{}] } },
     '@/app/lib/session': { requireAdmin: async () => ({ role: 'ADMIN' }) },
     './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
@@ -63,7 +66,10 @@ test('pending cursor is bounded, deterministic and independent of selected calen
   await getAdminCalendarData({ date: '2020-01-01', view: 'year', pending: first.pendingNext });
   assert.equal(calls[1].take, 26);
   assert.deepEqual(calls[1].orderBy, [{ date: 'asc' }, { id: 'asc' }]);
-  assert.deepEqual(calls[1].where, { status: 'PENDING', OR: [{ date: { gt: pending[24].date } }, { date: pending[24].date, id: { gt: pending[24].id } }] });
+  // Only requests that can still be answered: a request whose time has come
+  // can no longer be confirmed (it stays visible on the calendar itself).
+  assert.deepEqual(calls[1].where, { status: 'PENDING', date: { gt: now }, OR: [{ date: { gt: pending[24].date } }, { date: pending[24].date, id: { gt: pending[24].id } }] });
+  assert.deepEqual(counts[0], { where: { status: 'PENDING', date: { gt: now } } }, 'the "awaiting confirmation" count agrees with the list');
 });
 
 test('the board carries each booking\'s recorded price and only bookable options for new bookings', async () => {

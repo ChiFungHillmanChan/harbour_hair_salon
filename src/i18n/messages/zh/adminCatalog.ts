@@ -35,6 +35,7 @@ const adminCatalog: Localized<Messages['adminCatalog']> = {
     isBookable: '接受新預約',
     availabilityHelp: '關閉任何一項都不會影響已有預約：已有預約保留原價，並可照常管理。所需時間確認後，選項才可接受預約。',
     imageUrl: '圖片網址',
+    imageUrlPlaceholder: '/images/services-hero.webp 或 https://...',
     optional: '（選填）',
     colourFlags: '染髮服務設定',
     requiresPatchTest: '須先完成皮膚敏感測試',

@@ -17,6 +17,8 @@ import { checkCalendarBookingReadiness } from '@/app/services/integration-readin
 import { refreshCalendarFeedsBeforeApproval } from '@/app/services/calendar-sync-service';
 import { assertAppointmentSlotAvailable, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
+import { hasAppointmentStarted } from '@/app/lib/appointment-timing';
+import { isRequestLapseNoticeDue, readSalonPhoneForLapseNotice } from '@/app/services/request-lapse-notice';
 import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
 import { getActionLocale } from '@/i18n/request';
 import { translator } from '@/i18n/messages';
@@ -55,10 +57,12 @@ export type OfferActionState = { error?: string; success?: boolean };
 export type DiscountActionState = { error?: string; success?: boolean };
 export type AdminUserActionState = { error?: string; success?: boolean };
 
-// Messages are codes, translated by adminUserError() below.
+// Messages are codes, translated by adminUserError() below. The email is stored
+// trimmed and lower-case — the form sign-in looks it up in (actions/auth.ts) —
+// or an address typed with capitals could never sign in.
 const adminUserSchema = z.object({
   name: z.string('NAME_TOO_SHORT').min(2, 'NAME_TOO_SHORT').max(100, 'NAME_TOO_LONG'),
-  email: z.string('EMAIL_INVALID').email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
+  email: z.string('EMAIL_INVALID').trim().toLowerCase().email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
   password: z.string('PASSWORD_TOO_SHORT').min(8, 'PASSWORD_TOO_SHORT').refine(fitsBcryptLimit, { message: 'PASSWORD_TOO_LONG' }),
 });
 
@@ -469,7 +473,7 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       const target = await prisma.appointment.findUnique({ where: { id: appointmentId }, select: { stylistId: true } });
       if (target) await refreshCalendarFeedsBeforeApproval(target.stylistId);
     }
-    const { appointment, changed } = await runSerializableWithRetry(async (tx) => {
+    const { appointment, notified } = await runSerializableWithRetry(async (tx) => {
       const include = {
         user: { select: { email: true, name: true } },
         stylist: { select: { name: true, treatwellExternalId: true } },
@@ -477,13 +481,20 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       } as const;
       const current = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
       if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      if (current.status === status) return { appointment: current, changed: false };
+      if (current.status === status) return { appointment: current, notified: false };
       if (status === 'CONFIRMED' && current.status !== 'PENDING') {
         throw new BookingError('ONLY_PENDING_CONFIRM');
       }
       if (current.status === 'CANCELLED') {
         throw new BookingError('CANCELLED_CANNOT_REINSTATE');
       }
+      const now = new Date();
+      const started = hasAppointmentStarted(current.date, now);
+      // Nobody can be told "confirmed" for a time that has already come; the
+      // notifications cron closes such a request instead (pending-request-lapse.ts).
+      if (status === 'CONFIRMED' && started) throw new BookingError('REQUEST_EXPIRED');
+      // Completion cannot be undone, so it waits until the visit has begun.
+      if (status === 'COMPLETED' && !started) throw new BookingError('COMPLETE_BEFORE_START');
 
       if (status === 'CONFIRMED') {
         const readiness = await checkCalendarBookingReadiness(tx);
@@ -516,14 +527,34 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       if (result.count !== 1) throw new BookingError('STALE');
       const updated = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
       if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      if (status === 'CONFIRMED' || status === 'CANCELLED') await enqueueAppointmentNotification(tx, status === 'CONFIRMED' ? 'CONFIRMATION' : 'CANCELLATION', updated);
+      // A cancellation is news only while the visit is still ahead. Tidying the
+      // diary afterwards (a no-show, a duplicate) must not tell the customer
+      // their appointment "has been cancelled"; the version bump above still
+      // retires anything queued earlier for this booking.
+      let notified = false;
+      if (status === 'CONFIRMED') {
+        await enqueueAppointmentNotification(tx, 'CONFIRMATION', updated);
+        notified = true;
+      } else if (status === 'CANCELLED' && !started) {
+        // A declined request was never in the customer's calendar: no file to remove it.
+        await enqueueAppointmentNotification(tx, 'CANCELLATION', updated, { wasConfirmed: current.status === 'CONFIRMED' });
+        notified = true;
+      } else if (status === 'CANCELLED' && current.status === 'PENDING' && await isRequestLapseNoticeDue(tx, current, now)) {
+        // Declining a request whose time has come closes it exactly as the
+        // lapse step would, which then skips it (no longer PENDING): the
+        // customer gets the same "couldn't confirm in time" email. The phone
+        // read is best effort (on PostgreSQL a failed statement aborts the
+        // transaction, so the decline then fails whole and is simply retried).
+        await enqueueAppointmentNotification(tx, 'REQUEST_LAPSED', updated, { salonPhone: await readSalonPhoneForLapseNotice(tx) });
+        notified = true;
+      }
       await appendAuditEvent({ actorUserId: session.userId, action: 'APPOINTMENT.STATUS', targetType: 'Appointment', targetId: appointmentId, metadata: { from: current.status, to: status } }, tx);
-      return { appointment: updated, changed: true };
+      return { appointment: updated, notified };
     });
 
     // Finish the action's cache invalidation before external email delivery.
     invalidateStylistIcalFeed();
-    if (changed) after(() => dispatchAppointmentNotifications(appointment.id));
+    if (notified) after(() => dispatchAppointmentNotifications(appointment.id));
   } catch (error) {
     return { success: false, error: describeBookingError(error, locale, 'ADMIN_UPDATE_FAILED') };
   }

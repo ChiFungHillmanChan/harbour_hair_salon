@@ -59,6 +59,7 @@ function accountFixture() {
     '@/app/lib/rate-limit': {
       passwordResetLimiter: { check: async () => true },
       passwordResetAccountLimiter: { check: async () => true },
+      emailSendDailyLimiter: { check: async () => true },
       accountRateLimitKey,
     },
     '@/app/services/email-service': { sendPasswordReset: async (_user: unknown, token: string) => { mailed.push(token); } },
@@ -203,7 +204,7 @@ test('reset requests from many IP addresses cannot flood one mailbox', async () 
       $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
     },
     'next/headers': { headers: async () => new Headers({ 'x-forwarded-for': `198.51.100.${f.mailed.length + 1}` }) },
-    '@/app/lib/rate-limit': { passwordResetLimiter: { check: async () => true }, passwordResetAccountLimiter: accountLimiter, accountRateLimitKey },
+    '@/app/lib/rate-limit': { passwordResetLimiter: { check: async () => true }, passwordResetAccountLimiter: accountLimiter, emailSendDailyLimiter: { check: async () => true }, accountRateLimitKey },
     '@/app/services/email-service': { sendPasswordReset: async (_user: unknown, token: string) => { f.mailed.push(token); } },
   });
   const form = new FormData();

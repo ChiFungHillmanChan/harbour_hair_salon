@@ -12,7 +12,8 @@ import { PriceChangedError } from '@/app/services/booking-service';
 import { getActionLocale } from '@/i18n/request';
 import type { Locale } from '@/i18n/config';
 import type { PriceQuote } from '@/app/services/pricing/quote';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
+import type { MessageParams } from '@/i18n/format';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { verifySession } from '@/app/lib/session';
 import { appendAuditEvent } from '@/app/lib/audit';
@@ -34,8 +35,8 @@ import { headers } from 'next/headers';
 // paused no code is ever looked up, so there is nothing to enumerate.)
 
 /** A failed action result in the caller's language. */
-function failure(locale: Locale, code: BookingErrorCode) {
-  return { success: false as const, code, error: bookingErrorText(locale, code) };
+function failure(locale: Locale, code: BookingErrorCode, params?: MessageParams) {
+  return { success: false as const, code, error: bookingErrorText(locale, code, params) };
 }
 
 // The availability lookups need no session, so they are limited per address.
@@ -141,11 +142,19 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
   }
 }
 
+/**
+ * A failed availability lookup. `reason: 'CLOSED'` means online booking is
+ * closed (the nightly pause, or staff switched it off), which the page must
+ * say as such — not as "no appointments available", and not as "couldn't
+ * load" (a lookup failure, with no reason).
+ */
+type AvailabilityRefused = { ok: false; reason?: 'CLOSED' };
+
 // Helper for client-side fetching without form state. The "Anyone" option
 // returns the union of every stylist's availability.
 export type FetchSlotsResult =
   | { ok: true; slots: Awaited<ReturnType<typeof getAvailableSlots>> }
-  | { ok: false };
+  | AvailabilityRefused;
 
 export async function fetchSlots(
   stylistId: string,
@@ -153,7 +162,7 @@ export async function fetchSlots(
   serviceDuration: number,
 ): Promise<FetchSlotsResult> {
   if (!(await isBookingEnabled())) {
-    return { ok: true, slots: [] };
+    return { ok: false, reason: 'CLOSED' };
   }
 
   // Guard the client-supplied duration before it reaches the slot loop (see
@@ -180,7 +189,7 @@ export async function fetchSlots(
   }
 }
 
-export type FetchBookingDaysResult = { ok: true; days: BookingDay[] } | { ok: false };
+export type FetchBookingDaysResult = { ok: true; days: BookingDay[] } | AvailabilityRefused;
 
 /**
  * The booking page's whole date strip in one request: each day's status, hours
@@ -193,7 +202,7 @@ export async function fetchBookingDays(
   serviceDuration: number,
 ): Promise<FetchBookingDaysResult> {
   if (!(await isBookingEnabled())) {
-    return { ok: true, days: [] };
+    return { ok: false, reason: 'CLOSED' };
   }
   const duration = SERVICE_DURATION.safeParse(serviceDuration);
   const validDates = Array.isArray(dates) && dates.length > 0 && dates.length <= BOOKING_DAYS_MAX &&
@@ -255,7 +264,8 @@ function toClientQuote(quote: PriceQuote): ClientQuote {
 }
 
 export type SubmitBookingResult =
-  | { success: true }
+  /** `alreadyRequested`: the same request was already made (see findRepeatRequest); nothing new was booked. */
+  | { success: true; alreadyRequested?: true }
   | { success: false; code?: BookingErrorCode; error: string; quote?: ClientQuote };
 
 export async function submitBooking(data: z.infer<typeof createBookingSchema>): Promise<SubmitBookingResult> {
@@ -288,7 +298,7 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
   // A request holds a real slot and emails the address on the account, and
   // registering needs no mailbox: without this, throwaway accounts could each
   // hold their full allowance of slots. See lib/email-verification.ts.
-  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: EMAIL_VERIFICATION_SELECT });
+  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: { ...EMAIL_VERIFICATION_SELECT, preferredLocale: true } });
   if (!account || !hasVerifiedEmail(account)) {
     return failure(locale, 'EMAIL_NOT_VERIFIED');
   }
@@ -350,9 +360,12 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
     patchTestReason,
     bookingInstant: fullDate,
     now: new Date(),
+    // Online requests only: staff approve them, so they need notice. Bookings
+    // staff enter themselves (admin-schedule.ts) never pass through here.
+    minNoticeMinutes: MIN_BOOKING_NOTICE_MINUTES,
   });
   if (!gate.ok) {
-    return failure(locale, gate.code);
+    return failure(locale, gate.code, gate.params);
   }
 
   // Resolve which stylist(s) can take this slot. For a named stylist we validate
@@ -410,7 +423,19 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
           locale,
         });
 
-
+    // The same request again (the answer to the first was lost, or a second
+    // tap): nothing new is booked or queued, and the wizard tells the customer
+    // it was already requested. The first attempt's commit can succeed and its
+    // answer still be lost, so its steps below may never have run: refresh the
+    // busy feed and deliver whatever is still queued for this booking now, or
+    // the feed waits for its one-day safety net and the emails for the next
+    // cron tick. Both are idempotent (an extra feed rebuild; sent mail is not
+    // sent again).
+    if (appointment.repeat) {
+      invalidateStylistIcalFeed();
+      after(() => dispatchAppointmentNotifications(appointment.id));
+      return { success: true, alreadyRequested: true };
+    }
 
     // The marketplaces poll a cached feed; drop it so the new busy period is
     // visible on their next poll rather than whenever the window expires.
@@ -420,13 +445,15 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
     after(async () => {
       await dispatchAppointmentNotifications(appointment.id);
       // Remember the language for mail the salon later sends on the customer's
-      // behalf (e.g. a booking an administrator enters for them). Best effort
-      // and after the response: the booking already records its own language,
-      // so this can never turn a made booking into an error.
-      try {
-        await prisma.user.update({ where: { id: session.userId }, data: { preferredLocale: locale } });
-      } catch {
-        // Preference only.
+      // behalf (e.g. a booking an administrator enters for them) — only when it
+      // changed. Best effort and after the response: the booking already records
+      // its own language, so this can never turn a made booking into an error.
+      if (account.preferredLocale !== locale) {
+        try {
+          await prisma.user.update({ where: { id: session.userId }, data: { preferredLocale: locale } });
+        } catch {
+          // Preference only.
+        }
       }
     });
     revalidateAllLocales(revalidatePath, '/book');
@@ -489,7 +516,8 @@ export async function cancelAppointment(appointmentId: string) {
       if (changed.count !== 1) throw new BookingError('STALE');
       const cancelled = await tx.appointment.findUnique({ where: { id: appointmentId }, include: { user: true, stylist: true, service: true } });
       if (!cancelled) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      await enqueueAppointmentNotification(tx, 'CANCELLATION', cancelled);
+      // A withdrawn request was never in the customer's calendar: no file to remove it.
+      await enqueueAppointmentNotification(tx, 'CANCELLATION', cancelled, { wasConfirmed: appointment.status === 'CONFIRMED' });
     });
     invalidateStylistIcalFeed();
     after(() => dispatchAppointmentNotifications(appointmentId));

@@ -88,10 +88,15 @@ test('the action refuses bad input without touching the database', async () => {
   assert.equal(f.calls.length, 0);
 });
 
-test('the action shows nothing while online booking is switched off', async () => {
+// Closed is its own answer: the page says "online booking is closed — call us",
+// not "no appointments available" (an empty fortnight) or "couldn't load".
+test('the actions say "closed" while online booking is switched off, without a query', async () => {
   const f = fixture({ enabled: false });
-  assert.deepEqual(await f.actions.fetchBookingDays('funky', ['2026-10-06'], 60), { ok: true, days: [] });
+  assert.deepEqual(await f.actions.fetchBookingDays('funky', ['2026-10-06'], 60), { ok: false, reason: 'CLOSED' });
+  assert.deepEqual(await f.actions.fetchSlots('funky', '2026-10-06', 60), { ok: false, reason: 'CLOSED' });
+  assert.deepEqual(await f.actions.fetchSlots(ANY_STYLIST_ID, '2026-10-06', 60), { ok: false, reason: 'CLOSED' });
   assert.equal(f.calls.length, 0);
+  assert.equal(f.limiterKeys.length, 0);
 });
 
 test('a lookup failure is reported as a failure, not as an unavailable fortnight', async () => {

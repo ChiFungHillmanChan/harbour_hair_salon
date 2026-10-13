@@ -44,6 +44,10 @@ const appointments = {
     awaitingConfirmation: "Awaiting confirmation from the salon — we'll email you once it's confirmed.",
     changesLocked: 'Changes cannot be made within 24 hours of your appointment.',
     maintenance: 'Online rescheduling is temporarily unavailable while our booking system is under maintenance. Please call the salon to move this appointment.',
+    addToGoogleCalendar: 'Add to Google Calendar',
+    downloadCalendarFile: 'Download calendar file (.ics)',
+    opensInNewTab: '(opens in a new tab)',
+    calendarAfterConfirmation: 'You can add it to your calendar once it’s confirmed.',
   },
   reschedule: {
     title: 'Request a new time',

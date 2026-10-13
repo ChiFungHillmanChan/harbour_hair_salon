@@ -30,7 +30,7 @@ function settingsFixture() {
     // React's per-render cache is irrelevant across these calls.
     react: { cache: <T>(fn: T) => fn },
   });
-  return { service, store, reach: () => { reachable = true; } };
+  return { service, store, row: settingsRow, reach: () => { reachable = true; } };
 }
 
 test('a cold or unreachable database is never cached as the site\'s settings', async () => {
@@ -49,4 +49,19 @@ test('a cold or unreachable database is never cached as the site\'s settings', a
   assert.equal(settings.phone, '0113 000 0000', 'the very next request reads the salon\'s real settings');
   assert.equal(settings.freshaUrl, 'https://www.fresha.com/harbour');
   assert.equal(f.store.size, 1);
+});
+
+test('Admin → Settings reads the live row, so a stale cache can never be saved back over newer values', async () => {
+  const f = settingsFixture();
+  f.reach();
+  await f.service.getSiteSettings(); // the public cache now holds bookingEnabled: false
+  f.row.bookingEnabled = true; // e.g. a direct database write the cache has not seen
+  assert.equal((await f.service.getSiteSettings()).bookingEnabled, false, 'public pages still serve the cached copy');
+  assert.equal((await f.service.getSiteSettingsForEditing()).bookingEnabled, true, 'the settings form shows the live value');
+  assert.equal(f.store.size, 1, 'the editing read neither uses nor fills the cache');
+});
+
+test('the editing read never falls back to defaults when the database is unreachable', async () => {
+  const f = settingsFixture();
+  await assert.rejects(() => f.service.getSiteSettingsForEditing(), /reach database/);
 });

@@ -397,6 +397,23 @@ test('an unexpected cancellation failure is logged with the appointment id; an e
   assert.equal(logged.mock.callCount(), 1, 'a concurrency refusal is a normal answer, not an error');
 });
 
+// Only a confirmed booking was ever offered to the customer's calendar, so the
+// queued cancellation records whether there is an entry for its email to remove.
+for (const by of ['customer', 'staff'] as const) {
+  test(`a ${by} cancellation records in the queued email whether the booking had been confirmed`, async () => {
+    for (const [status, wasConfirmed] of [['PENDING', false], ['CONFIRMED', true]] as const) {
+      const f = fixture({ status });
+      const result = by === 'customer'
+        ? await f.actions.cancelAppointment(f.appointment.id)
+        : await f.admin.updateAppointmentStatus(f.appointment.id, 'CANCELLED');
+      assert.equal(result.success, true, `${by} ${status}`);
+      const queued = f.events.filter((event) => event.kind === 'CANCELLATION');
+      assert.equal(queued.length, 1, `${by} ${status}`);
+      assert.equal(JSON.parse(queued[0].payloadJson).options.wasConfirmed, wasConfirmed, `${by} ${status}`);
+    }
+  });
+}
+
 test('customer cancellation cannot use stale pending status to bypass a concurrent confirmation', async () => {
   const { actions, appointment, messages } = fixture({ status: 'PENDING', changeAfterRead: 'confirm' });
   assert.equal((await actions.cancelAppointment(appointment.id)).success, false);
@@ -752,7 +769,8 @@ test('only admins can decide a reschedule request', async () => {
 
 for (const status of ['CANCELLED', 'COMPLETED'] as const) {
   test(`staff marking a booking ${status} also clears its open request`, async () => {
-    const f = fixture({ openRequest: OPEN_REQUEST });
+    // A visit can only be completed once it has started (mocked now: 12:00Z).
+    const f = fixture({ openRequest: OPEN_REQUEST, ...(status === 'COMPLETED' ? { currentDate: new Date('2099-09-01T11:30:00Z') } : {}) });
     assert.equal((await f.admin.updateAppointmentStatus(f.appointment.id, status)).success, true);
     assert.equal(f.appointment.rescheduleRequestedAt, null);
     assert.equal(f.events.some((event) => event.kind === 'RESCHEDULE_DECLINED' || event.kind === 'RESCHEDULE_LAPSED'), false);

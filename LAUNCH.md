@@ -1,242 +1,144 @@
 # Launch checklist — Harbour Hair Salon
 
-Last verified against production: **2026-09-22** (commit `e785e03`, deployment
-`dpl_5EMtoxaQ4zb2oxvpijGy2esqqJMT`, `www.harbourhair.co.uk`).
+Last verified against production: **2026-10-12 23:56 UTC** (read-only checks, `main` @
+`a20310b`, PR #61), plus the 2026-10-13 production-readiness review.
 
-> **Status:** all code fixes are **done and live**. Gate: **651/651 tests, `tsc`
-> clean, lint clean**, CI green (PostgreSQL 18 integration, booking lifecycle,
-> build). What remains is §2 content, §3 (opening booking — config + owner steps)
-> and §4 (owner decisions). **Nothing left in §3/§4 needs a code change**, except
-> the Treatwell→Fresha page copy if the owner picks Fresha (§4).
+> **Status:** the public site is live and stable. **Online booking is closed** — by the
+> Square lock in code (production opens only with Square production credentials, see §2)
+> and by configuration (§3). The 2026-10-13 review's code findings are fixed in the
+> "review follow-ups" release (§1); Square deposits are built in a separate release (§2).
 >
-> **Deploys:** push or merge to `main`; GitHub Actions tests and deploys. Local
-> `vercel --prod` is refused by `scripts/production-build-guard.mjs` and Vercel's
-> own git builds are off (`vercel.json`).
+> **Deploys:** merge to `main`; GitHub Actions tests and deploys. Runs on `main` queue
+> (never cancel mid-flight) and only main's current head builds and deploys. Local
+> `vercel --prod` is refused by `scripts/production-build-guard.mjs`.
 
-The site is **already live and serving customers**. What is still closed is
-**online booking**, and it is closed by configuration, not by code. This file is
-the ordered list of everything left.
-
-Work top to bottom. The ordering in §3 is **load-bearing** — steps depend on each
-other, and doing them out of order leaves booking silently shut.
+Work top to bottom. The order in §3 is **load-bearing**.
 
 ---
 
-## 0. Current state (verified, not assumed)
+## 0. Current state (verified 2026-10-12/13, not assumed)
 
 | Area | State |
 |---|---|
-| Tests / `tsc` / lint | 651/651 pass, clean, clean; CI also runs PostgreSQL 18 integration, booking-lifecycle and `next build` |
-| `pnpm audit --prod` | No known vulnerabilities |
-| CI / deploy | Green; production deploys **only** from the GitHub Actions job after CI (2026-09-22) |
-| Neon compute | Free plan, 100 CU-h/month. Was ~3 CU-h/day (~90/mo) until 2026-09-22; PR #45 targets ~40-45/mo — **re-measure 2026-09-23** |
-| Crons (UTC) | reminders `0 8`, notifications `*/30 8-19`, calendar-sync `*/30` (imports only during staff hours ±15 min), housekeeping `15 3` |
-| Runtime errors | None in the 24 h to 2026-09-22 19:20 UTC |
-| Migrations | 18 applied, none pending (checked by the 2026-09-22 deploy) |
-| Database | Neon `eu-west-2`, PostgreSQL 18.6, co-located with functions (`lhr1`) and Redis (`global-euw2`) |
-| Security headers | CSP, HSTS, X-Frame-Options, nosniff — all live |
-| Cron endpoints | All 5 return **401** without `CRON_SECRET` |
-| iCal feed without token | **404**, no leak |
-| Public pages | ISR, `X-Vercel-Cache: HIT`, 76–360 ms from the UK |
-| Email | `harbourhair.co.uk` verified in Resend; SPF + DKIM + DMARC all resolve |
-| **Online booking** | **CLOSED** — see §3 for exactly which gates remain |
+| Tests / `tsc` / lint / audit | All green — 1,247 tests with the follow-ups release (1,057 before); CI also replays migrations on PostgreSQL 18 and runs the integration, booking-lifecycle and HTTP suites |
+| Online booking | **CLOSED** — `SiteSettings.bookingEnabled=false`, plus the Square lock |
+| Notifications | `NOTIFICATIONS_ENABLED=false` — customers get no booking email yet |
+| Calendar sync | `CALENDAR_SYNC_ENABLED=true`; Fresha inbound OK for all 4 stylists |
+| Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals |
+| Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed) |
+| Housekeeping | `HOUSEKEEPING_ENABLED` unset — off until the follow-ups release, which makes it **on unless set to `false`** (the privacy notice's retention periods depend on it) |
+| Operations diagnostics | Last run 2026-09-20, **never passed** |
+| Neon | Free plan (100 CU-h/month, overrun **suspends** the database until next month); Oct 1–12 used 17.6 CU-h (~45/month pace); 6-hour restore history |
+| Crons (UTC) | reminders `0 8` (+ daily ops alert), notifications `*/30 8-19`, calendar-sync `*/30` (staff hours ±15 min), housekeeping `15 3` |
+| Migrations | 21 applied, none pending |
+| Accounts | 1 admin, 12 customers |
 
 ---
 
-## 1. Code fixes — do before opening booking
+## 1. Code — 2026-10-13 review follow-ups (release 1)
 
-- [x] **Remove `VERCEL_DEPLOYMENT_ID` from the readiness fingerprint.** *(done 2026-09-17)*
-      `src/app/services/operations-readiness.ts:37`. It changes on **every
-      deployment**, and the fingerprint comparison at `:157` runs unconditionally
-      on the live booking path (`booking-maintenance.ts:44`). Consequence: once
-      booking is open, **the next deploy silently closes it again** until someone
-      re-runs Admin → Operations. It fails safe, but it is invisible — no UI shows
-      the blocker, and `SiteSettings.bookingEnabled` stays `true`, so Admin →
-      Settings will read "booking on" while the public site serves the
-      maintenance page. Not intentional: it contradicts the comment three lines
-      below at `:165` ("ongoing operation does not expire daily") and had no test.
-      Fixed, with a regression test in `operations-readiness.test.ts` that was
-      verified to fail when the key is put back.
-
-- [x] **Fix the stray `0` on stylist pages.** *(done 2026-09-17)*
-      `src/app/stylists/[slug]/page.tsx:173` — `{profile.yearsExperience && (`
-      renders a bare `0` when the value is `0`. Live on `/stylists/lox`,
-      `/stylists/funky`, `/stylists/ivan` (Shania is `null`, so hers is clean).
-      Fixed with `!!profile.yearsExperience`. Ships on the next deploy.
-
-- [x] **Fix the `/book` cost + ordering issue.** *(done 2026-09-17)*
-      `src/app/book/page.tsx:26-30`. The comment justifies `force-dynamic` by
-      saying SiteSettings is cached for an hour, but the page's first statement
-      (`isBookingEnabled()`) **deliberately bypasses that cache**. Every `/book`
-      hit is ≥1 uncached Neon query (`X-Vercel-Cache: MISS`, `no-store`), and
-      `/book` is linked from every page's footer and the sticky mobile bar.
-      Worse at go-live: the readiness gate runs at `:55` but the sign-in redirect
-      only at `:128`, so **anonymous** visitors paid 3–4 uncached queries before
-      being bounced.
-      Fixed by caching `isBookingEnabled()` for 60s, tagged `site-settings` so the
-      admin toggle invalidates it instantly; the misleading comment is corrected.
-      **Note the reviewed suggestion to "move `getSession()` above the gate" was
-      rejected on purpose** — it would break the signed-out marketplace/phone page,
-      which is supposed to be visible while booking is closed. The authoritative
-      `assertOnlineBookingReady` stays uncached inside the booking transaction, so
-      no booking can be written against a stale reading.
-
-- [x] **Fix the FAQ seed drift.** *(done 2026-09-17)*
-      `scripts/seed-faqs.mjs` → `scripts/seed-faqs.ts`: the "£8" claim is now
-      £19, the hours answer now calls `openingHoursSentence()` instead of a
-      hardcoded string, and the file was added to the drift guard in
-      `opening-hours-public.test.ts`. Run it with `npx tsx scripts/seed-faqs.ts`
-      (not `node`). **This does not repair production** — see §2.
-
-### Optional, not blocking
-
-- [ ] Add `"functionFailoverRegions": ["dub1"]` to `vercel.json`. Single-region
-      `lhr1` today means an lhr1 incident takes out sign-in, `/book`, the iCal
-      feeds and all four crons while ISR pages keep serving — the site looks
-      healthy while nothing transactional works. Dublin keeps failover off the
-      transatlantic path. Confirm plan support first.
-- [ ] Remove the duplicate `NEON2_*` env set (15 vars pointing at the same Neon
-      project id) once confirmed nothing reads those names.
+- Mark completed only once an appointment has started (with confirmation), started requests
+  included; the busy feed keeps completed bookings until they end, so Fresha cannot resell the slot.
+- PENDING requests lapse once their appointment has ended (notifications cron, and daily housekeeping
+  while notifications are off; the customer is told if they had a request email). From the start staff
+  cannot approve them; declining one then sends the same "couldn't confirm in time" email.
+- No "cancelled" email for bookings that already happened; admin emails stored lowercase;
+  customer erasure tool in Admin → Users (`docs/data-erasure.md`).
+- Customer email language saved at sign-up / Google sign-in / booking; staff choose it for
+  walk-ins.
+- Privacy notice rewritten (lawful basis, retention, rights, ICO, processors, cookies) and linked
+  from sign-in and registration. **Owner to confirm** the legal entity name and retention periods.
+- Email verification needs a click on a confirm page (mail scanners can no longer verify);
+  per-IP daily caps on registration, verification and reset emails.
+- Duplicate retries no longer create two requests (the wizard says it was already requested; a
+  different named stylist at the same time is a real second booking); the wizard says "closed" when the
+  gate closes mid-session; 2-hour minimum notice for online requests (`MIN_BOOKING_NOTICE_MINUTES`).
+- "Add to Google Calendar" + `.ics` for confirmed bookings (emails and My appointments); the emailed
+  file carries an ORGANIZER and a matching `method` on its MIME type, and a cancelled request that was
+  never confirmed gets no calendar file.
+- Deploy pipeline: concurrency, head-of-main check, pinned Vercel CLI, optional Neon snapshot
+  before migrations (needs `NEON_API_KEY` secret + `NEON_PROJECT_ID` variable in GitHub).
+- Daily "needs attention" email to the salon (failed emails, failing jobs, dead feeds, waiting
+  requests, housekeeping switched off) — sent from the 08:00 UTC reminders run, so only while
+  notifications are on.
+- Monochrome confirmation email and admin controls; click-to-load map; image optimizer limited
+  to local files; translated Operations messages, share-card alt text, placeholders and delete
+  errors; settings cache 24 h; Prisma cold-start timeouts; no anonymous `/api/session` calls.
 
 ---
 
-## 2. Content fixes — Admin panel, no deploy needed
+## 2. Square deposits (release 2)
 
-- [x] **Correct the "£8" haircut FAQ.** *(done 2026-09-17 — written directly to
-      the production `Faq` row, key `services-master`)*
-      It now reads *"start from £19"*, matching the cheapest haircut on the menu.
-      The write re-derived the £19 floor from the `Service` table before applying,
-      and aborted unless exactly one row matched the audited text.
-      ⚠️ `/services` is ISR with a 1-hour window, so the old text can linger in
-      the CDN for up to an hour — **it refreshes immediately on the next deploy.**
-      Re-check after deploying §1: `curl -s https://www.harbourhair.co.uk/services | grep -o 'start from £[0-9]*'`
+Design: `docs/superpowers/specs/2026-10-13-square-deposits-design.md`. Runbook:
+`docs/square-payments-setup.md`.
 
-- [x] **Correct the "£8" on `/services/haircuts`.** *(done 2026-09-22)* A second
-      copy lived in `ServiceCategoryContent` (haircuts `metaDescription` + FAQ).
-      Now: children's cuts from £19; wash, cut & blow dry from £37 (£33 Student &
-      NHS). Verified live incl. the FAQPage JSON-LD.
-
-- [ ] **Add stylist bios, taglines and photos.** *(still empty 2026-09-22)* All four active stylists have
-      `bio`, `tagline` and `imageUrl` **null**, so the home page renders an empty
-      pair of quote marks and the four `/stylists/<slug>` pages (all in the
-      sitemap) are thin content.
-
-- [ ] **Confirm the opening hours everywhere match.** The site publishes
-      **Mon–Sun 10:00–19:00** from one source (`opening-hours-public.ts`). The
-      Treatwell listing still shows Mon–Sat 10:15–19:00 / Sun 10:30–17:30, and
-      lists the address as *Corn Exchange* rather than *Central Arcade*. Google
-      weighs name/address/phone/hours consistency — fix at the marketplace and on
-      Google Business Profile.
+- [ ] Developer: free Square Developer account → Sandbox application → set the sandbox env vars
+      on **Preview** only → run the sandbox acceptance list in the runbook.
+- [ ] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
+- [ ] Production env vars (`SQUARE_PAYMENTS_ENABLED=true`, `SQUARE_ENVIRONMENT=production`,
+      application ID `sq0idp-…`, access token, Leeds location ID, webhook signature key,
+      `SQUARE_WEBHOOK_NOTIFICATION_URL=https://www.harbourhair.co.uk/api/webhooks/square`).
+- [ ] Webhook subscription at exactly that URL (www, no trailing slash): `payment.created`,
+      `payment.updated`, `refund.created`, `refund.updated`.
+- [ ] Admin → Settings → Deposits: percentage / minimum; Admin → Services: per-service overrides.
+- [ ] One real low-value test booking in production (approve, then cancel → refund).
 
 ---
 
 ## 3. Opening online booking — the order matters
 
-`assertOnlineBookingReady` (`src/app/lib/booking-maintenance.ts`) fails closed and
-needs **all five** conditions. Re-verified against production **2026-09-22**
-(status in bold on each step).
+`assertOnlineBookingReady` (`src/app/lib/booking-maintenance.ts`) fails closed.
 
-- [ ] **3.1 — Clear the Treatwell "takes bookings" ticks.** **Still open: Funky,
-      Ivan, Lox (+ inactive Chan).** Owner decision first — see §4: if the salon
-      keeps taking Treatwell bookings, the website cannot see them (Treatwell has
-      no export feed), so keeping Treatwell live means accepting double-booking
-      risk or keeping website booking closed.
-      Admin → Integrations. Four `TREATWELL` connections have
-      `receivesBookings = true` with no inbound URL: **Lox, Funky, Ivan, and
-      inactive Chan**. Treatwell has no export feed, so that inbound URL can
-      **never** exist — this blocker is permanent until the ticks are cleared.
-      ⚠️ The gate-5 count does **not** filter on `isActive`, so **Chan's row
-      blocks even though Chan is retired**. The count must reach **0** (currently 8).
-
-- [x] **3.2 — Subscribe Shania's outbound feed in Fresha.** **Done:** her feed is
-      being fetched every ~15 min (runtime logs 2026-09-22).
-      Funky, Ivan and Lox are already being polled (visible in the runtime logs);
-      Shania's is not.
-
-- [ ] **3.3 — Set the environment flags, then redeploy.** **Half done:**
-      `CALENDAR_SYNC_ENABLED` is on (imports succeed); `NOTIFICATIONS_ENABLED` is
-      still off (the notifications worker has never run). Turning it on sends real
-      customer emails.
-      `NOTIFICATIONS_ENABLED=true` and `CALENDAR_SYNC_ENABLED=true`.
-      **Env changes only reach the runtime after a redeploy.**
-
-- [x] **3.4 — Wait for `calendar-sync` to run at least once** (every 30 min). **Done:**
-      all four Fresha feeds last succeeded 2026-09-22 18:30 UTC. Note imports pause
-      outside staff hours by design, so online booking pauses overnight too.
-      The gate demands `lastSuccessAt` **within 90 minutes**. While
-      `CALENDAR_SYNC_ENABLED` was `false` the cron returned before touching the
-      DB, so the last success is stale — it cannot go fresh until 3.3 is live.
-
-- [ ] **3.5 — Tick the outbound confirmations.** **Half done:** Funky and Ivan
-      confirmed; **Lox and Shania** still need "confirmed in Fresha" ticked.
-      Admin → Integrations. `outboundConfirmedAt` is `NULL` on all four `FRESHA`
-      connections.
-
-- [ ] **3.6 — Run Admin → Operations diagnostics, and run it LAST.** **Last run
-      2026-09-20 failed** (notifications off) — expected until 3.3 is done.
-      It currently sits at 6/7 (only `notifications` fails, deliberately). The
-      report is invalidated by any change to `EMAIL_FROM`, `EMAIL_REPLY_TO`,
-      `SALON_NOTIFY_EMAIL`, `RESEND_API_KEY`, `CRON_SECRET`,
-      `NOTIFICATIONS_ENABLED`, `POSTGRES_URL`, `DATABASE_URL` — **and, until §1 is
-      fixed, by every deployment.** So this must be the last step after the final
-      deploy.
-
-- [ ] **3.7 — Turn booking on via Admin → Settings.** **Off.**
-      **Do not write `bookingEnabled` straight into the database.**
-      `getSiteSettings` is an `unstable_cache` with a 1-hour TTL; only the admin
-      action invalidates the `site-settings` tag. A direct DB write leaves
-      `/book` showing the maintenance notice for up to an hour.
+- [ ] **3.1 Upgrades before customers arrive.** Neon → Launch (pay-as-you-go, ~US$11–15/month,
+      7-day restore); Resend → Pro (a booking sends 5 emails; free is 100/day); Vercel Spend
+      Management US$10 **alerts only** (never pause production).
+- [ ] **3.2 Treatwell decision.** It cannot be synced (no export feed). Recommended: close it.
+      Otherwise copy every Treatwell booking into Fresha at once, or accept the risk.
+- [ ] **3.3 Fresha.** Give Lox an import link; ask Fresha support why Lox's blocked times are not
+      exported; Shania shows "Calendar bookings: Off" in Fresha. Then tick Lox's and Shania's
+      outbound confirmations in Admin → Integrations.
+- [ ] **3.4 Second admin account** (Admin → Users).
+- [ ] **3.5 Environment, then redeploy** (env changes only reach the runtime after a deploy):
+      leave `HOUSEKEEPING_ENABLED` unset (on), then `NOTIFICATIONS_ENABLED=true` (sends real email);
+      `SALON_NOTIFY_EMAIL` if salon alerts should not go to `EMAIL_REPLY_TO`.
+- [ ] **3.6 Square** — §2 complete.
+- [ ] **3.7 Run Admin → Operations diagnostics LAST.** The report is invalidated by changes to
+      `EMAIL_FROM`, `EMAIL_REPLY_TO`, `SALON_NOTIFY_EMAIL`, `RESEND_API_KEY`, `CRON_SECRET`,
+      `NOTIFICATIONS_ENABLED`, `POSTGRES_URL`, `DATABASE_URL` or the Redis credentials.
+- [ ] **3.8 Admin → Settings → turn booking on.** Never write `bookingEnabled` straight into the
+      database.
 
 ---
 
 ## 4. Business decisions — owner input needed
 
-- [ ] **Which marketplace is the live channel — Treatwell or Fresha?**
-      **Still open 2026-09-22.** Both URLs are now set, but the home page, contact
-      page, footer and FAQ still say "Book on Treatwell" everywhere, while the
-      calendar sync runs on **Fresha**. The Treatwell listing is still live.
-
-- [ ] **If the answer is Fresha, three pages need code changes first.**
-      `freshaUrl` is read **nowhere** except the admin form and
-      `activeMarketplaces()`, which only `/book` uses. `TrustBar.tsx`,
-      `VisitFollowBlock.tsx` and `SocialLinks.tsx` are hardcoded Treatwell-only,
-      and `VisitFollowBlock.tsx:11` hardcodes the prose *"book through Treatwell"*.
-      Simply swapping the URLs in Admin would **remove the booking link from the
-      home page and footer entirely** and leave that sentence contradicting itself.
-
-- [ ] **Add a second admin account.** *(still one admin, 2026-09-22)* Production has exactly **one** admin,
-      `info@harbourhair.co.uk`. The seeded placeholder did not survive the London
-      database move, so there is no backup login. Sign-in lowercases the submitted
-      email but nothing normalises on write — **always insert lowercase**, or the
-      account can never sign in.
+- [ ] Deposit amount (percentage / fixed / minimum), which services, refund and no-show rules.
+- [ ] Staff approval time (holds expire after 7 days; aim for same-day replies).
+- [ ] Legal entity name and retention periods for the privacy notice.
+- [ ] Minimum notice for online requests (default 2 hours).
 
 ---
 
 ## 5. After booking opens — verify, do not assume
 
-- [ ] Load `/book` **signed out** → should redirect to `/auth/signin?redirect=/book`.
-- [ ] Load `/book` **signed in** → the calendar renders with real slots.
-- [ ] Make one **real test booking**, then confirm:
-  - [ ] the confirmation email actually arrives (Resend shows `delivered`);
-  - [ ] the appointment appears on the Admin schedule board;
-  - [ ] it appears in the stylist's Fresha calendar within ~10 minutes;
-  - [ ] cancelling it frees the slot again.
-- [ ] Re-check `/api/health` returns `database: up`.
-- [ ] Watch Neon CU-hours for 48 h. Budget is 100/month (free plan; overrun
-      suspends the database). Measured ~3 CU-h/day before PR #45, target ~1.3-1.5
-      after launch. Measure from Neon's operations log (`start_compute` /
-      `suspend_compute`) — see the "Neon compute budget" section in CLAUDE.md.
+- [ ] `/book` signed out → sign-in redirect; signed in → real slots.
+- [ ] One real booking: request email arrives; admin approval captures the deposit; confirmation
+      email with calendar links; Fresha shows the block within ~10 minutes; cancelling frees the
+      slot and refunds.
+- [ ] Watch Neon CU-hours for 48 h (Neon operations log `start_compute` / `suspend_compute`).
 
-**Rollback:** Admin → Settings, switch `bookingEnabled` off. It fails closed, so
-booking shuts immediately; cancellation deliberately stays available to customers.
+**Rollback:** Admin → Settings, switch booking off. It fails closed; customers can still cancel.
 
 ---
 
 ## 6. Deferred — not blocking launch
 
-- [ ] DMARC is `p=none`; move to `p=quarantine` once the `rua` reports look clean.
-- [ ] Sitemap lists 20 URLs; 11 are indexed.
-- [ ] `@react-email/components` is marked deprecated upstream.
-- [ ] Some stylists start at 10:15 / 10:30 while the site advertises 10:00. This is
-      deliberate — marketing hours (`opening-hours-public.ts`) are not the same as
-      bookable `Availability`.
+- [ ] Per-stylist booking gate (today one stale feed closes booking and approvals for everyone).
+- [ ] Live Fresha check at submit (`docs/superpowers/specs/2026-09-29-booking-slot-hold-and-live-sync-design.md`).
+- [ ] Website-first CTAs, `ReserveAction` JSON-LD and the Google Business Profile booking link once
+      booking is open.
+- [ ] DMARC `p=none` → `p=quarantine` once reports are clean; Search Console verification.
+- [ ] Remove the duplicate `NEON2_*` env set once confirmed unused.
+- [ ] Before the first records turn 6 years old (2032): decide and implement what happens to booking
+      records after 6 years (delete or anonymise; deleting an appointment also deletes its review) —
+      the privacy notice says "up to 6 years". Account-event records are already deleted by housekeeping.

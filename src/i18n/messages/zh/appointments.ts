@@ -44,6 +44,10 @@ const appointments: Localized<Messages['appointments']> = {
     awaitingConfirmation: '正等待本店確認，確認後我們會以電郵通知你。',
     changesLocked: '預約前 24 小時內不能作任何更改。',
     maintenance: '預約系統正在維護，暫時未能於網上改期。如需更改此預約，請致電本店。',
+    addToGoogleCalendar: '加入 Google 日曆',
+    downloadCalendarFile: '下載日曆檔案（.ics）',
+    opensInNewTab: '（於新分頁開啟）',
+    calendarAfterConfirmation: '預約確認後，即可將其加入你的日曆。',
   },
   reschedule: {
     title: '申請改期',

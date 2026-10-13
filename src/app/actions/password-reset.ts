@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { headers } from 'next/headers';
 import prisma from '@/app/lib/prisma';
 import { fitsBcryptLimit, hashPassword } from '@/app/lib/password';
-import { accountRateLimitKey, passwordResetAccountLimiter, passwordResetLimiter } from '@/app/lib/rate-limit';
+import { accountRateLimitKey, emailSendDailyLimiter, passwordResetAccountLimiter, passwordResetLimiter } from '@/app/lib/rate-limit';
 import { sendPasswordReset } from '@/app/services/email-service';
 import { appendAuditEvent } from '@/app/lib/audit';
 import {
@@ -14,6 +14,7 @@ import {
   RESET_TOKEN_TTL_MS,
 } from '@/app/lib/password-reset';
 import { getActionT } from '@/i18n/request';
+import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
 
 // 'sent' carries no text: the page words it in its own language, so the
 // confirmation still reads correctly after a language switch.
@@ -74,6 +75,14 @@ export async function requestPasswordReset(
     return { status: 'error', message: issueText(t, parsed.error.issues) };
   }
 
+  // This client's daily email budget, shared with registration and
+  // verification resends. Spent by every valid request, before the lookup and
+  // for every address alike, so the answer never says whether an account
+  // exists — and a client past it cannot drain other accounts' budgets below.
+  if (!(await emailSendDailyLimiter.check(ip))) {
+    return { status: 'error', message: t('errors.EMAIL_DAILY_LIMIT') };
+  }
+
   // Each request emails the account and retires its previous link, so the
   // per-IP bucket alone let requests from many addresses flood one mailbox and
   // keep breaking its owner's link. Past the per-account budget, answer exactly
@@ -88,8 +97,9 @@ export async function requestPasswordReset(
     select: { id: true, email: true },
   });
 
-  // No account: stop here, but return the same message as the success path.
-  if (!user) return { status: 'sent' };
+  // No account — or a walk-in / erased account whose address is a placeholder
+  // that can never receive mail: stop here, with the same answer as success.
+  if (!user || isPlaceholderEmail(user.email)) return { status: 'sent' };
 
   const token = generateResetToken();
 

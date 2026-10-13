@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { OG_BASE } from '@/app/lib/og-defaults';
 import { jsonLdScript } from '@/app/lib/json-ld';
 import Link from '@/i18n/link';
-import Image from 'next/image';
+import { BlogCoverImage } from '@/components/blog/BlogCoverImage';
+import { absoluteImageUrl } from '@/app/lib/image-src';
 import { notFound } from 'next/navigation';
 import {
   getPublishedPostSlugs,
@@ -114,7 +115,7 @@ export default async function BlogPostPage({
     '@type': 'BlogPosting',
     headline: post.title,
     description: post.description,
-    image: `${BASE_URL}${post.coverImage}`,
+    image: absoluteImageUrl(post.coverImage, BASE_URL),
     datePublished: post.publishedAt.toISOString(),
     dateModified: post.updatedAt.toISOString(),
     author: {
@@ -171,11 +172,10 @@ export default async function BlogPostPage({
       {/* Hero */}
       <header className="relative py-24 md:py-32 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
-          <Image
+          <BlogCoverImage
             src={post.coverImage}
             alt={post.coverAlt}
             lang={lang}
-            fill
             priority
             className="object-cover opacity-30"
           />

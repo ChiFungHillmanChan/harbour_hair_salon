@@ -76,6 +76,7 @@ const booking: Localized<Messages['booking']> = {
     slotUnavailableLabel: '{time}，不可預約',
     unavailableHelp: '{name} 當日不可預約，請選擇其他日子。',
     unavailableHelpAnyone: '當日沒有髮型師可供預約，請選擇其他日子。',
+    noticeHint: { other: '網上預約須最少提前 {count} 小時提出。如想預約今日較早的時間，請致電本店。' },
   },
   confirm: {
     summary: '預約摘要',
@@ -99,6 +100,7 @@ const booking: Localized<Messages['booking']> = {
   done: {
     title: '已收到預約申請！',
     body: '你的申請已送交本店，確認後我們會即時以電郵通知你。',
+    alreadyRequested: '你已為這個時間提交過預約申請——請到「我的預約」查看。',
     viewBookings: '查看我的預約',
   },
 };

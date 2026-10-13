@@ -52,6 +52,7 @@ const auth: Localized<Messages['auth']> = {
     submitting: '正在登入…',
     noAccount: '還沒有帳戶？',
     register: '立即註冊',
+    privacy: '我們如何使用你的資料：請參閱<link>私隱政策</link>。',
   },
   register: {
     title: '建立帳戶',
@@ -69,6 +70,7 @@ const auth: Localized<Messages['auth']> = {
     haveAccount: '已有帳戶？',
     signIn: '登入',
     recover: '透過電郵重新取得帳戶',
+    privacy: '我們會使用你的資料管理帳戶及預約，詳情請參閱<link>私隱政策</link>。',
   },
   forgot: {
     title: '忘記密碼？',
@@ -134,6 +136,11 @@ const auth: Localized<Messages['auth']> = {
     },
   },
   verifyEmail: {
+    confirmTitle: '確認你的電郵地址',
+    confirmBody: '請按下方按鈕，確認 {email} 是你的電郵地址。',
+    confirm: '確認我的電郵地址',
+    confirming: '正在確認…',
+    CONFIRM_FAILED: '暫時未能確認你的電郵地址，請稍後再試。',
     verifiedTitle: '電郵地址已確認',
     verifiedBody: '多謝你，電郵地址已確認，你現在可以網上預約。',
     bookNow: '立即預約',
@@ -162,6 +169,7 @@ const auth: Localized<Messages['auth']> = {
     PHONE_TOO_LONG: '電話號碼不可超過 20 個字元。',
     LOGIN_RATE_LIMITED: '登入嘗試次數過多，請於 15 分鐘後再試。',
     REGISTER_RATE_LIMITED: '註冊嘗試次數過多，請於 15 分鐘後再試。',
+    EMAIL_DAILY_LIMIT: '今日經你的網絡要求發出的電郵次數過多，請明天再試，或致電本店。',
     INCORRECT_CREDENTIALS: '電郵地址或密碼不正確，請再試一次。',
     ALREADY_REGISTERED: '此電郵地址已經註冊。請直接登入，或使用「忘記密碼」驗證電郵地址並重新取得帳戶。',
     USE_GOOGLE: '此電郵地址已透過 Google 註冊，請按「使用 Google 繼續」登入。',

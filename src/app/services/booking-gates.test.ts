@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateBookingGates } from './booking-gates';
+import { meetsMinimumNotice } from '../lib/booking-constants';
 
 const NOW = new Date('2026-07-10T12:00:00Z');
 const FUTURE = new Date('2026-07-15T10:00:00Z');
@@ -124,4 +125,35 @@ test('consultation-only takes priority over an ineligible patch-test gate', () =
     ok: false,
     code: 'CONSULTATION_ONLY', error: 'This service is by consultation only. Please book a consultation to discuss it.',
   });
+});
+
+// Online requests wait for staff approval, so submitBooking passes
+// MIN_BOOKING_NOTICE_MINUTES; staff-entered bookings never reach this gate.
+const minutesFromNow = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
+
+test('a request inside the online notice period is refused, with the period in hours', () => {
+  const result = evaluateBookingGates(baseInput({ bookingInstant: minutesFromNow(119), minNoticeMinutes: 120 }));
+  assert.deepEqual(result, {
+    ok: false, code: 'BOOKING_TOO_SOON', params: { count: 2 },
+    error: 'Online requests need at least 2 hours’ notice so the salon can confirm them in time. For an earlier time, please call the salon.',
+  });
+});
+
+test('exactly the notice period is accepted — the same boundary the time lists use', () => {
+  assert.deepEqual(evaluateBookingGates(baseInput({ bookingInstant: minutesFromNow(120), minNoticeMinutes: 120 })), { ok: true });
+  assert.equal(meetsMinimumNotice(minutesFromNow(120), NOW, 120), true);
+  assert.equal(meetsMinimumNotice(minutesFromNow(119), NOW, 120), false);
+});
+
+test('a time already gone is PAST_TIME, not BOOKING_TOO_SOON', () => {
+  assert.equal((evaluateBookingGates(baseInput({ bookingInstant: PAST, minNoticeMinutes: 120 })) as { code?: string }).code, 'PAST_TIME');
+});
+
+test('without a notice period a near time passes', () => {
+  assert.deepEqual(evaluateBookingGates(baseInput({ bookingInstant: minutesFromNow(5) })), { ok: true });
+});
+
+test('the notice period is checked before consultation and patch-test rules', () => {
+  const result = evaluateBookingGates(baseInput({ bookingInstant: minutesFromNow(30), minNoticeMinutes: 120, requiresConsultation: true }));
+  assert.equal((result as { code?: string }).code, 'BOOKING_TOO_SOON');
 });

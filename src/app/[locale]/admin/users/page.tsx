@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { AdminUserForm } from '@/components/admin/AdminUserForm';
+import { CustomerErasureSection } from '@/components/admin/CustomerErasureSection';
 import { deleteAdminUser, promoteGoogleUserToAdmin } from '@/app/actions/admin';
 import { pageNumber, searchText } from '@/app/lib/pagination';
 import { Pagination } from '@/components/admin/Pagination';
@@ -10,7 +11,7 @@ import { formatSalonMediumDate } from '@/i18n/dates';
 import { localizeHref } from '@/i18n/paths';
 import { getLocale, getT } from '@/i18n/server';
 
-export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string; admins?: string }> }) {
+export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string; admins?: string; erase?: string }> }) {
   const session = await requireAdmin();
   const [query, locale, t] = await Promise.all([searchParams, getLocale(), getT('adminOps')]);
   const page = pageNumber(query.page);
@@ -29,7 +30,9 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
   }), prisma.user.findMany({
     where: {
       role: 'USER',
-      ...(q ? { OR: [{ name: { contains: q } }, { email: { contains: q } }] } : {}),
+      // Addresses are stored lower-case (sign-in, registration and admin forms
+      // all normalise them), so search them that way.
+      ...(q ? { OR: [{ name: { contains: q } }, { email: { contains: q.toLowerCase() } }] } : {}),
       oauthAccounts: { some: { provider: 'google' } },
     },
     select: { id: true, name: true, email: true, createdAt: true },
@@ -122,7 +125,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
                     <td className="px-6 py-4 text-sm text-zinc-500">{user.email}</td>
                     <td className="px-6 py-4 text-right">
                       <form action={promoteGoogleUserToAdmin.bind(null, user.id)}>
-                        <button className="rounded-md bg-[#174F7F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#123f66]">
+                        <button className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-700">
                           {t('users.google.makeAdmin')}
                         </button>
                       </form>
@@ -135,6 +138,8 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
         )}
       </div>
       <Pagination path="/admin/users" page={page} hasMore={customerRows.length > 25} query={{ q, admins: String(adminPage) }} />
+
+      <CustomerErasureSection query={searchText(query.erase)} />
     </div>
   );
 }

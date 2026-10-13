@@ -5,9 +5,16 @@ import { useSearchParams } from 'next/navigation';
 import { login } from '@/app/actions/auth';
 import Link from '@/i18n/link';
 import { useT } from '@/i18n/client';
+import { rich } from '@/i18n/rich';
 import { clearDraft, usePreservedForm } from '@/i18n/draft-store';
 import PasswordVisibilityToggle from '@/components/auth/PasswordVisibilityToggle';
 import GoogleAuthButton from '@/components/auth/GoogleAuthButton';
+
+// The footer (and its privacy link) is hidden on auth pages, so the form says it.
+// A new tab keeps the form as typed.
+const privacyLink = (text: string) => (
+  <Link href="/privacy" target="_blank" className="font-medium text-zinc-700 underline hover:text-zinc-900">{text}</Link>
+);
 
 const GOOGLE_ERRORS = ['google_unavailable', 'google_cancelled', 'google_already_linked', 'google_email_unverified', 'google_admin_link', 'google_failed'] as const;
 type GoogleError = (typeof GOOGLE_ERRORS)[number];
@@ -122,6 +129,9 @@ function SignInFormInner() {
             >
               {isPending ? t('signIn.submitting') : t('signIn.submit')}
             </button>
+            <p className="mt-3 text-center text-xs leading-5 text-zinc-500">
+              {rich(t('signIn.privacy'), { link: privacyLink })}
+            </p>
           </div>
         </form>
 

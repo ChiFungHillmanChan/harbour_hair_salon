@@ -67,6 +67,15 @@ const emails = {
     cta: 'View my request',
     footnote: 'You can withdraw this request at any time from My Bookings. Payment is due at the salon; cash and card are accepted.',
   },
+  requestLapsed: {
+    subject: 'We couldn’t confirm your booking request — Harbour Hair Salon',
+    preview: 'We couldn’t confirm your request for {service} on {date} in time',
+    eyebrow: 'Request not confirmed',
+    title: 'We couldn’t confirm your request in time.',
+    intro: 'We’re sorry — we couldn’t confirm your booking request for {date} at {time} before that time came, so the request has now closed. Please call us or book another time.',
+    cta: 'Book another time',
+    footnote: 'If you have already arranged a time with the salon, you can ignore this email.',
+  },
   cancellation: {
     subject: 'Your booking has been cancelled — Harbour Hair Salon',
     preview: 'Your booking has been cancelled — {service} on {date}',
@@ -108,6 +117,18 @@ const emails = {
     intro: 'Thank you for visiting Harbour Hair Salon. We would love to hear how your appointment went — it only takes a minute.',
     cta: 'Leave a review',
     footnote: 'Your feedback helps us look after every client.',
+  },
+  /**
+   * The customer's own calendar entry for a confirmed appointment — the same
+   * words in the emails (link + attached .ics) and on My Bookings.
+   */
+  calendar: {
+    title: '{service} at Harbour Hair Salon',
+    details: 'Stylist: {stylist}\nView or change your booking: {url}',
+    addToGoogle: 'Add to Google Calendar',
+    attached: 'A calendar file (.ics) is attached: open it to add this appointment to Apple Calendar, Outlook or another calendar app.',
+    moved: 'If you saved the previous time in your calendar, please delete it and add the new time.',
+    cancelled: 'If you added this appointment to your calendar, please delete it — opening the attached file (.ics) may do this for you.',
   },
   salonAlert: {
     subject: 'New booking request — Harbour Hair Salon',

@@ -1,0 +1,36 @@
+// Pure and client-safe: the admin board (in the browser), the status action and
+// the booking-request lapse step all decide "has this visit begun?" the same way.
+
+/**
+ * True once an appointment's start time has come; it may still be running.
+ * From then on a booking request can no longer be confirmed, a visit can be
+ * marked completed, and staff cancelling it is tidying the diary rather than
+ * news for the customer.
+ */
+export function hasAppointmentStarted(date: Date | string, now: Date = new Date()): boolean {
+  return new Date(date).getTime() <= now.getTime();
+}
+
+/**
+ * True once the whole visit is over: its start plus `minutes` (the booking's
+ * frozen `durationAtBooking`, else the service's duration) has come — the same
+ * instant the stylist busy feed stops holding the chair. Until then a booking
+ * request is left open, because its customer may be in the chair (a staff
+ * "pencil in" is PENDING too) and closing it would free that time for resale.
+ */
+export function hasAppointmentEnded(date: Date | string, minutes: number, now: Date = new Date()): boolean {
+  return new Date(date).getTime() + minutes * 60_000 <= now.getTime();
+}
+
+/** "We couldn't confirm your request in time" is only worth sending this soon after the requested time. */
+export const REQUEST_LAPSE_NOTICE_HOURS = 72;
+
+/**
+ * Whether a lapsed booking request may still be emailed about. Normally the
+ * notifications cron closes a request within half an hour of its time; a
+ * backlog (first deploy, crons or sending switched off for a while) is closed
+ * silently rather than mailed days later.
+ */
+export function isRequestLapseNoticeTimely(date: Date | string, now: Date = new Date()): boolean {
+  return now.getTime() - new Date(date).getTime() <= REQUEST_LAPSE_NOTICE_HOURS * 3_600_000;
+}

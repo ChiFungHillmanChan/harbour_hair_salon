@@ -44,6 +44,7 @@ test('no page, API, asset or standard well-known file the site serves is ever de
     '/', '/zh-hk', '/book', '/zh-hk/book', '/blog', '/zh-hk/blog', '/blog/balayage-aftercare', '/services', '/services/colouring',
     '/stylists', '/stylists/funky-k', '/offers', '/reviews', '/contact', '/privacy', '/try-color', '/3d', '/unsubscribe',
     '/auth/signin', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/verify-email', '/auth/mfa/setup',
+    '/auth/verify-email/confirm', '/zh-hk/auth/verify-email/confirm',
     '/appointments', '/admin', '/admin/settings', '/admin/blog/abc123/edit', '/kiosk',
     '/api/ical/cmu3zmalf0001h7400z5ijxh3', '/api/auth/google', '/api/auth/google/callback', '/api/auth/verify-email',
     '/api/cron/calendar-sync', '/api/cron/housekeeping', '/api/health', '/api/session',

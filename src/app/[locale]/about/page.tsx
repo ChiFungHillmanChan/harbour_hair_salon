@@ -21,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: 'summary_large_image',
       title: t('meta.ogTitle'),
       description: t('meta.description'),
-      images: OG_BASE.images,
+      images: ogLocale(locale).images,
     },
   };
 }

@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/app/lib/prisma';
-import { appendAuditEvent } from '@/app/lib/audit';
 import { readEmailVerificationToken } from '@/app/lib/email-verification';
 import { localizeHref } from '@/i18n/paths';
 import { getRequestLocale } from '@/i18n/request';
@@ -8,37 +6,22 @@ import { getRequestLocale } from '@/i18n/request';
 export const runtime = 'nodejs';
 
 /**
- * The link in the verification email. Records that the account receives mail
- * at its address, then shows the result in the language the link was sent in.
+ * The address verification emails linked to before 2026-10-13 (newer emails
+ * link straight to the confirm page). Opening it changes NOTHING: corporate
+ * mail scanners fetch every link in a message, and when this GET recorded the
+ * proof they confirmed addresses nobody had clicked. It only forwards to the
+ * confirm page, in the language the link was sent in, where a button press
+ * (confirmEmailVerification) does the work.
  *
- * Only reached from that email (never polled), and a forged or expired link is
- * refused before any database work. Repeating a used link — as mail scanners
- * do — just confirms the same address again.
+ * No database work at all: a forged or expired link goes straight to the
+ * "not valid" page, a genuine one to the button.
  */
 export async function GET(request: NextRequest) {
-  const claim = await readEmailVerificationToken(request.nextUrl.searchParams.get('token') ?? '');
+  const token = request.nextUrl.searchParams.get('token') ?? '';
+  const claim = await readEmailVerificationToken(token);
   const locale = claim?.locale ?? await getRequestLocale();
-  let status: 'verified' | 'invalid' = 'invalid';
-
-  if (claim) {
-    try {
-      // The address must still be the one the link was sent to: a link for an
-      // old address proves nothing about the current one.
-      const confirmed = await prisma.user.updateMany({
-        where: { id: claim.userId, email: claim.email, emailVerifiedAt: null },
-        data: { emailVerifiedAt: new Date() },
-      });
-      if (confirmed.count === 1) {
-        status = 'verified';
-        await appendAuditEvent({ actorUserId: claim.userId, action: 'AUTH.EMAIL_VERIFIED', targetType: 'User', targetId: claim.userId });
-      } else {
-        const current = await prisma.user.findUnique({ where: { id: claim.userId }, select: { email: true, emailVerifiedAt: true } });
-        if (current?.email === claim.email && current.emailVerifiedAt) status = 'verified';
-      }
-    } catch (error) {
-      console.error('Email verification failed:', error);
-    }
-  }
-
-  return NextResponse.redirect(new URL(localizeHref(locale, `/auth/verify-email?status=${status}`), request.url));
+  const target = claim
+    ? `/auth/verify-email/confirm?token=${encodeURIComponent(token)}`
+    : '/auth/verify-email?status=invalid';
+  return NextResponse.redirect(new URL(localizeHref(locale, target), request.url));
 }

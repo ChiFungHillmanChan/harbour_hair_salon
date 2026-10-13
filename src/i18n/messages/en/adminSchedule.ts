@@ -52,6 +52,7 @@ const adminSchedule = {
     checking: 'Checking calendars…',
     decline: 'Decline',
     declineConfirm: 'Decline this booking request? The customer will need to book again.',
+    expired: 'Time passed — can no longer be confirmed',
   },
   rescheduleRequests: {
     stat: 'Reschedule requests',
@@ -75,6 +76,7 @@ const adminSchedule = {
     stylist: 'Stylist: {name}',
     edit: 'Edit booking',
     markCompleted: 'Mark completed',
+    markCompletedConfirm: 'Mark {customer}’s appointment as completed? This cannot be undone.',
     updateFailed: 'Failed to update',
   },
   year: {
@@ -140,6 +142,8 @@ const adminSchedule = {
     noEmailHelp: 'No email is fine — a phone or WhatsApp booking is saved without one, and no email is sent.',
     emailLanguage: 'Customer email language',
     emailLanguageHelp: 'Used for this customer’s booking emails. A customer already on file keeps the language saved on their account.',
+    emailLanguageUnsetHelp: 'This customer has no saved email language yet. Your choice is used for this booking and saved on their account.',
+    emailLanguageSaved: 'Emails go out in {language}, the language saved on this customer’s account.',
     service: 'Service',
     option: '{label} ({duration}, {price})',
     retiredOption: '{label} — not offered for new bookings',

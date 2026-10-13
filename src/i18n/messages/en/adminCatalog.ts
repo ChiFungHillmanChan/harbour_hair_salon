@@ -35,6 +35,7 @@ const adminCatalog = {
     isBookable: 'Open for new bookings',
     availabilityHelp: 'Turning either off never touches existing appointments: they keep their price and can still be managed. An option can only take bookings once its duration is confirmed.',
     imageUrl: 'Image URL',
+    imageUrlPlaceholder: '/images/services-hero.webp or https://...',
     optional: '(optional)',
     colourFlags: 'Colour service flags',
     requiresPatchTest: 'Requires patch test',

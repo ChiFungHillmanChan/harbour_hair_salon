@@ -5,12 +5,19 @@ import { useSearchParams } from 'next/navigation';
 import { register } from '@/app/actions/auth';
 import Link from '@/i18n/link';
 import { useT } from '@/i18n/client';
+import { rich } from '@/i18n/rich';
 import { clearDraft, usePreservedForm } from '@/i18n/draft-store';
 import PasswordVisibilityToggle from '@/components/auth/PasswordVisibilityToggle';
 import GoogleAuthButton from '@/components/auth/GoogleAuthButton';
 
 // What has been typed survives a language switch, in memory only.
 const DRAFT = 'auth:register';
+
+// The footer (and its privacy link) is hidden on auth pages, so the form links
+// the policy where the details are given. A new tab keeps the form as typed.
+const privacyLink = (text: string) => (
+  <Link href="/privacy" target="_blank" className="font-medium text-zinc-700 underline hover:text-zinc-900">{text}</Link>
+);
 
 type RegisterState = Awaited<ReturnType<typeof register>> | undefined;
 
@@ -129,6 +136,9 @@ function RegisterFormInner() {
             >
               {isPending ? t('register.submitting') : t('register.submit')}
             </button>
+            <p className="mt-3 text-center text-xs leading-5 text-zinc-500">
+              {rich(t('register.privacy'), { link: privacyLink })}
+            </p>
           </div>
         </form>
 

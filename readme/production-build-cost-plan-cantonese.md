@@ -187,15 +187,15 @@ Neon Free 係 100 CU-hours／project。假設五分鐘 cron 令最低 0.25 CU co
 
 ### Resend 容量
 
-假設每張完成 booking 有 confirmation、reminder、review request共 3 封：
+一張網上預約由申請到完成會寄 **5 封**（`notification-outbox-service.ts`）：客人「已收到申請」（REQUEST_RECEIVED）、髮廊新申請通知（SALON_ALERT）、確認（CONFIRMATION）、提醒（REMINDER）、評價邀請（REVIEW_REQUEST）。另外仲有新客 email 驗證、重設密碼、取消、改期等電郵。
 
 ```text
-20 bookings/日 × 3 × 30 = 1,800 emails/月；60/日 → Free 足夠
-30 bookings/日 × 3 × 30 = 2,700 emails/月；90/日 → 接近上限
-35 bookings/日 × 3 = 105 emails/日 → 超過 Free 每日 100
+15 bookings/日 × 5 = 75 emails/日 ＋ 驗證／重設／取消 ≈ 80–90/日 → 貼近 Free 每日 100
+20 bookings/日 × 5 = 100 emails/日 → 已到 Free 每日上限（未計其他電郵）
+15 bookings/日 × 5 × 30 ≈ 2,250/月 ＋ 其他 ≈ 2,700/月 → 貼近 Free 每月 3,000
 ```
 
-建議去到平均 25–30 bookings/日，或者加入大量 newsletter 前升 Resend Pro $20/月／50,000 emails。
+**開網上預約之前升 Resend Pro**（US$20/月、50,000 emails/月、冇每日上限）。（2026-10-13 更正：舊版以每張 booking 3 封計算，低估咗用量。）
 
 ### Vercel request 容量示例
 

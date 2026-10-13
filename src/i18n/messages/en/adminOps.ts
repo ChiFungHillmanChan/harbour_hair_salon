@@ -66,6 +66,38 @@ const adminOps = {
       DELETE_FAILED: 'Failed to delete admin user. Please try again.',
       RESET_ONLY_ADMINS: 'Can only reset passwords for admin users',
     },
+    erasure: {
+      title: 'Erase a customer’s personal data',
+      intro: 'Use this when a customer asks you to delete their data (UK GDPR). Their name, email, phone, password, sign-in links, booking notes and reviews are removed and cannot be recovered. Their past appointments stay as anonymised business records. Cancel any upcoming bookings first.',
+      searchLabel: 'Find the customer',
+      searchPlaceholder: 'Name, email or phone',
+      search: 'Search',
+      searchHint: 'Type at least 2 characters.',
+      empty: 'No customers match “{query}”.',
+      noEmail: 'No email (phone booking)',
+      appointments: { one: '{count} appointment', other: '{count} appointments' },
+      erased: 'Erased',
+      button: 'Erase data',
+      erasing: 'Erasing…',
+      prompt: 'This permanently erases the personal data of {name} and cannot be undone. Type {expected} to confirm:',
+      done: 'Personal data erased. Note the date in your record of erasure requests.',
+      doneMarketingManual: 'Personal data erased, but {email} could not be removed from the marketing mailing list in Resend. Remove it there by hand, then note the date in your record of erasure requests.',
+      errors: {
+        UNAUTHORIZED: 'Unauthorized',
+        INVALID: 'Type the confirmation to erase this customer’s data.',
+        NOT_FOUND: 'This customer no longer exists. Search again.',
+        ERASE_SELF: 'You cannot erase your own account.',
+        ERASE_ADMIN: 'Administrator accounts cannot be erased here.',
+        ALREADY_ERASED: 'This customer’s data has already been erased.',
+        CONFIRMATION_MISMATCH: 'The confirmation did not match, so nothing was erased.',
+        HAS_UPCOMING: {
+          one: 'This customer has {count} upcoming booking. Cancel it first, then erase their data.',
+          other: 'This customer has {count} upcoming bookings. Cancel them first, then erase their data.',
+        },
+        CHANGED: 'This customer’s account changed while it was being erased, so nothing was changed. Search again and retry.',
+        FAILED: 'Could not erase this customer’s data. Nothing was changed — please try again.',
+      },
+    },
   },
   integrations: {
     eyebrow: 'Operations',
@@ -150,6 +182,20 @@ const adminOps = {
     },
     never: 'Never',
     none: '—',
+    // Fixed sentences jobs store in lastError (services/operations-messages.ts).
+    messages: {
+      CALENDAR_WORKER_FAILED: 'Calendar worker could not complete. Check database and connection configuration.',
+      CALENDAR_PARTIAL_FAILURE: 'Some calendar connections failed. Check Integrations; previous busy periods were retained.',
+      DELIVERY_LEASE_RECOVERED: 'Expired delivery lease recovered; delivery eligibility will be rechecked.',
+      NOTIFICATION_EXPIRED: 'Expired notification; personal payload removed.',
+      HOUSEKEEPING_FAILED: 'Housekeeping failed. Check database availability and retention backlog.',
+      NOTIFICATION_WORKER_FAILED: 'Notification worker failed. Check database and provider configuration.',
+      SOME_NOTIFICATIONS_FAILED: 'Some notifications failed; inspect the notification queue.',
+      RETRY_WINDOW_EXPIRED: 'Retry window expired. Check provider delivery logs before any manual resend.',
+      DELIVERY_FAILED_REPEATEDLY: 'Delivery failed repeatedly. Check the email provider and sender configuration.',
+      DELIVERY_RETRY_SCHEDULED: 'Delivery failed. A retry is scheduled; check provider status and sender configuration.',
+      CUSTOMER_ERASED: 'Customer data erased; never sent.',
+    },
     report: {
       title: 'Latest readiness report',
       lastRun: 'Last run: {time}. Enabling booking requires a complete passing report from the current settings, less than 24 hours old.',
@@ -185,12 +231,17 @@ const adminOps = {
       empty: 'No notification deliveries have been queued.',
       kind: {
         REQUEST_RECEIVED: 'Booking request received',
+        REQUEST_LAPSED: 'Booking request lapsed',
         SALON_ALERT: 'Salon alert',
         CONFIRMATION: 'Confirmation',
         CANCELLATION: 'Cancellation',
         RESCHEDULE: 'Reschedule',
         REMINDER: 'Reminder',
         REVIEW_REQUEST: 'Review request',
+        RESCHEDULE_REQUEST_RECEIVED: 'Reschedule request received',
+        SALON_RESCHEDULE_ALERT: 'Salon reschedule alert',
+        RESCHEDULE_DECLINED: 'Reschedule declined',
+        RESCHEDULE_LAPSED: 'Reschedule request lapsed',
       },
       status: {
         PENDING: 'Pending',
@@ -243,6 +294,30 @@ const adminOps = {
    * Each `issues[i]` matches `blockers[i]` (English), which is the fallback.
    * Reports saved before codes existed carry English text only.
    */
+  // The daily "needs attention" email to the salon (services/ops-alert-service.ts).
+  opsAlert: {
+    subject: { one: 'Harbour Hair: 1 thing needs attention', other: 'Harbour Hair: {count} things need attention' },
+    preview: { one: '1 item to check in Admin → Operations.', other: '{count} items to check in Admin → Operations.' },
+    eyebrow: 'Daily check',
+    title: 'Something needs attention',
+    intro: 'This morning’s automatic check found the items below. Nothing here was sent to customers.',
+    labels: {
+      emails: 'Emails',
+      jobs: 'Scheduled jobs',
+      calendars: 'Calendars',
+      requests: 'Booking requests',
+    },
+    findings: {
+      HOUSEKEEPING_OFF: 'Housekeeping is switched off (HOUSEKEEPING_ENABLED=false), so a stuck email is never retried and old personal data is never cleared from the email queue, breaking the retention periods in the privacy notice. Remove that setting in Vercel and redeploy.',
+      DELIVERIES_FAILED: { one: '1 email could not be sent in the last 24 hours.', other: '{count} emails could not be sent in the last 24 hours.' },
+      JOB_FAILING: '“{job}” has been failing since {time}.',
+      CALENDAR_ERROR: '{stylist}’s {provider} calendar could not be read at the last attempt. Busy times from before are kept, but new bookings there are not seen.',
+      CALENDAR_STALE: '{stylist}’s {provider} calendar has not updated for a day (last good import: {time}).',
+      REQUESTS_WAITING: { one: '1 booking request is waiting for approval (sent {time}).', other: '{count} booking requests are waiting for approval (oldest sent {time}).' },
+    },
+    cta: 'Open Admin → Operations',
+    footnote: 'You get this email at most once a day, and only when something needs attention.',
+  },
   readiness: {
     // The detail only: callers show the stylist (and provider) as a heading
     // or prefix, e.g. integrations.checkForStylist.

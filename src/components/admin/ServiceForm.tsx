@@ -189,7 +189,7 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
           <label htmlFor="service-image" className={labelClass}>
             {t('serviceForm.imageUrl')} <span className="text-zinc-400 normal-case tracking-normal">{t('serviceForm.optional')}</span>
           </label>
-          <input id="service-image" type="text" name="imageUrl" maxLength={500} defaultValue={service?.imageUrl ?? ''} placeholder="/images/services-hero.webp or https://..." className={`${fieldClass} text-sm font-mono`} />
+          <input id="service-image" type="text" name="imageUrl" maxLength={500} defaultValue={service?.imageUrl ?? ''} placeholder={t('serviceForm.imageUrlPlaceholder')} className={`${fieldClass} text-sm font-mono`} />
         </div>
 
         <div className="space-y-3 pt-2">

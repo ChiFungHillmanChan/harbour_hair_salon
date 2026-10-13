@@ -24,9 +24,18 @@ export function placeholderEmailFor(token: string): string {
   return `${slug}@${PLACEHOLDER_EMAIL_DOMAIN}`;
 }
 
+/**
+ * The domain an erased customer's address is moved to (lib/customer-erasure.ts).
+ * Also reserved by RFC 2606, and treated as a placeholder below so nothing —
+ * no reminder, review request or lapse notice — is ever queued for it.
+ */
+export const ERASED_EMAIL_DOMAIN = 'erased.invalid';
+
 /** True when this address exists only to satisfy the unique column — never mail it. */
 export function isPlaceholderEmail(email: string | null | undefined): boolean {
-  return typeof email === 'string' && email.toLowerCase().endsWith(`@${PLACEHOLDER_EMAIL_DOMAIN}`);
+  if (typeof email !== 'string') return false;
+  const address = email.toLowerCase();
+  return address.endsWith(`@${PLACEHOLDER_EMAIL_DOMAIN}`) || address.endsWith(`@${ERASED_EMAIL_DOMAIN}`);
 }
 
 /** Strip a placeholder back to nothing, so admin screens show a blank field. */

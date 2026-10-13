@@ -42,8 +42,9 @@ function fixture() {
   const busy: Row[] = [];
   const kiosks: Row[] = [];
   const jobs: Row[] = [];
+  const audits: Row[] = [];
   const db = {
-    notificationDelivery: table(notices), externalBusyBlock: table(busy), kioskSession: table(kiosks),
+    notificationDelivery: table(notices), externalBusyBlock: table(busy), kioskSession: table(kiosks), auditEvent: table(audits),
     backgroundJobState: {
       ...table(jobs),
       upsert: async ({ where, create }: { where: { name: string }; create: Record<string, unknown> }) => {
@@ -51,7 +52,7 @@ function fixture() {
       },
     },
   } as unknown as PrismaClient;
-  return { db, notices, busy, kiosks, jobs };
+  return { db, notices, busy, kiosks, jobs, audits };
 }
 function notice(id: string, changes: Record<string, unknown> = {}): Row {
   return { id, status: 'PENDING', payloadJson: '{"email":"fixture@example.invalid"}', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-01'), lockedAt: null, lockToken: null, attempts: 2, firstAttemptAt: new Date('2026-08-01'), ...changes };
@@ -99,4 +100,12 @@ test('a large backlog is processed in bounded batches across runs', async () => 
   assert.equal((await runHousekeeping({ db: f.db, now })).scrubbed, 250);
   assert.equal((await runHousekeeping({ db: f.db, now })).scrubbed, 250);
   assert.equal((await runHousekeeping({ db: f.db, now })).scrubbed, 1);
+});
+
+test('account-event records older than six years are deleted, newer ones kept', async () => {
+  const f = fixture();
+  f.audits.push({ id: 'seven-years', createdAt: new Date('2019-09-01') }, { id: 'five-years', createdAt: new Date('2021-10-01') });
+  const result = await runHousekeeping({ db: f.db, now });
+  assert.equal(result.deletedAuditEvents, 1);
+  assert.deepEqual(f.audits.map((row) => row.id), ['five-years']);
 });

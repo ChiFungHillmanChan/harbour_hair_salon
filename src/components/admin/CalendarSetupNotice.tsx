@@ -67,12 +67,12 @@ export async function CalendarSetupNotice({ coverage, bookingEnabled, scheduledS
             </p>
           </div>
         </div>
-        <Link href="/admin/integrations" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-[#174F7F]/20 px-4 py-2 text-sm font-semibold text-[#174F7F] transition-colors hover:bg-[#174F7F]/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#174F7F]">
+        <Link href="/admin/integrations" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-zinc-900/20 px-4 py-2 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-900/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
           {t('notice.link')}
         </Link>
       </div>
       <details className="border-t border-zinc-100 px-4 sm:px-5">
-        <summary className="cursor-pointer py-3 text-sm font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#174F7F]">
+        <summary className="cursor-pointer py-3 text-sm font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
           {t('notice.summary', { count: coverage.blockers.length })}
           {!scheduledSyncEnabled && <span className="ml-2 inline-block text-xs font-normal text-amber-800">{t('notice.syncOff')}</span>}
         </summary>

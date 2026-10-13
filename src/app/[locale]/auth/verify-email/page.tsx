@@ -17,9 +17,10 @@ export async function generateMetadata(): Promise<Metadata> {
 const buttonClass = 'inline-block bg-zinc-900 text-white px-8 py-3 rounded-md font-medium hover:bg-zinc-700 transition-colors';
 
 /**
- * Where the verification link lands (via /api/auth/verify-email, which does the
- * work). `status` only picks the wording: it grants nothing, and booking
- * re-checks the account itself.
+ * The outcome of a verification link: where the confirm page's button
+ * (confirmEmailVerification) lands, and where a forged or expired link is sent.
+ * `status` only picks the wording: it grants nothing, and booking re-checks
+ * the account itself.
  */
 export default async function VerifyEmailPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const [locale, t, { status }] = await Promise.all([getLocale(), getT('auth'), searchParams]);

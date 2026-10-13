@@ -123,11 +123,14 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
       where: { start: { lt: range.lt }, end: { gt: range.gte } },
       select: { id: true, stylistId: true, source: true, start: true, end: true, lastSyncAt: true },
     }),
+    // Only requests that can still be answered: once a request's time has come
+    // it cannot be confirmed and the notifications cron closes it
+    // (pending-request-lapse.ts). The calendar views above still show it.
     prisma.appointment.findMany({
-      where: { status: 'PENDING', ...(cursor ? { OR: [{ date: { gt: cursor.date } }, { date: cursor.date, id: { gt: cursor.id } }] } : {}) },
+      where: { status: 'PENDING', date: { gt: now }, ...(cursor ? { OR: [{ date: { gt: cursor.date } }, { date: cursor.date, id: { gt: cursor.id } }] } : {}) },
       select: pendingSelect, orderBy: [{ date: 'asc' }, { id: 'asc' }], take: 26,
     }),
-    prisma.appointment.count({ where: { status: 'PENDING' } }),
+    prisma.appointment.count({ where: { status: 'PENDING', date: { gt: now } } }),
     view === 'year' ? yearCounts(Number(dateStr.slice(0, 4))) : Promise.resolve([]),
     // The booking dialog's service menu. Small and admin-only, but still skipped
     // on the year view, which deliberately loads counts and nothing else.

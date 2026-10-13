@@ -67,15 +67,15 @@ const settingsSchema = z.object({
   publishedAt: publishedAtSchema,
   readingTime: z.coerce.number('READING_TIME').int('READING_TIME').min(1, 'READING_TIME').max(60, 'READING_TIME'),
   tags: z.string().trim().max(200, 'TAGS').default(''),
-  // Keep this a root-relative path (e.g. /images/post.webp) wherever possible:
-  // the article schema in /blog/[slug] builds its image as `${SITE_URL}${coverImage}`,
-  // so a bare filename or an unsupported host yields a broken absolute URL, and
-  // next/image 400s on any remote host missing from next.config images.remotePatterns.
+  // A root-relative path (e.g. /images/post.webp — optimised by next/image) or a
+  // Cloudinary / Google-hosted URL (rendered as a plain <img>, see
+  // BlogCoverImage). Nothing else: a bare filename would break the article
+  // schema's absolute image URL, and `//host/...` would be a remote URL in disguise.
   coverImage: z
     .string('COVER_IMAGE')
     .trim()
     .min(1, 'COVER_IMAGE')
-    .regex(/^\/|^https:\/\/(res\.cloudinary\.com|[a-z0-9-]+\.googleusercontent\.com)\//, 'COVER_IMAGE'),
+    .regex(/^\/(?!\/)|^https:\/\/(res\.cloudinary\.com|[a-z0-9-]+\.googleusercontent\.com)\//, 'COVER_IMAGE'),
   relatedSlugs: z.string().trim().max(300, 'RELATED').default(''),
   status: z.enum(['DRAFT', 'PUBLISHED'], 'STATUS').default('DRAFT'),
 });

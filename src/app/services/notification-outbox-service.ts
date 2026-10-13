@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Appointment, Prisma, PrismaClient, Service, Stylist, User } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
+import { isRequestLapseNoticeTimely } from '@/app/lib/appointment-timing';
 import { prepareAppointmentEmail, sendPreparedEmail, type AppointmentEmailKind, type AppointmentEmailOptions, type PreparedEmail } from './email-service';
 import { isSalonEmailKind, RESCHEDULE_REQUEST_EMAIL_KINDS, type EmailPrice } from './email-content';
 import { recordedPrice } from './pricing/recorded-price';
@@ -40,7 +41,8 @@ type NotificationPayload = {
   locale?: Locale;
   email?: PreparedEmail;
   appointment?: SnapshotV1 | SnapshotV2;
-  options?: { salonPhone?: string; oldDate?: string; requestedDate?: string; requestedAt?: string };
+  /** `wasConfirmed`: CANCELLATION only, see AppointmentEmailOptions (absent on mail queued before it existed). */
+  options?: { salonPhone?: string; oldDate?: string; requestedDate?: string; requestedAt?: string; wasConfirmed?: boolean };
 };
 
 /** The customer's language for their own mail; never the language of whoever triggered the event. */
@@ -111,7 +113,7 @@ export async function enqueueAppointmentNotification(
     price: emailPrice(appointment),
   };
   // Saving a booking/cancellation must not depend on email configuration or rendering.
-  const payload: NotificationPayload = { version: appointment.notificationVersion, date: appointment.date.toISOString(), locale, appointment: snapshot, options: { salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString(), requestedDate: options.requestedDate?.toISOString(), requestedAt: options.requestedAt?.toISOString() } };
+  const payload: NotificationPayload = { version: appointment.notificationVersion, date: appointment.date.toISOString(), locale, appointment: snapshot, options: { salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString(), requestedDate: options.requestedDate?.toISOString(), requestedAt: options.requestedAt?.toISOString(), wasConfirmed: options.wasConfirmed } };
   return db.notificationDelivery.upsert({
     where: { eventKey },
     create: { eventKey, appointmentId: appointment.id, kind, payloadJson: JSON.stringify(payload) },
@@ -127,6 +129,10 @@ async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string
   const thisRequestOpen = Boolean(payload.options?.requestedAt) && current.rescheduleRequestedAt?.toISOString() === payload.options?.requestedAt;
   switch (kind) {
     case 'CANCELLATION': return current.status === 'CANCELLED';
+    // A booking request closed unanswered (pending-request-lapse.ts); the
+    // version/date match above drops it if anything changed since, and mail
+    // held back (sending switched off) is dropped once it would arrive too late.
+    case 'REQUEST_LAPSED': return current.status === 'CANCELLED' && isRequestLapseNoticeTimely(current.date, now);
     case 'REQUEST_RECEIVED':
     case 'SALON_ALERT': return current.status === 'PENDING' && current.date > now;
     case 'CONFIRMATION':
@@ -189,7 +195,8 @@ export async function dispatchPendingNotifications(options: { db?: PrismaClient;
         payload.email = await prepareAppointmentEmail(
           row.kind as AppointmentEmailKind,
           { ...payload.appointment, date: new Date(payload.appointment.date) },
-          { ...payload.options, oldDate: payload.options?.oldDate ? new Date(payload.options.oldDate) : undefined, requestedDate: payload.options?.requestedDate ? new Date(payload.options.requestedDate) : undefined, now },
+          // `sequence`: the version this event was queued at orders the customer's calendar file updates.
+          { ...payload.options, oldDate: payload.options?.oldDate ? new Date(payload.options.oldDate) : undefined, requestedDate: payload.options?.requestedDate ? new Date(payload.options.requestedDate) : undefined, now, sequence: payload.version },
           // Schema-1 events have no language: English, as they were written.
           localeOrDefault(payload.locale),
         );

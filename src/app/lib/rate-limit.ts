@@ -142,6 +142,17 @@ export function accountRateLimitKey(email: string): string {
 }
 
 export const registerLimiter = createRateLimiter({ prefix: 'rl:register', limit: 5, windowSeconds: 15 * 60 });
+
+/**
+ * One daily budget per client address, SHARED by every public form that sends
+ * an email: registration (its confirmation link), verification resends and
+ * password-reset requests. Each form's short window alone still let one
+ * address send hundreds of emails a day, and the provider's daily allowance
+ * (100 on Resend's free plan) is the same one booking confirmations need.
+ * Checked on top of each form's own limits, never instead of them.
+ */
+export const EMAIL_SEND_DAILY_POLICY: RateLimitPolicy = { prefix: 'rl:email-ip-day', limit: 20, windowSeconds: 24 * 60 * 60 };
+export const emailSendDailyLimiter = createRateLimiter(EMAIL_SEND_DAILY_POLICY);
 export const bookingLimiter = createRateLimiter({ prefix: 'rl:booking', limit: 6, windowSeconds: 60 * 60 });
 export const discountLimiter = createRateLimiter({ prefix: 'rl:discount', limit: 10, windowSeconds: 15 * 60 });
 export const clockLimiter = createRateLimiter({ prefix: 'rl:clock', limit: 8, windowSeconds: 5 * 60 });
