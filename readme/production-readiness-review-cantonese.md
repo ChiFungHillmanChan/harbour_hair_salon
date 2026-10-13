@@ -236,7 +236,7 @@
 - **Vercel 粗略估算：** 1,000,000 invocations/月即平均約 33,333/日、0.386 request/s。假設每個動態 request 只用 20–50 ms active CPU，4 CPU-hours 理論約支援 288,000–720,000 request/月；呢個只係估算，實際要睇 Vercel usage。以每次 visit 5 個動態 page views 計，約 58,000–144,000 visits/月。
 - **Neon 粗略估算：** Free 100 CU-hours/月；最低 0.25 CU 計，約等於每月 400 active compute hours（平均 13.3 小時/日）。如果 24/7 不停被喚醒，最低亦約 180 CU-hours/月，會超額。Neon 5 分鐘 idle 先 scale-to-zero，所以零散 bot traffic 對額度影響特別大。
 - **Storage 粗略估算：** 假設 5,000 客戶加 20,000 預約，每筆連 index 平均 1–2 KB，約 25–50 MB，再加其他表仍遠低於 0.5 GB；現階段 storage／Postgres TPS 唔係主要風險。
-- **Resend 粗略估算：** Free 3,000 emails/月、每日 100。每張完成 booking 假設有確認、提醒、review request 共 3 封，即約 33 張 booking/日先觸及每日上限；對單店暫時合理，但 cancellation／reschedule／newsletter 會再佔額度。
+- **Resend 粗略估算：** Free 3,000 emails/月、每日 100。每張網上預約實際寄 5 封（申請收到、髮廊通知、確認、提醒、評價邀請），即約 20 張 booking/日已觸及每日上限，未計驗證、重設密碼、cancellation／reschedule／newsletter；開網上預約前應升 Resend Pro。（2026-10-13 更正：原文以每張 3 封計。）
 - **建議：** 修正 SEO-01 後，marketing traffic 應由 CDN 承擔；設定 50%、75%、90% 用量告警。未有 30 日 production metrics 前，保守將動態 function request 控制喺 100,000/月以下。
 - **誤報備註：** CPU 數字係明確標示嘅假設，不是 load test；唔應當成 SLA 或保證容量。
 
