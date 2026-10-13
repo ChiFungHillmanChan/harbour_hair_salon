@@ -506,7 +506,8 @@ export async function cancelAppointment(appointmentId: string) {
       if (changed.count !== 1) throw new BookingError('STALE');
       const cancelled = await tx.appointment.findUnique({ where: { id: appointmentId }, include: { user: true, stylist: true, service: true } });
       if (!cancelled) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      await enqueueAppointmentNotification(tx, 'CANCELLATION', cancelled);
+      // A withdrawn request was never in the customer's calendar: no file to remove it.
+      await enqueueAppointmentNotification(tx, 'CANCELLATION', cancelled, { wasConfirmed: appointment.status === 'CONFIRMED' });
     });
     invalidateStylistIcalFeed();
     after(() => dispatchAppointmentNotifications(appointmentId));

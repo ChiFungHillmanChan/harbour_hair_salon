@@ -10,13 +10,13 @@ type Rendered = { html: string; text: string; attachments: { filename: string; c
  * react-server condition forbids react-dom/server, so this runs in a plain Node
  * process, like the template test in email-transport.test.ts.
  */
-function renderKinds(kinds: string[]): Record<string, Rendered> {
+function renderKinds(kinds: string[], extraOptions: Record<string, unknown> = {}): Record<string, Rendered> {
   const output = execFileSync(process.execPath, ['--import', 'tsx', '--eval', `
     const { loadServerModule } = require('./src/test/load-server-module.ts');
     const { prepareAppointmentEmail } = loadServerModule('src/app/services/email-service.ts', { 'server-only': {} });
     process.env.EMAIL_FROM = 'Salon <booking@example.com>';
     const appointment = { id: 'cmappt123', date: new Date('2099-09-14T12:00:00Z'), user: { email: 'customer@example.com', name: 'Amy' }, stylist: { name: 'Ivan' }, service: { name: 'Cut', duration: 60 }, price: { known: false } };
-    const options = { oldDate: new Date('2099-09-13T12:00:00Z'), sequence: 4, now: new Date('2099-09-10T08:00:00Z'), salonPhone: '0113 000 0000' };
+    const options = { oldDate: new Date('2099-09-13T12:00:00Z'), sequence: 4, now: new Date('2099-09-10T08:00:00Z'), salonPhone: '0113 000 0000', ...${JSON.stringify(extraOptions)} };
     (async () => {
       const result = {};
       for (const kind of ${JSON.stringify(kinds)}) {
@@ -64,6 +64,14 @@ test('a cancellation attaches a CANCEL .ics for the same entry and offers no add
   assert.equal(request.attachments, null, 'a pending request is not in anyone\'s calendar yet');
   assert.ok(!request.html.includes('calendar.google.com'));
   assert.ok(!request.text.includes('.ics'));
+});
+
+test('cancelling a request that was never confirmed attaches nothing and says nothing about a calendar', () => {
+  const { CANCELLATION: email } = renderKinds(['CANCELLATION'], { wasConfirmed: false });
+  assert.equal(email.attachments, null, 'it was never in the customer\'s calendar');
+  assert.ok(!email.text.includes('If you added this appointment to your calendar'));
+  assert.ok(!email.text.includes('.ics'));
+  assert.ok(!email.html.includes('.ics'));
 });
 
 test('the attachment travels in the frozen request body sent to Resend', async () => {

@@ -61,3 +61,55 @@ test('dispatch hands the queued version to the email as the calendar SEQUENCE', 
   assert.equal(prepared[0].sequence, 3);
   assert.equal(appointmentReads.length, 2, 'only the two freshness checks read the appointment');
 });
+
+test('dispatch hands a cancellation\'s recorded wasConfirmed to the email, so a never-confirmed request gets no calendar file', async () => {
+  const now = new Date('2099-09-01T12:00:00Z');
+  const date = '2099-09-14T12:00:00.000Z';
+  const row = {
+    id: 'job-x', eventKey: 'appointment/a/2/CANCELLATION', kind: 'CANCELLATION', appointmentId: 'a', status: 'PENDING', attempts: 0,
+    firstAttemptAt: null as Date | null, nextAttemptAt: now, createdAt: now, lockedAt: null as Date | null, lockToken: null as string | null,
+    payloadJson: JSON.stringify({
+      version: 2, date, locale: 'en-GB',
+      appointment: { schema: 2, id: 'a', date, notes: null, user: { name: 'Amy', email: 'amy@example.test' }, stylist: { name: 'Ivan' }, service: { name: 'Cut', duration: 60 }, price: { known: false } },
+      options: { wasConfirmed: false },
+    }),
+  };
+  const prepared: { wasConfirmed?: boolean; sequence?: number }[] = [];
+  const db = {
+    notificationDelivery: {
+      findMany: async () => [row],
+      findUnique: async () => ({ ...row }),
+      updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        if (where.lockToken && where.lockToken !== row.lockToken) return { count: 0 };
+        const increment = data.attempts as { increment?: number } | undefined;
+        Object.assign(row, data, { attempts: row.attempts + (increment?.increment ?? 0) });
+        return { count: 1 };
+      },
+    },
+    appointment: {
+      findUnique: async () => ({ id: 'a', status: 'CANCELLED', date: new Date(date), notificationVersion: 2, review: null, rescheduleRequestedAt: null }),
+      updateMany: async () => ({ count: 1 }),
+    },
+    $transaction: async (fn: (tx: unknown) => unknown) => fn(db),
+  };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': db,
+    './email-service': {
+      prepareAppointmentEmail: async (_kind: string, _appointment: unknown, options: { wasConfirmed?: boolean; sequence?: number }) => {
+        prepared.push(options);
+        return { from: 'Salon <b@example.com>', to: 'amy@example.test', subject: 'S', html: '<p>S</p>' };
+      },
+      sendPreparedEmail: async () => undefined,
+    },
+  });
+  const enabled = process.env.NOTIFICATIONS_ENABLED;
+  process.env.NOTIFICATIONS_ENABLED = 'true';
+  try {
+    await service.dispatchPendingNotifications({ db: db as never, now });
+  } finally {
+    if (enabled === undefined) delete process.env.NOTIFICATIONS_ENABLED; else process.env.NOTIFICATIONS_ENABLED = enabled;
+  }
+  assert.equal(row.status, 'SENT');
+  assert.equal(prepared[0].wasConfirmed, false);
+  assert.equal(prepared[0].sequence, 2);
+});

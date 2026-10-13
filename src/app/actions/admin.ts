@@ -536,7 +536,8 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
         await enqueueAppointmentNotification(tx, 'CONFIRMATION', updated);
         notified = true;
       } else if (status === 'CANCELLED' && !started) {
-        await enqueueAppointmentNotification(tx, 'CANCELLATION', updated);
+        // A declined request was never in the customer's calendar: no file to remove it.
+        await enqueueAppointmentNotification(tx, 'CANCELLATION', updated, { wasConfirmed: current.status === 'CONFIRMED' });
         notified = true;
       } else if (status === 'CANCELLED' && current.status === 'PENDING' && await isRequestLapseNoticeDue(tx, current, now)) {
         // Declining a request whose time has come closes it exactly as the

@@ -223,9 +223,16 @@ test('staff cancelling a booking that is still ahead emails the customer, howeve
   for (const date of [minutes(1), minutes(13 * 24 * 60)]) {
     const f = fixture({ date });
     assert.deepEqual(await f.admin.updateAppointmentStatus(f.appointment.id, 'CANCELLED'), { success: true });
-    assert.deepEqual(f.enqueued, ['CANCELLATION']);
+    assert.deepEqual(f.queued, [{ kind: 'CANCELLATION', version: 1, options: { wasConfirmed: true } }], 'a confirmed booking: its calendar entry is removed');
     assert.equal(f.counts.dispatches, 1);
   }
+});
+
+test('declining a request that is still ahead sends the cancellation without any calendar file: it was never confirmed', async () => {
+  const f = fixture({ status: 'PENDING', date: minutes(60), announced: true, salonPhone: '07831 830898' });
+  assert.deepEqual(await f.admin.updateAppointmentStatus(f.appointment.id, 'CANCELLED'), { success: true });
+  assert.deepEqual(f.queued, [{ kind: 'CANCELLATION', version: 1, options: { wasConfirmed: false } }]);
+  assert.equal(f.counts.dispatches, 1);
 });
 
 test('only admins can change an appointment status', async () => {

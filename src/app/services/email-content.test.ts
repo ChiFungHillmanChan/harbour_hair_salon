@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appointmentCalendarFile, appointmentEmailContent, describeEmailPrice, emailVerificationContent, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
+import { appointmentCalendarFile, appointmentEmailContent, calendarMethodFor, describeEmailPrice, emailVerificationContent, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
 
 const appointment: EmailAppointment = {
   id: 'appointment-ABCDEFGH',
@@ -227,6 +227,33 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
     assert.ok(content.footnotes.includes(words.cancelled));
   });
 }
+
+// A request nobody confirmed was never offered to the customer's calendar, so
+// cancelling it (a staff decline, or the customer withdrawing it) has no entry
+// to remove: no CANCEL file, no "remove it from your calendar" note.
+test('cancelling a request that was never confirmed carries no calendar file and no calendar note', () => {
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const content = appointmentEmailContent('CANCELLATION', requestAppointment, locale, { sequence: 1, wasConfirmed: false });
+    assert.ok(!content.footnotes.includes(calendarText[locale].cancelled), locale);
+    assert.ok(!content.footnotes.some((note) => /\.ics/.test(note)), locale);
+    assert.equal(content.links, undefined);
+    assert.equal(content.footnotes.length, 1, 'only the cancellation footnote');
+    assert.equal(appointmentCalendarFile('CANCELLATION', requestAppointment, locale, { sequence: 1, wasConfirmed: false }), null, locale);
+  }
+  assert.equal(calendarMethodFor('CANCELLATION', { wasConfirmed: false }), null);
+});
+
+// Mail queued before `wasConfirmed` was recorded has none: it was a confirmed
+// booking's cancellation in the common case, so it keeps its file and note.
+test('a confirmed booking’s cancellation, or one queued before the flag existed, still removes the calendar entry', () => {
+  for (const wasConfirmed of [true, undefined]) {
+    assert.equal(calendarMethodFor('CANCELLATION', { wasConfirmed }), 'CANCEL', String(wasConfirmed));
+    assert.equal(appointmentCalendarFile('CANCELLATION', requestAppointment, 'en-GB', { sequence: 3, wasConfirmed })?.method, 'CANCEL');
+    assert.ok(appointmentEmailContent('CANCELLATION', requestAppointment, 'en-GB', { sequence: 3, wasConfirmed }).footnotes.includes(calendarText['en-GB'].cancelled));
+  }
+  assert.equal(calendarMethodFor('CANCELLATION'), 'CANCEL');
+  assert.equal(calendarMethodFor('CONFIRMATION', { wasConfirmed: false }), 'PUBLISH', 'the flag is about cancellations only');
+});
 
 test('requests, staff alerts and the review request never offer a calendar entry', () => {
   for (const kind of ['REQUEST_RECEIVED', 'SALON_ALERT', 'RESCHEDULE_REQUEST_RECEIVED', 'SALON_RESCHEDULE_ALERT', 'RESCHEDULE_DECLINED', 'RESCHEDULE_LAPSED', 'REVIEW_REQUEST'] as const) {
