@@ -3,6 +3,7 @@ import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import type { Locale } from '@/i18n/config';
 import { loadPublishedTranslations } from './content/translations';
+import { ERASED_CUSTOMER_NAME } from '@/app/lib/customer-erasure';
 
 export type AggregateRating = {
   count: number;
@@ -53,6 +54,10 @@ export async function getApprovedReviews(limit = 30, locale: Locale = 'en-GB') {
     const localized = typeof name === 'string' && name.trim() ? name : null;
     return {
       ...row,
+      // An erased customer's review keeps its rating and text but is shown
+      // under the same anonymous label as a review with no name
+      // (actions/admin-erasure.ts), never as "Erased customer".
+      user: { name: row.user.name === ERASED_CUSTOMER_NAME ? null : row.user.name },
       appointment: { ...row.appointment, service: { name: localized ?? row.appointment.service.name } },
       serviceTranslated: locale === 'en-GB' || localized !== null,
     };

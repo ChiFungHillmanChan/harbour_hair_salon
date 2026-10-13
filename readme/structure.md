@@ -86,6 +86,13 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `evaluateSyncCoverage` checks Fresha and Treatwell ICS connections for every stylist/provider marked `receivesBookings`: valid weekly hours, a successful inbound attempt within 90 minutes with no latest error, and confirmed subscription to the matching website Busy feed. ICS polling reduces conflicts but cannot guarantee an atomic cross-platform reservation.
 - `booking-maintenance.ts` deliberately contains **no** marketplace name or URL; `booking-maintenance-copy.test.ts` locks that, because the old hardcoded `TREATWELL_BOOKING_URL` fallback made the Treatwell button impossible to switch off from the admin panel.
 
+### Customer data erasure (Admin → Users) — procedure in `docs/data-erasure.md`
+- `src/app/actions/admin-erasure.ts` — `eraseCustomerData(userId, confirmation)`: admin-only; refuses ADMIN accounts, the acting admin, already-erased accounts and customers with upcoming PENDING/CONFIRMED bookings. One serializable transaction anonymises the User (row kept — deleting it cascades the appointment history), deletes OAuth links and reset links, clears appointment notes/language, stops and empties outbox copies, audits `USER.ERASED` (counts only); then best-effort removal from the Resend marketing audience.
+- `src/app/lib/customer-erasure.ts` — `ERASED_CUSTOMER_NAME`, `erasedEmailFor` (`erased-<id>@erased.invalid`), `isErasedEmail`, `erasureConfirmationFor`/`erasureConfirmed` (their email, or `ERASE` for a phone booking). `lib/walk-in-customer.ts` `isPlaceholderEmail` also covers the erased domain, so nothing is ever queued for it.
+- `src/components/admin/CustomerErasureSection.tsx` (server, `?erase=` search, ≥ 2 characters, ≤ 10 matches) + `EraseCustomerButton.tsx` (typed-confirmation prompt).
+- `review-service.ts` shows an erased customer's review under the anonymous label; `searchAdminCustomers` never offers an erased account.
+- `src/app/actions/admin.ts` `createAdminUser` stores the email trimmed and lower-case (sign-in looks it up that way).
+
 ## Services
 - `deposit-policy.ts` — pure GBP/pence deposit calculation from explicit server-owned policy and net price; no deposit terms are enabled automatically.
 - `square-gateway.ts` — disabled-by-default, server-only Square REST adapter for authorization, capture, cancellation, retrieval and refunds. No booking flow is connected yet; see `docs/square-payments-setup.md` and `pnpm test:square`.

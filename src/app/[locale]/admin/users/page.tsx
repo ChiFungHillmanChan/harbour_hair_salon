@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { AdminUserForm } from '@/components/admin/AdminUserForm';
+import { CustomerErasureSection } from '@/components/admin/CustomerErasureSection';
 import { deleteAdminUser, promoteGoogleUserToAdmin } from '@/app/actions/admin';
 import { pageNumber, searchText } from '@/app/lib/pagination';
 import { Pagination } from '@/components/admin/Pagination';
@@ -10,7 +11,7 @@ import { formatSalonMediumDate } from '@/i18n/dates';
 import { localizeHref } from '@/i18n/paths';
 import { getLocale, getT } from '@/i18n/server';
 
-export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string; admins?: string }> }) {
+export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string; admins?: string; erase?: string }> }) {
   const session = await requireAdmin();
   const [query, locale, t] = await Promise.all([searchParams, getLocale(), getT('adminOps')]);
   const page = pageNumber(query.page);
@@ -137,6 +138,8 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
         )}
       </div>
       <Pagination path="/admin/users" page={page} hasMore={customerRows.length > 25} query={{ q, admins: String(adminPage) }} />
+
+      <CustomerErasureSection query={searchText(query.erase)} />
     </div>
   );
 }
