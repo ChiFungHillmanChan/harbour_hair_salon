@@ -134,6 +134,12 @@ const auth = {
     },
   },
   verifyEmail: {
+    /** The page the emailed link opens: nothing is confirmed until the button is pressed. */
+    confirmTitle: 'Confirm your email address',
+    confirmBody: 'Press the button to confirm that {email} is your email address.',
+    confirm: 'Confirm my email',
+    confirming: 'Confirming…',
+    CONFIRM_FAILED: 'We could not confirm your email address just now. Please try again in a moment.',
     verifiedTitle: 'Email address confirmed',
     verifiedBody: 'Thank you — your email address is confirmed. You can now book online.',
     bookNow: 'Book an appointment',

@@ -134,6 +134,11 @@ const auth: Localized<Messages['auth']> = {
     },
   },
   verifyEmail: {
+    confirmTitle: '確認你的電郵地址',
+    confirmBody: '請按下方按鈕，確認 {email} 是你的電郵地址。',
+    confirm: '確認我的電郵地址',
+    confirming: '正在確認…',
+    CONFIRM_FAILED: '暫時未能確認你的電郵地址，請稍後再試。',
     verifiedTitle: '電郵地址已確認',
     verifiedBody: '多謝你，電郵地址已確認，你現在可以網上預約。',
     bookNow: '立即預約',

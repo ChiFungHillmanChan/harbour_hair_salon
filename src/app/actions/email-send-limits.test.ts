@@ -61,6 +61,8 @@ function mailForms(daily: RateLimiter, options: { ip?: () => string } = {}) {
     '@/app/lib/session': { verifySession: async () => ({ userId: `account-${++resendAccount}`, role: 'USER' }) },
     '@/app/lib/prisma': { user: { findUnique: async ({ where }: { where: { id: string } }) => ({ id: where.id, email: `${where.id}@example.invalid`, name: null, emailVerifiedAt: null, oauthAccounts: [] }) } },
     'next/headers': { headers },
+    'next/navigation': { redirect: (path: string) => { throw new Error(`redirect:${path}`); } },
+    '@/app/lib/audit': {},
     // The action's own policies, memory-backed and real.
     '@/app/lib/rate-limit': { createRateLimiter: (policy: Parameters<typeof createRateLimiter>[0]) => createRateLimiter(policy, { redisLimiter: null }), emailSendDailyLimiter: daily },
     '@/app/services/email-service': { sendEmailVerification: async (user: { email: string }) => { sent.push(`verify:${user.email}`); } },

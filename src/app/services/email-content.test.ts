@@ -66,7 +66,9 @@ test('account emails greet neutrally and never take the account name', () => {
   for (const locale of ['en-GB', 'zh-HK'] as const) {
     const verify = emailVerificationContent('tok', 24, locale);
     assert.equal(verify.greeting, neutral[locale]);
-    assert.match(verify.cta!.href, /\/api\/auth\/verify-email\?token=tok$/);
+    // Straight to the confirm page, in the mail's language: opening it changes nothing.
+    assert.match(verify.cta!.href, /\/auth\/verify-email\/confirm\?token=tok$/);
+    assert.equal(verify.cta!.href.includes('/zh-hk/'), locale === 'zh-HK');
     assert.equal(passwordResetContent('tok', 60, locale).greeting, neutral[locale]);
   }
   assert.equal(emailVerificationContent.length, 3, 'no user/name parameter');
