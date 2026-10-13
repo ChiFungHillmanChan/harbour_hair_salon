@@ -187,7 +187,7 @@ const calendarText = {
     details: 'Stylist: Ivan\nView or change your booking: https://www.harbourhair.co.uk/appointments',
     attached: 'A calendar file (.ics) is attached: open it to add this appointment to Apple Calendar, Outlook or another calendar app.',
     moved: 'If you saved the previous time in your calendar, please delete it and add the new time.',
-    cancelled: 'If you added this appointment to your calendar, please remove it. In most calendar apps, opening the attached calendar file (.ics) does this for you.',
+    cancelled: 'If you added this appointment to your calendar, please delete it — opening the attached file (.ics) may do this for you.',
   },
   'zh-HK': {
     label: '加入 Google 日曆',
@@ -195,7 +195,7 @@ const calendarText = {
     details: '髮型師：Ivan\n查看或更改預約：https://www.harbourhair.co.uk/zh-hk/appointments',
     attached: '此電郵附有日曆檔案（.ics），開啟後即可將預約加入 Apple 日曆、Outlook 或其他日曆應用程式。',
     moved: '如你已將原定時間加入日曆，請刪除該項目，再加入新的時間。',
-    cancelled: '如你已將此預約加入日曆，請將其移除。在大部分日曆應用程式中，開啟附上的日曆檔案（.ics）即可自動移除。',
+    cancelled: '如你已將此預約加入日曆，請將其刪除——開啟附上的檔案（.ics）或可自動為你刪除。',
   },
 } as const;
 
@@ -253,6 +253,15 @@ test('a confirmed booking’s cancellation, or one queued before the flag existe
   }
   assert.equal(calendarMethodFor('CANCELLATION'), 'CANCEL');
   assert.equal(calendarMethodFor('CONFIRMATION', { wasConfirmed: false }), 'PUBLISH', 'the flag is about cancellations only');
+});
+
+test('the attached file names the organizer it is given, and none otherwise', () => {
+  const organizer = { name: 'Harbour Hair Salon', email: 'hello@harbourhair.co.uk' };
+  for (const kind of ['CONFIRMATION', 'RESCHEDULE', 'REMINDER', 'CANCELLATION'] as const) {
+    const file = appointmentCalendarFile(kind, requestAppointment, 'en-GB', { oldDate: requestedDate, sequence: 2 }, organizer)!;
+    assert.match(file.ics.replace(/\r\n /g, ''), /\r\nORGANIZER;CN="Harbour Hair Salon":mailto:hello@harbourhair\.co\.uk\r\n/, kind);
+    assert.doesNotMatch(appointmentCalendarFile(kind, requestAppointment, 'en-GB', { oldDate: requestedDate, sequence: 2 })!.ics, /ORGANIZER/, kind);
+  }
 });
 
 test('requests, staff alerts and the review request never offer a calendar entry', () => {

@@ -124,7 +124,7 @@ const emails: Localized<Messages['emails']> = {
     addToGoogle: '加入 Google 日曆',
     attached: '此電郵附有日曆檔案（.ics），開啟後即可將預約加入 Apple 日曆、Outlook 或其他日曆應用程式。',
     moved: '如你已將原定時間加入日曆，請刪除該項目，再加入新的時間。',
-    cancelled: '如你已將此預約加入日曆，請將其移除。在大部分日曆應用程式中，開啟附上的日曆檔案（.ics）即可自動移除。',
+    cancelled: '如你已將此預約加入日曆，請將其刪除——開啟附上的檔案（.ics）或可自動為你刪除。',
   },
   salonAlert: {
     subject: '有新預約申請 — Harbour Hair Salon',

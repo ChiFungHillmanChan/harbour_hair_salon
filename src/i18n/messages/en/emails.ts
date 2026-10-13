@@ -128,7 +128,7 @@ const emails = {
     addToGoogle: 'Add to Google Calendar',
     attached: 'A calendar file (.ics) is attached: open it to add this appointment to Apple Calendar, Outlook or another calendar app.',
     moved: 'If you saved the previous time in your calendar, please delete it and add the new time.',
-    cancelled: 'If you added this appointment to your calendar, please remove it. In most calendar apps, opening the attached calendar file (.ics) does this for you.',
+    cancelled: 'If you added this appointment to your calendar, please delete it — opening the attached file (.ics) may do this for you.',
   },
   salonAlert: {
     subject: 'New booking request — Harbour Hair Salon',

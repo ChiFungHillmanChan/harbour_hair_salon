@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appointmentCalendarUid, appointmentIcs, escapeIcsText, foldIcsLine, googleCalendarUrl, icsUtc } from './calendar-links';
+import { appointmentCalendarUid, appointmentIcs, appointmentIcsBlob, appointmentIcsFile, escapeIcsText, foldIcsLine, googleCalendarUrl, icsUtc, type AppointmentCalendarEvent } from './calendar-links';
 import { resolveSalonDateTime } from '../services/salon-time';
 
 const start = new Date('2026-10-24T10:30:00Z'); // 11:30 BST
@@ -82,6 +82,49 @@ test('a cancellation is METHOD:CANCEL, STATUS:CANCELLED, with the same UID', () 
   assert.match(cancel, /\r\nSTATUS:CANCELLED\r\n/);
   assert.match(cancel, /\r\nSEQUENCE:3\r\n/);
   assert.match(cancel, /\r\nUID:appointment-cmappt123@harbourhair\.co\.uk\r\n/);
+});
+
+// RFC 5546 (iTIP) requires an ORGANIZER on PUBLISH and CANCEL objects sent by email.
+const organizer = { name: 'Harbour Hair Salon', email: 'hello@harbourhair.co.uk' };
+const ORGANIZER_LINE = 'ORGANIZER;CN="Harbour Hair Salon":mailto:hello@harbourhair.co.uk';
+
+test('an emailed file names its organizer inside the event, for PUBLISH and CANCEL alike', () => {
+  for (const method of ['PUBLISH', 'CANCEL'] as const) {
+    const lines = unfold(appointmentIcs({ ...event, method, organizer })).trimEnd().split('\r\n');
+    const at = lines.indexOf(ORGANIZER_LINE);
+    assert.ok(at > lines.indexOf('BEGIN:VEVENT') && at < lines.indexOf('END:VEVENT'), method);
+    assert.equal(lines.filter((line) => line.startsWith('ORGANIZER')).length, 1, method);
+  }
+  assert.doesNotMatch(appointmentIcs({ ...event, method: 'PUBLISH' }), /ORGANIZER/, 'none unless given');
+});
+
+test('the organizer name is a quoted parameter value: double quotes and control characters are dropped, never escaped', () => {
+  const ics = unfold(appointmentIcs({ ...event, method: 'PUBLISH', organizer: { name: 'Harbour "Hair" Salon, Leeds; UK\r\n', email: 'hello@harbourhair.co.uk' } }));
+  assert.match(ics, /\r\nORGANIZER;CN="Harbour Hair Salon, Leeds; UK":mailto:hello@harbourhair\.co\.uk\r\n/);
+});
+
+test('a long organizer line folds at 75 octets, never inside a character, and unfolds to the original', () => {
+  const long = { name: '海港髮型屋 Harbour Hair Salon（利茲中央商場分店）', email: 'appointments.and.enquiries@harbourhair.co.uk' };
+  const ics = appointmentIcs({ ...event, method: 'CANCEL', organizer: long });
+  const strict = new TextDecoder('utf-8', { fatal: true });
+  for (const line of ics.split('\r\n')) {
+    assert.ok(Buffer.byteLength(line, 'utf8') <= 75, line);
+    assert.doesNotThrow(() => strict.decode(Buffer.from(line, 'utf8')));
+  }
+  assert.ok(unfold(ics).includes(`\r\nORGANIZER;CN="${long.name}":mailto:${long.email}\r\n`));
+});
+
+test('appointmentIcsFile passes the organizer through; the My Bookings download (a file, not an email) has none', async () => {
+  const calendarEvent: AppointmentCalendarEvent = {
+    uid: appointmentCalendarUid('cmappt123'), sequence: 1, start: start.toISOString(), end: end.toISOString(),
+    title: 'Cut at Harbour Hair Salon', details: DETAILS, location: ADDRESS,
+    url: 'https://www.harbourhair.co.uk/appointments', filename: 'harbour-hair-2026-10-24.ics',
+  };
+  assert.ok(unfold(appointmentIcsFile(calendarEvent, 'PUBLISH', stamp, organizer)).includes(`\r\n${ORGANIZER_LINE}\r\n`));
+  assert.doesNotMatch(appointmentIcsFile(calendarEvent, 'PUBLISH', stamp), /ORGANIZER/);
+  const download = await appointmentIcsBlob(calendarEvent, stamp).text();
+  assert.match(download, /\r\nMETHOD:PUBLISH\r\n/);
+  assert.doesNotMatch(download, /ORGANIZER/);
 });
 
 test('DTSTAMP defaults to the moment the file is made', (t) => {

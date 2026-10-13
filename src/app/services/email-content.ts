@@ -8,7 +8,7 @@ import { formatGBP, toPence } from './pricing/money';
 import type { PriceNature, PriceType, VatDisplay } from './pricing/policy';
 import { salonRelativeDay } from './salon-time';
 import { appointmentCalendarEvent } from './appointment-calendar';
-import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod } from '@/app/lib/calendar-links';
+import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod, type IcsOrganizer } from '@/app/lib/calendar-links';
 
 /**
  * What an email may say about a booking's price. Built from the booking's own
@@ -130,17 +130,21 @@ function calendarEventFor(appointment: EmailAppointment, locale: Locale, options
   }, locale);
 }
 
-/** The .ics attachment for an appointment email, or null when the kind carries none (see calendarMethodFor). */
+/**
+ * The .ics attachment for an appointment email, or null when the kind carries
+ * none (see calendarMethodFor). `organizer`: the sender (email-service.ts).
+ */
 export function appointmentCalendarFile(
   kind: AppointmentEmailKind,
   appointment: EmailAppointment,
   locale: Locale,
   options: AppointmentEmailOptions = {},
+  organizer?: IcsOrganizer,
 ): { filename: string; method: IcsMethod; ics: string } | null {
   const method = calendarMethodFor(kind, options);
   if (!method) return null;
   const event = calendarEventFor(appointment, locale, options);
-  return { filename: event.filename, method, ics: appointmentIcsFile(event, method, options.now) };
+  return { filename: event.filename, method, ics: appointmentIcsFile(event, method, options.now, organizer) };
 }
 
 /** The words of every appointment email, in one language, from one place (HTML and plain text share them). */
