@@ -206,6 +206,29 @@ test('a booking request whose time has come offers Decline but not Confirm', asy
   assert.deepEqual(labels(actions[1]), ['Confirm booking', 'Decline']);
 });
 
+// The lapse step leaves a request open until its appointment ends, because the
+// customer may be in the chair (often a staff pencil-in): staff can record the
+// visit as completed instead of leaving it to be cancelled.
+test('a booking request whose time has come can be marked completed, on the month list and the phone day list', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-16T12:00:00Z') });
+  const rows = [
+    boardAppointment('in-the-chair', 'PENDING', '2026-09-16T11:30:00.000Z'),
+    boardAppointment('open', 'PENDING', '2026-09-16T15:00:00.000Z'),
+    boardAppointment('declined', 'CANCELLED', '2026-09-16T11:00:00.000Z'),
+  ];
+  const month = renderClient('2026-09-16', 'month', [], rows);
+  const monthControls = byName(elements(month.rendered), 'MarkCompletedButton');
+  assert.deepEqual(monthControls.map((element) => element.props.apptId), ['in-the-chair']);
+  const button = elements(run(monthControls[0]))[0];
+  await withConfirm(true, () => (button.props.onClick as () => unknown)());
+  assert.deepEqual(month.statuses, [['in-the-chair', 'COMPLETED']]);
+
+  const day = renderClient('2026-09-16', 'day', [], rows);
+  const [list] = byName(elements(day.rendered), 'DayView');
+  assert.ok(list, 'the phone day list is rendered');
+  assert.deepEqual(byName(elements(run(list)), 'MarkCompletedButton').map((element) => element.props.apptId), ['in-the-chair']);
+});
+
 test('calendar arrows request another server-loaded month via the URL', () => {
   const { rendered, urls } = renderClient('2026-12-01', 'month');
   const next = elements(rendered).find((element) => element.type === 'button' && String(element.props.children).trim() === '→');

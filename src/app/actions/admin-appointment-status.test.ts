@@ -114,6 +114,26 @@ test('a booking can be marked completed once its start time has come, even while
   }
 });
 
+// A request is only closed once its appointment has ended (pending-request-lapse.ts);
+// until then a customer who came in — often a staff pencil-in — can be marked
+// completed, which keeps the chair in the busy feed until the end.
+test('a booking request that has started can be marked completed, and the customer is sent nothing', async () => {
+  for (const date of [NOW, minutes(-30), minutes(-3 * 24 * 60)]) {
+    const f = fixture({ status: 'PENDING', date, announced: true });
+    assert.deepEqual(await f.admin.updateAppointmentStatus(f.appointment.id, 'COMPLETED'), { success: true });
+    assert.equal(f.appointment.status, 'COMPLETED');
+    assert.equal(f.appointment.notificationVersion, 1, 'queued request mail is retired');
+    assert.deepEqual(f.enqueued, []);
+    assert.equal(f.counts.dispatches, 0);
+    assert.equal(f.counts.slotChecks + f.counts.refreshes, 0, 'no availability work: nothing is being confirmed');
+    assert.deepEqual(f.audits.map((audit) => [audit.action, audit.metadata]), [['APPOINTMENT.STATUS', { from: 'PENDING', to: 'COMPLETED' }]]);
+    assert.equal(f.counts.invalidations, 1);
+  }
+  const early = fixture({ status: 'PENDING', date: minutes(1) });
+  assert.deepEqual(await early.admin.updateAppointmentStatus(early.appointment.id, 'COMPLETED'), { success: false, error: text('COMPLETE_BEFORE_START') });
+  assert.equal(early.appointment.status, 'PENDING');
+});
+
 test('a booking request whose start time has passed can no longer be confirmed', async () => {
   for (const date of [NOW, minutes(-1), minutes(-2 * 24 * 60)]) {
     const f = fixture({ status: 'PENDING', date });

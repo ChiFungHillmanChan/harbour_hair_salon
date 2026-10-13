@@ -45,6 +45,14 @@ const WEEK_FROM_SUNDAY = ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04'
 /** Status codes stay stable; only their label follows the page language. */
 const statusLabel = (t: ScheduleT, status: string) => t.dynamic(`status.${status}`, undefined, status);
 
+/**
+ * "Mark completed" is offered once a visit has begun: a confirmed booking, or a
+ * request nobody confirmed whose customer came in anyway (often a staff pencil
+ * in). The lapse step leaves such a request open until its appointment ends.
+ */
+const canMarkCompleted = (appt: { status: string; date: Date | string }) =>
+  (appt.status === 'CONFIRMED' || appt.status === 'PENDING') && hasAppointmentStarted(appt.date);
+
 const statusChipClass = (status: string) =>
   status === 'CONFIRMED'
     ? 'bg-green-100 text-green-700'
@@ -67,8 +75,9 @@ async function setAppointmentStatus(
 // customers submit requests, the salon confirms them here). Confirming can take
 // a few seconds because out-of-date marketplace feeds are re-imported first, so
 // both buttons show progress and cannot be pressed twice. Once the requested
-// time has come the request can no longer be confirmed (the server refuses it
-// and the notifications cron closes it), so only Decline is offered.
+// time has come the request can no longer be confirmed (the server refuses it,
+// and the notifications cron closes it once the appointment has ended), so only
+// Decline is offered here — beside "Mark completed" where the board shows it.
 function PendingActions({ apptId, started, onDone }: { apptId: string; started: boolean; onDone: () => void }) {
   const [pending, startTransition] = useTransition();
   const t = useT('adminSchedule');
@@ -323,7 +332,7 @@ const DayView = ({ dateStr, dayAppts, busyBlocks, stylists, onRefresh, onEdit }:
                               <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} onDone={onRefresh} />
                             </div>
                           )}
-                          {appt.status === 'CONFIRMED' && hasAppointmentStarted(appt.date) && (
+                          {canMarkCompleted(appt) && (
                             <MarkCompletedButton
                               apptId={appt.id}
                               customer={appt.user.name ?? t('appointment.customerFallback')}
@@ -777,7 +786,7 @@ export function ScheduleCalendar({
                                      {appt.status === 'PENDING' && (
                                        <PendingActions apptId={appt.id} started={hasAppointmentStarted(appt.date)} onDone={() => router.refresh()} />
                                      )}
-                                     {appt.status === 'CONFIRMED' && hasAppointmentStarted(appt.date) && (
+                                     {canMarkCompleted(appt) && (
                                        <MarkCompletedButton
                                          apptId={appt.id}
                                          customer={appt.user.name ?? t('appointment.customerFallback')}

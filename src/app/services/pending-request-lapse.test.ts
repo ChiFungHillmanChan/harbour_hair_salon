@@ -4,6 +4,9 @@ import { loadServerModule } from '../../test/load-server-module';
 
 const now = new Date('2099-09-01T12:00:00Z');
 const minutes = (count: number) => new Date(now.getTime() + count * 60_000);
+// Every fixture appointment lasts 60 minutes unless a row says otherwise, so a
+// request that started 90 minutes ago has ended and one 30 minutes ago has not.
+const ENDED = minutes(-90);
 
 type Row = {
   id: string; status: string; date: Date; notificationVersion: number; treatwellBookingId: string | null;
@@ -19,13 +22,21 @@ type Hooks = {
   invalidationFails?: boolean;
 };
 
-function fixture(rows: { id: string; status?: string; date: Date; announced?: boolean; email?: string; treatwellBookingId?: string }[], hooks: Hooks = {}) {
+type FixtureRow = {
+  id: string; status?: string; date: Date; announced?: boolean; email?: string; treatwellBookingId?: string;
+  /** The frozen duration (60 by default); null falls back to the service's. */
+  durationAtBooking?: number | null;
+  serviceDuration?: number;
+};
+
+function fixture(rows: FixtureRow[], hooks: Hooks = {}) {
   const appointments: Row[] = rows.map((row) => ({
     id: row.id, status: row.status ?? 'PENDING', date: row.date, notificationVersion: 0,
     treatwellBookingId: row.treatwellBookingId ?? null, treatwellSyncStatus: 'NOT_REQUIRED', treatwellSyncError: null,
-    rescheduleRequestedDate: null, rescheduleRequestedAt: null, priceAtBooking: null, durationAtBooking: 60, notes: null,
+    rescheduleRequestedDate: null, rescheduleRequestedAt: null, priceAtBooking: null,
+    durationAtBooking: row.durationAtBooking === undefined ? 60 : row.durationAtBooking, notes: null,
     user: { email: row.email ?? `${row.id}@example.test`, name: 'Amy', phone: null },
-    stylist: { name: 'Ivan', treatwellExternalId: null }, service: { id: 'svc', name: 'Cut', price: 40, duration: 60, treatwellExternalId: null },
+    stylist: { name: 'Ivan', treatwellExternalId: null }, service: { id: 'svc', name: 'Cut', price: 40, duration: row.serviceDuration ?? 60, treatwellExternalId: null },
   }));
   // The REQUEST_RECEIVED notice an online request queued when it was made.
   const deliveries = rows.filter((row) => row.announced).map((row) => ({ id: `n-${row.id}`, appointmentId: row.id, kind: 'REQUEST_RECEIVED' }));
@@ -98,22 +109,22 @@ function fixture(rows: { id: string; status?: string; date: Date; announced?: bo
   return { service, appointments, enqueued, audits, counts };
 }
 
-test('a request whose start time has come is cancelled once, with one lapse email and one audit', async () => {
+test('a request whose appointment has ended is cancelled once, with one lapse email and one audit', async () => {
   const f = fixture([
-    { id: 'started', date: minutes(-1), announced: true },
-    { id: 'at-start', date: now, announced: true },
+    { id: 'long-over', date: ENDED, announced: true },
+    { id: 'just-ended', date: minutes(-60), announced: true },
     { id: 'ahead', date: minutes(1), announced: true },
-    { id: 'confirmed', status: 'CONFIRMED', date: minutes(-60) },
-    { id: 'cancelled', status: 'CANCELLED', date: minutes(-60) },
+    { id: 'confirmed', status: 'CONFIRMED', date: ENDED },
+    { id: 'cancelled', status: 'CANCELLED', date: ENDED },
   ]);
   assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 2, failed: 0 });
   assert.deepEqual(f.appointments.map((row) => [row.id, row.status]), [
-    ['started', 'CANCELLED'], ['at-start', 'CANCELLED'], ['ahead', 'PENDING'], ['confirmed', 'CONFIRMED'], ['cancelled', 'CANCELLED'],
+    ['long-over', 'CANCELLED'], ['just-ended', 'CANCELLED'], ['ahead', 'PENDING'], ['confirmed', 'CONFIRMED'], ['cancelled', 'CANCELLED'],
   ]);
   assert.deepEqual(f.appointments.slice(0, 2).map((row) => row.notificationVersion), [1, 1], 'earlier queued request mail is retired');
-  assert.deepEqual(f.enqueued.map((event) => [event.id, event.kind, event.version]), [['started', 'REQUEST_LAPSED', 1], ['at-start', 'REQUEST_LAPSED', 1]]);
-  assert.deepEqual(f.audits.map((audit) => [audit.action, audit.targetId]), [['APPOINTMENT.LAPSED', 'started'], ['APPOINTMENT.LAPSED', 'at-start']]);
-  assert.deepEqual(f.audits[0].metadata, { from: 'PENDING', to: 'CANCELLED', start: minutes(-1).toISOString(), notified: true });
+  assert.deepEqual(f.enqueued.map((event) => [event.id, event.kind, event.version]), [['long-over', 'REQUEST_LAPSED', 1], ['just-ended', 'REQUEST_LAPSED', 1]]);
+  assert.deepEqual(f.audits.map((audit) => [audit.action, audit.targetId]), [['APPOINTMENT.LAPSED', 'long-over'], ['APPOINTMENT.LAPSED', 'just-ended']]);
+  assert.deepEqual(f.audits[0].metadata, { from: 'PENDING', to: 'CANCELLED', start: ENDED.toISOString(), notified: true });
   assert.equal(f.counts.transactions, 2, 'each lapse runs in its own serializable transaction');
   assert.equal(f.counts.invalidations, 1, 'the busy feed is dropped once per run that changed something');
 
@@ -122,11 +133,44 @@ test('a request whose start time has come is cancelled once, with one lapse emai
   assert.equal(f.counts.invalidations, 1);
 });
 
+// A staff "pencil in" is PENDING too, and its customer may be in the chair:
+// cancelling it mid-visit would drop it from the busy feed and let Fresha sell
+// the rest of that time. Staff can mark it completed meanwhile instead.
+test('a request whose appointment has started but not ended is left alone, and is not a failure', async () => {
+  const f = fixture([
+    { id: 'at-start', date: now, announced: true },
+    { id: 'under-way', date: minutes(-30) },
+    { id: 'last-minute', date: minutes(-59), announced: true },
+  ]);
+  assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 0, failed: 0 });
+  assert.deepEqual(f.appointments.map((row) => [row.status, row.notificationVersion]), [['PENDING', 0], ['PENDING', 0], ['PENDING', 0]]);
+  assert.equal(f.enqueued.length, 0);
+  assert.equal(f.audits.length, 0);
+  assert.equal(f.counts.invalidations, 0, 'nothing changed, so the busy feed keeps holding the chair');
+
+  // Once each has ended, the next run closes it.
+  assert.deepEqual(await f.service.lapseStartedPendingRequests(minutes(60)), { lapsed: 3, failed: 0 });
+  assert.deepEqual(f.appointments.map((row) => row.status), ['CANCELLED', 'CANCELLED', 'CANCELLED']);
+  assert.deepEqual(f.enqueued.map((event) => event.id), ['at-start', 'last-minute'], 'the pencil-in is still closed silently');
+});
+
+test('the end comes from the frozen duration, falling back to the service duration', async () => {
+  const f = fixture([
+    { id: 'long-booking', date: minutes(-60), durationAtBooking: 90 },
+    { id: 'no-frozen-duration', date: minutes(-30), durationAtBooking: null, serviceDuration: 30 },
+    { id: 'no-frozen-long-service', date: minutes(-30), durationAtBooking: null, serviceDuration: 45 },
+  ]);
+  assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 1, failed: 0 });
+  assert.deepEqual(f.appointments.map((row) => [row.id, row.status]), [
+    ['long-booking', 'PENDING'], ['no-frozen-duration', 'CANCELLED'], ['no-frozen-long-service', 'PENDING'],
+  ]);
+});
+
 // Staff "pencil in" bookings are PENDING too, but nobody told the customer they
 // were awaiting confirmation (no REQUEST_RECEIVED), so there is nobody to tell
 // that it lapsed — often the customer simply came in.
 test('a pencilled-in booking the customer was never told about is closed without an email', async () => {
-  const f = fixture([{ id: 'pencil', date: minutes(-30) }]);
+  const f = fixture([{ id: 'pencil', date: ENDED }]);
   assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 1, failed: 0 });
   assert.equal(f.appointments[0].status, 'CANCELLED');
   assert.deepEqual(f.enqueued, []);
@@ -147,17 +191,17 @@ test('a request whose time passed more than 72 hours ago is closed without an em
 });
 
 test('an undeliverable address is closed without an email and recorded as not notified', async () => {
-  const f = fixture([{ id: 'walk-in', date: minutes(-30), announced: true, email: 'x@walk-in.harbourhair.invalid' }]);
+  const f = fixture([{ id: 'walk-in', date: ENDED, announced: true, email: 'x@walk-in.harbourhair.invalid' }]);
   assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 1, failed: 0 });
   assert.deepEqual(f.enqueued, []);
   assert.equal(f.audits[0].metadata.notified, false);
 });
 
 test('a request confirmed or moved after the candidate read is left alone', async () => {
-  const confirmed = fixture([{ id: 'r', date: minutes(-5), announced: true }], { onBeforeTransaction: (rows) => { rows[0].status = 'CONFIRMED'; } });
+  const confirmed = fixture([{ id: 'r', date: ENDED, announced: true }], { onBeforeTransaction: (rows) => { rows[0].status = 'CONFIRMED'; } });
   assert.deepEqual(await confirmed.service.lapseStartedPendingRequests(now), { lapsed: 0, failed: 0 });
   assert.equal(confirmed.appointments[0].status, 'CONFIRMED');
-  const moved = fixture([{ id: 'r', date: minutes(-5), announced: true }], { onBeforeTransaction: (rows) => { rows[0].date = minutes(24 * 60); } });
+  const moved = fixture([{ id: 'r', date: ENDED, announced: true }], { onBeforeTransaction: (rows) => { rows[0].date = minutes(24 * 60); } });
   assert.deepEqual(await moved.service.lapseStartedPendingRequests(now), { lapsed: 0, failed: 0 });
   assert.equal(moved.appointments[0].status, 'PENDING');
   assert.deepEqual([...confirmed.enqueued, ...moved.enqueued, ...confirmed.audits, ...moved.audits], []);
@@ -165,7 +209,7 @@ test('a request confirmed or moved after the candidate read is left alone', asyn
 });
 
 test('when the conditional write loses the race nothing is emailed or audited', async () => {
-  const f = fixture([{ id: 'race', date: minutes(-5), announced: true }], { onFindUnique: (rows) => { rows[0].date = minutes(60); } });
+  const f = fixture([{ id: 'race', date: ENDED, announced: true }], { onFindUnique: (rows) => { rows[0].date = minutes(60); } });
   assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 0, failed: 0 });
   assert.equal(f.appointments[0].status, 'PENDING');
   assert.deepEqual(f.enqueued, []);
@@ -174,7 +218,7 @@ test('when the conditional write loses the race nothing is emailed or audited', 
 
 test('a row that throws is rolled back and skipped without stopping the rest', async (t) => {
   t.mock.method(console, 'error', () => {});
-  const f = fixture([{ id: 'poison', date: minutes(-20), announced: true }, { id: 'fine', date: minutes(-10), announced: true }], { failEnqueueFor: 'poison' });
+  const f = fixture([{ id: 'poison', date: minutes(-80), announced: true }, { id: 'fine', date: minutes(-70), announced: true }], { failEnqueueFor: 'poison' });
   assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 1, failed: 1 });
   assert.equal(f.appointments[0].status, 'PENDING', 'the failed row stays due and is retried next run');
   assert.equal(f.appointments[1].status, 'CANCELLED');
@@ -188,25 +232,25 @@ test('a run with nothing due reads no settings and drops no cache', async () => 
 });
 
 test('lapse emails carry the salon phone, read once per run; a failed read still lapses everything', async (t) => {
-  const f = fixture([{ id: 'one', date: minutes(-20), announced: true }, { id: 'two', date: minutes(-10), announced: true }], { salonPhone: '07831 830898' });
+  const f = fixture([{ id: 'one', date: minutes(-80), announced: true }, { id: 'two', date: minutes(-70), announced: true }], { salonPhone: '07831 830898' });
   assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 2, failed: 0 });
   assert.deepEqual(f.enqueued.map((event) => event.salonPhone), ['07831 830898', '07831 830898']);
   assert.equal(f.counts.settingsReads, 1);
 
   t.mock.method(console, 'error', () => {});
-  const failing = fixture([{ id: 'one', date: minutes(-20), announced: true }], { salonPhone: '07831 830898', settingsReadFails: true });
+  const failing = fixture([{ id: 'one', date: minutes(-80), announced: true }], { salonPhone: '07831 830898', settingsReadFails: true });
   assert.deepEqual(await failing.service.lapseStartedPendingRequests(now), { lapsed: 1, failed: 0 });
   assert.equal(failing.enqueued[0].salonPhone, undefined);
 });
 
 test('a failing feed invalidation never fails the run (the cache heals within a day)', async (t) => {
   t.mock.method(console, 'error', () => {});
-  const f = fixture([{ id: 'r', date: minutes(-5), announced: true }], { invalidationFails: true });
+  const f = fixture([{ id: 'r', date: ENDED, announced: true }], { invalidationFails: true });
   assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 1, failed: 0 });
 });
 
 test('a request already sent to Treatwell is queued for cancellation there, like a staff cancellation', async () => {
-  const f = fixture([{ id: 'synced', date: minutes(-5), treatwellBookingId: 'tw-1' }, { id: 'local', date: minutes(-5) }]);
+  const f = fixture([{ id: 'synced', date: ENDED, treatwellBookingId: 'tw-1' }, { id: 'local', date: ENDED }]);
   await f.service.lapseStartedPendingRequests(now);
   assert.deepEqual(f.appointments.map((row) => row.treatwellSyncStatus), ['PENDING', 'NOT_REQUIRED']);
 });

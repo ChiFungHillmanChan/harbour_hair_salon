@@ -1,7 +1,7 @@
 import 'server-only';
 import prisma from '@/app/lib/prisma';
 import { appendAuditEvent } from '@/app/lib/audit';
-import { hasAppointmentStarted } from '@/app/lib/appointment-timing';
+import { hasAppointmentEnded } from '@/app/lib/appointment-timing';
 import { runSerializableWithRetry } from './booking-service';
 import { enqueueAppointmentNotification } from './notification-outbox-service';
 import { isRequestLapseNoticeDue, readSalonPhoneForLapseNotice } from './request-lapse-notice';
@@ -15,10 +15,18 @@ const lapseInclude = {
 } as const;
 
 /**
- * Close booking requests (PENDING) nobody confirmed before their start time
- * came. Owner policy: a request lapses when its time passes unanswered — it can
- * no longer be confirmed (updateAppointmentStatus refuses), so leaving it open
- * only kept it at the top of the admin "awaiting confirmation" list forever.
+ * Close booking requests (PENDING) nobody confirmed in time, once their
+ * appointment has ENDED. Owner policy: a request lapses when its time passes
+ * unanswered — from its start it can no longer be confirmed
+ * (updateAppointmentStatus refuses), so leaving it open only kept it at the top
+ * of the admin "awaiting confirmation" list forever. It is closed at the end,
+ * not the start: a staff "pencil in" is PENDING too and its customer may be in
+ * the chair, and a cancelled booking leaves the stylist busy feed at once, so
+ * closing it mid-visit would let a marketplace resell the rest of that time.
+ * Meanwhile staff can mark it completed (or decline it) from the board. The
+ * query takes every started request (`date <= now`, cheap); one that has not
+ * ended is re-checked inside its transaction and skipped — neither lapsed nor
+ * a failure — until a later run.
  *
  * Each request is cancelled (version bumped, so earlier queued request mail is
  * retired), audited and — if the customer was told it was awaiting
@@ -54,7 +62,8 @@ export async function lapseStartedPendingRequests(now: Date, limit = 50): Promis
     try {
       const done = await runSerializableWithRetry(async (tx) => {
         const current = await tx.appointment.findUnique({ where: { id }, include: lapseInclude });
-        if (!current || current.status !== 'PENDING' || !hasAppointmentStarted(current.date, now)) return false;
+        if (!current || current.status !== 'PENDING') return false;
+        if (!hasAppointmentEnded(current.date, current.durationAtBooking ?? current.service.duration, now)) return false;
         const api = getTreatwellApiConfiguration();
         const closed = await tx.appointment.updateMany({
           where: { id, status: 'PENDING', date: current.date },
