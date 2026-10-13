@@ -52,9 +52,8 @@ afterEach(() => {
   else process.env.NOTIFICATIONS_ENABLED = previousNotificationsEnabled;
 });
 
-/** One queued REQUEST_LAPSED event against a booking in `state`. */
-function delivery(state: { status: string; notificationVersion?: number; date?: string }) {
-  const now = new Date('2099-09-14T13:00:00Z');
+/** One queued REQUEST_LAPSED event against a booking in `state`, dispatched at `now`. */
+function delivery(state: { status: string; notificationVersion?: number; date?: string }, now = new Date('2099-09-14T13:00:00Z')) {
   const queuedDate = '2099-09-14T12:00:00.000Z';
   const row = {
     id: 'job-l', eventKey: 'appointment/a/1/REQUEST_LAPSED', kind: 'REQUEST_LAPSED', appointmentId: 'a', status: 'PENDING', attempts: 0,
@@ -106,3 +105,16 @@ for (const [label, state, expected] of [
     assert.equal(f.sends(), expected === 'SENT' ? 1 : 0);
   });
 }
+
+// Held while sending was switched off, then released weeks later: by then
+// "we couldn't confirm your request" is noise, so it is dropped like a stale reminder.
+test('a lapsed-request email is only sent within 72 hours of the requested time', async () => {
+  const requested = new Date('2099-09-14T12:00:00Z').getTime();
+  const onTime = delivery({ status: 'CANCELLED' }, new Date(requested + 72 * 3_600_000));
+  await onTime.run();
+  assert.equal(onTime.row.status, 'SENT');
+  const late = delivery({ status: 'CANCELLED' }, new Date(requested + 72 * 3_600_000 + 60_000));
+  await late.run();
+  assert.equal(late.row.status, 'SKIPPED');
+  assert.equal(late.sends(), 0);
+});

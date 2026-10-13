@@ -1,7 +1,7 @@
 import 'server-only';
 import prisma from '@/app/lib/prisma';
 import { appendAuditEvent } from '@/app/lib/audit';
-import { hasAppointmentStarted } from '@/app/lib/appointment-timing';
+import { hasAppointmentStarted, isRequestLapseNoticeTimely } from '@/app/lib/appointment-timing';
 import { runSerializableWithRetry } from './booking-service';
 import { enqueueAppointmentNotification } from './notification-outbox-service';
 import { invalidateStylistIcalFeedFromCron } from './stylist-ical-cache';
@@ -25,8 +25,9 @@ const lapseInclude = {
  * if it is still the same unanswered request, so a re-run or a racing staff
  * decision never doubles anything. A staff "pencil in" (also PENDING) was never
  * announced to the customer, who has often simply come in: it is closed
- * silently. A row that throws is logged and skipped (it stays due and is
- * retried next run); a failed salon-phone read only drops the phone callout.
+ * silently, as is a backlog older than REQUEST_LAPSE_NOTICE_HOURS. A row that
+ * throws is logged and skipped (it stays due and is retried next run); a
+ * failed salon-phone read only drops the phone callout.
  *
  * Runs in the notifications cron and the daily housekeeping cron, so requests
  * still lapse while email sending is switched off (the emails then wait in the
@@ -76,7 +77,9 @@ export async function lapseStartedPendingRequests(now: Date, limit = 50): Promis
           },
         });
         if (closed.count !== 1) return false;
-        const announced = await tx.notificationDelivery.findFirst({ where: { appointmentId: id, kind: 'REQUEST_RECEIVED' }, select: { id: true } });
+        const announced = isRequestLapseNoticeTimely(current.date, now)
+          ? await tx.notificationDelivery.findFirst({ where: { appointmentId: id, kind: 'REQUEST_RECEIVED' }, select: { id: true } })
+          : null;
         const updated = announced ? await tx.appointment.findUnique({ where: { id }, include: lapseInclude }) : null;
         // The outbox itself skips an undeliverable (walk-in or erased) address.
         const queued = updated ? await enqueueAppointmentNotification(tx, 'REQUEST_LAPSED', updated, { salonPhone }) : null;

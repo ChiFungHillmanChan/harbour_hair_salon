@@ -133,6 +133,19 @@ test('a pencilled-in booking the customer was never told about is closed without
   assert.equal(f.audits[0].metadata.notified, false);
 });
 
+// A backlog (first deploy, or crons switched off for a while) is closed without
+// telling anyone days later that their request "could not be confirmed".
+test('a request whose time passed more than 72 hours ago is closed without an email', async () => {
+  const f = fixture([
+    { id: 'stale', date: minutes(-72 * 60 - 1), announced: true },
+    { id: 'recent', date: minutes(-72 * 60), announced: true },
+  ]);
+  assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 2, failed: 0 });
+  assert.deepEqual(f.appointments.map((row) => row.status), ['CANCELLED', 'CANCELLED']);
+  assert.deepEqual(f.enqueued.map((event) => event.id), ['recent']);
+  assert.deepEqual(f.audits.map((audit) => audit.metadata.notified), [false, true]);
+});
+
 test('an undeliverable address is closed without an email and recorded as not notified', async () => {
   const f = fixture([{ id: 'walk-in', date: minutes(-30), announced: true, email: 'x@walk-in.harbourhair.invalid' }]);
   assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 1, failed: 0 });
