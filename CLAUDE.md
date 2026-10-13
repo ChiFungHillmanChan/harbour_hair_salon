@@ -4,7 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Harbour Hair Salon — a Next.js 16 booking website for a hair salon. Features public pages (home, services, booking, offers, contact), auth (signin/register), customer appointment management (view/cancel/request a reschedule), and an admin panel (users, offers, discounts, schedule calendar). Deployed on Vercel (Pro plan).
+Harbour Hair Salon — a bilingual Next.js 16 website for a hair salon in Leeds: English (no URL prefix) and Traditional Chinese (`/zh-hk`). It has:
+
+- **Public pages:** home, services & pricing, stylists, blog, offers, reviews, contact, privacy notice and booking terms.
+- **Sign-in:** email + password, or Google.
+- **Online booking requests** that staff confirm, with Square card deposits (locked until production credentials).
+- **Customer appointments:** view, cancel, request a reschedule, add to Google Calendar / `.ics`.
+- **Admin panel:** schedule, services & pricing, stylists, staff shifts and payroll, blog, FAQs, offers, discounts, reviews, users (with erasure), site settings (with deposits), integrations and operations.
+- **Staff kiosk.**
+- **Fresha availability:** exchanged both ways through iCal busy feeds.
+
+Deployed on Vercel (Pro plan) with Neon PostgreSQL.
+
+## Current state (2026-10-13)
+
+- Releases #62 (review follow-ups, Google Calendar links, i18n) and #63 (Square deposits) are live and verified read-only against production — see `LAUNCH.md` §0.
+- **Online booking is closed in production:** `SiteSettings.bookingEnabled=false`, and the Square lock keeps it shut until Square production credentials are set. Those may only be set after the sandbox acceptance list in `docs/square-payments-setup.md` §4 has passed. Until then customers book by phone, Fresha or Treatwell (`/book` shows exactly that).
+- Production flags: `NOTIFICATIONS_ENABLED=false` (no booking emails and no daily ops alert yet; the go-live gate needs it `true`), `CALENDAR_SYNC_ENABLED=true`, and housekeeping on (first run 2026-10-14 03:15 UTC).
+- The remaining launch steps, in order: `LAUNCH.md` §2–§3.
 
 ## Commands
 
@@ -19,15 +36,25 @@ pnpm db:dev:push      # Push schema changes without migration
 pnpm db:dev:studio    # Open Prisma Studio
 pnpm db:dev:generate  # Regenerate Prisma client
 
-# Database (Vercel - PostgreSQL via Neon)
-pnpm db:vercel:push     # Push schema to Vercel Postgres
-pnpm db:vercel:deploy   # Deploy migrations to Vercel Postgres
+# Database (Vercel - PostgreSQL via Neon) — the schema the app's Prisma client is generated from
+pnpm db:vercel:migrate  # Create a migration; every schema change needs one in all three prisma/*/migrations
+pnpm db:vercel:deploy   # Apply migrations. Production applies them itself in its deploy build;
+                        # run this by hand (preview env) for the preview database
 pnpm db:vercel:studio   # Open Prisma Studio for Vercel DB
-pnpm db:vercel:generate # Regenerate Prisma client for Vercel
+pnpm db:vercel:generate # Regenerate the Prisma client (also runs on postinstall)
+pnpm db:vercel:push     # Push without a migration — throwaway local databases only, never production or preview
 
 # Database (prod - MS SQL Server, legacy Docker deployment)
 pnpm db:prod:migrate  # Create prod migrations
 pnpm db:prod:deploy   # Deploy prod migrations
+
+# Tests (CI runs all of these on every PR and every push to main)
+pnpm test                    # Every src/**/*.test.ts (node:test + tsx, react-server conditions)
+pnpm test:square             # The Square deposit subset
+pnpm exec tsc --noEmit       # Type check
+pnpm test:integration        # Real PostgreSQL suites: they refuse anything but SALON_TEST_DATABASE_URL
+pnpm test:booking-lifecycle  #   on localhost with database name salon_test (migrated, disposable)
+pnpm test:backend-http       #   — this one also needs `pnpm build` first (it runs `next start`)
 
 # Deployment — production is deployed ONLY by GitHub Actions after CI passes
 git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, then deploys
@@ -44,10 +71,26 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
   - `prisma/vercel/schema.prisma` — PostgreSQL for Vercel deployment (Neon)
   - `prisma/prod/schema.prisma` — MS SQL Server (legacy Docker)
   - **Always edit all three schema files** when changing the database schema
-- **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`. Session helpers in `src/app/lib/session.ts`. Route protection in `middleware.ts`.
-- **Email**: Resend SDK with React Email templates. Service in `src/app/services/email-service.ts`, templates in `src/components/emails/`.
+- **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`, plus Google sign-in. Session helpers in `src/app/lib/session.ts`. Admin sign-in is password or Google only: MFA stopped being required in e9f3a25 and its code is dormant.
+  - **Route protection** lives in `src/middleware.ts`; a root `middleware.ts` is never loaded. It guards `/admin`, `/kiosk`, `/appointments` and `/reviews/new`, and rewrites the locale prefix.
+  - `/book` checks sign-in in its page instead (see Key Conventions).
+  - The header learns who is signed in from the `session_hint` cookie alone (`lib/session-hint.ts`) — no `/api/session` request per visitor.
+- **i18n**: English (default, unprefixed) and Traditional Chinese (`/zh-hk`), admin pages included.
+  - Messages live in `src/i18n/messages/{en,zh}/*.ts`; `src/i18n/messages/completeness.test.ts` fails when either language misses a key.
+  - Customers get emails in `User.preferredLocale`, saved at registration, Google sign-up and booking; staff choose it for walk-ins.
+- **Email**: Resend's REST API (`sendPreparedEmail` in `src/app/services/email-service.ts`) with React Email templates in `src/components/emails/`.
+  - Booking emails (to the customer and the salon) are queued in the notification outbox (`services/notification-outbox-service.ts`) and only sent while `NOTIFICATIONS_ENABLED=true`.
+  - Account emails (verification, password reset, unsubscribe) go out at once.
+  - A preview deployment only emails `PREVIEW_EMAIL_ALLOWLIST`.
+  - One online booking sends 5 emails: request received, salon alert, confirmation, reminder and review request.
+- **Payments**: Square for booking deposits — the Web Payments SDK card form in the browser, REST calls through `services/square-gateway.ts`, and webhooks at `/api/webhooks/square`. See the Square bullets under Key Conventions and `docs/square-payments-setup.md`.
+- **Rate limiting**: Upstash Redis through `lib/rate-limit.ts` (`KV_REST_API_URL`/`KV_REST_API_TOKEN`, or `UPSTASH_REDIS_REST_URL`/`_TOKEN`). It never fails open.
+- **Calendars**:
+  - Each stylist has a token-protected outbound busy feed, `/api/ical/[stylistId]`, served from the Data Cache. Fresha imports it as blocked time.
+  - The calendar-sync cron imports the stylists' inbound feeds into `ExternalBusyBlock`.
+  - Customers get Google Calendar links and `.ics` files (`lib/calendar-links.ts`).
 - **Validation**: Zod
-- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC; also sends the salon's daily "needs attention" email, `services/ops-alert-service.ts`, only when something is wrong), notifications (`*/30 8-19` UTC, daytime only), calendar-sync (`*/30`, but the route skips ticks outside saved staff hours ±15 min before touching the DB) and housekeeping (daily 03:15 UTC; also reconciles card deposits with Square, `services/payment-reconciliation.ts`). See "Neon compute budget" below before adding another; `neon-compute-budget.test.ts` pins these.
+- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC; also sends the salon's daily "needs attention" email, `services/ops-alert-service.ts`, only when something is wrong), notifications (`*/30 8-19` UTC, daytime only), calendar-sync (`*/30`, but the route skips ticks outside saved staff hours ±15 min before touching the DB) and housekeeping (daily 03:15 UTC: retention clean-up, unanswered-request lapses and Square reconciliation, `services/payment-reconciliation.ts`). See "Neon compute budget" below before adding another; `neon-compute-budget.test.ts` pins these.
 
 ### Environment Variables
 
@@ -55,11 +98,24 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - `DATABASE_URL` — Local SQLite (in `.env`)
 - `SESSION_SECRET` — JWT signing key (required, no fallback)
 - `RESEND_API_KEY` — Email service
+- `EMAIL_FROM` / `EMAIL_REPLY_TO` — sender and reply-to on every email.
+- `SALON_NOTIFY_EMAIL` — the salon inbox for new-request alerts and the daily ops alert. Falls back to `EMAIL_REPLY_TO`.
+- `RESEND_AUDIENCE_ID` — the marketing list. Unsubscribe and customer erasure remove contacts from it.
+- `NOTIFICATIONS_ENABLED` — `"true"` turns on booking emails, reminders and the daily ops alert. Anything else makes the notifications and reminders crons return before touching the DB. The online-booking go-live gate also requires it (`lib/booking-maintenance.ts`). Production: `false` until launch.
+- `CALENDAR_SYNC_ENABLED` — `"true"` lets the calendar-sync cron run (production: `true`).
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google sign-in.
+- `KV_REST_API_URL` / `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` / `_TOKEN`) — Upstash Redis for rate limits (`lib/redis-credentials.ts`).
+- `NEXT_PUBLIC_SITE_URL` — canonical site URL; defaults to `https://www.harbourhair.co.uk`.
+- `TREATWELL_API_ENABLED` — `"true"` turns on the Treatwell API worker (`services/treatwell-api.ts`).
 - `CRON_SECRET` — Vercel cron auth (auto-injected)
 - `HOUSEKEEPING_ENABLED` — the daily housekeeping cron runs unless this is `"false"` (retention in the privacy notice, delivery-lease recovery, request lapsing and card-deposit reconciliation depend on it).
 - `TREATWELL_SYNC_ENABLED` — kill-switch for `/api/cron/treatwell-sync`. Unset/anything but `"true"` makes the route return before touching the DB. Deliberately off (see below).
 - `SQUARE_*` (seven variables) — Square deposits. Sandbox values on Vercel **Preview** only, production values on **Production** only; what goes where, and why sandbox credentials never open production booking: `docs/square-payments-setup.md` §2.
 - `PREVIEW_EMAIL_ALLOWLIST` — Vercel **Preview** only: comma-separated addresses and/or `@domain` entries. Previews run on a copy of production's customers, so on a preview deployment (`VERCEL_ENV=preview`) `sendPreparedEmail` emails only these recipients; anything else is dropped as if sent (no retry), and with it unset a preview sends nothing (`lib/preview-email.ts`). Set it to your own address before `NOTIFICATIONS_ENABLED=true` on Preview, and remove both afterwards (`docs/square-payments-setup.md` §3).
+- **GitHub Actions** (repository settings, not Vercel):
+  - Secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` are needed for every deploy.
+  - The optional `NEON_API_KEY` secret plus the `NEON_PROJECT_ID` variable turn on the pre-migration Neon snapshot.
+- **Vercel's team policy makes new variables Sensitive.** `vercel env pull` and the deploy job's `vercel pull` then read the literal `[SENSITIVE]` instead of the value. Anything the BUILD reads must be added with `vercel env add --no-sensitive`, or the build sees the placeholder: `NEXT_PUBLIC_*`, and the database URLs that `prisma migrate deploy` uses.
 
 ### Neon compute budget (read before scheduling anything)
 
@@ -119,6 +175,8 @@ Rules that follow from this:
   NOT seen for up to 24 h — press Settings → Save or run
   `npx vercel cache invalidate --tag blog-posts --yes`. Any new dynamic public
   page must do the same or stay off the database.
+- **Site settings are cached for 24 hours** (`getSiteSettings`, tag `site-settings`). Admin → Settings, opening hours and content saves drop the tag. A direct database write is not seen until then: press Save in Admin → Settings. The settings form and the deposit policy read the live row (`getSiteSettingsForEditing`); a form built from the cached copy once switched booking off when saved.
+- **Housekeeping is on by default**: one daily wake at 03:15 UTC, about 2.5 CU-hours a month. It already carries retention, request lapses and Square reconciliation, so put a new daily chore there rather than adding a cron.
 - **Never return a fallback from inside a cached function.** `unstable_cache`
   stores whatever the callback returns, so a `catch { return DEFAULTS }` inside it
   caches the fallback for the whole revalidate period. Site settings did exactly
@@ -131,7 +189,8 @@ Rules that follow from this:
   production. It holds an **exact copy of production taken 2026-09-30, including
   real customer data**: treat it like production. Previews never migrate, so
   apply every new migration to it too (`prisma migrate deploy` with the preview
-  env) or every PR's "Deploy Preview" fails. Refresh the copy with a PostgreSQL 18
+  env) or every PR's "Deploy Preview" fails. The last one applied by hand was
+  `20261013120000_square_deposits` (2026-10-13). Refresh the copy with a PostgreSQL 18
   `pg_dump` of production restored into it. The old us-east-1 project
   (`neon-beige-river`) is kept, unused, by owner decision.
 - `infra/aws/treatwell-sync/` is a **dormant** EventBridge→Lambda fallback for
@@ -140,16 +199,35 @@ Rules that follow from this:
 ### Source Layout
 
 - `src/app/` — Next.js App Router pages and API routes
-  - `actions/` — Server actions organized by domain (`auth.ts`, `booking.ts`, `admin.ts`)
-  - `lib/` — Shared utilities (`prisma.ts`, `session.ts`, `password.ts`)
-  - `services/` — Business logic (`booking-service.ts`, `email-service.ts`)
-  - `api/cron/reminders/` — Daily reminder cron endpoint
-  - `api/health/` — Health check endpoint
-  - `api/webhooks/square/` — Square deposit/refund notifications (signed; see the Square webhook bullet)
-  - `appointments/` — Customer booking management page
-- `src/components/` — React components organized by feature (`home/`, `booking/`, `layout/`, `admin/`, `services/`, `appointments/`, `emails/`)
-- `middleware.ts` — Route protection (admin, appointments, booking require auth)
-- `prisma/` — Schema files, migrations, and seed scripts
+  - `[locale]/` — every page. English is served unprefixed, Chinese under `/zh-hk`, and `src/middleware.ts` rewrites. It covers:
+    - the public pages, `auth/`, `book/`, `appointments/`, `privacy/`, `booking-terms/` and `kiosk/`;
+    - `admin/`: the schedule home page, `services`, `stylists`, `shifts`, `timesheets`, `payroll`, `employees`, `blog`, `faqs`, `offers`, `discounts`, `reviews`, `users`, `settings`, `opening-hours`, `integrations` and `operations`.
+  - `actions/` — Server actions by domain:
+    - `auth.ts`, `booking.ts`, `booking-quote.ts`, `admin.ts`;
+    - `admin-erasure.ts`, `admin-payments.ts`, `admin-settings.ts`, `admin-operations.ts`, …
+  - `lib/` — Shared utilities:
+    - `prisma.ts`, `session.ts`, `session-hint.ts`, `rate-limit.ts`;
+    - `booking-maintenance.ts` (the go-live gate), `online-booking-lock.ts`, `square-config.ts`;
+    - `calendar-links.ts`, `preview-email.ts`, …
+  - `services/` — Business logic:
+    - booking (`booking-service.ts`, `pending-request-lapse.ts`, `reschedule-request-lapse.ts`);
+    - email (`email-service.ts`, `notification-outbox-service.ts`, `ops-alert-service.ts`);
+    - `housekeeping-service.ts` and `operations-messages.ts`;
+    - calendars (`calendar-sync-service.ts`, `stylist-ical-feed.ts`, `stylist-ical-cache.ts`);
+    - deposits (`deposit-*.ts`, `payment-*.ts`, `square-gateway.ts`, `square-webhook-events.ts`).
+  - `api/` — API routes:
+    - `cron/`: reminders, notifications, calendar-sync, housekeeping, and the gated treatwell-sync;
+    - `health/`, `ical/[stylistId]/` (busy feeds), `webhooks/square/`;
+    - `auth/` (Google OAuth, email verification) and `session/`.
+- `src/i18n/` — locales, routing helpers and the `messages/{en,zh}` dictionaries.
+- `src/components/` — React components by feature (`booking/`, `admin/`, `appointments/`, `emails/`, `layout/`, …).
+- `src/test/` — shared fixtures (`booking-fixture.ts`, `deposit-fixture.ts`, `payments-fixture.ts`) and page tests (`src/test/pages/`). `node --test` reads `[locale]` in a path as a glob, so a test placed under `src/app/[locale]/` never runs.
+- `src/middleware.ts` — route protection and locale rewrites.
+- `prisma/{dev,vercel,prod}/` — the three schemas, each with its own migrations folder; seed scripts.
+- `scripts/` — `production-build-guard.mjs`, the PostgreSQL verification suites (`verify-*.ts`) and the handover PDF builder (`pdf/`).
+- `docs/` — runbooks (`square-payments-setup.md`, `data-erasure.md`) and design specs and plans (`superpowers/`).
+- `infra/` — Vercel firewall rules (`vercel-firewall/`) and the dormant AWS fallback (`aws/`).
+- `LAUNCH.md` — the launch checklist and the last verified production state.
 - `vercel.json` — Cron job configuration
 - `readme/structure.md` — Function/component registry
 
@@ -159,7 +237,8 @@ Rules that follow from this:
 - **Use Prisma generated types** from `@prisma/client` — never create manual interfaces for database models.
 - **Never access env vars at module level** — wrap in async functions for runtime access.
 - **Email service uses `import 'server-only'`** — not `'use server'` (internal functions, not client-callable).
-- **Booking requires authentication** — middleware redirects to signin with `?redirect=/book`.
+- **Booking needs a signed-in customer with a confirmed email.** `src/app/[locale]/book/page.tsx` redirects to sign-in with `?redirect=/book`, and every booking action checks again (`verifySession`, `hasVerifiedEmail`). Middleware deliberately does not gate `/book`: whether booking is open lives in the database, and middleware would need a DB read per request. While booking is closed, `/book` shows everyone the phone / Fresha / Treatwell page (`BookingClosedNotice`).
+- **Every UI string goes in both languages** (`src/i18n/messages/en` and `zh`, admin included; `completeness.test.ts` enforces it). Links go through the locale-aware helpers in `src/i18n/` so a `/zh-hk` visitor stays in Chinese.
 - **Online booking opens in production only with Square PRODUCTION credentials.** In every production build (fails closed: a missing `VERCEL_ENV` counts; only an explicit Vercel preview is exempt) `isOnlineBookingLockedForPayments` in `lib/online-booking-lock.ts` makes `assertOnlineBookingReady` / `isBookingEnabled` answer "closed" before any DB read, and Admin → Settings refuses to switch booking on, unless `parseSquareConfig(env)` succeeds with `environment === 'production'`. No config, `SQUARE_PAYMENTS_ENABLED` not `true`, sandbox credentials or a config that does not parse all stay locked. `SQUARE_DEPOSITS_WIRED = true` records that the deposit code exists; setting it back to `false` re-locks every production build whatever the config. Deposits follow `docs/superpowers/specs/2026-10-13-square-deposits-design.md` in phases: S1 (payment tables, Admin → Settings deposit policy, per-service override, `services/deposit-quote.ts`, `previewBookingQuote`), S2 (`submitBooking` authorizes the deposit as a HOLD on the card through `services/payment-attempts.ts` and ties it to the request) and S3 (`services/deposit-lifecycle.ts`: staff confirming a request CAPTURE the deposit between two Serializable transactions; declining, withdrawing or lapsing it RELEASES the hold after the change commits, and a request whose hold has run out lapses early; cancelling a confirmed booking REFUNDS it through `services/payment-refunds.ts` — staff may keep it) and S4 (below) are in. Square is never called inside a transaction, an attempt only becomes CAPTURING in a transaction that saw its request PENDING, and every closing refuses while a capture is in flight. **Production Square credentials may be set once the sandbox acceptance list in `docs/square-payments-setup.md` §4 has passed on a Preview deployment of `main`** (then §5 of the same runbook; S1–S4 are merged and live since 2026-10-13, #63). Deposit amounts read the policy from the `SiteSettings` row, never the day-cached `getSiteSettings()`. Money-safety rules (2026-10-13 review): outside a production build only SANDBOX credentials are usable (`usableSquareConfig`), so a preview or dev server can never move live money even if production vars leak into it; a refund claims SUBMITTING before Square is called and only a provable first send may end FAILED (a 4xx on a retry stays UNKNOWN for staff); Square's refund payload is payment + amount + key only (no free text), so a retry is byte-identical; a deliberate staff keep sets the attempt to KEPT (reconciliation never refunds it); declined cards are limited to 3 per account and 5 per IP a day (`createFailureLimiter`, never fails open). Review 2 (same day): only Square's HTTP 400/402 is a card decline — 401/403/404 and any other 4xx are the website's own Square setup (`FAILED` + `PAYMENT_SETUP_REFUSED`, customer told `PAYMENT_UNAVAILABLE`, no decline budget used, logged once per HTTP status, raised as a configuration problem); a deposit taken for a request nobody confirmed is lapsed and refunded only by the DAILY housekeeping run, 12 hours after its appointment ended (`TAKEN_DEPOSIT_LAPSE_GRACE_MS`; staff mark it completed to keep it, or decline it); `lastError` sentences that code reads back (Prisma `where`, `===`) are state keys pinned in `operations-messages.test.ts` — never reword one in place, add a key and a migration.
 - **Square webhook and reconciliation (S4) — no polling cron.** `POST /api/webhooks/square` (`services/square-webhook-events.ts`) answers 404 while `usableSquareConfig()` is null and 413/401 (body over 64 KB, signature not matching the configured key and the CONFIGURED notification URL — never the Host header) before any DB access; event types it does not act on, other locations (also an event the schema cannot read that names one) and payments without a deposit reference (in-salon card-reader sales — Square notifies every payment on the account) are acknowledged before the database is opened (it is a public endpoint something external calls — see "Neon compute budget"); a refund (no reference to drop it by) whose payment is none of the site's deposits is looked up once and settled at once (`NOT_OURS`: never listed, emailed or re-read). Each `event_id` is stored once in `SquareWebhookEvent` (a repeat is a no-op); notices only move PAYMENT rows forward — Square's final COMPLETED/CANCELED/FAILED, never an older APPROVED — and never change a booking; a fresh CAPTURING claim is its approval's. When a notice says Square holds money no booking wants (an authorization that landed after the site gave up, a hold whose release failed) or took money the site believed held or released, the event stays open and the route reads Square afresh in `after()` and acts on THAT (`reconcileSquareEvent`). Reconciliation (`services/payment-reconciliation.ts`) rides the existing daily housekeeping run and Admin → Schedule → "Re-check payment" (`actions/admin-payments.ts`, admin-only, audited `PAYMENT.RECHECKED`): settles unanswered captures with S3's `settle`, releases AUTHORIZED holds whose booking is missing or not PENDING, confirms once with Square each hold S3 recorded EXPIRED by its date alone, cancels UNKNOWN authorizations by key every day for 7 days (cancel-by-key answers `{}` even when nothing has landed yet) then settles them VOIDED, resubmits REQUESTED/UNKNOWN refunds with the row's own key (each try dated on the row, so the batch — least recently tried first — rotates; 7 days after the refund was requested one that was sent becomes `UNRESOLVED`: counted, never resent, listed for staff) and follows PENDING ones, records a hold Square shows taken on a still-PENDING request as CAPTURED + `PAYMENT_CAPTURED_NOT_CONFIRMED` (a decline then refunds it at once; confirming still works), and refunds in full (`LATE_CAPTURE`) a deposit Square took after its booking closed or was never made. Every gateway comes from the guarded path (`depositGatewayFor` / `usableSquareConfig`; `createSquareGateway` has no default config) and only for the deposit's own Square environment and location. What still needs a person — Square refusing deposits because of the website's own setup (401/403/404), unanswered deposits, money taken on an unconfirmed request or on a cancelled booking with no refund or keep recorded, unreleased holds, failed, unanswered or `UNRESOLVED` refunds, late captures, unmatched notifications — is `services/payment-attention.ts`: the daily "needs attention" email (`PAYMENTS_NEED_ATTENTION`) and Admin → Operations → "Payments needing attention". Staff close a refund they settled themselves (Square Dashboard or cash) with the booking dialog's "Mark refund as settled outside the website" (`markRefundSettledOutside`, admin-only, audited `PAYMENT.REFUND_SETTLED_OUTSIDE`: REQUESTED / UNKNOWN / UNRESOLVED / stale SUBMITTING → `SETTLED_EXTERNALLY`, counted, never sent again). Dev, unit tests and CI integration scripts are not locked; a local `pnpm build && pnpm start` rehearsal is (without production Square credentials). **Runbook** (what the site does at each step, env vars, sandbox setup on Preview, acceptance tests, production go-live, staff operations, preview-database migration): `docs/square-payments-setup.md`. The customer-facing rules live on `/booking-terms` (`legal.bookingTerms`, its notice and patch-test periods read from code constants) and in the privacy notice — keep both true when the payment rules change.
 - **24-hour cancellation/reschedule policy** — enforced server-side in booking actions; a reschedule request's new time must also be ≥ 24 h away.
@@ -173,6 +252,10 @@ Rules that follow from this:
 - **Online requests need `MIN_BOOKING_NOTICE_MINUTES` (120) notice** (`lib/booking-constants.ts`); staff-entered bookings are exempt. A repeat submission (same customer, service and start — with the same stylist when one is named, any stylist for "Anyone") returns the existing request instead of booking twice, and the wizard says it was already requested; the same time with a different named stylist is a deliberate second booking. When a deposit is due the same rule (`findExistingRequest`, sharing `repeatRequestWhere` with `findRepeatRequest`) is checked before the card is touched, so a repeat never authorizes a card; keep the two lookups on one rule.
 - **Unanswered requests lapse once their appointment has ended** (start + `durationAtBooking ?? service.duration`, `hasAppointmentEnded`; `services/pending-request-lapse.ts`, run by the notifications cron and by housekeeping) — never at the start: a staff pencil-in is PENDING too, its customer may be in the chair, and a cancelled booking leaves the busy feed at once. Staff cannot confirm a request that has started, but can mark it completed or decline it; a decline after the start sends the `REQUEST_LAPSED` email under the lapse step's own rule (`services/request-lapse-notice.ts`). Cron code invalidates the busy feed with `invalidateStylistIcalFeedFromCron()` — `updateTag` only works in Server Actions.
 - **"Mark completed" only once an appointment has started** (a confirmed booking, or a started request whose customer came in). The outbound busy feed exports every non-cancelled booking until it ends, completed ones included, so Fresha cannot resell a chair that is still in use.
+- **Calendar files** (`lib/calendar-links.ts`) — Google Calendar option A, links and files only, no Google API:
+  - Confirmed bookings carry an "Add to Google Calendar" link and an RFC 5545 `.ics` on the confirmation, reschedule and reminder emails and on My appointments.
+  - The emailed file has an ORGANIZER and a matching `method` on its MIME type.
+  - A cancellation sends `METHOD:CANCEL` only when the booking had been confirmed (`wasConfirmed`); a request that was never confirmed gets no calendar file.
 - **Email verification is GET → confirm page → POST.** Never verify (or consume anything) on a GET: mail scanners open every link. Every public form that sends email (registration, verification resend, password reset, marketing unsubscribe) shares a 20-per-IP daily cap (`emailSendDailyLimiter`).
 - **Customer erasure goes through Admin → Users** (`actions/admin-erasure.ts`, `docs/data-erasure.md`): anonymise, never delete a customer row (it cascades the booking history). The privacy notice (`messages/*/legal.ts`) states retention periods — keep it true when retention code changes.
 - **Every fixed `lastError` sentence a job writes is catalogued** in `services/operations-messages.ts` (a test enforces it) so Admin → Operations can translate it.

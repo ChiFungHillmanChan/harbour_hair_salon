@@ -44,7 +44,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
   - `prisma/vercel/schema.prisma` — PostgreSQL for Vercel deployment (Neon)
   - `prisma/prod/schema.prisma` — MS SQL Server (legacy Docker)
   - **Always edit all three schema files** when changing the database schema
-- **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`. Session helpers in `src/app/lib/session.ts`. Route protection in `middleware.ts`.
+- **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`. Session helpers in `src/app/lib/session.ts`. Route protection in `src/middleware.ts` (a root `middleware.ts` is never loaded).
 - **Email**: Resend SDK with React Email templates. Service in `src/app/services/email-service.ts`, templates in `src/components/emails/`.
 - **Validation**: Zod
 - **Deployment**: Vercel (Pro plan) with Neon Postgres. Cron: appointment reminders daily at 8am UTC, notification delivery every 30 minutes during daytime UTC hours (`*/30 8-19`), and calendar sync every 30 minutes during saved active-staff opening hours, with a 15-minute buffer before/after (Europe/London). Production deploys only from GitHub Actions after CI; see scripts/production-build-guard.mjs. These sub-daily schedules require Pro. Notification and calendar jobs return before accessing the database unless their runtime flags are enabled.
@@ -83,7 +83,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - **Use Prisma generated types** from `@prisma/client` — never create manual interfaces for database models.
 - **Never access env vars at module level** — wrap in async functions for runtime access.
 - **Email service uses `import 'server-only'`** — not `'use server'` (internal functions, not client-callable).
-- **Booking requires authentication** — middleware redirects to signin with `?redirect=/book`.
+- **Booking needs a signed-in customer with a confirmed email** — `src/app/[locale]/book/page.tsx` redirects to sign-in (`?redirect=/book`) and every booking action checks again; middleware deliberately does not gate `/book`. While booking is closed, `/book` shows the phone / Fresha / Treatwell page.
 - **24-hour cancellation/reschedule policy** — enforced server-side in booking actions.
 - **Reschedule uses `$transaction` with Serializable isolation** — prevents double-booking race conditions.
 - **Use regular `<img>` for external/CDN images**, `next/image` only for local `public/` assets.
