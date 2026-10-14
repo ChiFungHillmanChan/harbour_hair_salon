@@ -88,7 +88,15 @@ Square and payment records.
       test account, Vercel Protection Bypass for Automation + an alias for the webhook URL;
       `PREVIEW_EMAIL_ALLOWLIST` = your own address **before** notifications go on there, because the
       preview database holds real customers), then the sandbox acceptance checklist (runbook §4).
-- [ ] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
+      **2026-10-14:** the application was created in the salon's own Square account, so the same app
+      will later give the production credentials (runbook §5). Its sandbox Default Test Account is
+      United Kingdom / GBP. All seven `SQUARE_*` variables are set on Preview (Production has none).
+      The sandbox webhook subscription is saved for `harbour-hair-sandbox.vercel.app`; it uses its
+      own Protection Bypass secret, the one with the note "Square sandbox webhook". Still to do:
+      `PREVIEW_EMAIL_ALLOWLIST`, notifications on Preview, then §4.
+- [x] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
+      Identity checks are complete and the payout bank account is linked (checked 2026-10-14).
+      The account's own card rate is still to be confirmed (runbook §8).
 - [ ] Production credentials — **only once the sandbox acceptance checklist (runbook §4) has
       passed on a Preview deployment**. S1–S4 are built: S3 captures a hold on approval, releases
       it on decline, withdrawal, lapse or expiry, and refunds cancellations; S4 (the Square webhook
