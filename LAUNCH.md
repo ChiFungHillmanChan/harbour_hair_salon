@@ -92,8 +92,14 @@ Square and payment records.
       will later give the production credentials (runbook §5). Its sandbox Default Test Account is
       United Kingdom / GBP. All seven `SQUARE_*` variables are set on Preview (Production has none).
       The sandbox webhook subscription is saved for `harbour-hair-sandbox.vercel.app`; it uses its
-      own Protection Bypass secret, the one with the note "Square sandbox webhook". Still to do:
-      `PREVIEW_EMAIL_ALLOWLIST`, notifications on Preview, then §4.
+      own Protection Bypass secret, the one with the note "Square sandbox webhook". "Send test
+      event" returned 200. Preview also has its own `PREVIEW_EMAIL_ALLOWLIST` and its own values for
+      `NOTIFICATIONS_ENABLED=true`, `CRON_SECRET` and `CALENDAR_SYNC_ENABLED=true`. Production's
+      values are unchanged, and these Preview-only values are removed again after §4.
+      On the preview database only: booking is on, deposits are 20%, and "takes bookings" is unticked
+      on the stylists' calendar connections, since crons do not run on previews.
+      **§4 progress:** the approve test's hold is done (a £7.40 hold, with request email and
+      database matching Square); the duplicate-webhook check passed. The rest of §4 is still open.
 - [x] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
       Identity checks are complete and the payout bank account is linked (checked 2026-10-14).
       The account's own card rate is still to be confirmed (runbook §8).
