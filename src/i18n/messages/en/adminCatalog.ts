@@ -44,7 +44,7 @@ const adminCatalog = {
     consultationGate: 'Consultation gate',
     requiresConsultation: 'Requires consultation before booking',
     requiresConsultationHelp: '(customer is routed to a consultation instead of booking this directly)',
-    isConsultation: 'This IS the free general consultation service',
+    isConsultation: 'This IS the general consultation service',
     depositTitle: 'Online deposit',
     depositHelp: 'Leave empty to follow the salon’s deposit policy in Admin → Site Settings. Enter 0 for no deposit on this service, or a fixed amount in pounds, never more than the price.',
     depositOverride: 'Deposit for this service (£)',
