@@ -116,10 +116,11 @@ Square and payment records.
       production build, sandbox Square, clean Chrome): 3-D Secure, frictionless, slot-loss
       notice, capture, refund and settle-outside in an open dialog, withdrawal, decline, the
       CVV/ZIP/expiry cards and the decline limit all pass. The Chrome card-form failure is a
-      hidden page (Square cannot start in a background tab); fixed in the follow-up PR. Left:
-      merge it, a person's card run on the Preview of main, real phones. Production remains
-      gated. Full report: `readme/square-acceptance-2026-10-14.md` (screenshots kept outside
-      the public repo).
+      hidden page (Square cannot start in a background tab); fixed in #65. On #65's code the
+      kill switch (no Square call, traced) and the expired hold (approval refused, request
+      lapsed, hold released by reconciliation) also pass. Left: a person's card run on the
+      Preview of main, real phones. Production remains gated. Full report:
+      `readme/square-acceptance-2026-10-14.md` (screenshots kept outside the public repo).
 - [x] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
       Identity checks are complete and the payout bank account is linked (checked 2026-10-14).
       The account's own card rate is still to be confirmed (runbook §8).

@@ -1,9 +1,9 @@
 # Square sandbox acceptance — 14–15 October 2026
 
 **Live payment-safety scenarios passed. The CSP fix and the two UI findings are
-merged (#64). The Chrome card-form failure is explained and fixed in the follow-up
-PR (see "15 October re-run"). Production Square payments must stay locked until
-that PR is merged and production credentials are set (runbook §5).**
+merged (#64). The Chrome card-form failure is explained and fixed in #65 (see
+"15 October re-run"). Production Square payments stay locked until production
+credentials are set (runbook §5).**
 
 Target: https://harbour-hair-sandbox.vercel.app. Square UK/GBP Default Test Account,
 Harbour Hair Website application, location `LAPJRRTBGE2KR`. Times are Europe/London.
@@ -129,12 +129,28 @@ app or tab while it loads, would see the same. A second, development-only cause:
 React's double-mount attached two cards to one element, and destroying the first
 left the second hanging, so `pnpm dev` always failed to show the card form.
 
-The follow-up PR (`square-web-payments.ts`) makes the card field wait until the
+#65 (`square-web-payments.ts`) makes the card field wait until the
 page is shown before touching Square, starts its 20-second limit only then, and
 lets a second field on the same element wait until the first has gone. Verified on
 a local production build: hidden for 90 s, the form kept "Loading…" (Square not
 contacted), then was ready 1.6 s after the tab came back. Verified on the dev
 server: ready in 2.7 s with exactly one card field.
+
+### Kill switch and expired hold, on #65's code
+
+The two items the Preview run left partly open, run on a local production build of
+`ae0ed17` (the same setup as above). The server recorded the host and path of every
+outbound request it made (a preload around `fetch`; no headers or bodies). With
+payments on, that trace showed Square's `POST /v2/payments` for the hold below, so a
+Square call would have shown up.
+
+| Scenario | Evidence / outcome | Result |
+| --- | --- | --- |
+| Card form load | Confirm step reached on a fresh page; Square's card field in place 2.8 s after Continue. | Pass |
+| Expired hold: approval | `4800…0004` hold (£7.40, `GmSKnxo5Fi5natIdj08cruKRHtQZY`); `delayedUntil` set one minute into the past as the runbook says. "Confirm & take £7.40 deposit" answered: "The card hold for this request has expired, so it can no longer be confirmed online. Decline it and contact the customer." No Square call; the attempt stayed `AUTHORIZED`, the request `PENDING`. | Pass |
+| Expired hold: lapse | Notifications job: `requestsLapsed: 1`, one email queued (dropped on send, no Preview allowlist); request `CANCELLED`, attempt `EXPIRED` with "The card hold expired before the request was confirmed…". The lapse records the expiry by its date without asking Square, so Square still showed `APPROVED`. | Pass |
+| Expired hold: release | Housekeeping, once the row was older than the 15-minute reconciliation minimum (its `updatedAt` moved back 20 minutes, standing in for the next nightly run): `GET` then `POST /v2/payments/…/cancel`; Square `CANCELED` / card `VOIDED`. | Pass |
+| Kill switch | Restarted with `SQUARE_PAYMENTS_ENABLED=false`. The confirm step showed "Online payment isn’t available right now, so this booking can’t be made online. Please call the salon…", no card form, and the request button disabled; re-enabling the button by hand and submitting changed nothing. The browser loaded nothing from Square. Webhook `POST` answered 404; housekeeping reported payments `skipped: true`; the notifications job ran. No booking or attempt was created. The server's trace for the whole run holds 12 requests, all to the synthetic Redis host, and none to Square. | Pass |
 
 ## Identifiers
 
@@ -184,7 +200,6 @@ HTTP 401 setup logs (`setup-refusal-logs.json`).
 
 ## Remaining sign-off work
 
-- Merge the card-form fix PR (hidden page / remount) and let it deploy.
 - A person, not the assistant, enters cards on the Preview of merged `main`
   (`harbour-hair-sandbox.vercel.app`): at least the 3-D Secure challenge with
   DevTools → Console open, one approval and one refund. The local production-build
