@@ -112,10 +112,14 @@ Square and payment records.
       **15 Oct daytime:** live cross-tab and two-account races preserved one booking/hold;
       the losing hold was released. Fourth wrong-token refusal and valid-token recovery passed,
       as did approved daily housekeeping (settled/kept rows preserved, no duplicate refund).
-      Go-live remained blocked by Chrome card loading, stale open-editor refund display and
-      missing slot-loss feedback when returned to date selection. **The CSP fix and both UI
-      fixes are in the follow-up PR (2026-10-15);** what is left is the Preview-of-main re-run
-      and the Chrome / phone card-form check. Production remains gated. Full report:
+      The CSP fix and both UI fixes are merged (#64). **15 Oct re-run on main's code** (local
+      production build, sandbox Square, clean Chrome): 3-D Secure, frictionless, slot-loss
+      notice, capture, refund and settle-outside in an open dialog, withdrawal, decline, the
+      CVV/ZIP/expiry cards and the decline limit all pass. The Chrome card-form failure is a
+      hidden page (Square cannot start in a background tab); fixed in #65. On #65's code the
+      kill switch (no Square call, traced) and the expired hold (approval refused, request
+      lapsed, hold released by reconciliation) also pass. Left: a person's card run on the
+      Preview of main, real phones. Production remains gated. Full report:
       `readme/square-acceptance-2026-10-14.md` (screenshots kept outside the public repo).
 - [x] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
       Identity checks are complete and the payout bank account is linked (checked 2026-10-14).
