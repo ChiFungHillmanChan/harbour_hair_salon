@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   attachDepositCard, depositVerificationDetails, loadSquareSdk, mountSquareCard, SQUARE_LOAD_TIMEOUT_MS, SQUARE_SDK_URLS, SQUARE_TOKENIZE_TIMEOUT_MS,
-  SquareTimeoutError, withTimeout, type DepositCard, type SdkHost, type SquarePublicConfig, type SquareSdk,
+  SquareTimeoutError, withTimeout, type DepositCard, type PageVisibility, type SdkHost, type SquarePublicConfig, type SquareSdk,
 } from './square-web-payments';
 
 const CONFIG: SquarePublicConfig = { applicationId: 'sandbox-sq0idb-app', locationId: 'location-1', environment: 'sandbox' };
@@ -188,6 +188,61 @@ test('a field that cannot load is reported failed (unless the customer already m
   }
 });
 
+// Square never finishes attaching a second card to an element while an earlier
+// one is still attaching there and is then destroyed. React's development
+// double-mount does exactly that, and the form said "could not be loaded"
+// every time (local acceptance run, 15 October 2026).
+
+test('a second field on the same element waits until the first has gone', async () => {
+  const element = {} as HTMLElement;
+  const first = deferred<DepositCard>();
+  const second = deferred<DepositCard>();
+  const mounts: string[] = [];
+  const events: string[] = [];
+  const cleanupFirst = attachDepositCard({ config: CONFIG, element, mount: () => { mounts.push('first'); return first.promise; }, onReady: () => events.push('first ready'), onFailed: () => events.push('first failed'), onGone: () => events.push('first gone') });
+  cleanupFirst();
+  attachDepositCard({ config: CONFIG, element, mount: () => { mounts.push('second'); return second.promise; }, onReady: () => events.push('second ready'), onFailed: () => events.push('second failed'), onGone: () => events.push('second gone') });
+  await flush();
+  assert.deepEqual(mounts, ['first'], 'the second waits while the first is still attaching');
+  const one = fakeCard();
+  first.resolve(one.card);
+  await flush();
+  assert.deepEqual(one.events, ['destroyed']);
+  assert.deepEqual(mounts, ['first', 'second'], 'and starts once the first has gone');
+  second.resolve(fakeCard().card);
+  await flush();
+  assert.deepEqual(events, ['first gone', 'second ready']);
+});
+
+test('a field removed by its cleanup is destroyed before the next one on that element starts', async () => {
+  const element = {} as HTMLElement;
+  const destroying = deferred<void>();
+  const mounts: string[] = [];
+  const kept: DepositCard = { tokenize: async () => 'cnon:ok', destroy: () => destroying.promise };
+  const cleanup = attachDepositCard({ config: CONFIG, element, mount: async () => { mounts.push('first'); return kept; }, onReady: () => undefined, onFailed: () => undefined, onGone: () => undefined });
+  await flush();
+  cleanup();
+  attachDepositCard({ config: CONFIG, element, mount: async () => { mounts.push('second'); return fakeCard().card; }, onReady: () => undefined, onFailed: () => undefined, onGone: () => undefined });
+  await flush();
+  assert.deepEqual(mounts, ['first'], 'Square is still removing the first field');
+  destroying.resolve();
+  await flush();
+  assert.deepEqual(mounts, ['first', 'second']);
+});
+
+test('a field on another element, or after a failed one, starts at once', async () => {
+  const mounts: string[] = [];
+  const pending = deferred<DepositCard>();
+  attachDepositCard({ config: CONFIG, element: {} as HTMLElement, mount: () => { mounts.push('a'); return pending.promise; }, onReady: () => undefined, onFailed: () => undefined, onGone: () => undefined });
+  attachDepositCard({ config: CONFIG, element: {} as HTMLElement, mount: () => { mounts.push('b'); return deferred<DepositCard>().promise; }, onReady: () => undefined, onFailed: () => undefined, onGone: () => undefined });
+  assert.deepEqual(mounts, ['a', 'b'], 'different elements never wait for each other');
+  const element = {} as HTMLElement;
+  attachDepositCard({ config: CONFIG, element, mount: () => { mounts.push('failed'); return Promise.reject(new Error('blocked')); }, onReady: () => undefined, onFailed: () => undefined, onGone: () => undefined });
+  await flush();
+  attachDepositCard({ config: CONFIG, element, mount: () => { mounts.push('retry'); return deferred<DepositCard>().promise; }, onReady: () => undefined, onFailed: () => undefined, onGone: () => undefined });
+  assert.deepEqual(mounts.slice(2), ['failed', 'retry']);
+});
+
 // --- Time limits (fake timers): a Square step that never answers ------------
 
 /** Let settled promises run their callbacks. */
@@ -265,4 +320,66 @@ test('a card check may take as long as a bank’s 3-D Secure challenge, but not 
   // Card schemes let a challenge run for up to 10 minutes; the page waits a little longer.
   assert.ok(SQUARE_TOKENIZE_TIMEOUT_MS > 10 * 60_000, 'never cuts a real challenge short');
   assert.ok(SQUARE_TOKENIZE_TIMEOUT_MS <= 15 * 60_000, 'a stalled SDK still lets go of the page');
+});
+
+// --- A page that is not on screen -------------------------------------------
+//
+// Square's SDK cannot start in a hidden page: it gives up ("Web Payments SDK
+// was unable to be initialized in time") and stays broken until a reload. A
+// booking opened in a background tab always said "could not be loaded"
+// (local acceptance run, 15 October 2026).
+
+/** A page whose visibility the test switches; `show()` fires the listeners. */
+function fakeVisibility(hidden: boolean) {
+  const listeners = new Set<() => void>();
+  const visibility: PageVisibility = {
+    hidden: () => hidden,
+    onVisible: (callback) => { listeners.add(callback); return () => listeners.delete(callback); },
+  };
+  return { visibility, listeners, show: () => { hidden = false; for (const listener of [...listeners]) listener(); } };
+}
+
+test('a hidden page starts Square only once it is shown', async () => {
+  const page = fakeVisibility(true);
+  const mounting = deferred<DepositCard>();
+  const events: string[] = [];
+  attachDepositCard({ config: CONFIG, element: {} as HTMLElement, visibility: page.visibility, mount: () => { events.push('mount'); return mounting.promise; }, onReady: () => events.push('ready'), onFailed: () => events.push('failed'), onGone: () => events.push('gone') });
+  await flush();
+  assert.deepEqual(events, [], 'Square is not touched while the page is hidden');
+  page.show();
+  assert.deepEqual(events, ['mount']);
+  assert.equal(page.listeners.size, 0, 'it stops listening once started');
+  mounting.resolve(fakeCard().card);
+  await flush();
+  assert.deepEqual(events, ['mount', 'ready']);
+});
+
+test('the 20-second limit counts from when the page is shown', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const page = fakeVisibility(true);
+  const events: string[] = [];
+  attachDepositCard({ config: CONFIG, element: {} as HTMLElement, visibility: page.visibility, mount: () => deferred<DepositCard>().promise, onReady: () => events.push('ready'), onFailed: () => events.push('failed'), onGone: () => events.push('gone') });
+  t.mock.timers.tick(10 * 60_000);
+  await flush();
+  assert.deepEqual(events, [], 'a page left in the background never fails');
+  page.show();
+  t.mock.timers.tick(SQUARE_LOAD_TIMEOUT_MS - 1);
+  await flush();
+  assert.deepEqual(events, []);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.deepEqual(events, ['failed']);
+});
+
+test('a field removed while it waits for the page never starts, and frees its element', async () => {
+  const page = fakeVisibility(true);
+  const element = {} as HTMLElement;
+  const events: string[] = [];
+  const cleanup = attachDepositCard({ config: CONFIG, element, visibility: page.visibility, mount: () => { events.push('first mount'); return deferred<DepositCard>().promise; }, onReady: () => undefined, onFailed: () => undefined, onGone: () => events.push('gone') });
+  cleanup();
+  assert.equal(page.listeners.size, 0, 'no listener left behind');
+  const shown = fakeVisibility(false);
+  attachDepositCard({ config: CONFIG, element, visibility: shown.visibility, mount: () => { events.push('second mount'); return deferred<DepositCard>().promise; }, onReady: () => undefined, onFailed: () => undefined, onGone: () => undefined });
+  await flush();
+  assert.deepEqual(events, ['gone', 'second mount']);
 });

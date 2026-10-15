@@ -175,6 +175,22 @@ export async function mountSquareCard(
   };
 }
 
+/** Whether the page is on screen, and a way to hear when it comes back; tests pass their own. */
+export type PageVisibility = { hidden(): boolean; onVisible(callback: () => void): () => void };
+
+/** The real page's visibility (always "shown" where there is no document). */
+const pageVisibility: PageVisibility = {
+  hidden: () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
+  onVisible: (callback) => {
+    const listener = () => { if (document.visibilityState !== 'hidden') callback(); };
+    document.addEventListener('visibilitychange', listener);
+    return () => document.removeEventListener('visibilitychange', listener);
+  },
+};
+
+/** Per element: the card field last attached there, until it has gone (attachDepositCard). */
+const departures = new WeakMap<object, Promise<void>>();
+
 /**
  * The card field's life on the page, apart from React: mount it into
  * `element`, report it ready (or failed), and return the cleanup that removes
@@ -183,6 +199,19 @@ export async function mountSquareCard(
  * never a second card field on the page. A field that has not appeared within
  * `timeoutMs` (SQUARE_LOAD_TIMEOUT_MS) is reported failed, and destroyed if
  * it turns up later.
+ *
+ * Square never finishes attaching a card to an element while an earlier card
+ * is still attaching there and is then destroyed: React's development
+ * double-mount did exactly that, and the form said "could not be loaded" every
+ * time (local acceptance run, 15 October 2026). So a field waits until the
+ * element's previous field has gone (`departures`); with none in flight it
+ * starts at once, as before.
+ *
+ * Square cannot start in a hidden page either: its SDK gives up ("unable to
+ * be initialized in time") and stays broken until the page is reloaded, so a
+ * booking opened in a background tab always said "could not be loaded" (same
+ * run). The field waits until the page is shown, and its time limit starts
+ * then.
  */
 export function attachDepositCard(options: {
   config: SquarePublicConfig;
@@ -193,26 +222,65 @@ export function attachDepositCard(options: {
   /** The field is gone (cleanup): it can no longer tokenize. */
   onGone: () => void;
   timeoutMs?: number;
+  visibility?: PageVisibility;
 }): () => void {
   let active = true;
   let card: DepositCard | null = null;
-  withTimeout(options.mount(options.config, options.element), options.timeoutMs ?? SQUARE_LOAD_TIMEOUT_MS, (late) => { void late.destroy(); }).then(
-    (mounted) => {
+  const timeoutMs = options.timeoutMs ?? SQUARE_LOAD_TIMEOUT_MS;
+  // Settles once this field is off the element: failed, or destroyed.
+  let leave!: () => void;
+  const departed = new Promise<void>((resolve) => { leave = resolve; });
+  const previous = departures.get(options.element);
+  departures.set(options.element, departed);
+  void departed.then(() => {
+    if (departures.get(options.element) === departed) departures.delete(options.element);
+  });
+
+  const start = () => withTimeout(options.mount(options.config, options.element), timeoutMs, (late) => { void late.destroy(); }).then(
+    async (mounted) => {
       if (!active) {
-        void mounted.destroy();
+        await mounted.destroy();
+        leave();
         return;
       }
       card = mounted;
       options.onReady(mounted);
     },
     () => {
+      leave();
       if (active) options.onFailed();
     },
   );
+  const visibility = options.visibility ?? pageVisibility;
+  let stopWaiting: (() => void) | null = null;
+  const whenShown = () => {
+    if (!active) {
+      leave();
+      return;
+    }
+    if (!visibility.hidden()) {
+      void start();
+      return;
+    }
+    stopWaiting = visibility.onVisible(() => {
+      stopWaiting?.();
+      stopWaiting = null;
+      whenShown();
+    });
+  };
+  // Bounded, so an earlier field Square never lets go of cannot hold this one forever.
+  if (previous) void withTimeout(previous, timeoutMs).catch(() => undefined).then(whenShown);
+  else whenShown();
   return () => {
     active = false;
     options.onGone();
-    void card?.destroy();
+    if (stopWaiting) {
+      // Still waiting for the page to be shown: Square was never touched.
+      stopWaiting();
+      stopWaiting = null;
+      leave();
+    }
+    if (card) void card.destroy().finally(leave);
   };
 }
 

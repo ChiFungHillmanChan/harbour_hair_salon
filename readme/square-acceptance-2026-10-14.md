@@ -1,9 +1,9 @@
 # Square sandbox acceptance — 14–15 October 2026
 
-**Live payment-safety scenarios passed. Go-live sign-off remains blocked by the
-Chrome loading failure and validation on a merged main Preview. The CSP fix and
-the two UI findings were fixed in code on 15 October (see "Remaining sign-off
-work"). Production Square payments must stay locked.**
+**Live payment-safety scenarios passed. The CSP fix and the two UI findings are
+merged (#64). The Chrome card-form failure is explained and fixed in the follow-up
+PR (see "15 October re-run"). Production Square payments must stay locked until
+that PR is merged and production credentials are set (runbook §5).**
 
 Target: https://harbour-hair-sandbox.vercel.app. Square UK/GBP Default Test Account,
 Harbour Hair Website application, location `LAPJRRTBGE2KR`. Times are Europe/London.
@@ -82,6 +82,60 @@ correct. `BookingWizard.tsx` renders `bookingError` only inside the confirm step
 while availability normalization can move the wizard back to the date step.
 This feedback defect has not been changed.
 
+## 15 October re-run on main's code (local production build)
+
+Code: `main` at `62b9152` (#64 merged), built with `next build` and served with
+`next start`, `VERCEL_ENV=preview` (the payment lock's one exemption, exactly as on
+a Vercel Preview). Square: the same sandbox application and location
+`LAPJRRTBGE2KR`. Database: a disposable local PostgreSQL 17 seeded with the
+project's own seed, never the Preview or production database. Browser: a clean
+Chrome profile with no extensions, phone-width window. The sandbox alias was moved
+to PR #64's Preview (`dpl_FfGyqwP8KBo2p9cKaobYZbZHiNQE`, same tree as `62b9152`).
+
+Why local rather than the Preview: test card numbers and test passwords are only
+typed into a local development host by the assistant that ran this. The Preview
+holds copied real customers and sits behind Vercel SSO. Square's webhooks cannot
+reach localhost, so refunds were settled with "Re-check payment", which is what
+reconciliation does; webhook delivery itself was proven on the Preview above.
+
+| Scenario | Evidence / outcome | Result |
+| --- | --- | --- |
+| 3-D Secure challenge | `4310…1019`; Square's challenge form showed **7.40**; waited 100 s, entered `123456`, Authenticate. Request received, `AUTHORIZED` / Square `APPROVED`. No `securitypolicyviolation` event at any point. | Pass |
+| Frictionless SCA | `4800…0004` (US card: digits-only ZIP); no challenge; `AUTHORIZED` / `APPROVED`. | Pass |
+| Slot taken while confirming | Customer A on the confirm step with a card ready; the same slot booked meanwhile. Server refused (`SLOT_UNAVAILABLE`) before any card authorization; wizard returned to the times with "Sorry — 16:00 on Tuesday 20 October is no longer available… Nothing has been taken from your card…"; 16:00 greyed. No payment attempt created. | Pass |
+| Staff approval | `CONFIRMED`, `CAPTURED`, Square `COMPLETED`. | Pass |
+| Refund shown in an open dialog | Cancelled with refund (`PENDING`); reopened; "Re-check payment" in the open dialog turned "Refund pending £7.40" into "Refunded £7.40" in 0.4 s without closing it; refund `COMPLETED`; audit `PAYMENT.RECHECKED`. | Pass |
+| Settled outside, in an open dialog | Second captured booking cancelled with refund; its refund set to `UNKNOWN` in the local database (a lost Square answer). In the open dialog: confirm question, then "Refunded £7.40", the button gone and "The £7.40 refund is recorded as settled outside the website…" kept on screen; refund `SETTLED_EXTERNALLY`; audit `PAYMENT.REFUND_SETTLED_OUTSIDE`. | Pass |
+| Customer withdrawal | "the £7.40 hold on your card was released. Nothing was taken."; `VOIDED` / Square `CANCELED`. | Pass |
+| Staff decline | `VOIDED` / Square `CANCELED`. | Pass |
+| CVV `911`, ZIP `99999`, expiry `01/40` | Each: "Your card was declined or could not be verified. Nothing was booked and you have not been charged."; attempt `FAILED`, no Square payment. | Pass |
+| Decline limit | Fourth attempt the same day with a valid card: "Online payment is not available right now… Please call the salon"; card form removed; no attempt row, Square not called. | Pass |
+| Card form load time | 2.2–3.1 s from the confirm step on a fresh page; 0.1 s after Back/Continue (five times, including a quick double toggle). | Pass |
+
+All four bookings made in this run are closed: two deposits captured and refunded
+in full, two holds released; the three declined attempts never reached a payment.
+
+### Chrome card-form failure: cause and fix
+
+Reproduced in the clean profile, so it is not specific to one person's Chrome.
+Square's Web Payments SDK cannot start while the page is hidden: `Square.payments()`
+gives up with "Web Payments SDK was unable to be initialized in time", and the SDK
+stays broken until the page is reloaded. With the booking tab in the background,
+the production build showed "The card form could not be loaded" after 20 seconds,
+every time, and kept showing it when the tab came back. Tabs opened by a browser
+extension often sit in the background, which explains the intermittent failures
+above. A customer who opens the booking page in a background tab, or switches
+app or tab while it loads, would see the same. A second, development-only cause:
+React's double-mount attached two cards to one element, and destroying the first
+left the second hanging, so `pnpm dev` always failed to show the card form.
+
+The follow-up PR (`square-web-payments.ts`) makes the card field wait until the
+page is shown before touching Square, starts its 20-second limit only then, and
+lets a second field on the same element wait until the first has gone. Verified on
+a local production build: hidden for 90 s, the form kept "Loading…" (Square not
+contacted), then was ready 1.6 s after the tab came back. Verified on the dev
+server: ready in 2.7 s with exactly one card field.
+
 ## Identifiers
 
 - Original captured/refunded appointment: `cmv8nuf0y0003ku06m10g54kd`.
@@ -130,31 +184,18 @@ HTTP 401 setup logs (`setup-refusal-logs.json`).
 
 ## Remaining sign-off work
 
-- **Fixed in code, 15 October (pending the Preview-of-main re-run below):**
-  - the CSP fix above, now committed with its regression tests;
-  - slot-loss feedback: when a refused booking sends the customer back to the
-    times, the date step now says the time is no longer available and, if a card
-    was sent, that nothing was taken and any hold is being released
-    (`booking.date.timeTaken` / `timeTakenCard`, en + zh); the stale confirm-step
-    error no longer greets the next time chosen;
-  - the open booking dialog now takes its deposit from the refreshed board
-    (`withLiveDeposit`), so the refund chip updates at once, and the settle control
-    drops its button once recorded while keeping its answer on screen.
-- Repeat the launch smoke checks on a Preview of merged main with its exact commit
-  recorded: at least the 3-D Secure challenge (`4310…1019`) with the console open,
-  frictionless (`4800…0004`), the two-account race (loser sees the new notice) and
-  "Mark refund as settled outside the website" in an open dialog. Also try the
-  CVV `911` / postcode `99999` / expiry `01/40` cards, which this run did not record.
-- Explain and resolve Chrome card-form loading; validate normal and throttled use.
-  A fresh Chrome tab on 15 October reproduced the failure; clean IAB worked. First
-  separate the browser from the profile: a Chrome guest or incognito window with
-  no extensions, then real phones (iPhone Safari, Android Chrome), none of which
-  this run covered.
+- Merge the card-form fix PR (hidden page / remount) and let it deploy.
+- A person, not the assistant, enters cards on the Preview of merged `main`
+  (`harbour-hair-sandbox.vercel.app`): at least the 3-D Secure challenge with
+  DevTools → Console open, one approval and one refund. The local production-build
+  run above covers the same code; this repeats it on Vercel's infrastructure.
+- Real phones: iPhone Safari and Android Chrome, including switching away to
+  another app while the card form loads. Not covered by any run so far.
+- Then runbook §5 (production credentials, webhook, the real £0.01 card test with
+  the console open; the production 3-D Secure origin `api.squareup.com` has not yet
+  been observed).
 
-All other previously pending live scenarios (cross-tab, two accounts, fourth
-wrong-token refusal, valid-token recovery and daily housekeeping) were exercised
-on 15 October. Safety invariants passed; the slot-loss UI wording requirement did
-not. No further user approval is pending for the completed housekeeping run.
+All other §4 items are covered above or in the 14–15 October Preview run.
 
 ## Cleanup state
 
