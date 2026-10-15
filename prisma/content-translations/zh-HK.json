@@ -1074,12 +1074,12 @@
       },
       "source": {
         "name": "Consultation",
-        "description": "Free consultation to discuss your service before booking.",
+        "description": "A consultation to discuss your service before booking.",
         "priceNote": ""
       },
       "fields": {
         "name": "諮詢",
-        "description": "預約前的免費諮詢，與你商討所需服務。",
+        "description": "預約前的諮詢，與你商討所需服務。",
         "priceNote": ""
       }
     },
@@ -2096,11 +2096,11 @@
       },
       "source": {
         "question": "Do I need a patch test before colouring?",
-        "answer": "A patch test checks for allergic reactions to colour products and is required at least 48 hours before your colour appointment. Call the salon on 07831 830898 and we will arrange a free patch test before your appointment."
+        "answer": "A patch test checks for allergic reactions to colour products and is required at least 48 hours before your colour appointment. Call the salon on 07831 830898 and we will arrange a consultation and patch test (£15) before your appointment."
       },
       "fields": {
         "question": "染髮前需要做皮膚敏感測試嗎？",
-        "answer": "皮膚敏感測試用以檢查你會否對染髮產品出現過敏反應，必須在染髮預約前最少 48 小時進行。請致電髮型屋 07831 830898，我們會在你的預約前為你安排免費皮膚敏感測試。"
+        "answer": "皮膚敏感測試用以檢查你會否對染髮產品出現過敏反應，必須在染髮預約前最少 48 小時進行。請致電髮型屋 07831 830898，我們會在你的預約前為你安排諮詢及皮膚敏感測試（£15）。"
       }
     },
     {
@@ -2392,7 +2392,7 @@
           },
           {
             "type": "paragraph",
-            "text": "A ten-minute consultation beforehand is the easiest way to avoid disappointment. Your colourist can assess your natural base, any previous colour, and your lifestyle, then recommend exactly which approach will give the finish you’re after. Book a free consultation at Harbour Hair Salon in Leeds city centre through our booking page."
+            "text": "A ten-minute consultation beforehand is the easiest way to avoid disappointment. Your colourist can assess your natural base, any previous colour, and your lifestyle, then recommend exactly which approach will give the finish you’re after. Book a consultation at Harbour Hair Salon in Leeds city centre through our booking page."
           }
         ]
       },
@@ -2474,7 +2474,7 @@
           },
           {
             "type": "paragraph",
-            "text": "事先進行十分鐘諮詢，是避免失望最簡單的方法。染髮師可以評估你的天然底色、過往染髮情況及生活方式，然後準確建議哪種做法能達到你想要的效果。歡迎透過我們的預約頁面，預約列斯市中心 Harbour Hair Salon 的免費諮詢。"
+            "text": "事先進行十分鐘諮詢，是避免失望最簡單的方法。染髮師可以評估你的天然底色、過往染髮情況及生活方式，然後準確建議哪種做法能達到你想要的效果。歡迎透過我們的預約頁面，預約列斯市中心 Harbour Hair Salon 的諮詢。"
           }
         ]
       }
