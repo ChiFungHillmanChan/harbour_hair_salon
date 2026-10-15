@@ -383,8 +383,12 @@ Rules:
 
 ## 4. Sandbox acceptance checklist
 
-Square's sandbox test values (GBP needs a valid postcode, e.g. `LS1 6DX`; any future expiry; CVV
-`111`, Amex `1111`):
+Square's sandbox test values: any future expiry; CVV `111` (Amex `1111`). Square's card form picks
+the postcode field from the country that **issued the card**, not from the site. `4111 1111 1111
+1111` is a US card, so the form shows a digits-only **ZIP** (any 5 digits; the sandbox reports a
+postcode mismatch, `AVS_REJECTED`, and still approves). A UK or EU test card shows **Postcode** and
+takes `LS1 6DX`. Real UK customers see a normal postcode field. The 2026-10-14 sandbox run
+confirmed the `4111` ZIP behaviour; the UK/EU part is from Square's Web Payments documentation.
 
 | Card | Result |
 |---|---|

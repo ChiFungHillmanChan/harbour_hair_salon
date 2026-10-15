@@ -8,10 +8,13 @@ const scriptSrcEval = isDev ? " 'unsafe-eval'" : '';
 
 // Square Web Payments SDK, from Square's CSP guide (deposit design,
 // docs/superpowers/specs/2026-10-13-square-deposits-design.md): its script,
-// card-field frames and styles come from these CDNs, its fonts from these
-// hosts. Its API calls are covered by connect-src, which already allows https:.
+// card-field frames and styles come from these CDNs. The sandbox acceptance
+// run on 14 October 2026 also observed the 3-D Secure API frame and Cash Sans
+// fonts (readme/square-acceptance-2026-10-14.md). API calls are already covered
+// by connect-src, which allows https:.
 const squareSdk = 'https://web.squarecdn.com https://sandbox.web.squarecdn.com';
-const squareFonts = 'https://square-fonts-production-f.squarecdn.com https://d1g145x70srn7h.cloudfront.net';
+const squareChallengeFrames = 'https://api.squareupsandbox.com https://api.squareup.com';
+const squareFonts = 'https://square-fonts-production-f.squarecdn.com https://d1g145x70srn7h.cloudfront.net https://cash-f.squarecdn.com';
 
 const csp = [
   "default-src 'self'",
@@ -22,7 +25,7 @@ const csp = [
   "media-src 'self' blob:",
   `font-src 'self' data: ${squareFonts}`,
   "connect-src 'self' https:",
-  `frame-src 'self' https://www.google.com ${squareSdk}`,
+  `frame-src 'self' https://www.google.com ${squareSdk} ${squareChallengeFrames}`,
   "worker-src 'self' blob:",
 ].join('; ') + ';';
 

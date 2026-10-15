@@ -404,8 +404,9 @@ export function AppointmentDialog({
               {deposit && <DepositChip deposit={deposit} t={t} className="ml-2 align-middle" />}
               {/* Asks Square now: a stuck hold, an unclear capture or a pending refund. */}
               {deposit && <DepositRecheckButton appointmentId={target.appointmentId} />}
-              {/* A refund Square has not confirmed, which staff refunded themselves (Square Dashboard or cash). */}
-              {deposit?.refundToSettle && <DepositSettleRefundButton appointmentId={target.appointmentId} refund={deposit.refundToSettle} />}
+              {/* A refund Square has not confirmed, which staff refunded themselves (Square Dashboard or cash).
+                  Mounted for any deposit, so its answer outlives the refresh that drops the refund. */}
+              {deposit && <DepositSettleRefundButton appointmentId={target.appointmentId} refund={deposit.refundToSettle ?? null} />}
             </div>
           ) : (
             <fieldset>

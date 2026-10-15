@@ -88,7 +88,38 @@ Square and payment records.
       test account, Vercel Protection Bypass for Automation + an alias for the webhook URL;
       `PREVIEW_EMAIL_ALLOWLIST` = your own address **before** notifications go on there, because the
       preview database holds real customers), then the sandbox acceptance checklist (runbook §4).
-- [ ] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
+      **2026-10-14:** the application was created in the salon's own Square account, so the same app
+      will later give the production credentials (runbook §5). Its sandbox Default Test Account is
+      United Kingdom / GBP. All seven `SQUARE_*` variables are set on Preview (Production has none).
+      The sandbox webhook subscription is saved for `harbour-hair-sandbox.vercel.app`; it uses its
+      own Protection Bypass secret, the one with the note "Square sandbox webhook". "Send test
+      event" returned 200. Preview also has its own `PREVIEW_EMAIL_ALLOWLIST` and its own values for
+      `NOTIFICATIONS_ENABLED=true`, `CRON_SECRET` and `CALENDAR_SYNC_ENABLED=true`. Production's
+      values are unchanged, and these Preview-only values are removed again after §4.
+      On the preview database only: booking is on, deposits are 20%, and "takes bookings" is unticked
+      on the stylists' calendar connections, since crons do not run on previews.
+      **§4 progress:** the approve test's hold is done (a £7.40 hold, with request email and
+      database matching Square); the duplicate-webhook check passed. The rest of §4 is still open.
+      **Later 2026-10-14 acceptance:** authorization, double-click protection, staff capture,
+      settled-payment re-check, staff decline/release, customer full refund through COMPLETED,
+      actual payment/refund webhook HTTP 200, declined card and failed verification were checked
+      against the preview and Square. **2026-10-15 continuation:** the narrow CSP fix is deployed
+      to the sandbox alias; a real challenge after an 80-second wait and frictionless SCA passed.
+      Customer withdrawal, signed duplicate/older webhook replay, expiry/lapse plus individual
+      reconciliation, direct Square cancellation, staff-kept deposit and actual inbox receipt
+      were checked, as were external settlement UI/audit and individual re-check (scoped fixture).
+      Node 24 full suite (1,646) and local PG18 integration/lifecycle checks pass.
+      **15 Oct daytime:** live cross-tab and two-account races preserved one booking/hold;
+      the losing hold was released. Fourth wrong-token refusal and valid-token recovery passed,
+      as did approved daily housekeeping (settled/kept rows preserved, no duplicate refund).
+      Go-live remained blocked by Chrome card loading, stale open-editor refund display and
+      missing slot-loss feedback when returned to date selection. **The CSP fix and both UI
+      fixes are in the follow-up PR (2026-10-15);** what is left is the Preview-of-main re-run
+      and the Chrome / phone card-form check. Production remains gated. Full report:
+      `readme/square-acceptance-2026-10-14.md` (screenshots kept outside the public repo).
+- [x] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
+      Identity checks are complete and the payout bank account is linked (checked 2026-10-14).
+      The account's own card rate is still to be confirmed (runbook §8).
 - [ ] Production credentials — **only once the sandbox acceptance checklist (runbook §4) has
       passed on a Preview deployment**. S1–S4 are built: S3 captures a hold on approval, releases
       it on decline, withdrawal, lapse or expiry, and refunds cancellations; S4 (the Square webhook

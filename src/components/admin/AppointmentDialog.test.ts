@@ -273,8 +273,9 @@ test('a refund Square has not confirmed can be marked settled outside the websit
   const nodes = stuck.render();
   assert.deepEqual(nodes.filter((node) => node.type === SettleOutside).map((node) => node.props), [{ appointmentId: 'appt-1', refund: { id: 'refund-1', amountPence: 2000 } }]);
   assert.equal(nodes.filter((node) => node.type === Recheck).length, 1, 'next to Re-check payment');
-  // Square is still handling it, or it is done: nothing to settle by hand.
+  // Square is still handling it, or it is done: nothing to settle by hand. The
+  // control stays mounted (offered no refund) so a recorded answer outlives the refresh.
   for (const deposit of [{ state: 'REFUND_PENDING', amountPence: 2000 }, { state: 'REFUNDED', amountPence: 2000 }, { state: 'PAID', amountPence: 2000 }]) {
-    assert.equal(dialog(depositTarget('CANCELLED', deposit), {}).render().find((node) => node.type === SettleOutside), undefined, deposit.state);
+    assert.equal(dialog(depositTarget('CANCELLED', deposit), {}).render().find((node) => node.type === SettleOutside)?.props.refund, null, deposit.state);
   }
 });

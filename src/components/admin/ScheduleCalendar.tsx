@@ -4,6 +4,7 @@ import { useEffect, useTransition } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { ScheduleWeekGrid, type WeekStylist } from './ScheduleWeekGrid';
 import { AppointmentDialog, type DialogService, type DialogTarget } from './AppointmentDialog';
+import { withLiveDeposit } from './dialog-target';
 import type { CalendarAppointment, PendingAppointment, RescheduleRequestRow } from '@/app/services/admin-calendar-data';
 import { RescheduleRequestActions } from './RescheduleRequestActions';
 import { ScheduleDayGrid, type GridAppointment, type GridBusyBlock, type GridStylist } from './ScheduleDayGrid';
@@ -841,7 +842,7 @@ export function ScheduleCalendar({
       {dialog && (
         <AppointmentDialog
           key={dialog.mode === 'edit' ? dialog.appointmentId : 'new'}
-          target={dialog}
+          target={withLiveDeposit(dialog, appointmentById)}
           services={services}
           stylists={stylists.map(({ id, name }) => ({ id, name }))}
           onClose={closeDialog}

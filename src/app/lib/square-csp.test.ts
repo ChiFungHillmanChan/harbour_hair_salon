@@ -27,6 +27,29 @@ test('the document policy lets the Square Web Payments SDK load its script, card
   }
 });
 
+test('Square 3-D Secure challenge frames are allowed in sandbox and production', async () => {
+  // The real sandbox challenge was blocked by frame-src on 14 October 2026.
+  for (const source of ['/(.*)', '/harbour-hair-3d.html']) {
+    const csp = await documentPolicy(source);
+    for (const origin of ['https://api.squareupsandbox.com', 'https://api.squareup.com']) {
+      assert.ok(csp.get('frame-src')?.includes(origin), `${source} must allow the challenge at ${origin}`);
+      for (const directive of ['script-src', 'script-src-elem', 'style-src', 'font-src']) {
+        assert.equal(csp.get(directive)?.includes(origin), false, `${origin} is only a frame source`);
+      }
+    }
+  }
+});
+
+test('the card verification UI can load its Cash Sans fonts', async () => {
+  for (const source of ['/(.*)', '/harbour-hair-3d.html']) {
+    const csp = await documentPolicy(source);
+    assert.ok(csp.get('font-src')?.includes('https://cash-f.squarecdn.com'), `${source} must allow the observed Square font host`);
+    for (const directive of ['script-src', 'script-src-elem', 'style-src', 'frame-src']) {
+      assert.equal(csp.get(directive)?.includes('https://cash-f.squarecdn.com'), false, 'the font host serves only fonts');
+    }
+  }
+});
+
 test('Square is allowed narrowly: exact hosts only, and nowhere it is not needed', async () => {
   const csp = await documentPolicy('/(.*)');
   for (const [directive, sources] of csp) {
