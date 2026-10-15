@@ -50,10 +50,12 @@ function mount(answer: () => Promise<unknown>, options: { locale?: Locale; confi
     '@/i18n/client': { useT: () => translator(locale, 'adminSchedule') },
     '@/app/actions/admin-payments': { markRefundSettledOutside: async (appointmentId: string, refundId: string) => { asked.push([appointmentId, refundId]); return answer(); } },
   });
+  // The refund the dialog offers: null once the refreshed deposit no longer has one to settle.
+  let refund: { id: string; amountPence: number } | null = { id: 'refund-1', amountPence: 2000 };
   const render = () => {
     cursor = 0;
     refCursor = 0;
-    return elements(DepositSettleRefundButton({ appointmentId: 'appt-1', refund: { id: 'refund-1', amountPence: 2000 } }));
+    return elements(DepositSettleRefundButton({ appointmentId: 'appt-1', refund }));
   };
   const click = async () => {
     const previous = (globalThis as { window?: unknown }).window;
@@ -64,7 +66,7 @@ function mount(answer: () => Promise<unknown>, options: { locale?: Locale; confi
       (globalThis as { window?: unknown }).window = previous;
     }
   };
-  return { render, click, asked, questions, refreshes: () => refreshes };
+  return { render, click, asked, questions, refreshes: () => refreshes, offer: (next: typeof refund) => { refund = next; } };
 }
 
 test('asks first, with the amount; then records it, says so and refreshes the board', async () => {
@@ -96,4 +98,25 @@ test('a refusal or a failure is shown, in the admin’s language, and nothing is
   await failed.click();
   assert.match(failed.questions[0], /確定將這筆 £20\.00 退款標示為已在網站以外處理/);
   assert.match(text(failed.render()), /暫時未能標示這筆退款/);
+});
+
+// Sandbox acceptance, 15 October 2026: the open dialog kept the settle button
+// beside the success line. The dialog keeps this control mounted (its answer
+// with it) and the refreshed deposit passes no refund once it is recorded.
+test('once recorded, the button goes and the answer stays — also after the board refresh drops the refund', async () => {
+  const m = mount(async () => ({ success: true, message: 'The £20.00 refund is recorded as settled outside the website.' }));
+  await m.click();
+  let nodes = m.render();
+  assert.equal(nodes.find((node) => node.type === 'button'), undefined, 'nothing left to press');
+  assert.match(text(nodes), /recorded as settled outside the website/);
+  m.offer(null);
+  nodes = m.render();
+  assert.equal(nodes.find((node) => node.type === 'button'), undefined);
+  assert.match(text(nodes.find((node) => node.props.role === 'status')), /recorded as settled outside the website/);
+});
+
+test('with no refund to settle and nothing said, it shows nothing', () => {
+  const m = mount(async () => ({ success: true, message: 'never' }));
+  m.offer(null);
+  assert.deepEqual(m.render(), []);
 });

@@ -113,6 +113,7 @@ const DepositRows = (props: unknown) => props;
 const DepositTerms = (props: unknown) => props;
 const PaymentUnavailableNotice = (props: unknown) => props;
 const DepositCardForm = (props: unknown) => props;
+const TimeSlotGrid = (props: unknown) => props;
 
 const DAY = '2099-10-06';
 const TIME = '11:00';
@@ -171,6 +172,7 @@ function mountWizard(options: { draft: Record<string, unknown>; preview?: unknow
   const submissions: Submitted[] = [];
   const previews: string[] = [];
   let daysCalls = 0;
+  let days: unknown[] = [OPEN_DAY];
   const answers = [...(options.answers ?? [])];
   const wizard = loadServerModule<typeof import('./BookingWizard')>('src/components/booking/BookingWizard.tsx', {
     react,
@@ -186,11 +188,11 @@ function mountWizard(options: { draft: Record<string, unknown>; preview?: unknow
     '@/i18n/client': { useT: (namespace: Namespace) => translator('en-GB', namespace), useLocale: () => 'en-GB' },
     '@/i18n/link': { __esModule: true, default: (props: Record<string, unknown>) => ({ type: 'a', props }) },
     '@/app/actions/booking': {
-      fetchBookingDays: async () => { daysCalls++; return { ok: true, days: [OPEN_DAY] }; },
+      fetchBookingDays: async () => { daysCalls++; return { ok: true, days }; },
       submitBooking: async (input: Submitted) => { submissions.push(input); return answers.shift() ?? { success: true }; },
     },
     '@/app/actions/booking-quote': { previewBookingQuote: async (serviceId: string) => { previews.push(serviceId); return options.preview ?? DUE; } },
-    './DayAvailability': { DayChip: () => null, TimeSlotGrid: () => null, UnavailableDayBlock: () => null },
+    './DayAvailability': { DayChip: () => null, TimeSlotGrid, UnavailableDayBlock: () => null },
     './BookingClosedNotice': { BookingClosedNotice: () => null },
     './DepositCardForm': { DepositCardForm },
     './DepositSummary': { DepositRows, DepositTerms, PaymentUnavailableNotice },
@@ -234,6 +236,10 @@ function mountWizard(options: { draft: Record<string, unknown>; preview?: unknow
     submissions,
     previews,
     get daysCalls() { return daysCalls; },
+    /** The wizard's draft (step, time, …) as it stands. */
+    draft,
+    /** What the next fortnight read answers. */
+    setDays(next: unknown[]) { days = next; },
   };
 }
 
@@ -390,4 +396,49 @@ test('a time less than 24 hours away is flagged to the deposit terms; one furthe
   t.mock.timers.reset();
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2099-10-05T09:00:00Z') });
   assert.equal(byType(await mountWizard({ draft: CONFIRM }).settle(), DepositTerms)!.props.startsWithin24Hours, false, '25 hours away');
+});
+
+// Sandbox acceptance, 15 October 2026: of two customers racing for one time,
+// the loser's wizard went back to the times with nothing on screen saying why
+// (its error lived on the confirm step) — and nothing about the card hold.
+const TAKEN = { success: false, code: 'SLOT_UNAVAILABLE', error: errors('booking.SLOT_UNAVAILABLE') };
+const TAKEN_DAY = { ...OPEN_DAY, slots: [{ time: TIME, available: false }, { time: '12:00', available: true }] };
+const continueButton = (tree: unknown) => elements(tree).find((node) => node.type === 'button' && text(node) === 'Continue')!;
+
+test('a time taken while confirming: back to the times, told it went and that nothing was taken from the card', async () => {
+  const wizard = mountWizard({ draft: CONFIRM, answers: [TAKEN] });
+  await withCardReady(wizard, fakeCard().card);
+  wizard.setDays([TAKEN_DAY]);
+  let tree = await wizard.submit();
+  assert.deepEqual([wizard.draft.step, wizard.draft.time], ['DATE', null], 'back to the times');
+  assert.match(alertText(tree), /^Sorry — 11:00 on .+ is no longer available\. Please choose another time\./);
+  assert.match(alertText(tree), /Nothing has been taken from your card/);
+
+  // Another time puts the notice away, and the old refusal does not greet it on the confirm step.
+  (byType(tree, TimeSlotGrid)!.props.onSelect as (time: string) => void)('12:00');
+  tree = await wizard.settle();
+  assert.equal(alertText(tree), '');
+  (continueButton(tree).props.onClick as () => void)();
+  tree = await wizard.settle();
+  assert.equal(wizard.draft.step, 'CONFIRM');
+  assert.equal(alertText(tree), '', 'no stale "no longer available" beside the new time');
+});
+
+test('with no deposit due, the same notice says nothing about a card', async () => {
+  const none = { ok: true, amountPence: 4000, depositPence: 0, remainderPence: 4000 };
+  const wizard = mountWizard({ draft: CONFIRM, preview: none, answers: [TAKEN] });
+  await wizard.settle();
+  wizard.setDays([TAKEN_DAY]);
+  const tree = await wizard.submit();
+  assert.equal(wizard.draft.step, 'DATE');
+  assert.match(alertText(tree), /11:00 on .+ is no longer available/);
+  assert.doesNotMatch(alertText(tree), /card/);
+});
+
+test('the taken-time notice exists in both languages', () => {
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const t = translator(locale, 'booking');
+    assert.ok(t('date.timeTaken', { time: '11:00', date: 'x' }).includes('11:00'), locale);
+    assert.ok(t('date.timeTakenCard').length > 0, locale);
+  }
 });

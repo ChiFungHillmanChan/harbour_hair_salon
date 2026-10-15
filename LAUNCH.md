@@ -100,6 +100,23 @@ Square and payment records.
       on the stylists' calendar connections, since crons do not run on previews.
       **§4 progress:** the approve test's hold is done (a £7.40 hold, with request email and
       database matching Square); the duplicate-webhook check passed. The rest of §4 is still open.
+      **Later 2026-10-14 acceptance:** authorization, double-click protection, staff capture,
+      settled-payment re-check, staff decline/release, customer full refund through COMPLETED,
+      actual payment/refund webhook HTTP 200, declined card and failed verification were checked
+      against the preview and Square. **2026-10-15 continuation:** the narrow CSP fix is deployed
+      to the sandbox alias; a real challenge after an 80-second wait and frictionless SCA passed.
+      Customer withdrawal, signed duplicate/older webhook replay, expiry/lapse plus individual
+      reconciliation, direct Square cancellation, staff-kept deposit and actual inbox receipt
+      were checked, as were external settlement UI/audit and individual re-check (scoped fixture).
+      Node 24 full suite (1,646) and local PG18 integration/lifecycle checks pass.
+      **15 Oct daytime:** live cross-tab and two-account races preserved one booking/hold;
+      the losing hold was released. Fourth wrong-token refusal and valid-token recovery passed,
+      as did approved daily housekeeping (settled/kept rows preserved, no duplicate refund).
+      Go-live remained blocked by Chrome card loading, stale open-editor refund display and
+      missing slot-loss feedback when returned to date selection. **The CSP fix and both UI
+      fixes are in the follow-up PR (2026-10-15);** what is left is the Preview-of-main re-run
+      and the Chrome / phone card-form check. Production remains gated. Full report:
+      `readme/square-acceptance-2026-10-14.md` (screenshots kept outside the public repo).
 - [x] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
       Identity checks are complete and the payout bank account is linked (checked 2026-10-14).
       The account's own card rate is still to be confirmed (runbook §8).

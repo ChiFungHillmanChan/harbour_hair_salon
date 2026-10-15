@@ -4,8 +4,9 @@ import type { BookingDay } from '@/app/services/booking-days';
  * After the booking page re-reads its fortnight (e.g. the server refused a
  * booking because the time had just gone): keep the chosen time only while it
  * is still free. If it went while the customer was on the confirm step, send
- * them back to the times — the greyed slot then explains itself — rather than
- * leave them on a summary with no time and a button that does nothing.
+ * them back to the times rather than leave them on a summary with no time and
+ * a button that does nothing. The wizard says there that the time went (a
+ * greyed slot alone did not explain it — sandbox acceptance, 15 October 2026).
  */
 export function reconcileSelection<S extends string>(
   days: readonly BookingDay[],

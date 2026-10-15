@@ -120,6 +120,12 @@ export function BookingWizard({ services, offerings, categories, stylists, close
   const [slotLoadFailed, setSlotLoadFailed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  // The time being confirmed went (a refused booking re-read the fortnight and
+  // it was no longer free): the customer is back on the times, so they say it,
+  // where the confirm step's error can no longer be seen. `card`: the refused
+  // request carried a card, so a hold may have been placed — and released.
+  const [lostTime, setLostTime] = useState<{ day: string; time: string; card: boolean } | null>(null);
+  const refusedWithCard = useRef(false);
   // Online booking closed while the wizard was open. The server answers every
   // lookup and request with "closed" from then on, so the wizard says what
   // /book says when closed, instead of "no appointments available".
@@ -206,7 +212,14 @@ export function BookingWizard({ services, offerings, categories, stylists, close
             // times. The captured time/step are current: no time can be picked
             // while the times are loading, and every day click clears the time.
             const next = reconcileSelection(result.days, dayString, selectedTime, step);
-            if (next.time !== selectedTime) setSelectedTime(next.time);
+            if (next.time !== selectedTime) {
+              setSelectedTime(next.time);
+              if (selectedTime) {
+                setLostTime({ day: dayString, time: selectedTime, card: refusedWithCard.current });
+                // Its refusal belonged to the confirm step; the times now say it.
+                setBookingError(null);
+              }
+            }
             if (next.step !== step) setStep(next.step);
           } else if (isBookingClosedAnswer(result)) {
             setBookingClosed(true);
@@ -372,7 +385,10 @@ export function BookingWizard({ services, offerings, categories, stylists, close
         if (result.code === 'PAYMENT_UNAVAILABLE') setPaymentRefused(true);
         // The time may have just been taken: re-read the fortnight. An answer
         // about the card says nothing about the time.
-        if (!result.code || !PAYMENT_ANSWER_CODES.has(result.code)) setDaysVersion((version) => version + 1);
+        if (!result.code || !PAYMENT_ANSWER_CODES.has(result.code)) {
+          refusedWithCard.current = submission !== null;
+          setDaysVersion((version) => version + 1);
+        }
       }
     } catch {
       // A rejected action (dropped connection, DB error) — or a card check
@@ -787,6 +803,14 @@ export function BookingWizard({ services, offerings, categories, stylists, close
 
       {step === 'DATE' && (
         <div className="animate-in slide-in-from-right-4 duration-300">
+          {lostTime && !selectedTime && (
+            <div className="mb-6 rounded-lg border border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-700" role="alert">
+              <p className="font-medium text-zinc-900">
+                {t('date.timeTaken', { time: lostTime.time, date: dayLabel(lostTime.day, { weekday: 'long', day: 'numeric', month: 'long' }) })}
+              </p>
+              {lostTime.card && <p className="mt-1">{t('date.timeTakenCard')}</p>}
+            </div>
+          )}
           <div className="flex flex-col lg:flex-row gap-8 mb-8 h-full">
             {/* Date Selection - Sticky Sidebar on Desktop */}
             <div className="lg:w-1/3">
@@ -829,7 +853,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                   {t('date.checking')}
                 </div>
               ) : dayInfo?.status === 'OPEN' ? (
-                <TimeSlotGrid slots={dayInfo.slots} selectedTime={selectedTime} onSelect={setSelectedTime} />
+                <TimeSlotGrid slots={dayInfo.slots} selectedTime={selectedTime} onSelect={(time) => { setLostTime(null); setSelectedTime(time); }} />
               ) : dayInfo?.status === 'UNAVAILABLE' && !slotLoadFailed ? (
                 <UnavailableDayBlock hours={dayInfo.hours} stylistName={selectedStylistId === ANY_STYLIST_ID ? null : selectedStylist?.name ?? null} />
               ) : (

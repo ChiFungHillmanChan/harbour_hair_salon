@@ -14,18 +14,22 @@ import { useT } from '@/i18n/client';
  * confirm question naming the amount, so the website never sends that refund
  * to Square again (actions/admin-payments.ts markRefundSettledOutside;
  * docs/square-payments-setup.md §6). Monochrome, like the chip.
+ *
+ * The dialog keeps it mounted for any deposit, so its answer survives the
+ * board refresh: `refund` is null once the refreshed deposit has none left to
+ * settle, and a recorded refund leaves only the answer on screen.
  */
-export function DepositSettleRefundButton({ appointmentId, refund }: { appointmentId: string; refund: { id: string; amountPence: number } }) {
+export function DepositSettleRefundButton({ appointmentId, refund }: { appointmentId: string; refund: { id: string; amountPence: number } | null }) {
   const t = useT('adminSchedule');
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [answer, setAnswer] = useState<{ ok: boolean; line: string } | null>(null);
   // A second click before the button re-renders as disabled asks nothing more.
   const inFlight = useRef(false);
-  const amount = formatGBP(refund.amountPence, HTML_LANG[t.locale]);
+  const amount = refund ? formatGBP(refund.amountPence, HTML_LANG[t.locale]) : '';
 
   const settle = async () => {
-    if (inFlight.current) return;
+    if (!refund || inFlight.current) return;
     if (!window.confirm(t('deposit.settleOutside.confirm', { amount }))) return;
     inFlight.current = true;
     setSaving(true);
@@ -42,17 +46,24 @@ export function DepositSettleRefundButton({ appointmentId, refund }: { appointme
     }
   };
 
+  const offered = refund !== null && !answer?.ok;
+  if (!offered && !answer) return null;
+
   return (
     <div className="mt-2">
-      <p className="text-xs text-zinc-600">{t('deposit.settleOutside.help', { amount })}</p>
-      <button
-        type="button"
-        onClick={settle}
-        disabled={saving}
-        className="mt-1 rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-wait disabled:opacity-60"
-      >
-        {saving ? t('deposit.settleOutside.saving') : t('deposit.settleOutside.button')}
-      </button>
+      {offered && (
+        <>
+          <p className="text-xs text-zinc-600">{t('deposit.settleOutside.help', { amount })}</p>
+          <button
+            type="button"
+            onClick={settle}
+            disabled={saving}
+            className="mt-1 rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-wait disabled:opacity-60"
+          >
+            {saving ? t('deposit.settleOutside.saving') : t('deposit.settleOutside.button')}
+          </button>
+        </>
+      )}
       {answer && (
         <p role="status" className={`mt-2 rounded border px-2 py-1.5 text-xs ${answer.ok ? 'border-zinc-200 bg-white text-zinc-700' : 'border-zinc-500 bg-white text-zinc-900'}`}>
           {answer.line}
