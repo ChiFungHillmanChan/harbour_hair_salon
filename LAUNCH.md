@@ -137,8 +137,9 @@ Square and payment records.
       runbook §2 and §5.
 - [ ] Webhook subscription at exactly that URL (www, no trailing slash): `payment.created`,
       `payment.updated`, `refund.created`, `refund.updated`.
-- [ ] Admin → Site Settings → Deposits: percentage / minimum; Admin → Services & Pricing:
-      per-service overrides.
+- [x] Admin → Site Settings → Deposits: on, 50%, minimum £0; Admin → Services & Pricing: a fixed
+      £15 override (their full price) on Consultation and on Consultation & Patch Test. Set in
+      production on 2026-10-15; nothing is charged until Square production credentials unlock booking.
 - [ ] One real low-value test booking in production (approve, then cancel → refund) — runbook §5.
 
 ---
@@ -170,8 +171,10 @@ Square and payment records.
 
 ## 4. Business decisions — owner input needed
 
-- [ ] Deposit amount (percentage / fixed / minimum), which services, refund and no-show rules.
-      `/booking-terms` currently says a late cancellation (under 24 hours) or a no-show "may" lose
+- [x] Deposit amount (decided 2026-10-15): 50% of the price for every service booked directly;
+      £15 to book either consultation, which is now that consultation's full price (the general
+      Consultation went from free to £15).
+- [ ] Refund and no-show rules. `/booking-terms` currently says a late cancellation (under 24 hours) or a no-show "may" lose
       the deposit, and that a salon cancellation is refunded in full — confirm or reword
       (`legal.bookingTerms.cancelling`, en + zh).
 - [ ] Staff approval time (holds expire after 7 days; aim for same-day replies).

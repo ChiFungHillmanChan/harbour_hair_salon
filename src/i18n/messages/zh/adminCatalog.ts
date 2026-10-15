@@ -44,7 +44,7 @@ const adminCatalog: Localized<Messages['adminCatalog']> = {
     consultationGate: '諮詢要求',
     requiresConsultation: '預約前須先諮詢',
     requiresConsultationHelp: '（顧客會被引導預約諮詢，而非直接預約此服務）',
-    isConsultation: '此項目「就是」免費一般諮詢服務',
+    isConsultation: '此項目「就是」一般諮詢服務',
     depositTitle: '網上訂金',
     depositHelp: '留空即按「後台 → 網站設定」中本店的訂金政策。輸入 0 即此服務不收訂金；或輸入以英鎊計的固定金額，不可高於價格。',
     depositOverride: '此服務的訂金（£）',

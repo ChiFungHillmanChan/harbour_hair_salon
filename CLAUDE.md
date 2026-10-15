@@ -20,6 +20,7 @@ Deployed on Vercel (Pro plan) with Neon PostgreSQL.
 
 - Releases #62 (review follow-ups, Google Calendar links, i18n) and #63 (Square deposits) are live and verified read-only against production — see `LAUNCH.md` §0.
 - **Online booking is closed in production:** `SiteSettings.bookingEnabled=false`, and the Square lock keeps it shut until Square production credentials are set. Those may only be set after the sandbox acceptance list in `docs/square-payments-setup.md` §4 has passed. Until then customers book by phone, Fresha or Treatwell (`/book` shows exactly that).
+- **Deposit policy (owner, set in production 2026-10-15):** 50% of the price, minimum £0. Both consultations take a fixed £15 override, which is their full price: the general Consultation went from free to £15. Nothing is charged while booking is locked.
 - Production flags: `NOTIFICATIONS_ENABLED=false` (no booking emails and no daily ops alert yet; the go-live gate needs it `true`), `CALENDAR_SYNC_ENABLED=true`, and housekeeping on (first run 2026-10-14 03:15 UTC).
 - The remaining launch steps, in order: `LAUNCH.md` §2–§3.
 

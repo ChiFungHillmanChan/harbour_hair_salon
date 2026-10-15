@@ -3,8 +3,8 @@
  *
  * Only haircuts and the 焗油 (oil) treatment book directly; every other service
  * is `requiresConsultation`. Colour (which also needs an allergy patch test)
- * routes to the paid Consultation & Patch Test; everything else routes to the
- * free general Consultation.
+ * routes to the Consultation & Patch Test; everything else routes to the
+ * general Consultation. Both are paid (£15 each since 2026-10-15).
  */
 export interface RoutableService {
   id: string;

@@ -101,7 +101,7 @@ async function main() {
   }
   const unchanged = [
     { name: 'Consultation & Patch Test', price: 15.00, duration: 15, category: 'Colouring', isPatchTest: true, description: 'Required consultation and allergy patch test before any colour service (book at least 48h ahead).' },
-    { name: 'Consultation', price: 0.00, duration: 15, category: 'Consultation', isConsultation: true, description: 'Free consultation to discuss your service before booking.' },
+    { name: 'Consultation', price: 15.00, duration: 15, category: 'Consultation', isConsultation: true, description: 'A consultation to discuss your service before booking.' },
     { name: 'Perm Under Shoulder Add-on', price: 24.00, duration: 210, category: 'Perms', requiresConsultation: true, description: 'Additional charge for under shoulder length perm.' },
     { name: 'Heat Set Add-on', price: 10.00, duration: 45, category: 'Styling', requiresConsultation: true, description: 'Additional heat styling service.' },
   ]
