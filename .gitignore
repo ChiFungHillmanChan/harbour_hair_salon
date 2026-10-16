@@ -24,6 +24,9 @@ node_modules/
 # misc
 .DS_Store
 *.pem
+# Google credentials kept locally (service-account key, OAuth client JSON) — never commit
+.secrets/
+client_secret_*.json
 
 # debug
 npm-debug.log*
