@@ -10,7 +10,8 @@ import { describeFault } from '@/app/lib/fault';
 // do not control (CLAUDE.md, "Neon compute budget"), so everything that can be
 // refused is refused before the database is touched:
 //   1. sync off (not configured, or a preview deployment) ⇒ 404;
-//   2. X-Goog-Channel-Token not HMAC(webhook secret, X-Goog-Channel-ID) ⇒ 401;
+//   2. X-Goog-Channel-Token not signed under the webhook secret for
+//      X-Goog-Channel-ID, or past the expiry it carries (lib/google-channel-token.ts) ⇒ 401;
 //   3. X-Goog-Resource-State "sync" (the handshake when a channel is created) ⇒ 200, nothing else.
 // Any other notification is answered 200 at once and the calendar is pulled
 // after the answer, single-flight: a burst of notifications runs one pull at a

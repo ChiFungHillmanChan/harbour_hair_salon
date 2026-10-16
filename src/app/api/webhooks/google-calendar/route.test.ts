@@ -37,7 +37,9 @@ function harness(options: { config?: typeof CONFIG | null } = {}) {
   };
 }
 
-const notification = (state: string, channelId = 'channel-1', token = channelToken(CONFIG.webhookSecret, channelId)) => ({
+/** Seven days from now, as a new channel's token is minted. */
+const LIVE = () => new Date(Date.now() + 7 * 24 * 3600_000);
+const notification = (state: string, channelId = 'channel-1', token = channelToken(CONFIG.webhookSecret, channelId, LIVE())) => ({
   'X-Goog-Channel-ID': channelId,
   'X-Goog-Channel-Token': token,
   'X-Goog-Resource-State': state,
@@ -55,7 +57,9 @@ test('the route is a dynamic Node.js function', async () => {
   const route = await import('./route');
   assert.equal(route.runtime, 'nodejs');
   assert.equal(route.dynamic, 'force-dynamic');
-  assert.ok(route.maxDuration >= 60, 'room for a pull and its re-run after the answer');
+  // Room for a pull and its re-runs after the answer (no pass starts after 60 s);
+  // the pull lock (google-calendar-channel.ts, 90 s) lasts as long as the run.
+  assert.equal(route.maxDuration, 90);
 });
 
 test('sync switched off: 404, with nothing scheduled and the database never opened', async () => {
@@ -74,13 +78,27 @@ test('a missing or wrong channel token is refused with 401 before anything is op
     { ...good, 'X-Goog-Channel-Token': '' },
     { 'X-Goog-Channel-Token': good['X-Goog-Channel-Token'], 'X-Goog-Resource-State': 'exists' },
     { 'X-Goog-Channel-ID': 'channel-1', 'X-Goog-Resource-State': 'exists' },
-    notification('exists', 'channel-1', channelToken('another-secret', 'channel-1')),
-    notification('exists', 'channel-2', channelToken(CONFIG.webhookSecret, 'channel-1')),
+    notification('exists', 'channel-1', channelToken('another-secret', 'channel-1', LIVE())),
+    notification('exists', 'channel-2', channelToken(CONFIG.webhookSecret, 'channel-1', LIVE())),
     notification('exists', 'channel-1', 'not-a-token'),
   ];
   for (const headers of cases) await assertEmpty(await h.post(headers), 401);
   assert.equal(h.deferred.length, 0);
   assert.equal(h.counts.databaseOpened, 0);
+});
+
+test('a token past its expiry, or with its expiry rewritten, is refused with 401; a live one is accepted', async () => {
+  const h = harness();
+  const expired = channelToken(CONFIG.webhookSecret, 'channel-1', new Date(Date.now() - 60_000));
+  await assertEmpty(await h.post(notification('exists', 'channel-1', expired)), 401);
+  // The old channel's signature with a later expiry written in front of it.
+  const [, signature] = expired.split('.');
+  const extended = `${Math.floor(LIVE().getTime() / 1000)}.${signature}`;
+  await assertEmpty(await h.post(notification('exists', 'channel-1', extended)), 401);
+  assert.equal(h.deferred.length, 0);
+  assert.equal(h.counts.databaseOpened, 0);
+  await assertEmpty(await h.post(notification('exists', 'channel-1', channelToken(CONFIG.webhookSecret, 'channel-1', LIVE()))), 200);
+  assert.equal(h.deferred.length, 1);
 });
 
 test('the sync handshake when a channel is created is acknowledged with no work', async () => {
