@@ -1,7 +1,10 @@
+import type { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { syncCalendarFeeds } from '@/app/services/calendar-sync-service';
 import { isScheduledCalendarSyncOpen } from '@/app/services/calendar-sync-schedule';
+import { cancelLateArrivals } from '@/app/services/late-arrival-cancel';
+import { OPERATIONS_MESSAGES } from '@/app/services/operations-messages';
 
 export const maxDuration = 90;
 
@@ -35,11 +38,31 @@ export async function GET(request: NextRequest) {
       ...(ok ? { lastSucceededAt: new Date(), lastError: null } : { lastFailedAt: new Date(), lastError: 'Some calendar connections failed. Check Integrations; previous busy periods were retained.' }),
       lastResultJson: JSON.stringify({ connections: results.length, succeeded: results.filter((entry) => entry.ok && !entry.skipped).length, failed: results.filter((entry) => !entry.ok).length }),
     } });
-    return NextResponse.json({ ok, results }, { status: ok ? 200 : 502 });
+    const lateArrivals = await runLateArrivals(db);
+    return NextResponse.json({ ok, results, lateArrivals }, { status: ok ? 200 : 502 });
   } catch {
     try {
       await db.backgroundJobState.update({ where: { name }, data: { lastFailedAt: new Date(), lastError: 'Calendar worker could not complete. Check database and connection configuration.' } });
     } catch { /* A database outage may also prevent saving its own diagnostic. */ }
     return NextResponse.json({ ok: false, error: 'Calendar sync could not complete.' }, { status: 503 });
+  }
+}
+
+/** Rides this cron (no extra Neon wake): its own job row, never fails the sync. */
+async function runLateArrivals(db: Pick<PrismaClient, 'backgroundJobState'>) {
+  const name = 'late-arrival-cancel';
+  try {
+    await db.backgroundJobState.upsert({ where: { name }, create: { name, lastStartedAt: new Date() }, update: { lastStartedAt: new Date() } });
+    const result = await cancelLateArrivals(new Date());
+    await db.backgroundJobState.update({ where: { name }, data: result.failed
+      ? { lastFailedAt: new Date(), lastError: OPERATIONS_MESSAGES.LATE_ARRIVAL_FAILED, lastResultJson: JSON.stringify(result) }
+      : { lastSucceededAt: new Date(), lastError: null, lastResultJson: JSON.stringify(result) } });
+    return result;
+  } catch (error) {
+    console.error('Late-arrival step failed:', error instanceof Error ? error.name : 'unknown');
+    try {
+      await db.backgroundJobState.update({ where: { name }, data: { lastFailedAt: new Date(), lastError: OPERATIONS_MESSAGES.LATE_ARRIVAL_FAILED } });
+    } catch { /* A database outage may also prevent saving its own diagnostic. */ }
+    return { error: true as const };
   }
 }

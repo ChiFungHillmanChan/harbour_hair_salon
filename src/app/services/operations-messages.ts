@@ -49,6 +49,8 @@ export const OPERATIONS_MESSAGES = {
   PAYMENT_ORPHAN_RELEASED: 'No booking was made with this deposit hold, so it was released. Nothing was taken.',
   PAYMENT_LATE_CAPTURE_REFUNDED: 'Square took this deposit although its booking had closed or was never made, so it is being refunded in full.',
   PAYMENT_UNKNOWN_CANCELLING: 'Square never confirmed this deposit authorization. It is cancelled by its idempotency key again every day until any hold would have run out (7 days). Nothing was booked.',
+  // The late-arrival rule that rides the calendar-sync cron (services/late-arrival-cancel.ts).
+  LATE_ARRIVAL_FAILED: 'The late-arrival check could not complete. Bookings were left as they were; it runs again with the next calendar sync.',
 } as const;
 
 export type OperationsMessageKey = keyof typeof OPERATIONS_MESSAGES;
