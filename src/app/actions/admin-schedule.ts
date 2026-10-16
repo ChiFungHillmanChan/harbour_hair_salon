@@ -27,7 +27,7 @@ import { isLocale, type Locale } from '@/i18n/config';
 import { revalidateAllLocales } from '@/i18n/revalidate';
 import { isPlaceholderEmail, placeholderEmailFor } from '@/app/lib/walk-in-customer';
 import { isErasedEmail } from '@/app/lib/customer-erasure';
-import { resolveSalonDateTime, SALON_DATE_RE, SALON_TIME_RE } from '@/app/services/salon-time';
+import { resolveSalonDateTime, salonDateKey, SALON_DATE_RE, SALON_TIME_RE } from '@/app/services/salon-time';
 import { MIN_DURATION_MINUTES } from '@/app/lib/calendar-geometry';
 import { isArrivalWindowOpen } from '@/app/lib/late-arrival';
 import { BookingError, bookingErrorText, describeBookingError, type BookingErrorCode } from '@/app/services/booking-errors';
@@ -186,8 +186,14 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
       const stylistChanged = current.stylistId !== stylistId;
       // An arrival belongs to the visit's time: moved to a start whose arrival
       // window is closed, it no longer holds (the late-arrival rule may then
-      // reach the booking at its new time). Within the window the customer is still here.
-      const arrivalLapses = startMoved && Boolean(current.arrivedAt) && !isArrivalWindowOpen(newDate, durationMin, new Date());
+      // reach the booking at its new time). Within the window the customer is
+      // still here; so is one whose OLD window is open right now (they are in
+      // the salon) when the push stays on the same salon day.
+      const moveNow = new Date();
+      const arrivalLapses = startMoved && Boolean(current.arrivedAt)
+        && !isArrivalWindowOpen(newDate, durationMin, moveNow)
+        && !(isArrivalWindowOpen(oldDate, current.durationAtBooking ?? current.service.duration, moveNow)
+          && salonDateKey(oldDate) === salonDateKey(newDate));
       // The customer's open request this edit closes, so their email can say so.
       const closedRequestDate = (startMoved || stylistChanged) && current.rescheduleRequestedAt ? current.rescheduleRequestedDate : null;
 

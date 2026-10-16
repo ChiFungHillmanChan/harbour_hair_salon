@@ -104,6 +104,20 @@ test('the bookings line says arrivals are recorded and a booking can be cancelle
   for (const body of [en, zh]) assert.doesNotMatch(body, /\{minutes\}/);
 });
 
+// The late-arrival rule is the one automated decision the notice must own up to.
+test('the automated-decisions section describes the late-arrival cancellation', async () => {
+  const en = (await privacyPage('en-GB')).text;
+  assert.ok(en.includes('We do not profile you. One booking decision can be made automatically: while our late-arrival rule is switched on'));
+  assert.ok(en.includes(`if you have not been marked as arrived ${LATE_ARRIVAL_CANCEL_MINUTES} minutes after your appointment starts`));
+  assert.ok(en.includes('keeps your deposit. Our staff record arrivals, can reverse such a cancellation within 24 hours'));
+  assert.doesNotMatch(en, /do not make decisions about you by automated means alone/);
+  const zh = (await privacyPage('zh-HK')).text;
+  assert.ok(zh.includes(`預約開始 ${LATE_ARRIVAL_CANCEL_MINUTES} 分鐘後，你仍未被記錄為已到達`));
+  assert.ok(zh.includes('員工可在 24 小時內撤銷這類取消'));
+  assert.doesNotMatch(zh, /不會只靠自動化方式/);
+  for (const body of [en, zh]) assert.doesNotMatch(body, /\{minutes\}/);
+});
+
 test('the notice names every cookie the code sets for visitors', async () => {
   for (const locale of ['en-GB', 'zh-HK'] as const) {
     const { text: body } = await privacyPage(locale);

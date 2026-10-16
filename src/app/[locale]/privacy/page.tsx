@@ -126,7 +126,7 @@ export default async function PrivacyPage() {
         </Section>
 
         <Section id="automated" title={t('privacy.automated.title')}>
-          <p>{t('privacy.automated.body')}</p>
+          <p>{text(t('privacy.automated.body', { minutes: LATE_ARRIVAL_CANCEL_MINUTES }))}</p>
         </Section>
 
         <Section id="changes" title={t('privacy.changes.title')}>

@@ -109,7 +109,7 @@ const legal = {
     },
     automated: {
       title: 'Automated decisions',
-      body: 'We do not make decisions about you by automated means alone that have legal or similarly significant effects, and we do not profile you. The booking system does check things such as opening hours and whether a patch test is needed; if it cannot book what you want, you can always call us.',
+      body: 'We do not profile you. One booking decision can be made automatically: while our late-arrival rule is switched on, if you have not been marked as arrived {minutes} minutes after your appointment starts and you haven’t let us know you’re running late, the booking system cancels the booking and, as our <terms>booking terms</terms> explain, keeps your deposit. Our staff record arrivals, can reverse such a cancellation within 24 hours, and you can ask us to review it by calling the salon. The booking system also checks things such as opening hours and whether a patch test is needed; if it cannot book what you want, you can always call us.',
     },
     changes: {
       title: 'Changes to this policy',

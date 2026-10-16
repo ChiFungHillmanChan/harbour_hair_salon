@@ -72,7 +72,9 @@ in `lib/booking-constants.ts`; the terms and emails read the 15 from there.
   `arrivedAt = now` on creation.
 - Moving a booking to another start (`editAppointmentByAdmin` /
   `moveAppointmentByAdmin`) clears `arrivedAt` unless the new start keeps the
-  arrival window open (`isArrivalWindowOpen(newStart, duration, now)`): an
+  arrival window open (`isArrivalWindowOpen(newStart, duration, now)`), or the
+  OLD start's window is open at the moment of the move (the customer is already
+  in the salon) and the new start is on the same salon day (`salonDateKey`): an
   arrival belongs to the visit's time. A resize or a stylist change keeps it.
 
 ### 4.2 Automatic cancellation

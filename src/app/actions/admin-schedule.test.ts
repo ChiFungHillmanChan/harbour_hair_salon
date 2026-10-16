@@ -233,13 +233,15 @@ test('moving an arrived booking keeps the arrival only while the new start keeps
   try {
     // Salon times (BST, UTC+1); now is 10:10 local. The window opens an hour before
     // the start and closes two hours after it (the 60-minute service ends sooner).
-    for (const [time, kept] of [['11:00', true], ['11:10', true], ['11:15', false], ['09:30', true], ['08:10', true], ['08:05', false]] as const) {
+    // (Every one of these also keeps the arrival through the same-day rule below,
+    // because the OLD window is open now: that is the point of the next test.)
+    for (const [time, kept] of [['11:00', true], ['11:10', true], ['09:30', true], ['08:10', true]] as const) {
       const { actions, appointment } = fixture({ arrivedAt: ORIGINAL_START });
       // Before opening hours is a clash: overridden, as staff would.
       assert.deepEqual(await actions.moveAppointmentByAdmin(move({ time, overrideClashes: true })), { success: true });
       assert.deepEqual(appointment.arrivedAt, kept ? ORIGINAL_START : null, `moved to ${time}`);
     }
-    // Another day: cleared.
+    // Another day while the old window is open: cleared (not the same salon day).
     const otherDay = fixture({ arrivedAt: ORIGINAL_START });
     assert.deepEqual(await otherDay.actions.moveAppointmentByAdmin(move({ dateStr: '2099-09-16', time: '10:00' })), { success: true });
     assert.equal(otherDay.appointment.arrivedAt, null);
@@ -252,6 +254,32 @@ test('moving an arrived booking keeps the arrival only while the new start keeps
     const plain = fixture();
     await plain.actions.moveAppointmentByAdmin(move({ dateStr: '2099-09-16' }));
     assert.ok(!('arrivedAt' in plain.writes[0]));
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
+// Residual ruling: a customer already in the salon (the OLD start's window is open
+// when staff push the booking) stays arrived while the push is on the same salon day.
+test('a same-day push keeps an arrival the old window still holds; another day or a closed old window clears it', async (t) => {
+  const arrivedAt = new Date('2099-09-15T08:15:00Z'); // marked arrived at 09:15 local for 10:00
+  const at = (iso: string) => t.mock.timers.enable({ apis: ['Date'], now: new Date(iso) });
+  try {
+    // 09:15 local, moved to 10:20 (new window opens 09:20, so only the old window holds it).
+    at('2099-09-15T08:15:00Z');
+    const early = fixture({ arrivedAt });
+    assert.deepEqual(await early.actions.moveAppointmentByAdmin(move({ time: '10:20' })), { success: true });
+    assert.deepEqual(early.appointment.arrivedAt, arrivedAt);
+    // Same push to the NEXT day: cleared.
+    const nextDay = fixture({ arrivedAt });
+    assert.deepEqual(await nextDay.actions.moveAppointmentByAdmin(move({ dateStr: '2099-09-16', time: '10:20' })), { success: true });
+    assert.equal(nextDay.appointment.arrivedAt, null);
+    t.mock.timers.reset();
+    // 12:30 local: the old window (closes 12:00) is shut, and 15:00's window has not opened.
+    at('2099-09-15T11:30:00Z');
+    const late = fixture({ arrivedAt });
+    assert.deepEqual(await late.actions.moveAppointmentByAdmin(move({ time: '15:00', overrideClashes: true })), { success: true });
+    assert.equal(late.appointment.arrivedAt, null);
   } finally {
     t.mock.timers.reset();
   }
