@@ -92,6 +92,9 @@ function fixture(options: { role?: 'ADMIN' | 'USER'; resend?: 'ok' | 'not-found'
   let rows = seed();
   const counts = { reads: 0, writes: 0 };
   const removed: unknown[] = [];
+  // Google Calendar pushes scheduled by the action, and whether a transaction was open at the time.
+  const googlePushes: { ids: string[] | undefined; inTransaction: boolean }[] = [];
+  let inTransaction = false;
   const client = () => ({
     user: { ...table(rows, 'user', counts), updateMany: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
       options.beforeWrite?.(rows);
@@ -110,8 +113,12 @@ function fixture(options: { role?: 'ADMIN' | 'USER'; resend?: 'ok' | 'not-found'
     '@/app/services/booking-service': { runSerializableWithRetry: async (fn: (tx: unknown) => unknown) => {
       // Mirror a real transaction: if fn throws, undo its writes.
       const snapshot = structuredClone(rows);
-      try { return await fn(client()); } catch (failure) { rows = snapshot; throw failure; }
+      inTransaction = true;
+      try { return await fn(client()); } catch (failure) { rows = snapshot; throw failure; } finally { inTransaction = false; }
     } },
+    '@/app/services/stylist-ical-cache': {
+      scheduleGoogleCalendarPush: (ids?: string[]) => { googlePushes.push({ ids: ids && [...ids], inTransaction }); },
+    },
     'next/cache': { revalidatePath: () => undefined },
     resend: { Resend: class {
       contacts = { remove: async (payload: unknown) => {
@@ -123,7 +130,7 @@ function fixture(options: { role?: 'ADMIN' | 'USER'; resend?: 'ok' | 'not-found'
       } };
     } },
   });
-  return { actions, rows: () => rows, counts, removed };
+  return { actions, rows: () => rows, counts, removed, googlePushes };
 }
 
 const user = (rows: Rows, id: string) => rows.user.find((row) => row.id === id)!;
@@ -158,6 +165,7 @@ test('administrator accounts, unknown and already-erased customers are refused w
   assert.deepEqual(await f.actions.eraseCustomerData('erased-1', 'ERASE'), error('ALREADY_ERASED'));
   assert.deepEqual(await f.actions.eraseCustomerData('customer-1', '   '), error('INVALID'));
   assert.equal(f.counts.writes, 0);
+  assert.deepEqual(f.googlePushes, [], 'nothing changed, so nothing is re-rendered in Google Calendar');
   assert.equal(user(f.rows(), 'admin-2').email, 'manager@example.com');
 });
 
@@ -180,6 +188,7 @@ test('a customer with upcoming pending or confirmed bookings must have them canc
   );
   assert.deepEqual(await f.actions.eraseCustomerData('customer-1', 'amy@example.com'), error('HAS_UPCOMING', { count: 2 }));
   assert.equal(f.counts.writes, 0);
+  assert.deepEqual(f.googlePushes, []);
   assert.equal(user(f.rows(), 'customer-1').email, 'amy@example.com');
 });
 
@@ -226,11 +235,21 @@ test('erasure anonymises the account, removes sign-in routes and free text, and 
   assert.deepEqual(await f.actions.eraseCustomerData('customer-1', 'amy@example.com'), error('ALREADY_ERASED'));
 });
 
+test('after the erasure commits, the customer\'s Google Calendar copies are re-rendered with the anonymised name', async () => {
+  const f = fixture();
+  assert.equal((await f.actions.eraseCustomerData('customer-1', 'amy@example.com')).success, true);
+  // Every one of their bookings by id, so the push reaches past its 7-day
+  // window (up to the 12-month limit): the past visit is named in Google too.
+  // Ben's booking is not theirs.
+  assert.deepEqual(f.googlePushes, [{ ids: ['a-past', 'a-cancelled', 'a-no-show'], inTransaction: false }]);
+});
+
 test('a customer whose account changes mid-erasure is left untouched', async () => {
   const f = fixture({ beforeWrite: (rows) => { user(rows, 'customer-1').email = 'amy.new@example.com'; } });
   assert.deepEqual(await f.actions.eraseCustomerData('customer-1', 'amy@example.com'), error('CHANGED'));
   assert.equal(user(f.rows(), 'customer-1').name, 'Amy Lee');
   assert.equal(f.rows().auditEvent.length, 0);
+  assert.deepEqual(f.googlePushes, []);
 });
 
 test('the address is also removed from the Resend marketing audience when one is configured', async () => {

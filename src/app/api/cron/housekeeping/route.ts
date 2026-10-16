@@ -3,12 +3,14 @@ import { safeCompare } from '../reminders/reminder-window';
 import { runHousekeeping } from '@/app/services/housekeeping-service';
 import { lapseStartedPendingRequests } from '@/app/services/pending-request-lapse';
 import { reconcilePayments } from '@/app/services/payment-reconciliation';
+import { runGoogleCalendarJob } from '@/app/services/google-calendar-job';
 import { describeFault } from '@/app/lib/fault';
 
-// Retention, request lapses and card-deposit reconciliation share this one
-// daily wake; each Square call can take 10 seconds, so the deposit checks keep
-// to their own time budget (payment-reconciliation.ts) inside this limit.
-export const maxDuration = 120;
+// Retention, request lapses, card-deposit reconciliation and the daily Google
+// Calendar run share this one daily wake; each Square or Google call can take
+// 10 seconds, so the deposit checks (payment-reconciliation.ts) and the Google
+// push and pull keep to their own time budgets inside this limit.
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -46,7 +48,18 @@ export async function GET(request: NextRequest) {
       console.error('Payment reconciliation in housekeeping failed', describeFault(error));
       payments = { failed: 1 };
     }
-    return NextResponse.json({ ...result, requestsLapsed: requests.lapsed, requestLapseFailed: requests.failed, payments });
+    // The salon's Google Calendar (spec §7): renew the watch channel, write
+    // the whole window again (and delete copies past 12 months), then pull.
+    // Last, so the lapses above reach Google too. Its own job row; never
+    // fails the retention run; with the Google sync off it does nothing at all.
+    let googleCalendar: Awaited<ReturnType<typeof runGoogleCalendarJob>> | { error: true };
+    try {
+      googleCalendar = await runGoogleCalendarJob('daily');
+    } catch (error) {
+      console.error('Google Calendar in housekeeping failed', describeFault(error));
+      googleCalendar = { error: true };
+    }
+    return NextResponse.json({ ...result, requestsLapsed: requests.lapsed, requestLapseFailed: requests.failed, payments, googleCalendar });
   }
   catch { return NextResponse.json({ error: 'Housekeeping failed' }, { status: 503 }); }
 }

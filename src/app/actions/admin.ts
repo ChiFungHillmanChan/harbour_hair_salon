@@ -7,7 +7,7 @@ import { Prisma } from '@prisma/client';
 import { verifySession } from '@/app/lib/session';
 import { revalidatePath, updateTag } from 'next/cache';
 import { after } from 'next/server';
-import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
+import { invalidateStylistIcalFeed, scheduleGoogleCalendarPush } from '@/app/services/stylist-ical-cache';
 import { fitsBcryptLimit, hashPassword } from '@/app/lib/password';
 import { z } from 'zod';
 import { revalidateCategoryPages } from '@/app/actions/admin-services';
@@ -871,7 +871,9 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
       return true;
     });
     // Finish the action's cache invalidation before external email delivery.
+    // A decline moves nothing (the busy feed stays) but re-renders the Google Calendar event.
     if (moved) invalidateStylistIcalFeed();
+    else scheduleGoogleCalendarPush([appointmentId]);
     after(() => dispatchAppointmentNotifications(appointmentId));
   } catch (error) {
     if (!(error instanceof BookingError)) console.error('Reschedule decision failed:', error);

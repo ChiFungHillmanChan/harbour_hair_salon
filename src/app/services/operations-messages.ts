@@ -58,6 +58,10 @@ export const OPERATIONS_MESSAGES = {
   // Reading the salon's Google Calendar (services/google-calendar-pull.ts).
   GOOGLE_PULL_FAILED: 'The Google Calendar check could not complete, so busy time added in Google and website events changed there were not read this time. The busy time last read from Google is kept; the check runs again with the next calendar sync or change in Google. If it keeps failing, check the Google Calendar settings in Vercel and that the calendar is shared with the service account.',
   GOOGLE_EVENT_NOT_KEPT: 'Google Calendar did not keep the event for this booking as the website wrote it: either Google changed the event itself, or someone edited it in Google straight after the website wrote it. The website does not write it back again within 10 minutes of its own write, so the two cannot undo each other in a loop; the next calendar sync writes it again. If this keeps appearing, Google is changing the event: the booking is still correct on the website.',
+  // The Google Calendar step riding calendar-sync and housekeeping (services/google-calendar-job.ts).
+  GOOGLE_SYNC_FAILED: 'The Google Calendar step of a scheduled run could not complete. Bookings and busy time on the website were left as they were; it runs again with the next calendar sync.',
+  GOOGLE_CHANNEL_FAILED: 'Google Calendar change notifications could not be set up or renewed, so changes made in Google reach the website only with the next calendar sync (every 30 minutes during staff hours) instead of within a minute. Housekeeping tries again tomorrow. If it keeps failing, check the Google Calendar settings in Vercel and that the calendar is shared with the service account.',
+  GOOGLE_EVENTS_FAILED: 'Some bookings could not be written to Google Calendar. Each is tried again with the next calendar sync; the bookings are still correct on the website. If this keeps appearing, check the Google Calendar settings in Vercel and that the calendar is shared with the service account.',
 } as const;
 
 export type OperationsMessageKey = keyof typeof OPERATIONS_MESSAGES;

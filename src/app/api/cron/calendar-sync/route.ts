@@ -4,9 +4,14 @@ import { timingSafeEqual } from 'node:crypto';
 import { syncCalendarFeeds } from '@/app/services/calendar-sync-service';
 import { isScheduledCalendarSyncOpen } from '@/app/services/calendar-sync-schedule';
 import { cancelLateArrivals } from '@/app/services/late-arrival-cancel';
+import { runGoogleCalendarJob } from '@/app/services/google-calendar-job';
 import { OPERATIONS_MESSAGES } from '@/app/services/operations-messages';
+import { describeFault } from '@/app/lib/fault';
 
-export const maxDuration = 90;
+// The feed import stops starting new feeds after 40 seconds, and the Google
+// Calendar push and pull after it keep to 40 seconds each (their own budgets);
+// the time is mostly network wait.
+export const maxDuration = 180;
 
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -39,7 +44,9 @@ export async function GET(request: NextRequest) {
       lastResultJson: JSON.stringify({ connections: results.length, succeeded: results.filter((entry) => entry.ok && !entry.skipped).length, failed: results.filter((entry) => !entry.ok).length }),
     } });
     const lateArrivals = await runLateArrivals(db);
-    return NextResponse.json({ ok, results, lateArrivals }, { status: ok ? 200 : 502 });
+    // After the late-arrival step, so its cancellations reach Google in the same run.
+    const googleCalendar = await runGoogleCalendar(db);
+    return NextResponse.json({ ok, results, lateArrivals, googleCalendar }, { status: ok ? 200 : 502 });
   } catch {
     try {
       await db.backgroundJobState.update({ where: { name }, data: { lastFailedAt: new Date(), lastError: 'Calendar worker could not complete. Check database and connection configuration.' } });
@@ -63,6 +70,23 @@ async function runLateArrivals(db: Pick<PrismaClient, 'backgroundJobState'>) {
     try {
       await db.backgroundJobState.update({ where: { name }, data: { lastFailedAt: new Date(), lastError: OPERATIONS_MESSAGES.LATE_ARRIVAL_FAILED } });
     } catch { /* A database outage may also prevent saving its own diagnostic. */ }
+    return { error: true as const };
+  }
+}
+
+/**
+ * Rides this cron too (no extra Neon wake): writes the recently changed,
+ * never-synced and failing bookings to the salon's Google Calendar (the
+ * late-arrival cancellations just made included), then pulls Google as the
+ * safety net for a missed notification. Its own job row (`google-calendar`);
+ * never fails the sync, and with the Google sync off it makes no query and no call.
+ */
+async function runGoogleCalendar(db: Pick<PrismaClient, 'backgroundJobState'>) {
+  try {
+    return await runGoogleCalendarJob('calendar-sync', { db });
+  } catch (error) {
+    // The job records its own failures; this is a failure to load it.
+    console.error('Google Calendar step failed:', describeFault(error));
     return { error: true as const };
   }
 }

@@ -249,7 +249,7 @@ export function bookingFixture(options: {
     '@/app/services/notification-outbox-service': queue,
     '@/app/lib/session': { verifySession: async () => ({ userId: customerId, role: 'USER' }) },
     '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, bookingDailyLimiter: { check: async () => true }, cancelLimiter: { check: async () => true }, availabilityLimiter: { check: async () => true }, ...declineLimiters, ...authorizeLimiters },
-    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { effects.feedInvalidations++; } },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { effects.feedInvalidations++; }, scheduleGoogleCalendarPush: () => undefined },
     '@/app/lib/online-booking-lock': { usableSquareConfig: () => realLock.usableSquareConfig(squareEnv) },
     // The gateway the action builds is the fake; the configuration it was
     // given is kept so a test can check which one money would move with.

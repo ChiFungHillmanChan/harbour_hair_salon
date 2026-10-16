@@ -19,7 +19,7 @@ import { verifySession } from '@/app/lib/session';
 import { appendAuditEvent } from '@/app/lib/audit';
 import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
 import { after } from 'next/server';
-import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
+import { invalidateStylistIcalFeed, scheduleGoogleCalendarPush } from '@/app/services/stylist-ical-cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
 import {
@@ -912,6 +912,8 @@ export async function requestReschedule(appointmentId: string, dateStr: string, 
       }, tx);
     });
     after(() => dispatchAppointmentNotifications(appointmentId));
+    // The time is unchanged (the busy feed stays); the salon's Google Calendar event is re-rendered.
+    scheduleGoogleCalendarPush([appointmentId]);
     revalidateAllLocales(revalidatePath, '/appointments');
     revalidateAllLocales(revalidatePath, '/admin');
     return { success: true as const };
@@ -950,6 +952,7 @@ export async function withdrawRescheduleRequest(appointmentId: string) {
     if (!(error instanceof BookingError)) console.error('Withdrawing a reschedule request failed:', error);
     return { success: false as const, code: error instanceof BookingError ? error.code : undefined, error: describeBookingError(error, locale, 'RESCHEDULE_FAILED') };
   }
+  scheduleGoogleCalendarPush([appointmentId]);
   revalidateAllLocales(revalidatePath, '/appointments');
   revalidateAllLocales(revalidatePath, '/admin');
   return { success: true as const };
