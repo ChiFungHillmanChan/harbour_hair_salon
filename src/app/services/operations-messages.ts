@@ -55,6 +55,8 @@ export const OPERATIONS_MESSAGES = {
   // Our own words only: Google's error text is never stored.
   GOOGLE_PUSH_FAILED: 'This booking could not be written to Google Calendar: Google was unavailable or refused access to the website. It is tried again with the next calendar sync; if it keeps failing, check the Google Calendar settings in Vercel and that the calendar is shared with the service account.',
   GOOGLE_PUSH_REFUSED: 'Google Calendar refused the event for this booking. It is tried again with the next calendar sync; if it keeps failing, the booking is still correct on the website, but its Google copy is out of date.',
+  // Reading the salon's Google Calendar (services/google-calendar-pull.ts).
+  GOOGLE_PULL_FAILED: 'The Google Calendar check could not complete, so busy time added in Google and website events changed there were not read this time. The busy time last read from Google is kept; the check runs again with the next calendar sync or change in Google. If it keeps failing, check the Google Calendar settings in Vercel and that the calendar is shared with the service account.',
 } as const;
 
 export type OperationsMessageKey = keyof typeof OPERATIONS_MESSAGES;

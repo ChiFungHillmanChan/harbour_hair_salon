@@ -37,7 +37,8 @@ export type GooglePushResult = { written: number; deleted: number; unchanged: nu
 
 type Outcome = 'written' | 'deleted' | 'unchanged' | 'failed' | 'skipped';
 
-const appointmentSelect = {
+/** What rendering a booking needs (shared with the pull's revert, services/google-calendar-pull.ts). */
+export const appointmentSelect = {
   id: true, date: true, status: true, notes: true, durationAtBooking: true,
   user: { select: { name: true, phone: true, email: true } },
   stylist: { select: { id: true, name: true } },
@@ -45,12 +46,12 @@ const appointmentSelect = {
   paymentAttempt: { select: depositViewSelect },
   googleCalendarEvent: { select: { eventId: true, syncedHash: true, removed: true, lastError: true } },
 } satisfies Prisma.AppointmentSelect;
-type PushAppointment = Prisma.AppointmentGetPayload<{ select: typeof appointmentSelect }>;
+export type PushAppointment = Prisma.AppointmentGetPayload<{ select: typeof appointmentSelect }>;
 
-type RenderContext = { locale: Locale; stylistIds: string[]; serviceFields: Map<string, ContentFields> };
+export type RenderContext = { locale: Locale; stylistIds: string[]; serviceFields: Map<string, ContentFields> };
 
 /** Salon-local midnight WINDOW_DAYS calendar days back: counted in days, not 24-hour steps, so DST cannot shift it. */
-function windowStart(now: Date): Date {
+export function windowStart(now: Date): Date {
   const day = new Date(`${salonDateKey(now)}T12:00:00Z`);
   day.setUTCDate(day.getUTCDate() - WINDOW_DAYS);
   return salonDayWindow(day).start;
@@ -77,7 +78,7 @@ function selection(now: Date, mode: 'recent' | 'all', appointmentIds?: string[])
   };
 }
 
-async function renderContext(db: PrismaClient, appointments: PushAppointment[]): Promise<RenderContext> {
+export async function loadRenderContext(db: PrismaClient, appointments: PushAppointment[]): Promise<RenderContext> {
   // The salon's own diary: its notification language, read from the live row (default Traditional Chinese).
   const settings = await db.siteSettings.findUnique({ where: { id: 'singleton' }, select: { salonNotificationLocale: true } });
   const locale: Locale = isLocale(settings?.salonNotificationLocale) ? settings.salonNotificationLocale : 'zh-HK';
@@ -87,7 +88,7 @@ async function renderContext(db: PrismaClient, appointments: PushAppointment[]):
   return { locale, stylistIds: stylists.map((stylist) => stylist.id), serviceFields };
 }
 
-function render(appointment: PushAppointment, context: RenderContext) {
+export function renderAppointment(appointment: PushAppointment, context: RenderContext) {
   const translated = context.serviceFields.get(appointment.service.id)?.name;
   const serviceName = typeof translated === 'string' && translated.trim() ? translated : appointment.service.name;
   const adminDayUrl = `${SITE_URL}${localizeHref(context.locale, '/admin')}?date=${salonDateKey(appointment.date)}&view=day`;
@@ -109,7 +110,7 @@ function errorKind(error: unknown): GoogleCalendarError['kind'] | null {
 }
 
 /** PUT at the event's own id; 404 → insert with that id; 409 (the id exists, deleted) → PUT again. */
-async function writeEvent(gateway: GoogleGateway, event: GoogleEvent): Promise<void> {
+export async function writeEvent(gateway: GoogleGateway, event: GoogleEvent): Promise<void> {
   try {
     await gateway.putEvent(event);
     return;
@@ -126,7 +127,7 @@ async function writeEvent(gateway: GoogleGateway, event: GoogleEvent): Promise<v
 }
 
 /** Keeps the last written hash: the next run (cron) writes the row again. */
-async function recordFailure(db: PrismaClient, appointmentId: string, eventId: string, error: unknown): Promise<Outcome> {
+export async function recordFailure(db: PrismaClient, appointmentId: string, eventId: string, error: unknown): Promise<Outcome> {
   const lastError = errorKind(error) === 'refused' ? OPERATIONS_MESSAGES.GOOGLE_PUSH_REFUSED : OPERATIONS_MESSAGES.GOOGLE_PUSH_FAILED;
   try {
     await db.googleCalendarEvent.upsert({
@@ -204,7 +205,7 @@ export async function pushGoogleCalendar(options: {
     take: capacity,
   });
   if (appointments.length === 0) return result;
-  const context = await renderContext(db, appointments);
+  const context = await loadRenderContext(db, appointments);
 
   for (const appointment of appointments) {
     const row = appointment.googleCalendarEvent;
@@ -223,7 +224,7 @@ export async function pushGoogleCalendar(options: {
       continue;
     }
 
-    const { event, hash } = render(appointment, context);
+    const { event, hash } = renderAppointment(appointment, context);
     // After a failure the last hash proves nothing (a timed-out PUT may have landed): write again.
     if (row && !row.removed && row.lastError === null && row.syncedHash === hash) {
       count('unchanged');
