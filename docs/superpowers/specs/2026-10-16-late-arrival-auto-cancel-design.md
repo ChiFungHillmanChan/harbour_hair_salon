@@ -1,6 +1,6 @@
 # Late arrivals: automatic cancellation — design
 
-**Status:** design approved in conversation 2026-10-16, awaiting written-spec review
+**Status:** approved 2026-10-16 (conversation and written spec)
 **Origin:** owner request 2026-10-16: "for people who are late for 15 minutes +, cancel his booking"
 **Related:** `2026-10-13-square-deposits-design.md` (deposit closing), no-show rule
 (owner, 2026-10-16: a no-show's deposit is never refunded)
@@ -41,7 +41,7 @@ model Appointment {
   arrivedAt       DateTime?
   /// Set when the late-arrival rule cancelled this booking; cleared on restore.
   lateCancelledAt DateTime?
-  @@index([status, arrivedAt, date])
+  // No new index: the candidate query is served by @@index([status, date, id]).
 }
 
 model SiteSettings {
@@ -104,7 +104,9 @@ as `BackgroundJobState('late-arrival-cancel')`. The route's existing kill-switch
 `restoreLateCancellation(appointmentId, options: { force?: boolean })` —
 admin-only.
 
-- Allowed when `status='CANCELLED'` and `lateCancelledAt` is within 24 hours.
+- Allowed when `status='CANCELLED'` and `lateCancelledAt` is within 24 hours,
+  and the deposit, if any, is `KEPT` (a refunded deposit cannot be undone, so
+  that booking cannot be restored).
 - Clash check as for a staff move (other appointments and synced busy time).
   A clash returns the existing clash list; the dialog offers "Restore anyway"
   (`force`), because the customer is usually already in the chair.
@@ -112,19 +114,26 @@ admin-only.
   `arrivedAt=now`, `notificationVersion+1`; the deposit `KEPT → CAPTURED`
   (conditional) so it counts towards the bill again.
 - The pending `LATE_CANCELLED` email is no longer current (§5) and is dropped
-  unsent. If it had already gone, a `CONFIRMATION` email (with its calendar
-  file) is queued so the customer's calendar matches.
+  unsent. Restore sends no email of its own (the visit has already started, so
+  a confirmation would be dropped as out of date anyway). If the late-cancel
+  email had already gone, the panel says so, so staff tell the customer in
+  person.
 - Audit `APPOINTMENT.LATE_CANCEL_RESTORED`; invalidate the stylist's feed.
 
 ### 4.4 Admin interface
 
-- Booking blocks and the booking dialog: an **Arrived** toggle for CONFIRMED
-  bookings (window as §4.1); an arrived booking shows a small "Arrived" mark.
-- From 5 minutes after the start, a CONFIRMED booking not arrived shows
-  "Not arrived — cancels automatically at HH:MM" (only while the setting is on).
-- The schedule's today view lists those bookings above the grid.
-- A late-cancelled booking (within 24 h) shows "Cancelled: arrived late" and a
-  **Restore** button in the dialog.
+The grids hide cancelled bookings and their blocks are drag targets, so the
+controls live in two places:
+
+- **Arrivals panel** (new, top of Admin → Schedule, every view; shown only when
+  it has rows): CONFIRMED bookings from 60 minutes before to 120 minutes after
+  their start that are not arrived, each with an **Arrived** button, and, while
+  the setting is on and the start has passed, "cancels automatically at HH:MM";
+  below them, bookings late-cancelled in the last 24 hours with **Restore**
+  (and the "customer already emailed" note when the email has gone).
+- **Booking dialog**: an **Arrived / Not arrived** toggle for CONFIRMED bookings
+  inside the arrival window.
+- **Grid blocks**: an arrived booking shows a small "Arrived" line.
 - Admin → Settings: a checkbox "Cancel bookings automatically when the customer
   is 15+ minutes late and not marked Arrived". On sets `lateAutoCancelSince=now`;
   off sets null. Saved through the existing settings action and audit.
@@ -146,8 +155,10 @@ admin-only.
 ## 5. Notification outbox
 
 New appointment email kind `LATE_CANCELLED` (customer). `isCurrent`:
-`status === 'CANCELLED' && lateCancelledAt != null` and the payload's version is
-the current one — so a restore inside the 30-minute grace drops it unsent.
+`status === 'CANCELLED' && lateCancelledAt != null`, the payload's version is
+the current one, and the appointment started no more than 24 hours ago — so a
+restore inside the 30-minute grace drops it unsent, and mail held back while
+sending is switched off is never sent days later.
 `NOTIFICATIONS_ENABLED=false` (production today) holds it like every other
 booking email.
 
