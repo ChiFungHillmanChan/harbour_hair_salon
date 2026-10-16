@@ -51,7 +51,7 @@ const legal: Localized<Messages['legal']> = {
       resend: '<b>Resend：</b>發送我們的電郵，並存放推廣電郵名單。',
       upstash: '<b>Upstash：</b>存放用於限制重複嘗試的短期紀錄。',
       square: '<b>Square：</b>為本店收取訂金付款。你的信用卡資料會由你的瀏覽器直接傳送至 Square；Square 亦會收到你帳戶上的姓名及電郵地址，用作核實付款。Square 以獨立控制者（independent controller）身分，按其私隱政策處理信用卡付款及其防詐騙檢查，並非代表本店處理。',
-      google: '<b>Google：</b>如你選擇以 Google 登入，或選擇在「聯絡我們」頁面顯示地圖，Google 會按其私隱政策處理相關資料。我們亦使用由 Google 代表本店寄存的 <b>Google 日曆（Google Calendar）</b>作為本店的預約記事簿，其中載有你的姓名、電話號碼、預約詳情及員工為你的預約加上的備註。員工在該記事簿中預留的時段，亦可能令這些時段不能在網上預約。',
+      google: '<b>Google：</b>如你選擇以 Google 登入，或選擇在「聯絡我們」頁面顯示地圖，Google 會按其私隱政策處理相關資料。本店亦使用由 Google 代為託管的 <b>Google 日曆（Google Calendar）</b>作為預約記事簿，其中載有你的姓名、電話號碼、預約詳情及員工為你的預約加上的備註。員工在該記事簿中預留的時段，亦可能令這些時段不能在網上預約。',
       marketplaces: '<b>Fresha、Treatwell 等預約平台：</b>只會收到每位髮型師忙碌的時段，以免重複預約，絕不包括你的姓名或任何其他資料。',
       cdn: '部分圖片，以及虛擬試髮色工具所需的程式，會從其他內容傳遞網絡（例如 Cloudinary、jsDelivr 及 Google）載入。與你從任何網站載入檔案一樣，它們會看到你的 IP 位址，但我們不會向它們提供你的任何資料。',
       law: '如法律有所規定，我們亦可能分享資料，例如提供予英國稅務海關總署（HMRC）或警方。',

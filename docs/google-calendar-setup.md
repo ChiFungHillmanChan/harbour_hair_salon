@@ -19,11 +19,16 @@ How the website shares the salon's appointment diary with Google Calendar, how t
   calendar-sync cron (every 30 minutes in staff hours) retries failures and catches
   cron-made changes (lapses, late cancellations); housekeeping (daily, 03:15 UTC) re-renders
   the whole window and deletes copies of appointments that ended more than **12 months** ago.
-- **Google to website (pull).** Anyone on the salon can add an event to that calendar whose
-  title starts with a stylist's name (`Ivan: dentist`, `Ivan - holiday`, case does not matter;
-  a name only counts as a whole word, so "Ivana's party" is not Ivan). It blocks that
-  stylist's hours on `/book`, and is exported in that stylist's outbound busy feed, so
-  Fresha stops selling the hour too. A title that names nobody blocks the whole salon.
+- **Google to website (pull).** Anyone at the salon can add an event to that calendar whose
+  title starts with a stylist's name **exactly as it is in Admin → Stylists** (the whole name:
+  for "Lox Chan", `Lox Chan: dentist`; case does not matter). It blocks that stylist's hours
+  on `/book`, and is exported in that stylist's outbound busy feed, so Fresha stops selling
+  the hour too. After the name only these are accepted: the end of the title, a space, `:`,
+  `：`, `-` or `·` (`Ivan`, `Ivan dentist`, `Ivan: dentist`, `Ivan：午飯`, `Ivan - holiday`,
+  `Ivan·off`).
+  **Anything else blocks the WHOLE salon, every stylist**: `Ivan, off`, `Ivan's party`,
+  `Ivana`, `Dentist (Ivan)` all name nobody. A title that names nobody, or no title, blocks
+  every stylist (that is how to close the salon, e.g. `Stock take`).
   Tentative events still block; cancelled events and events marked "Show as: Available" do not.
 - **The website's own events are never blocks**, and an edit or deletion of one in Google is
   reverted (the website is the authority for bookings). If Google keeps changing an event
@@ -31,7 +36,7 @@ How the website shares the salon's appointment diary with Google Calendar, how t
   not keep the event" in Operations.
 - **Real time.** Google calls `POST /api/webhooks/google-calendar` for every change; the
   website answers at once and pulls afterwards, one pull at a time. If a notification is
-  missed, the 30-minute calendar-sync run pulls anyway.
+  missed, the 30-minute calendar-sync run (staff hours, §3) pulls anyway.
 
 Google is **not** a calendar connection in Admin → Integrations (no per-stylist links); that
 page only shows its status and a "Sync now" button.
@@ -84,6 +89,12 @@ vercel env add GOOGLE_CALENDAR_WEBHOOK_SECRET production
 - Sensitive is fine (these are read at runtime only, never by the build).
 - A missing or blank variable means the sync stays off: no Google call, no database read
   from the webhook (it answers 404).
+- **Depends on `CALENDAR_SYNC_ENABLED=true`.** The 30-minute retry of failed writes, the
+  pickup of cron-made changes (lapses, late cancellations) and the safety-net pull for a
+  missed notification all run inside the calendar-sync cron, which does nothing unless
+  `CALENDAR_SYNC_ENABLED` is `true` and only runs in saved staff hours (±15 minutes).
+  Outside those hours (and with it off) only the webhook's pulls and housekeeping's daily
+  03:15 UTC run remain.
 - Env changes reach the runtime only after a **redeploy** (merge a commit to `main`; production
   is deployed by GitHub Actions only, never `vercel --prod`).
 - **Migration:** the production deploy applies `20261016150000_google_calendar_sync` itself.
@@ -106,12 +117,14 @@ vercel env add GOOGLE_CALENDAR_WEBHOOK_SECRET production
 3. **Booking to Google.** Make a test booking (Admin → Schedule → a phone booking is enough).
    Within seconds an event for it appears on "Harbour website bookings" with the right
    stylist and time.
-4. **Google to booking.** In that calendar add an event titled **`Ivan: test`** (use a real
-   stylist's first name) for a slot in the next few days. Within about a minute that stylist's
-   slot is greyed out for that time on `/book` (booking may still be closed in production:
-   check Admin → Schedule, or `/book` on a day it is open), and within about 15 minutes
-   (Fresha's poll) the stylist's Fresha calendar shows it as **Busy** (Fresha imports the
-   website's busy feed).
+4. **Google to booking.** In that calendar add an event titled **`Ivan: test`** for a slot in
+   the next few days, with the stylist's name **exactly as in Admin → Stylists** in place of
+   `Ivan` (the whole name, followed by `:`; §1 lists what may follow it: anything else, e.g.
+   `Ivan, test`, blocks the **whole salon**). Within about a minute that stylist's slot is
+   greyed out for that time on `/book` (booking may still be closed in production: check
+   Admin → Schedule, or `/book` on a day it is open), and the stylist's Fresha calendar
+   shows it as **Busy** on Fresha's own import schedule, after the busy feed refreshes
+   (Fresha imports the website's busy feed).
 5. **Clean up.** Delete the `Ivan: test` event, then cancel the test booking. Both events
    disappear from Google; the slot reopens.
 6. Check Admin → Operations shows no Google problem.
@@ -125,18 +138,15 @@ shared calendar into Fresha would hand every customer's name and phone number to
 ## 5. Rotating the webhook secret
 
 Changing `GOOGLE_CALENDAR_WEBHOOK_SECRET` invalidates the token of the **live** notification
-channel (the token is signed under the secret): Google's notifications are then refused (401)
-until the channel is replaced. Meanwhile nothing is lost: the 30-minute calendar-sync pull
-still picks up changes in staff hours, and housekeeping makes a new channel at the latest
-within 48 hours of the old one expiring (about 7 days).
+channel (the token is signed under the secret): Google's notifications are refused (401)
+until the channel is replaced, and **Sync now replaces it at once**.
 
 1. Replace the variable (`vercel env rm GOOGLE_CALENDAR_WEBHOOK_SECRET production`, then `add`)
    and redeploy.
-2. Press **Admin → Integrations → Sync now**. Sync now keeps a channel that is not near its
-   expiry, so after a rotation it does **not** by itself make a new one: the old channel is
-   replaced by the daily housekeeping run once it is within 48 hours of expiry. Until then
-   changes made in Google reach the website through the 30-minute pull only. (To replace it at
-   once a developer calls `ensureGoogleWatchChannel({ renew: true })` against production.)
+2. Press **Admin → Integrations → Sync now** as soon as the deploy is live. It makes a new
+   channel under the new secret and stops the old one; the rotation takes effect there.
+   Between the redeploy and Sync now, notifications are refused and changes made in Google
+   reach the website only through the 30-minute calendar-sync pull (staff hours only, §3).
 
 Rotating the service-account key: create the new key (§2.3), replace
 `GOOGLE_CALENDAR_SA_PRIVATE_KEY`, redeploy, press Sync now, then delete the old key in Google
@@ -147,14 +157,19 @@ Cloud.
 ## 6. Turning it off
 
 1. Set `GOOGLE_CALENDAR_SYNC_ENABLED` to anything but `true` (or remove it) on Production and
-   redeploy. Everything stops: no push, no pull, no channel, no Google call. The webhook
-   answers **404** before any database access, and Google gives up on the channel after
-   repeated failures (or when it expires, about 7 days).
+   redeploy. Everything stops: no push, no pull, no channel renewal, no Google call. Google
+   may keep sending notifications until the channel expires (about 7 days); each gets a
+   **404** before any database access, so it costs no Neon wake.
+   **Turning it back on** needs a redeploy with the variable set to `true`, then **Sync now**
+   (it makes a new channel at once and catches up the whole window).
 2. There is no "stop channel" button. If you want the channel stopped cleanly rather than
-   left to fail, ask a developer to stop it while the variables are still set.
-3. Events already in Google stay there, with their customer details. Delete the calendar or
-   remove the service account's access to remove them. Google busy blocks already read stay
-   on the website until their time has passed.
+   left to run out, ask a developer to stop it while the variables are still set.
+3. Events already in Google stay there, with their customer details, and nothing deletes them
+   any more once the sync is off. **When the sync is turned off for good, delete the "Harbour
+   website bookings" calendar** (signed in as the salon's account): otherwise the copies
+   outlive the 12 months the privacy notice promises. Removing the service account's access
+   alone does not remove them. Google busy blocks already read stay on the website until
+   their time has passed.
 
 ---
 
@@ -170,10 +185,13 @@ Cloud.
   not be set up (`GOOGLE_CHANNEL_FAILED`), and an event Google would not keep as written
   (`GOOGLE_EVENT_NOT_KEPT`).
 - **Bookings are never affected.** A booking, cancellation or reschedule succeeds even when
-  Google is down; its Google copy is retried by the calendar-sync cron.
+  Google is down; its Google copy is retried by the calendar-sync cron. A booking more than a
+  week in the past is retried five times only; after that it stays counted under "Bookings
+  Google would not take" until it changes again or its copy is deleted at 12 months (an
+  erased customer's copy is retried until it lands).
 - Common causes: the calendar is not shared with the service account (403/404), the private
   key lost its `\n` escapes, the Calendar API is not enabled, or the secret was rotated
-  (§5).
+  without pressing Sync now (§5).
 
 ---
 

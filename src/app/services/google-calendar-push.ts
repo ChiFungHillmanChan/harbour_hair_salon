@@ -247,7 +247,8 @@ export async function pushGoogleCalendar(options: {
         count(row && (!row.removed || row.lastError !== null) ? await removeEvent(appointment.id, row.eventId) : 'unchanged');
         continue;
       }
-      // Before the window (explicit ids only): update a live event, never create or re-create one.
+      // Before the window (explicit ids, or a row still owed: a failed write, an erasure re-render):
+      // update a live event, never create or re-create one.
       if (appointment.date < from && (!row || row.removed)) {
         count('unchanged');
         continue;

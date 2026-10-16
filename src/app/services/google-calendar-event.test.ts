@@ -102,7 +102,7 @@ test('the hash is stable and changes with every rendered field', () => {
 });
 
 test('an open reschedule request is shown, in salon time and the salon language; none once it is answered', () => {
-  // 13:00Z on Friday 24 October 2026 is 14:00 in London (BST).
+  // 13:00Z on Saturday 24 October 2026 is 14:00 in London (BST).
   const requested = { ...appt, rescheduleRequestedDate: new Date('2026-10-24T13:00:00Z') };
   const when = (locale: Locale) => `${formatSalonLongDate(locale, requested.rescheduleRequestedDate)} ${formatSalonClock(locale, requested.rescheduleRequestedDate)}`;
   assert.match(when('en-GB'), /Saturday,? 24 October 2026 14:00/);

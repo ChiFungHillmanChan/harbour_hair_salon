@@ -156,7 +156,7 @@ test('the notice names Google Calendar as the appointment diary and says how lon
   // The period is the one the push enforces (services/google-calendar-push.ts deletes the copies).
   assert.ok(en.includes(`Copies in the salon’s Google Calendar: up to ${GOOGLE_RETENTION_MONTHS} months after the appointment, then deleted.`));
   const zh = (await privacyPage('zh-HK')).text;
-  assert.ok(zh.includes('Google 日曆（Google Calendar）'));
+  assert.ok(zh.includes('本店亦使用由 Google 代為託管的 Google 日曆（Google Calendar）作為預約記事簿'));
   assert.ok(zh.includes(`預約日期後最多保存 ${GOOGLE_RETENTION_MONTHS} 個月，其後刪除`));
   for (const body of [en, zh]) {
     const stated = [...body.matchAll(/(\d+) (?:months after the appointment|個月，其後刪除)/g)].map((match) => Number(match[1]));

@@ -105,7 +105,7 @@ COMPLETED → present (history); CANCELLED → deleted from Google.
 **Real time:** every server action that changes an appointment's time or
 status already calls `invalidateStylistIcalFeed()` (no arguments: the feed tag is
 global) after its commit. That helper also schedules, through `after()`,
-`pushGoogleCalendar()`: render the appointments updated in the last 15 minutes
+`pushGoogleCalendar()`: render the appointments updated in the last 45 minutes
 (plus any never synced or failed) and write those whose hash differs. Mutations
 that change only event text (reschedule request/withdraw/decline, erasure) call
 `scheduleGoogleCalendarPush()` directly. Cron-side changes
@@ -167,13 +167,14 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
 - **calendar-sync cron** (`*/30`, staff hours, DB already awake): after the feed
   sync and late-arrival step, `pushGoogleCalendar()` for every dirty/failed
   appointment and a `pullGoogleCalendar()` safety net.
-- **housekeeping** (daily 03:15 UTC): renew the watch channel (new channel,
-  then `channels.stop` the old one), a full outbound reconciliation of the
+- **housekeeping** (daily 03:15 UTC): renew the watch channel within 48 hours
+  of its expiry (new channel, then `channels.stop` the old one), a full outbound reconciliation of the
   window (re-renders everything, so customer name/phone edits land within a
   day), and deletion of events for appointments that left the window per §9.
 - Admin → Integrations: Google Calendar status (enabled, calendar id, channel
   expiry, last pull, failed events) and a **Sync now** button (admin-only,
-  audited) that creates the channel if missing, pushes and pulls.
+  audited) that replaces the channel at once (so a rotated webhook secret takes
+  effect), pushes and pulls.
 
 ## 8. Failure and attention
 
