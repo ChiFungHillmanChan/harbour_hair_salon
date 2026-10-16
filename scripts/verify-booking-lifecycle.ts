@@ -809,6 +809,101 @@ async function main() {
       assert.deepEqual(JSON.parse(keptAudit.metadataJson), { from: 'CONFIRMED', to: 'CANCELLED', deposit: 'KEPT', depositPence: 2000 });
       assert.equal(sentNotice(kept.appointment.id, 1, 'CANCELLATION').options.depositOutcome, 'KEPT');
 
+      // The late-arrival rule (docs/superpowers/specs/2026-10-16-late-arrival-auto-cancel-design.md),
+      // through its real relation filters and Serializable transactions. Off by default:
+      // nothing happens until the settings switch (`lateAutoCancelSince`) is set. A CONFIRMED
+      // booking 20 minutes past its start with no arrival is cancelled, its taken deposit KEPT
+      // (no Square call), the LATE_CANCELLED email held back 30 minutes; a restore (the action's
+      // own database effect, below) puts booking and deposit back and a staff "Arrived" that
+      // commits first beats the cron.
+      {
+        const lateCancel = loadServerModule<typeof import('../src/app/services/late-arrival-cancel')>('src/app/services/late-arrival-cancel.ts', {
+          '@/app/lib/prisma': db, './booking-service': booking, './notification-outbox-service': notifications,
+          './stylist-ical-cache': icalCache, './deposit-lifecycle': depositLifecycle,
+        });
+        const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+        const lateStart = minutesAgo(20);
+        const lateBooking = await withDeposit(lateStart, { status: 'CONFIRMED', attempt: 'CAPTURED' });
+        const raceStart = minutesAgo(25);
+        const arrivalRace = await withDeposit(raceStart, { status: 'CONFIRMED', attempt: 'CAPTURED' });
+        const refundsBefore = s3Calls.refund.length;
+        const cancelsBefore = s3Calls.cancel.length;
+
+        // Switched off (the shipped state): nothing is touched.
+        assert.deepEqual(await lateCancel.cancelLateArrivals(new Date()), { enabled: false, cancelled: 0, skipped: 0, failed: 0 });
+        assert.equal(await statusOf(lateBooking.appointment.id), 'CONFIRMED');
+
+        // Switched on a day ago; both bookings started after the switch-on.
+        await db.siteSettings.update({ where: { id: 'singleton' }, data: { lateAutoCancelSince: new Date(Date.now() - 86_400_000) } });
+        // The race first: a staff "Arrived" write is open (uncommitted) when the cron reads the
+        // booking as late; the cron's conditional write queues behind it and loses.
+        const arrivalSaved = deferred();
+        const arrivalWritten = deferred();
+        const staffArrival = db.$transaction(async (tx) => {
+          const marked = await tx.appointment.updateMany({ where: { id: arrivalRace.appointment.id, status: 'CONFIRMED', arrivedAt: null }, data: { arrivedAt: new Date() } });
+          assert.equal(marked.count, 1);
+          arrivalWritten.resolve();
+          await arrivalSaved.promise;
+        }, { isolationLevel: 'Serializable' });
+        await arrivalWritten.promise;
+        const racingCron = lateCancel.cancelLateArrivals(new Date(), { limit: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 500)); // let the cron's UPDATE reach the row lock
+        arrivalSaved.resolve();
+        await staffArrival;
+        // The earliest due booking is the raced one (it started 5 minutes before the other).
+        assert.deepEqual(await racingCron, { enabled: true, cancelled: 0, skipped: 1, failed: 0 }, 'a committed arrival beats the cron');
+        const kept = await db.appointment.findUniqueOrThrow({ where: { id: arrivalRace.appointment.id } });
+        assert.equal(kept.status, 'CONFIRMED');
+        assert.ok(kept.arrivedAt instanceof Date);
+        assert.equal(kept.lateCancelledAt, null);
+        assert.equal((await attemptOf(arrivalRace.attempt.id)).status, 'CAPTURED');
+        assert.equal(await db.notificationDelivery.count({ where: { appointmentId: arrivalRace.appointment.id, kind: 'LATE_CANCELLED' } }), 0);
+
+        // The cron: the unarrived booking closes; the arrived one stays.
+        const before = Date.now();
+        assert.deepEqual(await lateCancel.cancelLateArrivals(new Date()), { enabled: true, cancelled: 1, skipped: 0, failed: 0 });
+        const cancelled = await db.appointment.findUniqueOrThrow({ where: { id: lateBooking.appointment.id } });
+        assert.equal(cancelled.status, 'CANCELLED');
+        assert.ok(cancelled.lateCancelledAt instanceof Date);
+        assert.equal(cancelled.notificationVersion, 1);
+        assert.equal((await attemptOf(lateBooking.attempt.id)).status, 'KEPT', 'a no-show keeps its deposit');
+        assert.equal(await db.paymentRefund.count({ where: { attemptId: lateBooking.attempt.id } }), 0);
+        assert.equal(s3Calls.refund.length, refundsBefore, 'no refund is asked of Square');
+        assert.equal(s3Calls.cancel.length, cancelsBefore, 'nothing is released at Square either');
+        assert.equal(await statusOf(arrivalRace.appointment.id), 'CONFIRMED');
+        const lateNotices = await db.notificationDelivery.findMany({ where: { appointmentId: lateBooking.appointment.id, kind: 'LATE_CANCELLED' } });
+        assert.equal(lateNotices.length, 1);
+        assert.equal(lateNotices[0].status, 'PENDING');
+        const waitedMinutes = (lateNotices[0].nextAttemptAt.getTime() - before) / 60_000;
+        assert.ok(waitedMinutes > 29 && waitedMinutes < 31, `the email waits 30 minutes (${waitedMinutes})`);
+        assert.equal(JSON.parse(lateNotices[0].payloadJson).options.depositOutcome, 'KEPT');
+        assert.ok(lateNotices[0].eventKey.endsWith('/1/LATE_CANCELLED'), 'keyed by the cancellation\'s version, which a restore moves on');
+        const lateAudit = await db.auditEvent.findFirstOrThrow({ where: { targetId: lateBooking.appointment.id, action: 'APPOINTMENT.LATE_AUTO_CANCELLED' } });
+        assert.equal(JSON.parse(lateAudit.metadataJson).deposit, 'KEPT');
+        assert.deepEqual(await lateCancel.cancelLateArrivals(new Date()), { enabled: true, cancelled: 0, skipped: 0, failed: 0 }, 're-running is a no-op');
+
+        // Restore (restoreLateCancellation's database effect, within 24 hours): booking and
+        // deposit move together in one Serializable transaction — CONFIRMED and CAPTURED.
+        const restored = await db.$transaction(async (tx) => {
+          const booked = await tx.appointment.updateMany({
+            where: { id: lateBooking.appointment.id, status: 'CANCELLED', lateCancelledAt: cancelled.lateCancelledAt },
+            data: { status: 'CONFIRMED', lateCancelledAt: null, arrivedAt: new Date(), notificationVersion: { increment: 1 } },
+          });
+          const back = await tx.paymentAttempt.updateMany({ where: { id: lateBooking.attempt.id, status: 'KEPT' }, data: { status: 'CAPTURED' } });
+          return [booked.count, back.count];
+        }, { isolationLevel: 'Serializable' });
+        assert.deepEqual(restored, [1, 1]);
+        const back = await db.appointment.findUniqueOrThrow({ where: { id: lateBooking.appointment.id } });
+        assert.deepEqual([back.status, back.lateCancelledAt, back.notificationVersion], ['CONFIRMED', null, 2]);
+        assert.ok(back.arrivedAt instanceof Date);
+        assert.equal((await attemptOf(lateBooking.attempt.id)).status, 'CAPTURED');
+        // Restored and arrived: the rule never cancels it again (the held-back email, keyed by version 1, is stale at version 2).
+        assert.deepEqual(await lateCancel.cancelLateArrivals(new Date()), { enabled: true, cancelled: 0, skipped: 0, failed: 0 });
+        assert.equal(await statusOf(lateBooking.appointment.id), 'CONFIRMED');
+        await db.siteSettings.update({ where: { id: 'singleton' }, data: { lateAutoCancelSince: null } });
+        console.log('PASS: late-arrival rule — off does nothing; a staff arrival that commits first beats the cron (skipped); an unarrived CONFIRMED booking 20 minutes late is cancelled with its taken deposit KEPT (no Square call), one LATE_CANCELLED email held back 30 minutes, audited; restore puts CONFIRMED + CAPTURED back in one transaction. Square was a fake.');
+      }
+
       // The lapse step, through its real relation filters: a request whose hold ran out
       // closes before its time (EXPIRED, nothing asked of Square); an ended one releases
       // its live hold; one mid-capture is left to staff; one without a deposit lapses as ever.
