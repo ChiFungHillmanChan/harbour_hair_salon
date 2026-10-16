@@ -70,12 +70,19 @@ function matches(record: unknown, where: Record<string, unknown>): boolean {
   });
 }
 
+/** `orderBy` as Prisma takes it, relation fields included (`{ appointment: { date: 'asc' } }`). */
 function ordered<T extends Record<string, unknown>>(list: T[], orderBy: unknown): T[] {
-  const keys = (Array.isArray(orderBy) ? orderBy : orderBy ? [orderBy] : []) as Record<string, 'asc' | 'desc'>[];
+  const keys = (Array.isArray(orderBy) ? orderBy : orderBy ? [orderBy] : []) as Record<string, unknown>[];
+  const sortValue = (row: Record<string, unknown>, spec: Record<string, unknown>): [unknown, unknown] => {
+    const [field, direction] = Object.entries(spec)[0];
+    if (direction && typeof direction === 'object') return sortValue(row[field] as Record<string, unknown>, direction as Record<string, unknown>);
+    const value = row[field];
+    return [value instanceof Date ? value.getTime() : value, direction];
+  };
   return [...list].sort((x, y) => {
     for (const key of keys) {
-      const [field, direction] = Object.entries(key)[0];
-      const [a, b] = [x[field], y[field]].map((v) => (v instanceof Date ? v.getTime() : v)) as [number, number];
+      const [a, direction] = sortValue(x, key) as [number, string];
+      const [b] = sortValue(y, key) as [number, string];
       if (a !== b) return (a < b ? -1 : 1) * (direction === 'desc' ? -1 : 1);
     }
     return 0;
@@ -108,10 +115,10 @@ function fakeDb(
       },
     },
     googleCalendarEvent: {
-      async findMany(args: { where?: Record<string, unknown>; take?: number }) {
-        const list = [...rows.values()]
+      async findMany(args: { where?: Record<string, unknown>; orderBy?: unknown; take?: number }) {
+        const list = ordered([...rows.values()]
           .map((row) => ({ ...row, appointment: structuredClone(appointments.find((a) => a.id === row.appointmentId)) }))
-          .filter((row) => matches(row, args.where ?? {}));
+          .filter((row) => matches(row, args.where ?? {})), args.orderBy);
         return list.slice(0, args.take ?? list.length);
       },
       async upsert(args: { where: { appointmentId: string }; create: Record<string, unknown>; update: Record<string, unknown> }) {
@@ -345,15 +352,37 @@ test('after a failure an equal hash proves nothing (a timed-out PUT may have lan
   assert.equal(rows.get('a1')!.lastError, null);
 });
 
-test('a cancelled booking whose event is already gone clears an old failure instead of retrying forever', async () => {
+test('restored, its PUT failed, then cancelled again: the event is deleted once more before the failure is cleared', async () => {
+  // The failed PUT may have landed after all: a live event must not be left behind.
   const { db, rows } = fakeDb([appt('a1', { status: 'CANCELLED', updatedAt: at(-600) })], [
     eventRow('a1', { removed: true, syncedHash: null, attempts: 2, lastError: OPERATIONS_MESSAGES.GOOGLE_PUSH_FAILED }),
   ]);
+  const failing = fakeGateway(() => new GoogleCalendarError('retryable', 503));
+  assert.deepEqual(await run(db, failing.gateway), { written: 0, deleted: 0, unchanged: 0, failed: 1 });
+  assert.deepEqual(failing.calls, [{ op: 'delete', id: googleEventIdFor('a1') }]);
+  assert.equal(rows.get('a1')!.attempts, 3, 'the failure stays until a delete succeeds');
+
   const google = fakeGateway();
-  assert.deepEqual(await run(db, google.gateway), { written: 0, deleted: 0, unchanged: 1, failed: 0 });
-  assert.equal(google.calls.length, 0);
-  assert.equal(rows.get('a1')!.lastError, null);
-  assert.equal(rows.get('a1')!.attempts, 0);
+  assert.deepEqual(await run(db, google.gateway), { written: 0, deleted: 1, unchanged: 0, failed: 0 });
+  assert.deepEqual(google.calls, [{ op: 'delete', id: googleEventIdFor('a1') }]);
+  assert.deepEqual(
+    { removed: rows.get('a1')!.removed, lastError: rows.get('a1')!.lastError, attempts: rows.get('a1')!.attempts },
+    { removed: true, lastError: null, attempts: 0 },
+  );
+  // Settled: no longer picked.
+  assert.deepEqual(await run(db, google.gateway), { written: 0, deleted: 0, unchanged: 0, failed: 0 });
+  assert.equal(google.calls.length, 1);
+});
+
+test('a booking that cannot be rendered is recorded as failed and the run goes on', async () => {
+  const { db, rows } = fakeDb([appt('bad', { stylist: { id: 's1', name: null as unknown as string } }), appt('good')]);
+  const google = fakeGateway();
+  assert.deepEqual(await run(db, google.gateway), { written: 1, deleted: 0, unchanged: 0, failed: 1 });
+  assert.deepEqual(google.calls.map((call) => call.id), [googleEventIdFor('good')]);
+  assert.deepEqual(
+    { eventId: rows.get('bad')!.eventId, attempts: rows.get('bad')!.attempts, lastError: rows.get('bad')!.lastError },
+    { eventId: googleEventIdFor('bad'), attempts: 1, lastError: OPERATIONS_MESSAGES.GOOGLE_PUSH_FAILED },
+  );
 });
 
 test('a database write failing for one row is counted and the run goes on', async () => {
@@ -398,6 +427,34 @@ test('the window starts at salon-local midnight seven days back (DST-correct)', 
   assert.deepEqual(google.calls.map((call) => call.id), [googleEventIdFor('inside')]);
 });
 
+test('explicit ids reach past the window up to the 12-month limit, updating or deleting live events only', async () => {
+  const yearAgo = new Date('2098-09-01T12:00:00Z');
+  const erased = { name: ERASED_CUSTOMER_NAME, phone: null, email: erasedEmailFor('u1') };
+  const { db, rows } = fakeDb([
+    // Erasure: a 10-day-old booking whose event is live is re-rendered anonymised.
+    appt('tenDays', { date: at(-10 * DAY), updatedAt: at(-10 * DAY), user: erased }),
+    // An old cancellation whose event is still live is deleted.
+    appt('oldCancel', { date: at(-30 * DAY), updatedAt: at(-30 * DAY), status: 'CANCELLED' }),
+    // Before the window an event is never created or re-created.
+    appt('oldRemoved', { date: at(-20 * DAY), updatedAt: at(-20 * DAY), user: erased }),
+    appt('oldUnwritten', { date: at(-20 * DAY), updatedAt: at(-20 * DAY), user: erased }),
+    // Ended more than 12 months ago: untouched (housekeeping deletes it).
+    appt('thirteenMonths', { date: new Date(yearAgo.getTime() - 30 * DAY * 60_000), updatedAt: at(-400 * DAY), user: erased }),
+  ], [
+    eventRow('tenDays'), eventRow('oldCancel'), eventRow('oldRemoved', { removed: true, syncedHash: null }), eventRow('thirteenMonths'),
+  ]);
+  const google = fakeGateway();
+  const ids = ['tenDays', 'oldCancel', 'oldRemoved', 'oldUnwritten', 'thirteenMonths'];
+  assert.deepEqual(await run(db, google.gateway, { appointmentIds: ids }), { written: 1, deleted: 1, unchanged: 2, failed: 0 });
+  const put = google.calls.find((call) => call.op === 'put')!;
+  assert.equal(put.id, googleEventIdFor('tenDays'));
+  assert.equal(put.event!.summary, `Ivan · ${ERASED_CUSTOMER_NAME} · Haircut`);
+  assert.deepEqual(google.calls.filter((call) => call.op !== 'put'), [{ op: 'delete', id: googleEventIdFor('oldCancel') }]);
+  assert.equal(rows.get('oldRemoved')!.removed, true);
+  assert.equal(rows.has('oldUnwritten'), false);
+  assert.deepEqual(rows.get('thirteenMonths'), eventRow('thirteenMonths'));
+});
+
 test('appointmentIds pushes exactly those bookings', async () => {
   const { db } = fakeDb([appt('a1', { updatedAt: at(-600) }), appt('a2'), appt('a3', { updatedAt: at(-600) })], [eventRow('a1'), eventRow('a3')]);
   const google = fakeGateway();
@@ -433,4 +490,41 @@ test('all mode deletes the Google copies of appointments that ended more than 12
   assert.equal(rows.get('ended')!.syncedHash, null);
   assert.equal(rows.get('endsAfterCutoff')!.removed, false);
   assert.equal(rows.get('recentPast')!.removed, false);
+});
+
+test('all mode pages through every booking in the window and every expired copy, past 100 of each', async () => {
+  const yearAgo = new Date('2098-09-01T12:00:00Z');
+  // Many bookings share a start time, so the (date, id) cursor's tie-break matters.
+  const window = Array.from({ length: 230 }, (_, index) => appt(`w${String(index).padStart(3, '0')}`, {
+    date: at(DAY + Math.floor(index / 7) * 60), updatedAt: at(-DAY),
+  }));
+  const expired = Array.from({ length: 130 }, (_, index) => appt(`x${String(index).padStart(3, '0')}`, {
+    date: new Date(yearAgo.getTime() - (DAY + Math.floor(index / 5) * 60) * 60_000), updatedAt: at(-400 * DAY),
+  }));
+  const { db, rows } = fakeDb([...window, ...expired], [...window, ...expired].map((a) => eventRow(a.id)));
+  const google = fakeGateway();
+  assert.deepEqual(await run(db, google.gateway, { mode: 'all' }), { written: 230, deleted: 130, unchanged: 0, failed: 0 });
+  assert.equal(new Set(google.calls.map((call) => call.id)).size, 360, 'each event exactly once');
+  assert.ok(expired.every((a) => rows.get(a.id)!.removed));
+  // Everything settled: the next reconcile pages through again and writes nothing.
+  assert.deepEqual(await run(db, google.gateway, { mode: 'all' }), { written: 0, deleted: 0, unchanged: 230, failed: 0 });
+});
+
+test('all mode stops starting writes (and batches) once its 40 s budget is spent', async () => {
+  const { db } = fakeDb(Array.from({ length: 150 }, (_, index) => appt(`a${String(index).padStart(3, '0')}`)));
+  const realNow = Date.now;
+  let clock = 0;
+  Date.now = () => clock;
+  try {
+    // Each write takes a second.
+    const google = fakeGateway((call) => {
+      if (call.op === 'put') clock += 1_000;
+      return undefined;
+    });
+    const result = await run(db, google.gateway, { mode: 'all' });
+    assert.equal(google.calls.length, 40);
+    assert.deepEqual(result, { written: 40, deleted: 0, unchanged: 0, failed: 0 });
+  } finally {
+    Date.now = realNow;
+  }
 });

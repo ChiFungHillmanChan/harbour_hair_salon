@@ -3,8 +3,10 @@ import 'server-only';
 // Website → Google (docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md §5, §7, §9):
 // writes each booking in the window to the salon's Google Calendar and deletes
 // the event once the booking is cancelled, or (mode 'all') 12 months after the
-// appointment ended. Google is never called inside a database transaction, and
-// one booking's failure is recorded on its row, never thrown.
+// appointment ended. Explicit ids (erasure, an old cancellation) reach past the
+// window up to that 12-month limit, but only to update or delete an event that
+// is still live. Google is never called inside a database transaction, and one
+// booking's failure is recorded on its row, never thrown.
 
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
@@ -16,12 +18,13 @@ import { localizeHref } from '@/i18n/paths';
 import type { ContentFields } from './content/fields';
 import { loadPublishedTranslations } from './content/translations';
 import { createGoogleCalendarGateway, GoogleCalendarError, type GoogleEvent } from './google-calendar-gateway';
-import { renderGoogleEvent, stylistColorId } from './google-calendar-event';
+import { googleEventIdFor, renderGoogleEvent, stylistColorId } from './google-calendar-event';
 import { OPERATIONS_MESSAGES } from './operations-messages';
 import { salonDateKey, salonDayWindow } from './salon-time';
 
+/** 'recent' and explicit runs take at most this many; 'all' pages through in batches this size. */
 const MAX_PER_RUN = 100;
-/** No new write starts after this; Vercel functions are cut off soon after. */
+/** No new write starts after this (nor, in 'all' mode, a new batch); Vercel functions are cut off soon after. */
 const TIME_BUDGET_MS = 40_000;
 /** 'recent' mode: bookings changed this recently are re-rendered. */
 const RECENT_MS = 15 * 60_000;
@@ -63,9 +66,16 @@ function retentionCutoff(now: Date): Date {
   return cutoff;
 }
 
+/** When the appointment ended: start + booked duration (the service's when none was recorded). */
+function endTime(appointment: { date: Date; durationAtBooking: number | null; service: { duration: number } }): number {
+  return appointment.date.getTime() + (appointment.durationAtBooking ?? appointment.service.duration) * 60_000;
+}
+
 function selection(now: Date, mode: 'recent' | 'all', appointmentIds?: string[]): Prisma.AppointmentWhereInput {
+  // Explicit ids reach past the window (erasure re-renders, old cancellations delete); the
+  // 12-month retention limit is applied per row.
+  if (appointmentIds) return { id: { in: appointmentIds } };
   const inWindow: Prisma.AppointmentWhereInput = { date: { gte: windowStart(now) } };
-  if (appointmentIds) return { ...inWindow, id: { in: appointmentIds } };
   if (mode === 'all') return inWindow;
   return {
     ...inWindow,
@@ -156,6 +166,9 @@ export async function pushGoogleCalendar(options: {
   const now = options.now ?? new Date();
   const gateway = options.gateway ?? createGoogleCalendarGateway();
   const mode = options.mode ?? 'recent';
+  const reconcile = mode === 'all' && !options.appointmentIds;
+  const from = windowStart(now);
+  const cutoff = retentionCutoff(now).getTime();
   const startedAt = Date.now();
   const withinBudget = () => Date.now() - startedAt < TIME_BUDGET_MS;
   const count = (outcome: Outcome) => {
@@ -180,70 +193,100 @@ export async function pushGoogleCalendar(options: {
     return 'deleted';
   };
 
-  let capacity = MAX_PER_RUN;
-  if (mode === 'all' && !options.appointmentIds) {
-    const cutoff = retentionCutoff(now);
-    const candidates = await db.googleCalendarEvent.findMany({
-      where: { removed: false, appointment: { date: { lt: cutoff } } },
-      select: { appointmentId: true, eventId: true, appointment: { select: { date: true, durationAtBooking: true, service: { select: { duration: true } } } } },
-      orderBy: { appointment: { date: 'asc' } },
-      take: capacity,
-    });
-    const expired = candidates.filter(({ appointment }) => {
-      const minutes = appointment.durationAtBooking ?? appointment.service.duration;
-      return appointment.date.getTime() + minutes * 60_000 < cutoff.getTime();
-    });
-    capacity -= expired.length;
-    for (const row of expired) count(await removeEvent(row.appointmentId, row.eventId));
-  }
-  if (capacity <= 0) return result;
-
-  const appointments = await db.appointment.findMany({
-    where: selection(now, mode, options.appointmentIds),
-    select: appointmentSelect,
-    orderBy: mode === 'all' && !options.appointmentIds ? [{ date: 'asc' }, { id: 'asc' }] : [{ updatedAt: 'desc' }, { id: 'asc' }],
-    take: capacity,
-  });
-  if (appointments.length === 0) return result;
-  const context = await loadRenderContext(db, appointments);
-
-  for (const appointment of appointments) {
-    const row = appointment.googleCalendarEvent;
-    if (appointment.status === 'CANCELLED') {
-      if (!row) {
-        count('unchanged');
-      } else if (!row.removed) {
-        count(await removeEvent(appointment.id, row.eventId));
-      } else {
-        // Already deleted. A write that failed before it was cancelled again leaves nothing to retry.
-        if (row.lastError !== null) {
-          await db.googleCalendarEvent.update({ where: { appointmentId: appointment.id }, data: { attempts: 0, lastError: null } }).catch(() => undefined);
-        }
-        count('unchanged');
+  const pushBatch = async (batch: PushAppointment[]) => {
+    // Past the retention limit: housekeeping's 'all' run deletes these, nothing writes them again.
+    const appointments = batch.filter((appointment) => endTime(appointment) >= cutoff);
+    if (appointments.length === 0) return;
+    const context = await loadRenderContext(db, appointments);
+    for (const appointment of appointments) {
+      const row = appointment.googleCalendarEvent;
+      if (appointment.status === 'CANCELLED') {
+        // Delete while live; also once more after a failed write (a timed-out PUT may have landed).
+        // Google answers a delete of a missing event as done.
+        count(row && (!row.removed || row.lastError !== null) ? await removeEvent(appointment.id, row.eventId) : 'unchanged');
+        continue;
       }
-      continue;
+      // Before the window (explicit ids only): update a live event, never create or re-create one.
+      if (appointment.date < from && (!row || row.removed)) {
+        count('unchanged');
+        continue;
+      }
+      let rendered: ReturnType<typeof renderAppointment>;
+      try {
+        rendered = renderAppointment(appointment, context);
+      } catch (error) {
+        count(await recordFailure(db, appointment.id, googleEventIdFor(appointment.id), error));
+        continue;
+      }
+      const { event, hash } = rendered;
+      // After a failure the last hash proves nothing (a timed-out PUT may have landed): write again.
+      if (row && !row.removed && row.lastError === null && row.syncedHash === hash) {
+        count('unchanged');
+        continue;
+      }
+      if (!withinBudget()) continue;
+      try {
+        await writeEvent(gateway, event);
+      } catch (error) {
+        count(await recordFailure(db, appointment.id, event.id, error));
+        continue;
+      }
+      const synced = { eventId: event.id, syncedHash: hash, syncedAt: now, removed: false, attempts: 0, lastError: null };
+      try {
+        await db.googleCalendarEvent.upsert({ where: { appointmentId: appointment.id }, create: { appointmentId: appointment.id, ...synced }, update: synced });
+        count('written');
+      } catch {
+        count('failed');
+      }
     }
+  };
 
-    const { event, hash } = renderAppointment(appointment, context);
-    // After a failure the last hash proves nothing (a timed-out PUT may have landed): write again.
-    if (row && !row.removed && row.lastError === null && row.syncedHash === hash) {
-      count('unchanged');
-      continue;
+  if (!reconcile) {
+    const appointments = await db.appointment.findMany({
+      where: selection(now, mode, options.appointmentIds),
+      select: appointmentSelect,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      take: MAX_PER_RUN,
+    });
+    await pushBatch(appointments);
+    return result;
+  }
+
+  // 'all': retention first, then the whole window, each in (date, id) keyset batches until done or out of time.
+  let after: { date: Date; id: string } | null = null;
+  while (withinBudget()) {
+    const page: { appointmentId: string; eventId: string; appointment: { date: Date; durationAtBooking: number | null; service: { duration: number } } }[] =
+      await db.googleCalendarEvent.findMany({
+        where: {
+          removed: false,
+          appointment: { date: { lt: new Date(cutoff) } },
+          ...(after ? { OR: [{ appointment: { date: { gt: after.date } } }, { appointment: { date: after.date }, appointmentId: { gt: after.id } }] } : {}),
+        },
+        select: { appointmentId: true, eventId: true, appointment: { select: { date: true, durationAtBooking: true, service: { select: { duration: true } } } } },
+        orderBy: [{ appointment: { date: 'asc' } }, { appointmentId: 'asc' }],
+        take: MAX_PER_RUN,
+      });
+    for (const row of page) {
+      if (endTime(row.appointment) < cutoff) count(await removeEvent(row.appointmentId, row.eventId));
     }
-    if (!withinBudget()) continue;
-    try {
-      await writeEvent(gateway, event);
-    } catch (error) {
-      count(await recordFailure(db, appointment.id, event.id, error));
-      continue;
-    }
-    const synced = { eventId: event.id, syncedHash: hash, syncedAt: now, removed: false, attempts: 0, lastError: null };
-    try {
-      await db.googleCalendarEvent.upsert({ where: { appointmentId: appointment.id }, create: { appointmentId: appointment.id, ...synced }, update: synced });
-      count('written');
-    } catch {
-      count('failed');
-    }
+    if (page.length < MAX_PER_RUN) break;
+    const last = page[page.length - 1];
+    after = { date: last.appointment.date, id: last.appointmentId };
+  }
+
+  after = null;
+  const inWindow = selection(now, mode);
+  while (withinBudget()) {
+    const page: PushAppointment[] = await db.appointment.findMany({
+      where: after ? { AND: [inWindow, { OR: [{ date: { gt: after.date } }, { date: after.date, id: { gt: after.id } }] }] } : inWindow,
+      select: appointmentSelect,
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+      take: MAX_PER_RUN,
+    });
+    await pushBatch(page);
+    if (page.length < MAX_PER_RUN) break;
+    const last = page[page.length - 1];
+    after = { date: last.date, id: last.id };
   }
   return result;
 }
