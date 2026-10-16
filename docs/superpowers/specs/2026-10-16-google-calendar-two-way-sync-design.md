@@ -246,8 +246,12 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
   without DB, `sync` → no pull; JWT assertion fields; config parsing (incomplete
   → off).
 - Route/cron: Google steps run after the existing ones and never when gated.
-- Integration (real PostgreSQL, Google faked at the fetch seam): GOOGLE blocks
-  replace atomically and block a slot; the busy feed exports them.
+- Integration (real PostgreSQL, `scripts/verify-booking-lifecycle.ts`, run by
+  CI; Google faked at the gateway seam): the push's relation filters and its
+  retention pages ordered by the related appointment's date; GOOGLE blocks
+  replace atomically (a failure inside the transaction leaves the old blocks)
+  and block a slot in the real availability code; the busy feed exports them;
+  "Clear Google busy time" over a real transaction.
 
 ## 11. Rollout
 
