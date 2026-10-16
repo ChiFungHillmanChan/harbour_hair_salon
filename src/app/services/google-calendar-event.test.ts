@@ -5,6 +5,7 @@ import {
   type RenderableAppointment,
 } from './google-calendar-event';
 import { ERASED_CUSTOMER_NAME } from '../lib/customer-erasure';
+import type { Locale } from '@/i18n/config';
 
 const appt: RenderableAppointment = {
   id: 'appt-1',
@@ -17,7 +18,7 @@ const appt: RenderableAppointment = {
   serviceName: 'Haircut',
   deposit: { state: 'HELD', amountPence: 1500 },
 };
-const ctx = { locale: 'en-GB' as const, adminDayUrl: 'https://www.harbourhair.co.uk/admin?date=2026-10-20', colorId: '3' };
+const ctx: { locale: Locale; adminDayUrl: string; colorId: string } = { locale: 'en-GB', adminDayUrl: 'https://www.harbourhair.co.uk/admin?date=2026-10-20', colorId: '3' };
 
 test('event id is 42 chars, hh + base32hex, stable and distinct', () => {
   const id = googleEventIdFor('appt-1');
