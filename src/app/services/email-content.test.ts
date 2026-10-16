@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { translator } from '../../i18n/messages';
 import { appointmentCalendarFile, appointmentEmailContent, calendarMethodFor, describeEmailPrice, emailVerificationContent, isSalonEmailKind, marketingUnsubscribeContent, passwordResetContent, renderPlainText, toEmailAppointment, type EmailAppointment } from './email-content';
 
 const appointment: EmailAppointment = {
@@ -473,6 +474,32 @@ test('the confirmation and the reminder ask the customer to arrive on time, firs
     // Only the mails sent to a customer with a confirmed booking carry it.
     for (const kind of ['REQUEST_RECEIVED', 'CANCELLATION', 'LATE_CANCELLED', 'REVIEW_REQUEST'] as const) {
       assert.ok(!appointmentEmailContent(kind, requestAppointment, locale).footnotes.includes(words[locale]), `${kind} ${locale}`);
+    }
+  }
+});
+
+test('an NHS or student price carries the proof-of-eligibility footnote on the request, confirmation and reminder mails, and nothing else does', () => {
+  const nhs = { ...appointment, price: { known: true as const, amountPence: 4500, priceType: 'NHS' as const, vatDisplay: null, priceNature: null } };
+  const standard = { ...appointment, price: { known: true as const, amountPence: 4500, priceType: 'STANDARD' as const, vatDisplay: null, priceNature: null } };
+  const unknownType = { ...appointment, price: { known: true as const, amountPence: 4500, priceType: null, vatDisplay: null, priceNature: null } };
+  const unknown = { ...appointment, price: { known: false as const } };
+  const sentence = { 'en-GB': translator('en-GB', 'pricing')('eligibilityProof'), 'zh-HK': translator('zh-HK', 'pricing')('eligibilityProof') };
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    for (const kind of ['CONFIRMATION', 'REQUEST_RECEIVED', 'REMINDER'] as const) {
+      assert.ok(appointmentEmailContent(kind, nhs, locale).footnotes.includes(sentence[locale]), `${locale} ${kind}: NHS`);
+      for (const other of [standard, unknownType, unknown]) {
+        assert.ok(!appointmentEmailContent(kind, other, locale).footnotes.includes(sentence[locale]), `${locale} ${kind}: not NHS`);
+      }
+    }
+    // The late-arrival footnote stays first on the mails that carry it.
+    for (const kind of ['CONFIRMATION', 'REMINDER'] as const) {
+      const notes = appointmentEmailContent(kind, nhs, locale).footnotes;
+      assert.equal(notes[0], translator(locale, 'emails')('common.lateArrival', { minutes: 15 }), `${kind}: late arrival first`);
+      assert.equal(notes[1], sentence[locale], `${kind}: eligibility right after it`);
+    }
+    // Mails that never mention the price's conditions stay as they were.
+    for (const kind of ['CANCELLATION', 'REVIEW_REQUEST', 'RESCHEDULE'] as const) {
+      assert.ok(!appointmentEmailContent(kind, nhs, locale, { oldDate: new Date('2026-07-30T09:30:00Z') }).footnotes.includes(sentence[locale]), kind);
     }
   }
 });

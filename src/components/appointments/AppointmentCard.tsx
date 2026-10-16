@@ -7,6 +7,7 @@ import { cancelAppointment, withdrawRescheduleRequest } from '@/app/actions/book
 import type { RescheduleRequestView } from '@/app/lib/reschedule-request';
 import type { DepositView } from '@/app/lib/deposit-display';
 import type { PriceNature, PriceType, VatDisplay } from '@/app/services/pricing/policy';
+import { requiresEligibilityProof } from '@/app/services/pricing/eligibility';
 import { useFormatPrice } from '@/components/pricing/PriceParts';
 import { useLocale, useT } from '@/i18n/client';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
@@ -113,6 +114,10 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
     if (price.priceNature === 'SUBJECT_TO_CONSULTATION') priceNotes.push(tp('subjectToConsultation'));
   }
 
+  // An NHS or student price is honoured on proof at the appointment: say so
+  // while the booking can still go ahead.
+  const needsProof = isUpcoming && price.known && price.priceType !== null && requiresEligibilityProof({ priceType: price.priceType });
+
   // A PENDING request may be withdrawn at any time; the 24-hour lock only
   // applies once the salon has confirmed. Rescheduling requires a confirmed
   // appointment (the server enforces both — this just mirrors it in the UI).
@@ -191,6 +196,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
               {tp('minutes', { count: appointment.service.duration })} &middot; {price.known ? formatPrice(price.amountPence) : tp('unknownPrice')}
             </p>
             {priceNotes.length > 0 && <p className="text-xs text-zinc-500">{priceNotes.join(' · ')}</p>}
+            {needsProof && <p className="text-xs text-zinc-500">{tp('eligibilityProof')}</p>}
             {!price.known && <p className="text-xs text-zinc-500">{tp('unknownPriceHelp')}</p>}
             {deposit && (
               <p className="text-sm text-zinc-700">{t.dynamic(`deposit.${deposit.state}`, { amount: formatPrice(deposit.amountPence) })}</p>

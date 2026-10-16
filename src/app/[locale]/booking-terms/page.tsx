@@ -9,6 +9,7 @@ import { getLocale, getT } from '@/i18n/server';
 import { alternatesFor } from '@/i18n/metadata';
 import { formatCalendarDay } from '@/i18n/dates';
 import { rich } from '@/i18n/rich';
+import { OfferTerms } from '@/components/legal/OfferTerms';
 
 /** Change this, and the wording in the `legal.bookingTerms` dictionary, together. */
 const LAST_UPDATED = '2026-10-16';
@@ -99,6 +100,10 @@ export default async function BookingTermsPage() {
           <p>{text(t('bookingTerms.changes.request'))}</p>
           <p>{t('bookingTerms.changes.pending')}</p>
           <p>{t('bookingTerms.changes.deposit')}</p>
+        </Section>
+
+        <Section id="offers" title={t('bookingTerms.offers.title')}>
+          <OfferTerms t={t} />
         </Section>
 
         <Section id="patch-tests" title={t('bookingTerms.patchTests.title')}>

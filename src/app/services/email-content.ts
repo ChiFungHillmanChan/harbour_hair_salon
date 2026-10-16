@@ -5,6 +5,7 @@ import { localizeHref } from '@/i18n/paths';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { SITE_URL } from '@/app/lib/site-url';
 import { formatGBP, toPence } from './pricing/money';
+import { requiresEligibilityProof } from './pricing/eligibility';
 import type { PriceNature, PriceType, VatDisplay } from './pricing/policy';
 import { salonRelativeDay } from './salon-time';
 import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
@@ -258,6 +259,9 @@ export function appointmentEmailContent(
   const duration = t('values.minutes', { count: appointment.service.duration });
   const price = describeEmailPrice(appointment.price, locale);
   const lateArrival = t('common.lateArrival', { minutes: LATE_ARRIVAL_CANCEL_MINUTES });
+  // An NHS or student price needs proof at the appointment: only said for such a booking.
+  const eligibility = appointment.price.known && appointment.price.priceType && requiresEligibilityProof({ priceType: appointment.price.priceType })
+    ? [translator(locale, 'pricing')('eligibilityProof')] : [];
   const base = { locale, palette: 'ink' as const, greeting, footnotes: [] as string[], reference: t('common.reference', { reference }), address: t('common.address') };
   const labels = (key: 'service' | 'stylist' | 'date' | 'time' | 'requestedDate' | 'requestedTime' | 'duration' | 'price' | 'deposit' | 'previousDate' | 'currentTime', value: string) => ({ label: t(`labels.${key}`), value });
 
@@ -278,7 +282,7 @@ export function appointmentEmailContent(
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('confirmation.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: paid ? [lateArrival, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')] : [lateArrival, t('confirmation.footnote'), t('calendar.attached')],
+        footnotes: paid ? [lateArrival, ...eligibility, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')] : [lateArrival, ...eligibility, t('confirmation.footnote'), t('calendar.attached')],
       };
     }
     case 'REQUEST_RECEIVED': {
@@ -299,7 +303,7 @@ export function appointmentEmailContent(
         callout: options.salonPhone ? { title: t('request.calloutTitle'), body: t('request.calloutBody', { phone: options.salonPhone }) } : undefined,
         cta: { label: t('request.cta'), href: url(locale, '/appointments') },
         // "Payment is due at the salon" is only true in full without a deposit.
-        footnotes: hold ? [t('request.depositHold', { amount: hold }), t('request.footnoteWithDeposit')] : [t('request.footnote')],
+        footnotes: [...(hold ? [t('request.depositHold', { amount: hold }), t('request.footnoteWithDeposit')] : [t('request.footnote')]), ...eligibility],
         reference: t('common.referenceShort', { reference }),
       };
     }
@@ -383,7 +387,7 @@ export function appointmentEmailContent(
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('reminder.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: [lateArrival, t('reminder.footnote'), t('calendar.attached')],
+        footnotes: [lateArrival, ...eligibility, t('reminder.footnote'), t('calendar.attached')],
       };
     }
     case 'REVIEW_REQUEST':

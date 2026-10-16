@@ -24,7 +24,7 @@ const STYLIST = { id: 'lox', name: 'Lox', role: 'Stylist', imageUrl: null, trans
  * (keyed like `booking-wizard:<name>`, by <name>) and every draft setter call
  * is recorded. Effects never run, so nothing is fetched.
  */
-function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unknown) => Promise<unknown> = async () => ({ success: true })) {
+function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unknown) => Promise<unknown> = async () => ({ success: true }), extraProps: Record<string, unknown> = {}) {
   const sets: Record<string, unknown[]> = {};
   const initial = (value: unknown) => (typeof value === 'function' ? (value as () => unknown)() : value);
   const wizard = loadServerModule<typeof import('./BookingWizard')>('src/components/booking/BookingWizard.tsx', {
@@ -55,7 +55,7 @@ function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unkno
       useFormatServicePrice: () => (service: { amountPence: number }) => `£${(service.amountPence / 100).toFixed(2)}`,
     },
   });
-  const props = { services: [SERVICE], offerings: [], categories: [], stylists: [STYLIST], closedContact: { phone: '0113 496 0000', marketplaces: [] } };
+  const props = { services: [SERVICE], offerings: [], categories: [], stylists: [STYLIST], closedContact: { phone: '0113 496 0000', marketplaces: [] }, ...extraProps };
   return { render: () => wizard.BookingWizard(props as never), sets };
 }
 
@@ -443,4 +443,22 @@ test('the taken-time notice exists in both languages', () => {
     assert.ok(t('date.timeTaken', { time: '11:00', date: 'x' }).includes('11:00'), locale);
     assert.ok(t('date.timeTakenCard').length > 0, locale);
   }
+});
+
+const ELIGIBILITY = {
+  'en-GB': 'NHS and student prices: please bring a valid NHS staff ID or student card to your appointment. Without one, the standard price applies.',
+  'zh-HK': 'NHS 及學生價：到店時請出示有效的 NHS 員工證或學生證，否則按標準價收費。',
+};
+
+test('the option chooser says what NHS and student prices need only when an NHS option is listed', () => {
+  const option = (id: string, priceType: string) => ({ ...SERVICE, id, name: 'Colour', offeringId: 'offering-1', hairLength: 'LONG', priceType });
+  const offering = { id: 'offering-1', key: 'colour', category: 'Colouring', name: 'Colour', description: null, translated: true, displayOrder: 0, searchText: 'colour' };
+  const chooser = (options: ReturnType<typeof option>[]) => {
+    const props = { services: options, offerings: [offering], categories: [{ category: 'Colouring', entries: [{ kind: 'offering', offering, options }] }] };
+    return words(elements(loadWizard({ offering: 'offering-1', category: 'Colouring' }, undefined, props).render()));
+  };
+  const withNhs = chooser([option('s', 'STANDARD'), option('n', 'NHS')]);
+  assert.ok(withNhs.includes(ELIGIBILITY['en-GB']), 'an NHS option is listed');
+  assert.ok(!chooser([option('s', 'STANDARD')]).includes(ELIGIBILITY['en-GB']), 'standard options only');
+  assert.equal(translator('zh-HK', 'pricing')('eligibilityProof'), ELIGIBILITY['zh-HK']);
 });

@@ -17,6 +17,7 @@ const pricing: Localized<Messages['pricing']> = {
     nhs: 'NHS 價',
   },
   nhsApplies: 'NHS 優惠適用',
+  eligibilityProof: 'NHS 及學生價：到店時請出示有效的 NHS 員工證或學生證，否則按標準價收費。',
   nhsApplied: '已套用 NHS 價',
   vatExcluded: '未含 VAT',
   subjectToConsultation: '最終價錢於諮詢時確定',

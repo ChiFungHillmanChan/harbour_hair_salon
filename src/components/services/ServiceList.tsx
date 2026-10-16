@@ -7,6 +7,7 @@ import { useDraftState } from '@/i18n/draft-store';
 import type { PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { standardPriceRange } from '@/app/services/pricing/public-catalog';
 import { menuItemDescription } from '@/app/services/pricing/policy';
+import { requiresEligibilityProof } from '@/app/services/pricing/eligibility';
 import { OfferingPrices } from '@/components/pricing/OfferingPrices';
 import { Duration, PriceFinePrint, useCategoryLabel, useFormatPrice, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
@@ -85,6 +86,8 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
   }, [categories]);
 
   if (!active) return null;
+  // Said once, under the price list, when any listed option is an NHS/student price.
+  const hasEligibilityPrice = categories.some((group) => group.entries.flatMap(entryServices).some(requiresEligibilityProof));
   const activeRange = rangeByCategory[active.category];
 
   return (
@@ -243,6 +246,7 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
       </div>
 
       <p className="mt-10 text-center text-xs text-zinc-500">{t('list.nhsNote')}</p>
+      {hasEligibilityPrice && <p className="mt-2 text-center text-xs text-zinc-500">{tp('eligibilityProof')}</p>}
     </div>
   );
 }

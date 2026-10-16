@@ -17,6 +17,8 @@ const pricing = {
     nhs: 'NHS',
   },
   nhsApplies: 'NHS discount applies',
+  /** Shown wherever an NHS/student price is offered, in emails and on My Bookings for such a booking (pricing/eligibility.ts). */
+  eligibilityProof: 'NHS and student prices: please bring a valid NHS staff ID or student card to your appointment. Without one, the standard price applies.',
   nhsApplied: 'NHS price applied',
   vatExcluded: 'VAT excluded',
   subjectToConsultation: 'Final price confirmed at your consultation',

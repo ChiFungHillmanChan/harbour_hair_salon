@@ -3,6 +3,7 @@
 import { Stylist } from '@prisma/client';
 import type { ClientPublicService } from '@/app/services/public-service-select';
 import type { ClientOffering, PriceListEntry } from '@/app/services/pricing/public-catalog';
+import { requiresEligibilityProof } from '@/app/services/pricing/eligibility';
 import { format, addDays, startOfToday } from 'date-fns';
 import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import Link from '@/i18n/link';
@@ -586,6 +587,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                 );
               })}
             </div>
+            {options.some(requiresEligibilityProof) && <p className="mt-3 text-xs text-zinc-500">{tp('eligibilityProof')}</p>}
             <button
               type="button"
               disabled={!chosen || !isSelectable(chosen)}
