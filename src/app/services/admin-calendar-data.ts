@@ -24,6 +24,9 @@ export const calendarAppointmentSelect = {
   // The card deposit's state (deposit-display.ts) and our own refund ids —
   // a refund staff may mark settled outside the website — never Square ids.
   paymentAttempt: { select: adminDepositViewSelect },
+  // The consultation credit staff applied (consultation-credit.ts): the dialog shows it.
+  consultationCreditPence: true,
+  consultationCreditFrom: { select: { date: true } },
 } satisfies Prisma.AppointmentSelect;
 
 type CalendarRow = Prisma.AppointmentGetPayload<{ select: typeof calendarAppointmentSelect }>;
@@ -46,6 +49,9 @@ export function serializeCalendarAppointment(row: CalendarRow, includeContact = 
     arrivedAt: row.arrivedAt?.toISOString() ?? null,
     price: boardPrice(row),
     deposit: adminDepositView(row.paymentAttempt),
+    consultationCredit: row.consultationCreditPence !== null && row.consultationCreditFrom
+      ? { amountPence: row.consultationCreditPence, consultationDate: row.consultationCreditFrom.date.toISOString() }
+      : null,
     user: { id: row.user.id, name: row.user.name, email: includeContact ? row.user.email : null },
     stylist: row.stylist,
     service: row.service,
@@ -60,7 +66,7 @@ export type CalendarAppointment = ReturnType<typeof serializeCalendarAppointment
  * dialog shows and echoes back as the expected quote.
  */
 const dialogServiceSelect = {
-  id: true, name: true, duration: true, price: true, category: true, requiresPatchTest: true,
+  id: true, name: true, duration: true, price: true, category: true, requiresPatchTest: true, requiresConsultation: true,
   priceVersion: true, priceType: true, hairLength: true, vatDisplay: true, priceNature: true,
   isBookable: true, offeringId: true,
 } satisfies Prisma.ServiceSelect;

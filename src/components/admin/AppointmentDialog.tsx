@@ -11,6 +11,7 @@ import { RescheduleRequestActions } from './RescheduleRequestActions';
 import { DepositChip } from './DepositChip';
 import { DepositRecheckButton } from './DepositRecheckButton';
 import { DepositSettleRefundButton } from './DepositSettleRefundButton';
+import { ConsultationCreditOption, type ConsultationCreditLookup, type RecordedConsultationCredit } from './ConsultationCreditOption';
 import type { DepositView } from '@/app/lib/deposit-display';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { isArrivalWindowOpen, lateCancelDueAt } from '@/app/lib/late-arrival';
@@ -27,6 +28,8 @@ export type DialogService = {
   duration: number;
   category: string;
   requiresPatchTest: boolean;
+  /** A treatment a consultation's fee is credited against (consultation-credit.ts). */
+  requiresConsultation: boolean;
   amountPence: number;
   priceVersion: number;
   priceType: string;
@@ -66,6 +69,8 @@ export type DialogTarget =
       deposit?: DepositView | null;
       /** When staff marked the customer arrived (ISO instant); the late-arrival rule never cancels an arrived booking. */
       arrivedAt?: string | null;
+      /** The consultation credit staff applied to this booking, if any. */
+      consultationCredit?: RecordedConsultationCredit | null;
     };
 
 /**
@@ -91,6 +96,8 @@ type DialogForm = {
   priceChange: AdminQuote | null;
   /** Cancelling a confirmed booking whose deposit was taken: refund it (ticked by default; unticked for a no-show) or keep it. */
   refundDeposit: boolean;
+  /** "Consultation credit — deduct from this booking", ticked by default; sent only for a consultation-required service. */
+  applyConsultationCredit: boolean;
 };
 
 const inputClass =
@@ -150,11 +157,13 @@ export function AppointmentDialog({
     // A no-show keeps its deposit (salon policy, /booking-terms): once a
     // confirmed visit's time has passed, cancelling starts at "keep".
     refundDeposit: !(isEdit && target.status === 'CONFIRMED' && new Date(target.date).getTime() <= Date.now()),
+    applyConsultationCredit: true,
   }));
   const update = (patch: Partial<DialogForm>) => setForm((previous) => ({ ...previous, ...patch }));
   const { serviceId, stylistId, dateStr, time, durationMin, notes, status, notifyCustomer, customerQuery, picked, name, email, phone, customerLocale, priceChange } = form;
   // A draft saved before this field existed has none: refund, the default.
   const refundDeposit = form.refundDeposit !== false;
+  const applyConsultationCredit = form.applyConsultationCredit !== false;
 
   // Results carry the query they answered, so a slow reply for an abandoned
   // query is never rendered under a newer one.
@@ -214,6 +223,23 @@ export function AppointmentDialog({
     update({ serviceId: id, priceChange: null, ...(next ? { durationMin: next.duration } : {}) });
   };
 
+  // Consultation credit (spec §2.3): only a consultation-required service takes
+  // one. The server looks it up again on save; the dialog sends only the box.
+  const takesCredit = selectedService?.requiresConsultation === true;
+  const recordedCredit = target.mode === 'edit' ? target.consultationCredit ?? null : null;
+  const typedEmail = email.trim();
+  const creditLookup: ConsultationCreditLookup | null = !takesCredit
+    ? null
+    : target.mode === 'edit'
+      ? { appointmentId: target.appointmentId, serviceId, dateStr, time }
+      : picked
+        ? { customerId: picked.id, serviceId, dateStr, time }
+        // A typed email already on file books onto that customer (resolveCustomer).
+        : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)
+          ? { email: typedEmail, serviceId, dateStr, time }
+          : null;
+  const creditChoice = takesCredit ? { applyConsultationCredit } : {};
+
   /** The price the admin is looking at right now, sent back so the server can refuse a stale one. */
   const expectedQuote = () => {
     if (!pricing || !selectedService) return undefined;
@@ -237,6 +263,7 @@ export function AppointmentDialog({
           overrideClashes,
           expectedUpdatedAt: target.updatedAt,
           expectedQuote: expectedQuote(),
+          ...creditChoice,
         });
         if (result.success) return saved();
         if ('clashes' in result) return setClashes(result.clashes);
@@ -266,6 +293,7 @@ export function AppointmentDialog({
         overrideClashes,
         expectedQuote: expectedQuote(),
         ...(savedLocale ? {} : { customerLocale }),
+        ...creditChoice,
       });
       if (result.success) return saved();
       if ('clashes' in result) return setClashes(result.clashes);
@@ -530,6 +558,18 @@ export function AppointmentDialog({
             <p role="alert" className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               {t('dialog.price.changed', { amount: formatPrice(pendingChange.amountPence) })}
             </p>
+          )}
+
+          {takesCredit ? (
+            <ConsultationCreditOption
+              lookup={creditLookup}
+              apply={applyConsultationCredit}
+              onApplyChange={(apply) => update({ applyConsultationCredit: apply })}
+              recorded={recordedCredit}
+            />
+          ) : recordedCredit && pricing && (
+            // Only a service CHANGE clears it on save (editAppointmentByAdmin); an unchanged one keeps it.
+            <p className="text-xs text-zinc-500">{t('credit.clearedByService', { amount: formatPrice(recordedCredit.amountPence) })}</p>
           )}
 
           <div>

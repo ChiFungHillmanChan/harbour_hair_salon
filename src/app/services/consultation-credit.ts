@@ -110,3 +110,20 @@ export function creditFor(credit: ConsultationCredit | null, treatmentPricePence
   if (!credit) return 0;
   return Math.max(0, Math.min(credit.amountPence, treatmentPricePence));
 }
+
+/**
+ * The credit a consultation-required booking priced `treatmentPricePence` would
+ * record, its amount already capped (spec §2.3). The Admin preview and the
+ * booking write both use it, so the dialog never offers what saving would not
+ * record. Null when nothing would be deducted — an unrecorded treatment price
+ * (legacy bookings) or a £0 one — so a consultation is never used up for £0.
+ */
+export async function findApplicableConsultationCredit(
+  db: Pick<PrismaClient, 'appointment'> | Prisma.TransactionClient,
+  input: { userId: string; at: Date; treatmentPricePence: number | null; excludeAppointmentId?: string },
+): Promise<ConsultationCredit | null> {
+  if (input.treatmentPricePence === null || input.treatmentPricePence <= 0) return null;
+  const credit = await findConsultationCredit(db, input);
+  const amountPence = creditFor(credit, input.treatmentPricePence);
+  return credit && amountPence > 0 ? { ...credit, amountPence } : null;
+}

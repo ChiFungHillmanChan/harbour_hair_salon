@@ -4,6 +4,7 @@ import { CONSULTATION_CREDIT_MONTHS } from '../lib/booking-constants';
 import {
   consultationCreditWindowStart,
   creditFor,
+  findApplicableConsultationCredit,
   findConsultationCredit,
   pickConsultationCredit,
   type ConsultationCreditCandidate,
@@ -184,4 +185,21 @@ test('findConsultationCredit passes the booking being edited through', async () 
   };
   assert.equal(await findConsultationCredit(db as never, { userId: 'u1', at }), null);
   assert.equal((await findConsultationCredit(db as never, { userId: 'u1', at, excludeAppointmentId: 't1' }))?.fromAppointmentId, 'c1');
+});
+
+test('findApplicableConsultationCredit caps the amount and offers nothing that would deduct £0', async () => {
+  const past = new Date(Date.now() - 7 * 24 * 3600_000);
+  const at = new Date(Date.now() + 7 * 24 * 3600_000);
+  let reads = 0;
+  const db = { appointment: { findMany: async () => { reads++; return [consultation({ id: 'c1', date: past })]; } } };
+  const applicable = (treatmentPricePence: number | null) =>
+    findApplicableConsultationCredit(db as never, { userId: 'u1', at, treatmentPricePence });
+
+  assert.deepEqual(await applicable(8000), { fromAppointmentId: 'c1', amountPence: 1500, consultationDate: past });
+  assert.equal((await applicable(1000))?.amountPence, 1000, 'capped at the treatment price');
+  reads = 0;
+  // An unrecorded or free treatment price would use the consultation up for nothing.
+  assert.equal(await applicable(null), null);
+  assert.equal(await applicable(0), null);
+  assert.equal(reads, 0, 'nothing to deduct from, so nothing is read');
 });

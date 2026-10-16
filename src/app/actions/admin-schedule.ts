@@ -22,6 +22,8 @@ import {
 import { quoteForNewBooking } from '@/app/services/pricing/quote-service';
 import { quoteMatches, serializeQuote, type PriceQuote } from '@/app/services/pricing/quote';
 import { penceToDecimalString } from '@/app/services/pricing/money';
+import { recordedPrice } from '@/app/services/pricing/recorded-price';
+import { findApplicableConsultationCredit } from '@/app/services/consultation-credit';
 import { getActionLocale } from '@/i18n/request';
 import { isLocale, type Locale } from '@/i18n/config';
 import { revalidateAllLocales } from '@/i18n/revalidate';
@@ -85,6 +87,13 @@ const editSchema = moveSchema.extend({
    * new quote back to confirm instead.
    */
   expectedQuote: expectedQuoteSchema.optional(),
+  /**
+   * The dialog's "Consultation credit — deduct from this booking" box. Ticked:
+   * the credit is looked up again here (never an amount from the browser);
+   * unticked: cleared. Omitted (a drag): the recorded credit stays as it is,
+   * unless the service changes.
+   */
+  applyConsultationCredit: z.boolean().optional(),
 });
 
 export type MoveAppointmentInput = z.infer<typeof moveSchema>;
@@ -94,6 +103,25 @@ export type MoveAppointmentResult =
   | { success: true }
   | { success: false; error: string; quote?: AdminQuote }
   | { success: false; clashes: MoveClash[] };
+
+/** The two columns that record a consultation credit on a booking (spec §2.1). */
+type ConsultationCreditColumns = { consultationCreditFromId: string | null; consultationCreditPence: number | null };
+
+const NO_CONSULTATION_CREDIT: ConsultationCreditColumns = { consultationCreditFromId: null, consultationCreditPence: null };
+
+/**
+ * The consultation credit a booking records, read inside the booking's own
+ * Serializable transaction. A second booking racing for the same consultation
+ * conflicts with this read, is retried by runSerializableWithRetry, and then
+ * finds the credit used.
+ */
+async function consultationCreditColumns(
+  tx: Prisma.TransactionClient,
+  input: Parameters<typeof findApplicableConsultationCredit>[1],
+): Promise<ConsultationCreditColumns> {
+  const credit = await findApplicableConsultationCredit(tx, input);
+  return credit ? { consultationCreditFromId: credit.fromAppointmentId, consultationCreditPence: credit.amountPence } : NO_CONSULTATION_CREDIT;
+}
 
 function toAdminQuote(quote: PriceQuote): AdminQuote {
   const { serviceId, priceVersion, amountPence, priceType, vatDisplay, priceNature } = quote;
@@ -127,7 +155,7 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
   if (!parsed.success) {
     return { success: false, error: issueText(locale, parsed.error.issues[0]) };
   }
-  const { appointmentId, dateStr, time, durationMin, stylistId, overrideClashes, expectedUpdatedAt, serviceId, notes, expectedQuote } = parsed.data;
+  const { appointmentId, dateStr, time, durationMin, stylistId, overrideClashes, expectedUpdatedAt, serviceId, notes, expectedQuote, applyConsultationCredit } = parsed.data;
 
   const salon = resolveSalonDateTime(dateStr, time);
   const newDate = salon.utc;
@@ -142,7 +170,7 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
         include: {
           user: { select: { email: true, name: true, phone: true } },
           stylist: { select: { name: true, treatwellExternalId: true } },
-          service: { select: { id: true, name: true, price: true, duration: true, requiresPatchTest: true, treatwellExternalId: true } },
+          service: { select: { id: true, name: true, price: true, duration: true, requiresPatchTest: true, requiresConsultation: true, treatwellExternalId: true } },
         },
       });
       if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
@@ -158,7 +186,7 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
       // never touches the recorded price.
       const serviceChanged = Boolean(serviceId) && serviceId !== current.serviceId;
       let newQuote: PriceQuote | null = null;
-      let service: { id: string; requiresPatchTest: boolean; treatwellExternalId: string | null } = current.service;
+      let service: { id: string; requiresPatchTest: boolean; requiresConsultation: boolean; treatwellExternalId: string | null } = current.service;
       if (serviceChanged) {
         const quoted = await quoteForNewBooking(tx, serviceId!, 'ADMIN');
         if (!quoteMatches(quoted.quote, expectedQuote)) throw new AdminPriceChanged(quoted.quote);
@@ -179,6 +207,23 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
       });
       if (clashes.length > 0 && !overrideClashes) {
         return { kind: 'clashes' as const, clashes };
+      }
+
+      // The consultation credit (spec §2.3). A ticked box re-checks it at the
+      // new start and price, the booking's own use of it aside. Unticking, a
+      // service that needs no consultation, or a service change without the
+      // box clears it. A move (no box at all) leaves it as recorded: null.
+      let credit: ConsultationCreditColumns | null = null;
+      if (applyConsultationCredit && service.requiresConsultation) {
+        const recorded = recordedPrice(current);
+        credit = await consultationCreditColumns(tx, {
+          userId: current.userId,
+          at: newDate,
+          treatmentPricePence: newQuote ? newQuote.amountPence : recorded.known ? recorded.amountPence : null,
+          excludeAppointmentId: appointmentId,
+        });
+      } else if (applyConsultationCredit !== undefined || serviceChanged) {
+        credit = NO_CONSULTATION_CREDIT;
       }
 
       const oldDate = current.date;
@@ -225,6 +270,7 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
               }
             : {}),
           ...(notes === undefined ? {} : { notes: notes.trim() || null }),
+          ...(credit ?? {}),
           // A reminder already sent describes the OLD time.
           ...(startMoved ? { reminderSent: false } : {}),
           ...(arrivalLapses ? { arrivedAt: null } : {}),
@@ -327,6 +373,12 @@ const createSchema = z.object({
    * English. Never the admin's interface language.
    */
   customerLocale: z.string().optional(),
+  /**
+   * The dialog's "Consultation credit — deduct from this booking" box, ticked
+   * by default for a consultation-required service. Only whether to apply it:
+   * the credit itself is looked up here, inside the booking's transaction.
+   */
+  applyConsultationCredit: z.boolean().optional(),
 });
 
 export type CreateAppointmentInput = z.infer<typeof createSchema>;
@@ -363,7 +415,7 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
   if (!parsed.success) {
     return { success: false, error: issueText(locale, parsed.error.issues[0]) };
   }
-  const { customer, serviceId, stylistId, dateStr, time, durationMin, status, notes, notifyCustomer, overrideClashes, expectedQuote, customerLocale } = parsed.data;
+  const { customer, serviceId, stylistId, dateStr, time, durationMin, status, notes, notifyCustomer, overrideClashes, expectedQuote, customerLocale, applyConsultationCredit } = parsed.data;
 
   const salon = resolveSalonDateTime(dateStr, time);
   const date = salon.utc;
@@ -397,6 +449,10 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
         return { kind: 'clashes' as const, clashes };
       }
 
+      const credit = applyConsultationCredit && service.requiresConsultation
+        ? await consultationCreditColumns(tx, { userId: user.id, at: date, treatmentPricePence: quote.amountPence })
+        : NO_CONSULTATION_CREDIT;
+
       const api = getTreatwellApiConfiguration();
       const created = await tx.appointment.create({
         data: {
@@ -411,6 +467,8 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
           notificationLocale: user.preferredLocale ?? chosenLocale ?? 'en-GB',
           durationAtBooking: durationMin,
           notes: notes.trim() || null,
+          // A separate, recorded deduction: priceAtBooking/quoteJson stay the treatment's own price.
+          ...credit,
           // A walk-in entered once its start has come is here already: the
           // late-arrival rule must never cancel it. The dialog's default time
           // rounds UP to the next board step, so a start within one step of

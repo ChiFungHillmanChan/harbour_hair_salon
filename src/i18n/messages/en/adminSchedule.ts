@@ -231,6 +231,13 @@ const adminSchedule = {
     move: 'Move',
     cancel: 'Cancel',
   },
+  credit: {
+    available: 'Consultation credit available: {amount} (consultation on {date}) — deduct from this booking',
+    help: 'Untick to keep the credit for a later booking. It is checked again when you save.',
+    recorded: 'Consultation credit recorded on this booking: −{amount} (consultation on {date})',
+    noLongerAvailable: 'No consultation credit applies to this booking now, so saving removes the recorded one.',
+    clearedByService: 'This service needs no consultation, so saving removes the {amount} consultation credit.',
+  },
   grid: {
     off: 'Off',
     noStylists: 'No stylists are scheduled for this day.',
