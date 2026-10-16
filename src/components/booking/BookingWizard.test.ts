@@ -462,3 +462,10 @@ test('the option chooser says what NHS and student prices need only when an NHS 
   assert.ok(!chooser([option('s', 'STANDARD')]).includes(ELIGIBILITY['en-GB']), 'standard options only');
   assert.equal(translator('zh-HK', 'pricing')('eligibilityProof'), ELIGIBILITY['zh-HK']);
 });
+
+test('the confirm step repeats what an NHS price needs, and says nothing for a standard price', () => {
+  const confirm = { step: 'CONFIRM', service: 'service-1', stylist: 'lox', day: '2026-10-06', time: '11:00' };
+  const at = (priceType: string) => words(elements(loadWizard(confirm, undefined, { services: [{ ...SERVICE, priceType }] }).render()));
+  assert.ok(at('NHS').includes(ELIGIBILITY['en-GB']));
+  assert.ok(!at('STANDARD').includes(ELIGIBILITY['en-GB']));
+});

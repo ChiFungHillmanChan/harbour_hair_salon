@@ -1,6 +1,8 @@
 'use client';
 
 import type { PriceListEntry } from '@/app/services/pricing/public-catalog';
+import { requiresEligibilityProof } from '@/app/services/pricing/eligibility';
+import { useT } from '@/i18n/client';
 import { OfferingPrices } from '@/components/pricing/OfferingPrices';
 import { Duration, PriceFinePrint, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
@@ -11,7 +13,11 @@ import { Duration, PriceFinePrint, useFormatServicePrice } from '@/components/pr
  */
 export function CategoryPriceList({ entries }: { entries: PriceListEntry[] }) {
   const formatPrice = useFormatServicePrice();
+  const tp = useT('pricing');
+  // Said once under the table when any listed option is an NHS/student price.
+  const hasEligibilityPrice = entries.some((entry) => (entry.kind === 'offering' ? entry.options : [entry.service]).some(requiresEligibilityProof));
   return (
+    <div>
     <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden divide-y divide-zinc-100">
       {entries.map((entry) => entry.kind === 'offering' ? (
         <article key={entry.offering.id} className="p-5 md:p-6">
@@ -43,6 +49,8 @@ export function CategoryPriceList({ entries }: { entries: PriceListEntry[] }) {
           </div>
         </article>
       ))}
+    </div>
+    {hasEligibilityPrice && <p className="mt-3 text-xs text-zinc-500">{tp('eligibilityProof')}</p>}
     </div>
   );
 }

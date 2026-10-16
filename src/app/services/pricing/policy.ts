@@ -17,6 +17,10 @@
  * needs rules for how they combine with NHS prices, which do not exist yet.
  */
 export const DISCOUNTS_PAUSED = true as const;
+// BEFORE unpausing: the offer items on /booking-terms and /offers
+// (legal.bookingTerms.offers) must be enforced in code, not just stated: one
+// discount code per booking, never combined with NHS/student prices or another
+// offer, no cash value (it applies to the listed price).
 
 export const PRICE_TYPES = ['STANDARD', 'NHS'] as const;
 export type PriceType = (typeof PRICE_TYPES)[number];

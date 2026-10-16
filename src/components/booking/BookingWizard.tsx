@@ -940,6 +940,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                           {tp('nhsApplied')}
                         </span>
                       )}
+                      {requiresEligibilityProof(priceSource) && <span className="block mt-2 text-xs text-zinc-500">{tp('eligibilityProof')}</span>}
                       <PriceFinePrint service={priceSource} className="mt-1" />
                     </dd>
                   </div>

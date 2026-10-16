@@ -190,7 +190,7 @@ const legal = {
       noCombine: 'A discount code can’t be combined with NHS or student prices or with another offer.',
       noCashValue: 'Discount codes have no cash value and apply to the listed price.',
       proof: 'NHS and student prices, and some offers, need proof of eligibility at your appointment, such as a valid NHS staff ID or student card. Without it, the standard price applies.',
-      withdraw: 'We may change or withdraw an offer; a booking already confirmed keeps the price it was confirmed at.',
+      withdraw: 'We may change or withdraw an offer; a booking already confirmed keeps the price it was confirmed at, as long as any proof of eligibility it needs is shown at your appointment.',
     },
     patchTests: {
       title: 'Patch tests and consultations',

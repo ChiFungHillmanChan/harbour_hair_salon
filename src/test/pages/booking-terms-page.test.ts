@@ -120,12 +120,12 @@ test('the offer terms say what they say, in both languages', async () => {
     'A discount code can’t be combined with NHS or student prices or with another offer.',
     'Discount codes have no cash value and apply to the listed price.',
     'NHS and student prices, and some offers, need proof of eligibility at your appointment, such as a valid NHS staff ID or student card. Without it, the standard price applies.',
-    'We may change or withdraw an offer; a booking already confirmed keeps the price it was confirmed at.',
+    'We may change or withdraw an offer; a booking already confirmed keeps the price it was confirmed at, as long as any proof of eligibility it needs is shown at your appointment.',
   ]) assert.ok(en.includes(sentence), sentence);
 
   const zh = (await termsPage('zh-HK')).text;
   assert.ok(zh.includes('優惠、優惠碼及 NHS 或學生價'));
-  for (const sentence of ['每次預約只可使用一個優惠碼。', '優惠碼沒有現金價值', '本店可更改或撤回優惠']) assert.ok(zh.includes(sentence), sentence);
+  for (const sentence of ['每次預約只可使用一個優惠碼。', '優惠碼沒有現金價值', '本店可更改或撤回優惠；已確認的預約會維持確認時的價錢，惟如需資格證明，須於到店時出示。']) assert.ok(zh.includes(sentence), sentence);
 });
 
 test('the terms state the customer’s rights as the site applies them, and promise nothing it cannot do', async () => {

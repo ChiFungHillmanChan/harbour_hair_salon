@@ -162,7 +162,7 @@ const legal: Localized<Messages['legal']> = {
       noCombine: '優惠碼不可與 NHS 或學生價，或其他優惠同時使用。',
       noCashValue: '優惠碼沒有現金價值，並按列明價格計算。',
       proof: 'NHS 及學生價，以及部分優惠，須於預約當日出示資格證明，例如有效的 NHS 員工證或學生證；如未能出示，則按標準價收費。',
-      withdraw: '本店可更改或撤回優惠；已確認的預約維持確認時的價格。',
+      withdraw: '本店可更改或撤回優惠；已確認的預約會維持確認時的價錢，惟如需資格證明，須於到店時出示。',
     },
     patchTests: {
       title: '皮膚敏感測試及諮詢',
