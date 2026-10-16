@@ -183,6 +183,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       noError: '沒有',
       failedEvents: 'Google 未能接收的預約',
       syncNow: '立即同步',
+      syncing: '同步中…',
       syncNowHelp: '把同步範圍內的所有預約寫入 Google，並重新讀取 Google。最多需時約一分鐘。',
       syncNowOff: '同步未啟用時無法使用「立即同步」。',
       status: {

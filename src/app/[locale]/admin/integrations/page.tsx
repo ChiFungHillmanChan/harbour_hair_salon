@@ -12,6 +12,8 @@ import { getT } from '@/i18n/server';
 import { rich } from '@/i18n/rich';
 
 export const dynamic = 'force-dynamic';
+// "Sync now" runs under this route's limit: the same job as the 300-second housekeeping cron.
+export const maxDuration = 300;
 
 type SearchParams = { ical?: string; feeds?: string; failed?: string; skipped?: string; upserted?: string; retry?: string; feedToken?: string; calendar?: string; calendarError?: string; gcal?: string };
 function ConfigRow({ label, ready, readyText, missingText }: { label: string; ready: boolean; readyText: string; missingText: string }) {

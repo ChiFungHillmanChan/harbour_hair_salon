@@ -1,10 +1,9 @@
 import { syncGoogleCalendarNow } from '@/app/actions/admin-google-calendar';
 import { operationsMessageKey } from '@/app/services/operations-messages';
 import type { GoogleCalendarStatus as Status } from '@/app/services/google-calendar-status';
+import { GoogleSyncButton } from '@/components/admin/GoogleSyncButton';
 import { formatSalonDateTime } from '@/i18n/dates';
 import { getLocale, getT } from '@/i18n/server';
-
-const button = 'rounded bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50';
 
 /** Admin → Integrations: whether the Google Calendar sync is on and healthy, and "Sync now". */
 export async function GoogleCalendarStatus({ status }: { status: Status }) {
@@ -30,7 +29,7 @@ export async function GoogleCalendarStatus({ status }: { status: Status }) {
       <dt className="text-zinc-500">{t('integrations.google.failedEvents')}</dt><dd>{status.failedEvents}</dd>
     </dl>}
     <form action={syncGoogleCalendarNow} className="mt-4">
-      <button className={button} disabled={!status.enabled}>{t('integrations.google.syncNow')}</button>
+      <GoogleSyncButton label={t('integrations.google.syncNow')} busy={t('integrations.google.syncing')} disabled={!status.enabled} />
       <p className="mt-2 text-xs leading-5 text-zinc-500">{status.enabled ? t('integrations.google.syncNowHelp') : t('integrations.google.syncNowOff')}</p>
     </form>
   </section>;

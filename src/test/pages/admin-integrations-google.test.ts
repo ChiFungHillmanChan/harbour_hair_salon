@@ -15,10 +15,12 @@ const ON: Status = {
   lastPullError: OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED, failedEvents: 2,
 };
 
-type Node = { type?: unknown; props?: { children?: unknown; disabled?: boolean } };
+type Node = { type?: unknown; props?: { children?: unknown; disabled?: boolean; label?: string; busy?: string } };
+const SyncButton = () => null;
 
 async function render(locale: Locale, status: Status) {
   const component = loadServerModule<typeof import('../../components/admin/GoogleCalendarStatus')>('src/components/admin/GoogleCalendarStatus.tsx', {
+    '@/components/admin/GoogleSyncButton': { GoogleSyncButton: SyncButton },
     '@/app/actions/admin-google-calendar': { syncGoogleCalendarNow: async () => {} },
     '@/i18n/server': { getLocale: async () => locale, getT: async (namespace: Namespace) => translator(locale, namespace) },
   });
@@ -33,7 +35,7 @@ async function render(locale: Locale, status: Status) {
   const find = (node: unknown) => {
     if (Array.isArray(node)) return node.forEach(find);
     if (!node || typeof node !== 'object' || !('props' in node)) return;
-    if ((node as Node).type === 'button') buttons.push(node as Node);
+    if ((node as Node).type === SyncButton) buttons.push(node as Node);
     find((node as Node).props?.children);
   };
   find(tree);
@@ -42,16 +44,17 @@ async function render(locale: Locale, status: Status) {
 
 test('on: shows the masked calendar, check times, translated problem, failed count and an enabled Sync now', async () => {
   const en = await render('en-GB', ON);
-  for (const expected of ['Google Calendar sync is on.', 'abcdef…', 'Bookings Google would not take', 'Sync now', 'The Google Calendar check could not complete']) {
+  for (const expected of ['Google Calendar sync is on.', 'abcdef…', 'Bookings Google would not take', 'The Google Calendar check could not complete']) {
     assert.ok(en.text.includes(expected), expected);
   }
   assert.ok(!en.text.includes('abcdef1234'));
   assert.equal(en.buttons.length, 1);
   assert.equal(en.buttons[0].props?.disabled, false);
+  assert.deepEqual([en.buttons[0].props?.label, en.buttons[0].props?.busy], ['Sync now', 'Syncing…']);
 
   const zh = await render('zh-HK', ON);
   assert.ok(zh.text.includes('Google 日曆同步已啟用'));
-  assert.ok(zh.text.includes('立即同步'));
+  assert.deepEqual([zh.buttons[0].props?.label, zh.buttons[0].props?.busy], ['立即同步', '同步中…']);
   assert.ok(!zh.text.includes('The Google Calendar check could not complete'), 'the stored sentence is shown in Chinese');
 });
 
@@ -67,4 +70,28 @@ test('off: says so, shows no calendar details and disables Sync now', async () =
 test('a problem that is not one of our sentences is shown as recorded, marked English', async () => {
   const { text } = await render('zh-HK', { ...ON, lastPullError: 'Something older' });
   assert.ok(text.includes('Something older'));
+});
+
+// The Sync now button while the action runs: disabled, "Syncing…", so a
+// second click cannot start a second sync.
+function button(pending: boolean, disabled = false) {
+  const { GoogleSyncButton } = loadServerModule<typeof import('../../components/admin/GoogleSyncButton')>('src/components/admin/GoogleSyncButton.tsx', {
+    'react-dom': { useFormStatus: () => ({ pending }) },
+  });
+  return GoogleSyncButton({ label: 'Sync now', busy: 'Syncing…', disabled }) as unknown as Node;
+}
+
+test('Sync now button: idle is enabled, pending is disabled and says it is syncing, off stays disabled', () => {
+  const idle = button(false);
+  assert.equal(idle.props?.disabled, false);
+  assert.equal(idle.props?.children, 'Sync now');
+  const pending = button(true);
+  assert.equal(pending.props?.disabled, true);
+  assert.equal(pending.props?.children, 'Syncing…');
+  assert.equal(button(false, true).props?.disabled, true);
+});
+
+test('the pending wording exists in both languages', async () => {
+  assert.equal(translator('en-GB', 'adminOps')('integrations.google.syncing'), 'Syncing…');
+  assert.equal(translator('zh-HK', 'adminOps')('integrations.google.syncing'), '同步中…');
 });
