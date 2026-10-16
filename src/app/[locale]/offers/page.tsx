@@ -12,6 +12,7 @@ import { HTML_LANG, type Locale } from '@/i18n/config';
 import { getLocale, getT } from '@/i18n/server';
 import { alternatesFor, ogLocale } from '@/i18n/metadata';
 import { localizeHref } from '@/i18n/paths';
+import { OfferTerms } from '@/components/legal/OfferTerms';
 
 export async function generateMetadata(): Promise<Metadata> {
   const [locale, t] = await Promise.all([getLocale(), getT('offers')]);
@@ -46,7 +47,7 @@ async function getOffers(locale: Locale) {
 }
 
 export default async function OffersPage() {
-  const [locale, t] = await Promise.all([getLocale(), getT('offers')]);
+  const [locale, t, tl] = await Promise.all([getLocale(), getT('offers'), getT('legal')]);
   // Offers and discount codes are paused (pricing/policy.ts): no booking will
   // honour one, so none is listed and the database is not read. The records
   // stay in the admin panel for when discounts return.
@@ -164,6 +165,14 @@ export default async function OffersPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* The terms apply to every offer and code, so they show only while offers do. */}
+        {offers !== null && (
+          <section id="offer-terms" className="max-w-2xl mx-auto mt-16 space-y-3 text-sm text-zinc-600 leading-relaxed">
+            <h2 className="font-serif text-xl text-zinc-900">{tl('bookingTerms.offers.title')}</h2>
+            <OfferTerms t={tl} />
+          </section>
         )}
       </section>
 

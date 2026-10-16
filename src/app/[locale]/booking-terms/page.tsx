@@ -2,13 +2,14 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import Link from '@/i18n/link';
 import { getSiteSettings } from '@/app/services/site-settings-service';
-import { LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
+import { CONSULTATION_CREDIT_MONTHS, LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
 import { PATCH_TEST_MIN_LEAD_HOURS } from '@/app/services/patch-test-eligibility';
 import { toTelHref } from '@/app/lib/phone';
 import { getLocale, getT } from '@/i18n/server';
 import { alternatesFor } from '@/i18n/metadata';
 import { formatCalendarDay } from '@/i18n/dates';
 import { rich } from '@/i18n/rich';
+import { OfferTerms } from '@/components/legal/OfferTerms';
 
 /** Change this, and the wording in the `legal.bookingTerms` dictionary, together. */
 const LAST_UPDATED = '2026-10-16';
@@ -101,8 +102,13 @@ export default async function BookingTermsPage() {
           <p>{t('bookingTerms.changes.deposit')}</p>
         </Section>
 
+        <Section id="offers" title={t('bookingTerms.offers.title')}>
+          <OfferTerms t={t} />
+        </Section>
+
         <Section id="patch-tests" title={t('bookingTerms.patchTests.title')}>
           <p>{t('bookingTerms.patchTests.body', { hours: PATCH_TEST_MIN_LEAD_HOURS })}</p>
+          <p>{t('bookingTerms.patchTests.credit', { months: CONSULTATION_CREDIT_MONTHS })}</p>
         </Section>
 
         <Section id="rights" title={t('bookingTerms.rights.title')}>

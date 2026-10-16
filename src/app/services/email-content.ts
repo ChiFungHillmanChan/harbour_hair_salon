@@ -5,9 +5,10 @@ import { localizeHref } from '@/i18n/paths';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { SITE_URL } from '@/app/lib/site-url';
 import { formatGBP, toPence } from './pricing/money';
+import { requiresEligibilityProof } from './pricing/eligibility';
 import type { PriceNature, PriceType, VatDisplay } from './pricing/policy';
 import { salonRelativeDay } from './salon-time';
-import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
+import { CONSULTATION_CREDIT_MONTHS, LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { appointmentCalendarEvent } from './appointment-calendar';
 import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod, type IcsOrganizer } from '@/app/lib/calendar-links';
 
@@ -45,6 +46,14 @@ export type EmailAppointment = {
   price: EmailPrice;
   notes?: string | null;
   deposit?: EmailDeposit | null;
+  /**
+   * The consultation credit recorded on this booking, in pence (taken off what
+   * is paid in the salon; the price above is the treatment's own). Absent on
+   * mail queued before credit existed.
+   */
+  consultationCreditPence?: number | null;
+  /** The booked service is a consultation or patch test: its confirmation says its fee is credited. */
+  isConsultation?: boolean;
 };
 
 /** Pre-quote callers and old queued events pass `service.price` as a number. */
@@ -141,6 +150,20 @@ function depositAmount(deposit: EmailDeposit | null | undefined): number | null 
   return deposit && Number.isSafeInteger(deposit.amountPence) && deposit.amountPence > 0 ? deposit.amountPence : null;
 }
 
+/** A recorded consultation credit the snapshot can vouch for, or null (none, or an unusable value). */
+function creditAmount(appointment: EmailAppointment): number | null {
+  const pence = appointment.consultationCreditPence;
+  return typeof pence === 'number' && Number.isSafeInteger(pence) && pence > 0 ? pence : null;
+}
+
+/** The "Consultation credit −£15.00" row, or nothing when no credit is recorded. */
+function creditRows(appointment: EmailAppointment, locale: Locale) {
+  const pence = creditAmount(appointment);
+  if (pence === null) return [];
+  const t = translator(locale, 'emails');
+  return [{ label: t('labels.consultationCredit'), value: t('values.creditDeduction', { amount: money(pence, locale) }) }];
+}
+
 /**
  * What a closing email says about the deposit: a Deposit row and one
  * sentence (refunded, released or kept), or nothing without an outcome.
@@ -160,12 +183,13 @@ function depositClosingNote(appointment: EmailAppointment, locale: Locale, outco
 
 /**
  * What is left to pay in the salon, with the fine print the price itself
- * carries when that amount is not exact: "£80.00 (VAT excluded · may be
- * adjusted after consultation)" (see describeEmailPrice).
+ * carries when that amount is not exact: "£80.00 (VAT excluded · final price
+ * confirmed at your consultation)" (see describeEmailPrice).
  */
-function remainderText(price: Extract<EmailPrice, { known: true }>, depositPence: number, locale: Locale): string {
+function remainderText(price: Extract<EmailPrice, { known: true }>, depositPence: number, creditPence: number, locale: Locale): string {
   const t = translator(locale, 'emails');
-  const amount = money(price.amountPence - depositPence, locale);
+  // A deposit and a credit together can exceed the price: never below £0.
+  const amount = money(Math.max(0, price.amountPence - depositPence - creditPence), locale);
   const notes = [
     ...(price.vatDisplay === 'EXCLUDED' ? [t('values.vatExcluded')] : []),
     ...(price.priceNature === 'SUBJECT_TO_CONSULTATION' ? [t('values.subjectToConsultation')] : []),
@@ -182,12 +206,45 @@ function depositPaidNote(appointment: EmailAppointment, locale: Locale) {
   if (pence === null) return null;
   const t = translator(locale, 'emails');
   const deposit = money(pence, locale);
+  const creditPence = creditAmount(appointment) ?? 0;
+  const credit = money(creditPence, locale);
   const sentence = !appointment.price.known
     ? t('confirmation.depositPaidNoTotal', { deposit })
-    : appointment.price.amountPence > pence
-      ? t('confirmation.depositPaid', { deposit, remainder: remainderText(appointment.price, pence, locale) })
-      : t('confirmation.depositPaidInFull', { deposit });
+    : appointment.price.amountPence <= pence
+      ? t('confirmation.depositPaidInFull', { deposit })
+      : appointment.price.amountPence <= pence + creditPence
+        ? t('confirmation.depositAndCreditCover', { deposit, credit })
+        : creditPence > 0
+          ? t('confirmation.depositPaidWithCredit', { deposit, credit, remainder: remainderText(appointment.price, pence, creditPence, locale) })
+          : t('confirmation.depositPaid', { deposit, remainder: remainderText(appointment.price, pence, 0, locale) });
   return { row: { label: t('labels.deposit'), value: t('values.depositPaid', { amount: deposit }) }, sentence };
+}
+
+/**
+ * A confirmation's credit wording without a deposit taken: what is left to pay
+ * in the salon once the consultation credit is off, never below £0. Nothing
+ * for a booking with no recorded credit or no recorded price.
+ */
+function creditPaidNote(appointment: EmailAppointment, locale: Locale): string | null {
+  const creditPence = creditAmount(appointment);
+  if (creditPence === null || !appointment.price.known) return null;
+  const t = translator(locale, 'emails');
+  const credit = money(creditPence, locale);
+  return appointment.price.amountPence <= creditPence
+    ? t('confirmation.creditCoversPrice', { credit })
+    : t('confirmation.creditToPay', { credit, remainder: remainderText(appointment.price, 0, creditPence, locale) });
+}
+
+/**
+ * A credited booking's payment sentence for the reminder (spec §2.4), worded
+ * as its confirmation: what the taken deposit and the credit leave to pay in
+ * the salon. Nothing for a booking without a recorded credit, so every other
+ * reminder reads as it always has.
+ */
+function creditPaymentNote(appointment: EmailAppointment, locale: Locale): string[] {
+  if (creditAmount(appointment) === null) return [];
+  const sentence = depositPaidNote(appointment, locale)?.sentence ?? creditPaidNote(appointment, locale);
+  return sentence ? [sentence] : [];
 }
 
 /**
@@ -258,6 +315,9 @@ export function appointmentEmailContent(
   const duration = t('values.minutes', { count: appointment.service.duration });
   const price = describeEmailPrice(appointment.price, locale);
   const lateArrival = t('common.lateArrival', { minutes: LATE_ARRIVAL_CANCEL_MINUTES });
+  // An NHS or student price needs proof at the appointment: only said for such a booking.
+  const eligibility = appointment.price.known && appointment.price.priceType && requiresEligibilityProof({ priceType: appointment.price.priceType })
+    ? [translator(locale, 'pricing')('eligibilityProof')] : [];
   const base = { locale, palette: 'ink' as const, greeting, footnotes: [] as string[], reference: t('common.reference', { reference }), address: t('common.address') };
   const labels = (key: 'service' | 'stylist' | 'date' | 'time' | 'requestedDate' | 'requestedTime' | 'duration' | 'price' | 'deposit' | 'previousDate' | 'currentTime', value: string) => ({ label: t(`labels.${key}`), value });
 
@@ -266,6 +326,18 @@ export function appointmentEmailContent(
       // A deposit taken when the salon confirmed (services/deposit-lifecycle.ts):
       // what was paid and what is left to pay in the salon.
       const paid = depositPaidNote(appointment, locale);
+      // A consultation or patch test says its own fee is credited against the treatment.
+      const consultationCredit = appointment.isConsultation && appointment.price.known && appointment.price.amountPence > 0
+        ? [t('confirmation.consultationCredit', { months: CONSULTATION_CREDIT_MONTHS, amount: money(appointment.price.amountPence, locale) })] : [];
+      // A treatment with a credit recorded: what is left once it is off.
+      const creditNote = paid ? null : creditPaidNote(appointment, locale);
+      // A deposit or credit sentence already says how payment works: the change
+      // footnote must not repeat it (or say "payment is due" after "nothing to pay").
+      const footnotes = paid
+        ? [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')]
+        : creditNote
+          ? [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnoteNoPayment'), creditNote, t('calendar.attached')]
+          : [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnote'), t('calendar.attached')];
       return {
         ...base,
         subject: t('confirmation.subject'),
@@ -273,12 +345,13 @@ export function appointmentEmailContent(
         eyebrow: t('confirmation.eyebrow'), title: t('confirmation.title'), intro: t('confirmation.intro'),
         details: [
           labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration), labels('price', price),
+          ...creditRows(appointment, locale),
           ...(paid ? [paid.row] : []),
         ],
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('confirmation.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: paid ? [lateArrival, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')] : [lateArrival, t('confirmation.footnote'), t('calendar.attached')],
+        footnotes,
       };
     }
     case 'REQUEST_RECEIVED': {
@@ -299,7 +372,7 @@ export function appointmentEmailContent(
         callout: options.salonPhone ? { title: t('request.calloutTitle'), body: t('request.calloutBody', { phone: options.salonPhone }) } : undefined,
         cta: { label: t('request.cta'), href: url(locale, '/appointments') },
         // "Payment is due at the salon" is only true in full without a deposit.
-        footnotes: hold ? [t('request.depositHold', { amount: hold }), t('request.footnoteWithDeposit')] : [t('request.footnote')],
+        footnotes: [...(hold ? [t('request.depositHold', { amount: hold }), t('request.footnoteWithDeposit')] : [t('request.footnote')]), ...eligibility],
         reference: t('common.referenceShort', { reference }),
       };
     }
@@ -364,7 +437,7 @@ export function appointmentEmailContent(
         subject: t('reschedule.subject'),
         preview: t('reschedule.preview', { date }),
         eyebrow: t('reschedule.eyebrow'), title: t('reschedule.title'), intro: t('reschedule.intro', { previous }),
-        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('previousDate', previous)],
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('previousDate', previous), ...creditRows(appointment, locale)],
         cta: { label: t('reschedule.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
         footnotes: [...requestNote, t('reschedule.footnote'), t('calendar.moved'), t('calendar.attached')],
@@ -379,11 +452,11 @@ export function appointmentEmailContent(
         eyebrow: t('reminder.eyebrow'),
         title: when === 'today' ? t('reminder.titleToday') : when === 'tomorrow' ? t('reminder.titleTomorrow') : t('reminder.titleSoon'),
         intro: t('reminder.intro'),
-        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration)],
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration), ...creditRows(appointment, locale)],
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('reminder.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: [lateArrival, t('reminder.footnote'), t('calendar.attached')],
+        footnotes: [lateArrival, ...eligibility, ...creditPaymentNote(appointment, locale), t('reminder.footnote'), t('calendar.attached')],
       };
     }
     case 'REVIEW_REQUEST':

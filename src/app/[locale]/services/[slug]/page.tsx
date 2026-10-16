@@ -13,6 +13,7 @@ import { Faq } from '@/components/seo/Faq';
 import { getFaqsByKey } from '@/app/services/faq-service';
 import { SITE_URL as BASE_URL } from '@/app/lib/site-url';
 import { getPublicCatalog } from '@/app/services/pricing/public-catalog';
+import { consultationFeeByServiceId } from '@/app/services/consultation-routing';
 import { serviceSchemaItems } from '@/app/services/pricing/json-ld';
 import { CategoryPriceList } from '@/components/services/CategoryPriceList';
 import { getLocale, getT } from '@/i18n/server';
@@ -190,7 +191,7 @@ export default async function ServiceCategoryPage({
           <p className="p-8 text-center text-zinc-500 bg-white border border-zinc-200 rounded-2xl">{t('category.pricingSoon')}</p>
         ) : (
           <ClientMessages namespaces={['pricing']}>
-            <CategoryPriceList entries={entries} />
+            <CategoryPriceList entries={entries} consultationFees={consultationFeeByServiceId(catalog.services)} />
           </ClientMessages>
         )}
       </section>

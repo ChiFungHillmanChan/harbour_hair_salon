@@ -62,6 +62,8 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
     // Set when the salon cancelled the booking because the customer was late.
     lateCancelledAt: true,
     priceAtBooking: true, quoteJson: true, durationAtBooking: true,
+    // The consultation credit recorded on the booking; its source and the treatment's own price are untouched.
+    consultationCreditPence: true,
     stylist: { select: { name: true } },
     service: { select: { name: true, duration: true } },
     review: { select: { id: true } },
@@ -110,6 +112,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
           duration,
         },
         price,
+        consultationCreditPence: a.consultationCreditPence,
         deposit: depositView(a.paymentAttempt),
         hasReview: Boolean(a.review),
         request: rescheduleRequestView(a, now),

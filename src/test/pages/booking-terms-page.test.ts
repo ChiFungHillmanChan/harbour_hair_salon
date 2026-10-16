@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { loadServerModule } from '../load-server-module';
 import { translator, type Namespace } from '../../i18n/messages';
 import type { Locale } from '../../i18n/config';
-import { LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '../../app/lib/booking-constants';
+import { CONSULTATION_CREDIT_MONTHS, LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '../../app/lib/booking-constants';
 import { PATCH_TEST_MIN_LEAD_HOURS } from '../../app/services/patch-test-eligibility';
 
 type Element = { type: unknown; props: Record<string, unknown> };
@@ -58,7 +58,7 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
     assert.doesNotMatch(page.text, /bookingTerms\.[a-zA-Z]+/, 'no message key shows instead of its text');
     assert.doesNotMatch(page.text, /<\/?\w+>/, 'no rich-text tag shows as text');
     assert.doesNotMatch(page.text, /\{\w+\}/, 'no placeholder is left unfilled');
-    for (const section of ['requests', 'deposits', 'notConfirmed', 'cancelling', 'refunds', 'changes', 'patchTests', 'rights', 'contact'] as const) {
+    for (const section of ['requests', 'deposits', 'notConfirmed', 'cancelling', 'refunds', 'changes', 'offers', 'patchTests', 'rights', 'contact'] as const) {
       assert.ok(page.text.includes(t(`bookingTerms.${section}.title`)), `${section} section`);
     }
     // The owner's late-cancellation / no-show policy line is shown as written.
@@ -67,6 +67,17 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
     assert.ok(page.text.includes(t('bookingTerms.cancelling.lateArrival', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })));
     assert.ok(page.text.includes(t('bookingTerms.rights.body', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })), 'your rights agrees with it');
     assert.ok(page.text.includes('0113 496 0000'), 'the salon phone from settings');
+    // The offer, discount-code and NHS/student-price terms, five items under their own anchor.
+    for (const item of ['oneCode', 'noCombine', 'noCashValue', 'proof', 'withdraw'] as const) {
+      assert.ok(page.text.includes(t(`bookingTerms.offers.${item}`)), `offers: ${item}`);
+    }
+    assert.ok(page.nodes.some((node) => node.type === 'section' && node.props.id === 'offers'), 'the offers section has id="offers"');
+    assert.ok(page.text.indexOf(t('bookingTerms.changes.title')) < page.text.indexOf(t('bookingTerms.offers.title')));
+    assert.ok(page.text.indexOf(t('bookingTerms.offers.title')) < page.text.indexOf(t('bookingTerms.patchTests.title')), 'between changes and patch tests');
+    // The consultation credit rule follows the patch-test paragraph, with its months from the one constant.
+    const credit = t('bookingTerms.patchTests.credit', { months: CONSULTATION_CREDIT_MONTHS });
+    assert.ok(page.text.includes(credit), 'the consultation credit rule');
+    assert.ok(page.text.indexOf(t('bookingTerms.patchTests.body', { hours: PATCH_TEST_MIN_LEAD_HOURS })) < page.text.indexOf(credit), 'after the patch-test paragraph');
     assert.equal(page.metadata.title, t('bookingTerms.meta.title'));
 
     const links = page.nodes.filter((node) => node.type === 'a').map((node) => node.props.href);
@@ -98,11 +109,29 @@ test('the periods the terms state are the ones the code enforces', async () => {
   assert.ok(en.includes(`at least ${PATCH_TEST_MIN_LEAD_HOURS} hours before your colour appointment`));
   assert.ok(en.includes('up to 24 hours before your appointment'));
   assert.ok(en.includes('A hold lasts up to 7 days'));
+  assert.ok(en.includes(`if you go ahead within ${CONSULTATION_CREDIT_MONTHS} months, we take it off the treatment’s price, once. It isn’t refunded if you decide not to go ahead or miss the consultation.`));
 
   const zh = (await termsPage('zh-HK')).text;
   assert.ok(zh.includes(`最少提前 ${MIN_BOOKING_NOTICE_MINUTES / 60} 小時`));
   assert.ok(zh.includes(`最少 ${PATCH_TEST_MIN_LEAD_HOURS} 小時前`));
   assert.ok(zh.includes('最長 7 日'));
+  assert.ok(zh.includes(`如你在 ${CONSULTATION_CREDIT_MONTHS} 個月內進行療程，本店會在療程價錢中扣除一次。`));
+});
+
+test('the offer terms say what they say, in both languages', async () => {
+  const en = (await termsPage('en-GB')).text;
+  assert.ok(en.includes('Offers, discount codes and NHS or student prices'));
+  for (const sentence of [
+    'One discount code per booking.',
+    'A discount code can’t be combined with NHS or student prices or with another offer.',
+    'Discount codes have no cash value and apply to the listed price.',
+    'NHS and student prices, and some offers, need proof of eligibility at your appointment, such as a valid NHS staff ID or student card. Without it, the standard price applies.',
+    'We may change or withdraw an offer; a booking already confirmed keeps the price it was confirmed at, as long as any proof of eligibility it needs is shown at your appointment.',
+  ]) assert.ok(en.includes(sentence), sentence);
+
+  const zh = (await termsPage('zh-HK')).text;
+  assert.ok(zh.includes('優惠、優惠碼及 NHS 或學生價'));
+  for (const sentence of ['每次預約只可使用一個優惠碼。', '優惠碼沒有現金價值', '本店可更改或撤回優惠；已確認的預約會維持確認時的價錢，惟如需資格證明，須於到店時出示。']) assert.ok(zh.includes(sentence), sentence);
 });
 
 test('the terms state the customer’s rights as the site applies them, and promise nothing it cannot do', async () => {

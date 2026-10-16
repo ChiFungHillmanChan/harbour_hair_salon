@@ -7,6 +7,7 @@ import { cancelAppointment, withdrawRescheduleRequest } from '@/app/actions/book
 import type { RescheduleRequestView } from '@/app/lib/reschedule-request';
 import type { DepositView } from '@/app/lib/deposit-display';
 import type { PriceNature, PriceType, VatDisplay } from '@/app/services/pricing/policy';
+import { requiresEligibilityProof } from '@/app/services/pricing/eligibility';
 import { useFormatPrice } from '@/components/pricing/PriceParts';
 import { useLocale, useT } from '@/i18n/client';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
@@ -37,6 +38,8 @@ type SerializedAppointment = {
   service: { name: string; nameIsEnglish?: boolean; duration: number };
   serviceId: string;
   price: BookedPrice;
+  /** The consultation credit recorded on the booking (pence), taken off what is paid in the salon; null: none. */
+  consultationCreditPence?: number | null;
   /** The card deposit's state (lib/deposit-display.ts); absent or null: none. */
   deposit?: DepositView | null;
   hasReview?: boolean;
@@ -106,12 +109,30 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
   // The recorded amount and the notes that were true when it was booked.
   const { price } = appointment;
   const deposit = appointment.deposit ?? null;
+  // A cancelled booking deducts nothing: its credit is free again for another booking.
+  const credit = appointment.status !== 'CANCELLED' && appointment.consultationCreditPence && appointment.consultationCreditPence > 0
+    ? appointment.consultationCreditPence : null;
+  // What is left to pay in the salon once a taken deposit and the credit are off — never below £0.
+  const toPayInSalon = credit !== null && price.known && isUpcoming && ['CONFIRMED', 'PENDING'].includes(appointment.status)
+    ? Math.max(0, price.amountPence - (deposit?.state === 'PAID' ? deposit.amountPence : 0) - credit)
+    : null;
+  // …with the price's own fine print when that amount is not exact, as the emails say it.
+  const toPayNotes = price.known
+    ? [
+        ...(price.vatDisplay === 'EXCLUDED' ? [tp('vatExcluded')] : []),
+        ...(price.priceNature === 'SUBJECT_TO_CONSULTATION' ? [tp('subjectToConsultation')] : []),
+      ]
+    : [];
   const priceNotes: string[] = [];
   if (price.known) {
     if (price.priceType === 'NHS') priceNotes.push(tp('nhsApplied'));
     if (price.vatDisplay === 'EXCLUDED') priceNotes.push(tp('vatExcluded'));
     if (price.priceNature === 'SUBJECT_TO_CONSULTATION') priceNotes.push(tp('subjectToConsultation'));
   }
+
+  // An NHS or student price is honoured on proof at the appointment: say so
+  // while the booking can still go ahead.
+  const needsProof = isUpcoming && price.known && price.priceType !== null && requiresEligibilityProof({ priceType: price.priceType });
 
   // A PENDING request may be withdrawn at any time; the 24-hour lock only
   // applies once the salon has confirmed. Rescheduling requires a confirmed
@@ -191,6 +212,15 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
               {tp('minutes', { count: appointment.service.duration })} &middot; {price.known ? formatPrice(price.amountPence) : tp('unknownPrice')}
             </p>
             {priceNotes.length > 0 && <p className="text-xs text-zinc-500">{priceNotes.join(' · ')}</p>}
+            {credit !== null && <p className="text-sm text-zinc-700">{t('card.consultationCredit', { amount: formatPrice(credit) })}</p>}
+            {toPayInSalon !== null && (
+              <p className="text-sm text-zinc-700">
+                {toPayNotes.length > 0
+                  ? t('card.toPayInSalonWithNotes', { amount: formatPrice(toPayInSalon), notes: toPayNotes.join(' · ') })
+                  : t('card.toPayInSalon', { amount: formatPrice(toPayInSalon) })}
+              </p>
+            )}
+            {needsProof && <p className="text-xs text-zinc-500">{tp('eligibilityProof')}</p>}
             {!price.known && <p className="text-xs text-zinc-500">{tp('unknownPriceHelp')}</p>}
             {deposit && (
               <p className="text-sm text-zinc-700">{t.dynamic(`deposit.${deposit.state}`, { amount: formatPrice(deposit.amountPence) })}</p>

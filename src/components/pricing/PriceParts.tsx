@@ -3,6 +3,7 @@
 import { HTML_LANG } from '@/i18n/config';
 import { useLocale, useT } from '@/i18n/client';
 import { formatGBP } from '@/app/services/pricing/money';
+import { CONSULTATION_CREDIT_MONTHS } from '@/app/lib/booking-constants';
 import type { ClientPublicService } from '@/app/services/public-service-select';
 
 /** "£157.00" — identical figures in both languages, formatted for the page's locale. */
@@ -11,12 +12,23 @@ export function useFormatPrice() {
   return (pence: number) => formatGBP(pence, HTML_LANG[locale]);
 }
 
+/**
+ * One price as the page shows it: "From £157.00" for a consultation-required
+ * service (its listed price is a starting point), the plain amount otherwise.
+ */
+export function useFormatServicePrice() {
+  const t = useT('pricing');
+  const format = useFormatPrice();
+  return (service: Pick<ClientPublicService, 'amountPence' | 'requiresConsultation'>) =>
+    service.requiresConsultation ? t('fromPrice', { price: format(service.amountPence) }) : format(service.amountPence);
+}
+
 type PriceSemantics = Pick<ClientPublicService, 'vatDisplay' | 'priceNature' | 'priceType'>;
 
 /**
  * The small print that must travel with a price wherever it is shown: the
  * VAT wording (only when the price list says so — no claim otherwise), and
- * "may be adjusted after consultation" for prices that are not final.
+ * "final price confirmed at your consultation" for prices that are not final.
  */
 export function PriceFinePrint({ service, className = '', showNhs = false }: { service: PriceSemantics; className?: string; showNhs?: boolean }) {
   const t = useT('pricing');
@@ -29,6 +41,23 @@ export function PriceFinePrint({ service, className = '', showNhs = false }: { s
     <span className={`block text-[11px] leading-snug text-zinc-500 ${className}`}>
       {notes.join(' · ')}
     </span>
+  );
+}
+
+/**
+ * The one line under a consultation-required price: the consultation's fee
+ * comes off the treatment. `feePence` is the consultation's actual price
+ * (consultationFeeByServiceId); nothing is shown without one, or for a free
+ * consultation, which has nothing to credit.
+ */
+export function ConsultationCreditNote({ feePence, className = '' }: { feePence: number | null | undefined; className?: string }) {
+  const t = useT('pricing');
+  const format = useFormatPrice();
+  if (!feePence || feePence <= 0) return null;
+  return (
+    <p className={`text-xs text-zinc-500 ${className}`}>
+      {t('consultationCreditNote', { fee: format(feePence), months: CONSULTATION_CREDIT_MONTHS })}
+    </p>
   );
 }
 

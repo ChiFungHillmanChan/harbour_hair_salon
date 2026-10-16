@@ -1,5 +1,5 @@
 import { toPence, type Pence } from './money';
-import { DISCOUNTS_PAUSED, isHairLength, isPriceNature, isPriceType, isVatDisplay, type HairLength, type PriceNature, type PriceType, type VatDisplay } from './policy';
+import { DISCOUNTS_PAUSED, effectivePriceNature, isHairLength, isPriceNature, isPriceType, isVatDisplay, type HairLength, type PriceNature, type PriceType, type VatDisplay } from './policy';
 
 /**
  * The price a NEW booking commits to, decided on the server. Language never
@@ -44,6 +44,8 @@ export type QuotableService = {
   priceVersion: number;
   vatDisplay: string;
   priceNature: string;
+  /** A consultation-required service's price is a starting point (effectivePriceNature). */
+  requiresConsultation: boolean;
   durationConfirmed: boolean;
   surchargeBaseServiceId: string | null;
   surchargeAmount: { toString(): string } | number | null;
@@ -67,6 +69,9 @@ export class QuoteIntegrityError extends Error {
  */
 export function buildQuote(service: QuotableService, base?: QuoteBase | null): PriceQuote {
   const amountPence = toPence(service.price);
+  // What the customer is told, not just what the row stores: a consultation-required
+  // service's recorded price is confirmed at the consultation (spec 2026-10-16 §4).
+  const priceNature = effectivePriceNature(service);
   if (amountPence < 0) throw new QuoteIntegrityError(`Service ${service.id} has a negative price`);
   let breakdown: QuoteLine[] = [{ kind: 'LISTED', amountPence }];
   if (service.surchargeBaseServiceId) {
@@ -93,7 +98,7 @@ export function buildQuote(service: QuotableService, base?: QuoteBase | null): P
     amountPence,
     breakdown,
     vatDisplay: isVatDisplay(service.vatDisplay) ? service.vatDisplay : 'UNSPECIFIED',
-    priceNature: isPriceNature(service.priceNature) ? service.priceNature : 'LISTED',
+    priceNature: isPriceNature(priceNature) ? priceNature : 'LISTED',
     priceVersion: service.priceVersion,
     durationMinutes: service.duration,
     durationSource: service.durationConfirmed ? 'SERVICE' : 'UNCONFIRMED',

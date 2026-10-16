@@ -24,7 +24,7 @@ const draftStore = (useState: (value: unknown) => unknown) => ({
 const navigation = { useLocalizedRouter: () => ({ push: () => undefined, refresh: () => undefined }) };
 function render(view: 'Day' | 'Week', source: string, start: string, end: string, dayKey = '2026-10-23', duplicate = false) {
   const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(
-    `src/components/admin/Schedule${view}Grid.tsx`, { react: hooks, '@/i18n/client': i18nClient },
+    `src/components/admin/Schedule${view}Grid.tsx`, { react: hooks, '@/i18n/client': i18nClient, './MoveConfirmDialog': { MoveConfirmDialog: () => null } },
   );
   return elements(grid[`Schedule${view}Grid`]({
     day: new Date(`${dayKey}T12:00:00Z`), dayKeys: [dayKey], todayKey: dayKey,
@@ -81,7 +81,7 @@ for (const view of ['Day', 'Week'] as const) {
 
 test('Day calendar: a 10:00–20:30 Pause for a stylist off in our rota is Unavailable against the salon’s hours', () => {
   const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(
-    'src/components/admin/ScheduleDayGrid.tsx', { react: hooks, '@/i18n/client': i18nClient },
+    'src/components/admin/ScheduleDayGrid.tsx', { react: hooks, '@/i18n/client': i18nClient, './MoveConfirmDialog': { MoveConfirmDialog: () => null } },
   );
   const nodes = elements(grid.ScheduleDayGrid({
     day: new Date('2026-10-06T12:00:00Z'),
@@ -98,7 +98,7 @@ test('Day calendar: a 10:00–20:30 Pause for a stylist off in our rota is Unava
 
 test('Week calendar: a Pause covering the stylist’s own hours is Unavailable; a lunch block is not', () => {
   const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(
-    'src/components/admin/ScheduleWeekGrid.tsx', { react: hooks, '@/i18n/client': i18nClient },
+    'src/components/admin/ScheduleWeekGrid.tsx', { react: hooks, '@/i18n/client': i18nClient, './MoveConfirmDialog': { MoveConfirmDialog: () => null } },
   );
   const nodes = elements(grid.ScheduleWeekGrid({
     day: new Date('2026-10-06T12:00:00Z'), dayKeys: ['2026-10-06'], todayKey: '2026-10-06',
@@ -265,7 +265,7 @@ test('an appointment whose price was never recorded says so instead of showing t
   const texts = expand(rendered).flatMap((node) => [node.props.children].flat().filter((child) => typeof child === 'string'));
   assert.ok(texts.includes('Price not recorded'), 'an unknown amount is shown as unknown');
   assert.ok(texts.includes('£142.00'), 'a recorded amount is shown as recorded');
-  assert.ok(texts.some((text) => /NHS price applied · VAT excluded · May be adjusted after consultation/.test(text)));
+  assert.ok(texts.some((text) => /NHS price applied · VAT excluded · Final price confirmed at your consultation/.test(text)));
   assert.ok(!texts.some((text) => /£0\.00/.test(text)), 'an unknown amount is never shown as zero');
 });
 

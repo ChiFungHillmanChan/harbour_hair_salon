@@ -57,3 +57,11 @@ export const LATE_CANCEL_EMAIL_DELAY_MINUTES = 30;
 export const LATE_CANCEL_RESTORE_HOURS = 24;
 /** "Arrived" can be recorded from this many minutes before the start. */
 export const ARRIVAL_EARLY_MINUTES = 60;
+
+/**
+ * Consultation credit (docs/superpowers/specs/2026-10-16-consultation-credit-pricing-ux-design.md §2):
+ * a consultation's fee is taken off a consultation-required treatment booked
+ * within this many salon-local calendar months of it (services/consultation-credit.ts).
+ * The booking terms and the consultation's emails read it.
+ */
+export const CONSULTATION_CREDIT_MONTHS = 6;

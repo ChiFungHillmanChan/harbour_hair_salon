@@ -52,6 +52,11 @@ const appointments = {
     calendarAfterConfirmation: 'You can add it to your calendar once it’s confirmed.',
     confirmCancelRefund: 'Cancel this appointment? Your {amount} deposit will be refunded in full.',
     confirmWithdrawRelease: 'Withdraw this request? The {amount} hold on your card will be released.',
+    /** A consultation credit recorded on the booking, taken off what is paid in the salon. */
+    consultationCredit: 'Consultation credit: −{amount}',
+    toPayInSalon: 'To pay in the salon: {amount}',
+    /** The same, when the price is not exact. {notes}: pricing.vatExcluded / pricing.subjectToConsultation, joined. */
+    toPayInSalonWithNotes: 'To pay in the salon: {amount} ({notes})',
   },
   /** The booking's card deposit, by state (lib/deposit-display.ts). */
   deposit: {

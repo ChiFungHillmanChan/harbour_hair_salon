@@ -11,6 +11,12 @@ import { RescheduleRequestActions } from './RescheduleRequestActions';
 import { DepositChip } from './DepositChip';
 import { DepositRecheckButton } from './DepositRecheckButton';
 import { DepositSettleRefundButton } from './DepositSettleRefundButton';
+import {
+  ConsultationCreditOption,
+  useConsultationCreditPreview,
+  type ConsultationCreditLookup,
+  type RecordedConsultationCredit,
+} from './ConsultationCreditOption';
 import type { DepositView } from '@/app/lib/deposit-display';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { isArrivalWindowOpen, lateCancelDueAt } from '@/app/lib/late-arrival';
@@ -27,6 +33,8 @@ export type DialogService = {
   duration: number;
   category: string;
   requiresPatchTest: boolean;
+  /** A treatment a consultation's fee is credited against (consultation-credit.ts). */
+  requiresConsultation: boolean;
   amountPence: number;
   priceVersion: number;
   priceType: string;
@@ -66,6 +74,8 @@ export type DialogTarget =
       deposit?: DepositView | null;
       /** When staff marked the customer arrived (ISO instant); the late-arrival rule never cancels an arrived booking. */
       arrivedAt?: string | null;
+      /** The consultation credit staff applied to this booking, if any. */
+      consultationCredit?: RecordedConsultationCredit | null;
     };
 
 /**
@@ -91,6 +101,12 @@ type DialogForm = {
   priceChange: AdminQuote | null;
   /** Cancelling a confirmed booking whose deposit was taken: refund it (ticked by default; unticked for a no-show) or keep it. */
   refundDeposit: boolean;
+  /**
+   * The admin's own tick or untick of "Consultation credit — deduct from this
+   * booking", with the question (customer, service, time) it was made on.
+   * Null until they touch the box.
+   */
+  creditChoice: { key: string; apply: boolean } | null;
 };
 
 const inputClass =
@@ -150,6 +166,7 @@ export function AppointmentDialog({
     // A no-show keeps its deposit (salon policy, /booking-terms): once a
     // confirmed visit's time has passed, cancelling starts at "keep".
     refundDeposit: !(isEdit && target.status === 'CONFIRMED' && new Date(target.date).getTime() <= Date.now()),
+    creditChoice: null,
   }));
   const update = (patch: Partial<DialogForm>) => setForm((previous) => ({ ...previous, ...patch }));
   const { serviceId, stylistId, dateStr, time, durationMin, notes, status, notifyCustomer, customerQuery, picked, name, email, phone, customerLocale, priceChange } = form;
@@ -214,6 +231,43 @@ export function AppointmentDialog({
     update({ serviceId: id, priceChange: null, ...(next ? { durationMin: next.duration } : {}) });
   };
 
+  // Consultation credit (spec §2.3): only a consultation-required service takes
+  // one. The server looks it up again on save; the dialog sends only the box.
+  const takesCredit = selectedService?.requiresConsultation === true;
+  const recordedCredit = target.mode === 'edit' ? target.consultationCredit ?? null : null;
+  const typedEmail = email.trim();
+  const creditLookup: ConsultationCreditLookup | null = !takesCredit
+    ? null
+    : target.mode === 'edit'
+      ? { appointmentId: target.appointmentId, serviceId, dateStr, time }
+      : picked
+        ? { customerId: picked.id, serviceId, dateStr, time }
+        // A typed email already on file books onto that customer (resolveCustomer).
+        : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)
+          ? { email: typedEmail, serviceId, dateStr, time }
+          : null;
+  const creditKey = creditLookup ? JSON.stringify(creditLookup) : '';
+  const creditPreview = useConsultationCreditPreview(creditLookup);
+  const creditAnswer = takesCredit && creditPreview.state === 'answered' ? creditPreview.preview : null;
+  // Save waits for the answer, so a booking is never saved before staff could see its credit.
+  const creditChecking = takesCredit && creditPreview.state === 'checking';
+  // Where the box starts: ticked for a new booking (again whenever its customer,
+  // service or time changes); for an edit, as the booking stands — a credit that
+  // became available is added only by ticking it.
+  const choice = form.creditChoice ?? null;
+  const applyConsultationCredit = isEdit
+    ? (choice ? choice.apply : recordedCredit !== null)
+    : (choice?.key === creditKey ? choice.apply : true);
+  // Sent only for what the admin could see: the box, shown for this exact
+  // question, or (editing) the note that saving removes a credit that no
+  // longer applies. Otherwise omitted, and the server leaves the credit as it
+  // is — a new booking gets none.
+  const creditChoice = !creditAnswer
+    ? {}
+    : creditAnswer.available
+      ? { applyConsultationCredit }
+      : recordedCredit ? { applyConsultationCredit: false } : {};
+
   /** The price the admin is looking at right now, sent back so the server can refuse a stale one. */
   const expectedQuote = () => {
     if (!pricing || !selectedService) return undefined;
@@ -237,6 +291,7 @@ export function AppointmentDialog({
           overrideClashes,
           expectedUpdatedAt: target.updatedAt,
           expectedQuote: expectedQuote(),
+          ...creditChoice,
         });
         if (result.success) return saved();
         if ('clashes' in result) return setClashes(result.clashes);
@@ -266,6 +321,7 @@ export function AppointmentDialog({
         overrideClashes,
         expectedQuote: expectedQuote(),
         ...(savedLocale ? {} : { customerLocale }),
+        ...creditChoice,
       });
       if (result.success) return saved();
       if ('clashes' in result) return setClashes(result.clashes);
@@ -532,6 +588,18 @@ export function AppointmentDialog({
             </p>
           )}
 
+          {takesCredit ? (
+            <ConsultationCreditOption
+              preview={creditPreview}
+              apply={applyConsultationCredit}
+              onApplyChange={(apply) => update({ creditChoice: { key: creditKey, apply } })}
+              recorded={recordedCredit}
+            />
+          ) : recordedCredit && pricing && (
+            // Only a service CHANGE clears it on save (editAppointmentByAdmin); an unchanged one keeps it.
+            <p className="text-xs text-zinc-500">{t('credit.clearedByService', { amount: formatPrice(recordedCredit.amountPence) })}</p>
+          )}
+
           <div>
             <label className={labelClass} htmlFor="appt-stylist">{t('dialog.stylist')}</label>
             <select id="appt-stylist" className={inputClass} value={stylistId} onChange={(event) => update({ stylistId: event.target.value })}>
@@ -611,7 +679,7 @@ export function AppointmentDialog({
           </button>
           <button
             type="button"
-            disabled={saving || !serviceId || !stylistId}
+            disabled={saving || !serviceId || !stylistId || creditChecking}
             onClick={() => submit(false)}
             className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
           >

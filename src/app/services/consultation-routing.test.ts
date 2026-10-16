@@ -41,3 +41,16 @@ test('gated colour but patch-test service missing → null', () => {
   const colour = svc({ id: 'col', name: 'Colour', requiresConsultation: true, requiresPatchTest: true });
   assert.equal(resolveConsultationTarget(colour, [freeConsult, colour]), null);
 });
+
+test('consultationFeeByServiceId gives each gated service its own consultation’s price, never a literal', async () => {
+  const { consultationFeeByServiceId } = await import('./consultation-routing');
+  const row = (over: Partial<RoutableService> & { amountPence: number }) => ({ ...svc(over), ...over });
+  const consult = row({ id: 'c', isConsultation: true, price: 25, amountPence: 2500 });
+  const patch = row({ id: 'p', isPatchTest: true, price: 15, amountPence: 1500 });
+  const colour = row({ id: 'col', requiresConsultation: true, requiresPatchTest: true, price: 110, amountPence: 11000 });
+  const perm = row({ id: 'perm', requiresConsultation: true, price: 143, amountPence: 14300 });
+  const cut = row({ id: 'cut', price: 40, amountPence: 4000 });
+  assert.deepEqual(consultationFeeByServiceId([consult, patch, colour, perm, cut]), { col: 1500, perm: 2500 });
+  // No consultation to route to: nothing promised.
+  assert.deepEqual(consultationFeeByServiceId([perm, cut]), {});
+});

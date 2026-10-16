@@ -531,3 +531,54 @@ test('LATE_CANCELLED is held until notBefore, kept only while the late cancellat
   assert.equal(stale.result.skipped, 1, 'held-back mail a day after the appointment is dropped');
   assert.equal(stale.sends, 0);
 });
+
+test('the recorded consultation credit and the consultation flag travel in the snapshot; an old payload without them still renders as before', async () => {
+  const payloads: string[] = [];
+  const db = {
+    notificationDelivery: {
+      findUnique: async () => null,
+      upsert: async ({ create }: { create: { payloadJson: string } }) => { payloads.push(create.payloadJson); return { id: `queued-${payloads.length}` }; },
+    },
+  };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': db, './email-service': {},
+  });
+  const appointment = {
+    id: 'a', date: new Date('2099-09-12T12:00:00Z'), notificationVersion: 0, priceAtBooking: 100, durationAtBooking: 60, notes: null,
+    user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', duration: 60 },
+  };
+  await service.enqueueAppointmentNotification(db as never, 'CONFIRMATION', { ...appointment, consultationCreditPence: 1500 } as never);
+  await service.enqueueAppointmentNotification(db as never, 'CONFIRMATION', { ...appointment, id: 'b', service: { ...appointment.service, isConsultation: true } } as never);
+  await service.enqueueAppointmentNotification(db as never, 'CONFIRMATION', { ...appointment, id: 'c', service: { ...appointment.service, isPatchTest: true }, consultationCreditPence: 0 } as never);
+  await service.enqueueAppointmentNotification(db as never, 'CONFIRMATION', { ...appointment, id: 'd' } as never);
+  const [credited, consultation, patchTest, plain] = payloads.map((payload) => JSON.parse(payload).appointment);
+  assert.equal(credited.consultationCreditPence, 1500);
+  assert.equal(credited.isConsultation, false);
+  assert.equal(consultation.isConsultation, true);
+  assert.equal(consultation.consultationCreditPence, null);
+  assert.equal(patchTest.isConsultation, true, 'a patch test is a consultation here too');
+  assert.equal(patchTest.consultationCreditPence, null, 'a zero credit is no credit');
+  assert.equal(plain.consultationCreditPence, null);
+  assert.equal(plain.isConsultation, false);
+});
+
+test('a snapshot queued before credit existed is prepared with neither field', async () => {
+  const f = fixture({ unprepared: true });
+  const payload = JSON.parse(f.row.payloadJson);
+  payload.appointment = {
+    schema: 3, id: 'a', date: '2026-09-12T12:00:00.000Z', notes: null, user: { name: 'Customer', email: 'customer@example.com' },
+    stylist: { name: 'Stylist' }, service: { name: 'Cut', duration: 60 }, price: { known: false }, deposit: null,
+  };
+  f.row.payloadJson = JSON.stringify(payload);
+  const prepared: Record<string, unknown>[] = [];
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+    '@/app/lib/prisma': f.db,
+    './email-service': {
+      prepareAppointmentEmail: async (_kind: string, appointment: Record<string, unknown>) => { prepared.push(appointment); return { from: 'f', to: 'customer@example.com', subject: 's', html: 'h' }; },
+      sendPreparedEmail: async () => undefined,
+    },
+  });
+  await service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+  assert.equal(f.row.status, 'SENT');
+  assert.ok(!('consultationCreditPence' in prepared[0]) && !('isConsultation' in prepared[0]));
+});

@@ -43,10 +43,10 @@ test('the rest carries the price’s own fine print when it is not exact', () =>
   };
   assert.equal(rest('en-GB', { vatDisplay: 'UNSPECIFIED', priceNature: 'LISTED' }), '£37.50', 'an exact price: no fine print');
   assert.equal(rest('en-GB', {}), '£37.50');
-  assert.equal(rest('en-GB', { priceNature: 'SUBJECT_TO_CONSULTATION' }), '£37.50May change after your consultation');
+  assert.equal(rest('en-GB', { priceNature: 'SUBJECT_TO_CONSULTATION' }), '£37.50Final price confirmed at your consultation');
   assert.equal(rest('en-GB', { vatDisplay: 'EXCLUDED' }), '£37.50VAT excluded');
-  assert.equal(rest('en-GB', { vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION' }), '£37.50VAT excluded · May change after your consultation');
-  assert.equal(rest('zh-HK', { vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION' }), '£37.50未含 VAT · 或會於諮詢後調整');
+  assert.equal(rest('en-GB', { vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION' }), '£37.50VAT excluded · Final price confirmed at your consultation');
+  assert.equal(rest('zh-HK', { vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION' }), '£37.50未含 VAT · 最終價錢於諮詢時確定');
 });
 
 const DISCLOSURE = {

@@ -51,6 +51,9 @@ const appointments: Localized<Messages['appointments']> = {
     calendarAfterConfirmation: '預約確認後，即可將其加入你的日曆。',
     confirmCancelRefund: '確定要取消此預約嗎？你的 {amount} 訂金會全數退還。',
     confirmWithdrawRelease: '確定要撤回此預約要求嗎？你信用卡上 {amount} 的預留款項會被解除。',
+    consultationCredit: '諮詢費抵扣：−{amount}',
+    toPayInSalon: '到店繳付：{amount}',
+    toPayInSalonWithNotes: '到店繳付：{amount}（{notes}）',
   },
   deposit: {
     HELD: '訂金：已在你的信用卡預留 {amount}，尚未扣款。只有在本店確認預約後才會扣款。',

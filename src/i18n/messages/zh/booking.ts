@@ -47,7 +47,8 @@ const booking: Localized<Messages['booking']> = {
     notBookable: '此選項暫時未能於網上預約，請致電本店。',
   },
   gate: {
-    byConsultation: '此服務須先諮詢。我們會為你預約{fee}諮詢，商討後再為你安排服務。',
+    byConsultation: '此服務需要先預約 {fee} 諮詢。如你在 {months} 個月內進行療程，{fee} 會在療程價錢中扣除。',
+    byConsultationFree: '此服務須先諮詢。我們會為你預約{fee}諮詢，商討後再為你安排服務。',
     freeFee: '免費',
     consultationOnly: '此服務只接受諮詢後安排，請聯絡本店。',
     bookConsultation: '預約諮詢',
@@ -103,7 +104,7 @@ const booking: Localized<Messages['booking']> = {
     now: '訂金（本店確認後才收取）',
     rest: '餘款（於店內支付）',
     restVatExcluded: '未含 VAT',
-    restMayChange: '或會於諮詢後調整',
+    restMayChange: '最終價錢於諮詢時確定',
     payNothingNow: '你現在毋須付款。我們會先在你的信用卡預留款項，只有在本店確認你的預約後，才會收取 {amount} 訂金；如本店拒絕或未有確認你的申請，預留款項會被解除。',
     refund: '於預約前最少 24 小時取消可獲全數退款。',
     lateOrNoShow: '如你缺席預約，或遲到超過 {minutes} 分鐘而沒有通知本店，本店會保留訂金；如你在預約前不足 24 小時取消，本店可能會保留訂金。',

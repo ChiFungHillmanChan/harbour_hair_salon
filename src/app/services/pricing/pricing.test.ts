@@ -1,15 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { formatGBP, parsePoundsInput, penceToDecimalString, toPence } from './money';
 import { buildQuote, parseQuote, QuoteIntegrityError, quoteMatches, serializeQuote, type QuotableService } from './quote';
 import { recordedPrice } from './recorded-price';
-import { DISCOUNTS_PAUSED, menuItemDescription } from './policy';
+import { DISCOUNTS_PAUSED, effectivePriceNature, menuItemDescription } from './policy';
 import { OFFERINGS, RETIRE_UNVERIFIED_NHS, DELIBERATELY_UNCHANGED } from '../../../../prisma/price-catalog/treatwell-2026-09-28';
 
 const service = (overrides: Partial<QuotableService> = {}): QuotableService => ({
   id: 'svc', price: '157.000000000000000000000000000000', duration: 150, offeringId: 'off', hairLength: 'LONG', priceType: 'STANDARD',
   priceVersion: 3, vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION', durationConfirmed: true,
-  surchargeBaseServiceId: null, surchargeAmount: null, priceSource: 'treatwell:2026-09-28', ...overrides,
+  surchargeBaseServiceId: null, surchargeAmount: null, priceSource: 'treatwell:2026-09-28', requiresConsultation: false, ...overrides,
 });
 
 test('money converts Decimal strings exactly, never through a float', () => {
@@ -160,4 +161,52 @@ test('a menu item never borrows one option\'s length-specific description', () =
   assert.equal(menuItemDescription(null, [{ description: 'Single option.' }]), 'Single option.');
   assert.equal(menuItemDescription(null, [{ description: null }, { description: '' }]), null);
   assert.equal(menuItemDescription(null, []), null);
+});
+
+test('a consultation-required service always reads as subject to consultation, whatever its row stores', () => {
+  for (const [requiresConsultation, priceNature, expected] of [
+    [true, 'LISTED', 'SUBJECT_TO_CONSULTATION'],
+    [true, 'SUBJECT_TO_CONSULTATION', 'SUBJECT_TO_CONSULTATION'],
+    [false, 'LISTED', 'LISTED'],
+    [false, 'SUBJECT_TO_CONSULTATION', 'SUBJECT_TO_CONSULTATION'],
+  ] as const) {
+    assert.equal(effectivePriceNature({ requiresConsultation, priceNature }), expected, `${requiresConsultation} ${priceNature}`);
+  }
+});
+
+// Final review I2: the quote a booking records says what the customer is told.
+// Perms are stored LISTED but need a consultation, so their recorded price is a
+// starting point too — never a fixed "left to pay".
+test('a consultation-required service quotes subject to consultation, whatever its row stores', () => {
+  assert.equal(buildQuote(service({ requiresConsultation: true, priceNature: 'LISTED' })).priceNature, 'SUBJECT_TO_CONSULTATION');
+  assert.equal(buildQuote(service({ requiresConsultation: true, priceNature: 'SUBJECT_TO_CONSULTATION' })).priceNature, 'SUBJECT_TO_CONSULTATION');
+  // A service that needs no consultation keeps its stored nature, as before.
+  assert.equal(buildQuote(service({ requiresConsultation: false, priceNature: 'LISTED' })).priceNature, 'LISTED');
+  assert.equal(buildQuote(service({ requiresConsultation: false, priceNature: 'SUBJECT_TO_CONSULTATION' })).priceNature, 'SUBJECT_TO_CONSULTATION');
+  assert.equal(buildQuote(service({ requiresConsultation: false, priceNature: 'NONSENSE' })).priceNature, 'LISTED', 'an unknown value reads as listed');
+  // Nothing else about the quote changes.
+  const quote = buildQuote(service({ requiresConsultation: true, priceNature: 'LISTED' }));
+  assert.equal(quote.amountPence, 15700);
+  assert.deepEqual({ ...quote, priceNature: 'LISTED' }, buildQuote(service({ priceNature: 'LISTED' })));
+});
+
+// Final review M7 — production change A (2026-10-16): Styling (blow-dries) is
+// booked directly; chemical services keep their consultation. The repo's data
+// scripts must not put the gate back on a re-seed or a re-run.
+test('the price catalog gates Colouring and Perms behind a consultation, never Styling', () => {
+  for (const offering of OFFERINGS) {
+    if (offering.category === 'Styling') assert.equal(offering.flags.requiresConsultation, false, offering.key);
+    if (offering.category === 'Colouring' || offering.category === 'Perms') assert.equal(offering.flags.requiresConsultation, true, offering.key);
+  }
+  assert.ok(OFFERINGS.some((offering) => offering.category === 'Styling'));
+});
+
+test('the consultation backfill and the seed leave Styling bookable directly', () => {
+  const backfill = readFileSync('prisma/backfill-consultation-flags.ts', 'utf8');
+  const gated = backfill.match(/category: \{ in: \[([^\]]*)\] \}/);
+  assert.ok(gated, 'the backfill names the categories it gates');
+  assert.deepEqual(gated[1].split(',').map((name) => name.trim().replace(/'/g, '')), ['Colouring', 'Perms']);
+  const seed = readFileSync('prisma/seed.ts', 'utf8');
+  const heatSet = seed.split('\n').find((line) => line.includes("'Heat Set Add-on'"));
+  assert.ok(heatSet && !/requiresConsultation: true/.test(heatSet), heatSet);
 });

@@ -34,3 +34,20 @@ export function resolveConsultationTarget<T extends RoutableService>(
   if (!target) return null;
   return { target, fee: target.price };
 }
+
+/**
+ * What each consultation-required service's customer pays for the consultation
+ * first (pence), by service id, from the same routing the booking wizard uses.
+ * Services that need no consultation, or have no consultation to route to, are
+ * absent. The services pages show the credit promise with this amount.
+ */
+export function consultationFeeByServiceId<T extends RoutableService & { amountPence: number }>(
+  all: readonly T[],
+): Record<string, number> {
+  const fees: Record<string, number> = {};
+  for (const service of all) {
+    const routed = resolveConsultationTarget(service, [...all]);
+    if (routed) fees[service.id] = routed.target.amountPence;
+  }
+  return fees;
+}

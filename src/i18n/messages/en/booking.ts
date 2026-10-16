@@ -47,7 +47,10 @@ const booking = {
     notBookable: 'This option cannot be booked online yet — please call the salon.',
   },
   gate: {
-    byConsultation: 'This service is by consultation. We\'ll book you a {fee} consultation to discuss it, then arrange the service with you.',
+    /** {fee}: the consultation's price; {months}: CONSULTATION_CREDIT_MONTHS. The fee is credited against the treatment. */
+    byConsultation: 'This service needs a {fee} consultation first. If you go ahead with the treatment within {months} months, the {fee} is taken off its price.',
+    /** A consultation with no fee (nothing to credit): {fee} reads "free". */
+    byConsultationFree: 'This service is by consultation. We\'ll book you a {fee} consultation to discuss it, then arrange the service with you.',
     freeFee: 'free',
     consultationOnly: 'This service is by consultation only. Please contact the salon to arrange it.',
     bookConsultation: 'Book a Consultation',
@@ -107,7 +110,7 @@ const booking = {
     rest: 'Pay the rest in the salon',
     /** Fine print under the rest, as the price carries it (pricing.vatExcluded / subjectToConsultation). */
     restVatExcluded: 'VAT excluded',
-    restMayChange: 'May change after your consultation',
+    restMayChange: 'Final price confirmed at your consultation',
     /**
      * What the customer agrees to, shown before the card form (Consumer
      * Contracts Regulations 2013): nothing is paid now, when the deposit is

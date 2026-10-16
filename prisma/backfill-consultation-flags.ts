@@ -31,11 +31,12 @@ async function main() {
     });
   }
 
-  // 2) Gate every Colouring / Perms / Styling service. Exclude the consultation
-  //    targets themselves (isPatchTest / isConsultation) so they stay bookable.
+  // 2) Gate every Colouring / Perms service. Exclude the consultation targets
+  //    themselves (isPatchTest / isConsultation) so they stay bookable. Styling
+  //    (blow-dries) is booked directly since 2026-10-16 (owner): never gated here.
   const gated = await prisma.service.updateMany({
     where: {
-      category: { in: ['Colouring', 'Perms', 'Styling'] },
+      category: { in: ['Colouring', 'Perms'] },
       isPatchTest: false,
       isConsultation: false,
     },

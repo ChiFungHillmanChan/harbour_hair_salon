@@ -465,7 +465,7 @@ type AppointmentStatus = (typeof ALLOWED_APPOINTMENT_STATUSES)[number];
 const statusInclude = {
   user: { select: { email: true, name: true } },
   stylist: { select: { name: true, treatwellExternalId: true } },
-  service: { select: { name: true, price: true, duration: true, treatwellExternalId: true } },
+  service: { select: { name: true, price: true, duration: true, treatwellExternalId: true, isConsultation: true, isPatchTest: true } },
 } as const;
 type StatusAppointment = Prisma.AppointmentGetPayload<{ include: typeof statusInclude }>;
 
@@ -799,7 +799,7 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
   const include = {
     user: { select: { email: true, name: true, phone: true } },
     stylist: { select: { name: true, treatwellExternalId: true } },
-    service: { select: { id: true, name: true, price: true, duration: true, treatwellExternalId: true, requiresPatchTest: true } },
+    service: { select: { id: true, name: true, price: true, duration: true, treatwellExternalId: true, requiresPatchTest: true, isConsultation: true, isPatchTest: true } },
   } as const;
   try {
     if (decision === 'APPROVE') {

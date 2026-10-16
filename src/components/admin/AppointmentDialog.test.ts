@@ -23,7 +23,7 @@ function text(node: unknown): string {
 
 function service(id: string, name: string, amountPence: number, extra: Partial<DialogService> = {}): DialogService {
   return {
-    id, name, duration: 45, category: 'Styling', requiresPatchTest: false, amountPence, priceVersion: 1,
+    id, name, duration: 45, category: 'Styling', requiresPatchTest: false, requiresConsultation: false, amountPence, priceVersion: 1,
     priceType: 'STANDARD', hairLength: null, vatDisplay: 'EXCLUDED', priceNature: 'LISTED', isBookable: true, offeringId: null, ...extra,
   };
 }
@@ -39,14 +39,20 @@ const SERVICES = [
 const Recheck = () => null;
 /** "Mark refund as settled outside the website" (DepositSettleRefundButton.tsx has its own test). */
 const SettleOutside = () => null;
+/** The consultation credit offer (ConsultationCreditOption.tsx has its own test). */
+const CreditOption = () => null;
 
 /** Renders the dialog with an in-memory draft store, so a re-render sees every update. */
 function dialog(
   target: DialogTarget,
   actions: Record<string, (input: Record<string, unknown>) => Promise<unknown>>,
+  services: DialogService[] = SERVICES,
+  /** What useConsultationCreditPreview answers for a lookup (its own test covers the asking). */
+  creditPreview: (lookup: unknown) => unknown = (lookup) => (lookup ? { state: 'checking' } : { state: 'idle' }),
   /** markArrived (actions/admin-arrivals.ts): answers, or rejects. */
   markArrived: (id: string, arrived: boolean) => Promise<unknown> = async () => ({ success: true }),
 ) {
+  const lookups: unknown[] = [];
   const store = new Map<string, unknown>();
   const calls: Record<string, unknown>[] = [];
   const statusCalls: unknown[][] = [];
@@ -63,6 +69,10 @@ function dialog(
     './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     './DepositRecheckButton': { DepositRecheckButton: Recheck },
     './DepositSettleRefundButton': { DepositSettleRefundButton: SettleOutside },
+    './ConsultationCreditOption': {
+      ConsultationCreditOption: CreditOption,
+      useConsultationCreditPreview: (lookup: unknown) => { lookups.push(lookup); return creditPreview(lookup); },
+    },
     '@/i18n/draft-store': {
       clearDraft: (key: string) => store.delete(key),
       useDraftState: (key: string, initial: unknown) => {
@@ -83,7 +93,7 @@ function dialog(
     },
   });
   const render = () => elements(AppointmentDialog({
-    target, services: SERVICES, stylists: [{ id: 's1', name: 'Ivan' }], onClose: () => undefined,
+    target, services, stylists: [{ id: 's1', name: 'Ivan' }], onClose: () => undefined,
     onSaved: () => { events.saved++; }, onRefresh: () => { events.refreshed++; },
   }));
   /** Edit the open draft the way the dialog's own controls would (e.g. picking a search result). */
@@ -91,7 +101,7 @@ function dialog(
     const key = `schedule-dialog:${target.mode === 'edit' ? target.appointmentId : 'new'}`;
     store.set(key, { ...(store.get(key) as Record<string, unknown>), ...patch });
   };
-  return { render, calls, patchDraft, statusCalls, arrivalCalls, stateSets, events };
+  return { render, calls, patchDraft, statusCalls, lookups, arrivalCalls, stateSets, events };
 }
 
 const submitButton = (nodes: Element[]) => nodes.filter((node) => node.type === 'button').at(-1)!;
@@ -344,15 +354,169 @@ test('clearing an arrival past the 15-minute mark asks first; declining changes 
 });
 
 test('a failed arrival request shows an error and refreshes the board, never throws', async () => {
-  const rejected = dialog(arrivalTarget(20, null), {}, async () => { throw new Error('network down'); });
+  const rejected = dialog(arrivalTarget(20, null), {}, SERVICES, undefined, async () => { throw new Error('network down'); });
   await pressArrival(rejected.render(), 'Arrived');
   assert.ok(rejected.stateSets.includes('Failed to update'), 'the generic error is shown');
   assert.deepEqual([rejected.events.saved, rejected.events.refreshed], [0, 1]);
   assert.equal(rejected.stateSets.at(-1), false, 'the dialog is usable again');
 
   // A refusal still shows the server's own text.
-  const refused = dialog(arrivalTarget(20, null), {}, async () => ({ success: false, error: 'This appointment has changed. Please refresh and try again.' }));
+  const refused = dialog(arrivalTarget(20, null), {}, SERVICES, undefined, async () => ({ success: false, error: 'This appointment has changed. Please refresh and try again.' }));
   await pressArrival(refused.render(), 'Arrived');
   assert.ok(refused.stateSets.includes('This appointment has changed. Please refresh and try again.'));
   assert.equal(refused.events.refreshed, 1);
+});
+
+// Consultation credit (spec 2026-10-16 §2.3): for a consultation-required
+// service the dialog offers the credit the server finds, and sends the box only
+// once it was shown for the current customer, service and time.
+const COLOUR = service('colour', 'Full Colour', 8000, { category: 'Colour', requiresConsultation: true });
+const WITH_COLOUR = [...SERVICES, COLOUR];
+const creditOption = (nodes: Element[]) => nodes.find((node) => node.type === CreditOption);
+const choose = (nodes: Element[], serviceId: string) =>
+  (nodes.find((node) => node.props.id === 'appt-service')!.props.onChange as (event: unknown) => void)({ target: { value: serviceId } });
+const refused = async () => ({ success: false, error: 'Kept open' });
+const save = async (nodes: Element[]) => (submitButton(nodes).props.onClick as () => Promise<void>)();
+const sent = (call: Record<string, unknown>) => ('applyConsultationCredit' in call ? call.applyConsultationCredit : 'omitted');
+const toggle = (nodes: Element[], apply: boolean) => (creditOption(nodes)!.props.onApplyChange as (apply: boolean) => void)(apply);
+
+const CHECKING = { state: 'checking' };
+const FAILED = { state: 'failed' };
+const AVAILABLE = { state: 'answered', preview: { available: true, amountPence: 1500, consultationDate: '2099-10-01T09:00:00.000Z' } };
+const NONE_LEFT = { state: 'answered', preview: { available: false } };
+
+test('a new booking offers the picked customer\'s credit, ticked, and sends the box only once it was shown', async () => {
+  let answer: unknown = CHECKING;
+  const { render, calls, patchDraft, lookups } = dialog({ mode: 'create', dateStr: '2099-10-15', time: '11:00' }, { create: refused }, WITH_COLOUR, () => answer);
+  render();
+  patchDraft({ picked: { ...MEI, preferredLocale: 'en-GB' } });
+  let nodes = render();
+  assert.equal(creditOption(nodes), undefined, 'a service that needs no consultation takes no credit');
+  assert.equal(lookups.at(-1), null);
+  await save(nodes);
+  assert.equal(sent(calls[0]), 'omitted');
+
+  choose(nodes, 'colour');
+  nodes = render();
+  assert.deepEqual(lookups.at(-1), { customerId: 'user-9', serviceId: 'colour', dateStr: '2099-10-15', time: '11:00' });
+  assert.deepEqual(creditOption(nodes)!.props.preview, CHECKING);
+  await save(nodes);
+  assert.equal(sent(calls[1]), 'omitted', 'saved before the preview answered: no credit nobody saw');
+
+  answer = AVAILABLE;
+  nodes = render();
+  assert.equal(creditOption(nodes)!.props.apply, true, 'ticked by default');
+  await save(nodes);
+  assert.equal(sent(calls[2]), true);
+
+  toggle(nodes, false);
+  nodes = render();
+  assert.equal(creditOption(nodes)!.props.apply, false);
+  await save(nodes);
+  assert.equal(sent(calls[3]), false);
+
+  // Another time is another question: the box starts ticked again.
+  (nodes.find((node) => node.props.id === 'appt-time')!.props.onChange as (event: unknown) => void)({ target: { value: '15:00' } });
+  nodes = render();
+  assert.equal(creditOption(nodes)!.props.apply, true);
+
+  answer = FAILED;
+  nodes = render();
+  await save(nodes);
+  assert.equal(sent(calls[4]), 'omitted', 'a preview that failed changes nothing');
+});
+
+test('a new customer is asked about by the email typed for them, and not at all without one', () => {
+  const { render, patchDraft, lookups } = dialog({ mode: 'create', dateStr: '2099-10-15', time: '11:00' }, { create: refused }, WITH_COLOUR);
+  render();
+  patchDraft({ serviceId: 'colour', customerQuery: 'Mei', name: 'Mei' });
+  render();
+  assert.equal(lookups.at(-1), null);
+  patchDraft({ email: 'mei@exam' });
+  render();
+  assert.equal(lookups.at(-1), null, 'not until it looks like an address');
+  patchDraft({ email: ' mei@example.test ' });
+  render();
+  assert.deepEqual(lookups.at(-1), { email: 'mei@example.test', serviceId: 'colour', dateStr: '2099-10-15', time: '11:00' });
+});
+
+const RECORDED = { amountPence: 1500, consultationDate: '2099-10-01T09:00:00.000Z' };
+const colourBooking = (consultationCredit: typeof RECORDED | null): DialogTarget => ({
+  mode: 'edit', appointmentId: 'appt-1', dateStr: '2099-10-15', time: '11:00', stylistId: 's1', serviceId: 'colour',
+  durationMin: 45, notes: '', customerName: 'Mei', status: 'CONFIRMED', updatedAt: '2099-09-01T00:00:00.000Z',
+  price: { known: true, amountPence: 8000, priceType: 'STANDARD', vatDisplay: 'EXCLUDED', priceNature: 'LISTED' },
+  date: '2099-10-15T10:00:00.000Z', rescheduleRequestedDate: null, rescheduleRequestedAt: null, consultationCredit,
+});
+
+test('editing a booking with a recorded credit keeps it unless the box or the server says otherwise', async () => {
+  let answer: unknown = CHECKING;
+  const { render, calls, lookups } = dialog(colourBooking(RECORDED), { edit: refused }, WITH_COLOUR, () => answer);
+  let nodes = render();
+  assert.deepEqual(lookups.at(-1), { appointmentId: 'appt-1', serviceId: 'colour', dateStr: '2099-10-15', time: '11:00' });
+  assert.deepEqual(creditOption(nodes)!.props.recorded, RECORDED);
+  assert.equal(creditOption(nodes)!.props.apply, true, 'starts as the booking stands');
+  await save(nodes);
+  assert.equal(sent(calls[0]), 'omitted', 'saved before the preview answered: the recorded credit stays');
+
+  answer = AVAILABLE;
+  await save(render());
+  assert.equal(sent(calls[1]), true, 'shown and ticked: re-checked');
+
+  answer = NONE_LEFT;
+  await save(render());
+  assert.equal(sent(calls[2]), false, '"saving removes it" was shown');
+
+  answer = FAILED;
+  await save(render());
+  assert.equal(sent(calls[3]), 'omitted');
+
+  nodes = render();
+  choose(nodes, 'blow-dry');
+  nodes = render();
+  assert.equal(creditOption(nodes), undefined);
+  assert.match(text(nodes), /This service needs no consultation, so saving removes the £15\.00 consultation credit\./);
+  await save(nodes);
+  assert.equal(sent(calls[4]), 'omitted', 'the service change clears it on the server');
+});
+
+test('editing a booking without a credit never adds an available one unless staff tick the box', async () => {
+  const { render, calls } = dialog(colourBooking(null), { edit: refused }, WITH_COLOUR, () => AVAILABLE);
+  let nodes = render();
+  assert.equal(creditOption(nodes)!.props.apply, false, 'starts unticked');
+  await save(nodes);
+  assert.equal(sent(calls[0]), false, 'a notes or stylist edit gets no credit');
+
+  toggle(nodes, true);
+  nodes = render();
+  await save(nodes);
+  assert.equal(sent(calls[1]), true);
+});
+
+// Final review M1: Save waits for the credit answer, so staff never save a
+// consultation-required booking before seeing whether a credit applies.
+test('Save is disabled while the consultation credit is being checked, and only then', () => {
+  let answer: unknown = CHECKING;
+  const { render, patchDraft } = dialog({ mode: 'create', dateStr: '2099-10-15', time: '11:00' }, { create: refused }, WITH_COLOUR, () => answer);
+  render();
+  patchDraft({ picked: { ...MEI, preferredLocale: 'en-GB' } });
+  let nodes = render();
+  assert.equal(submitButton(nodes).props.disabled, false, 'a service that needs no consultation: nothing to wait for');
+
+  choose(nodes, 'colour');
+  nodes = render();
+  assert.equal(submitButton(nodes).props.disabled, true, 'checking');
+  for (const settled of [AVAILABLE, NONE_LEFT, FAILED]) {
+    answer = settled;
+    assert.equal(submitButton(render()).props.disabled, false, JSON.stringify(settled));
+  }
+
+  // No customer yet: nothing is being checked, so nothing to wait for.
+  const fresh = dialog({ mode: 'create', dateStr: '2099-10-15', time: '11:00' }, { create: refused }, WITH_COLOUR, (lookup) => (lookup ? CHECKING : { state: 'idle' }));
+  fresh.render();
+  fresh.patchDraft({ serviceId: 'colour' });
+  assert.equal(submitButton(fresh.render()).props.disabled, false);
+
+  // Editing waits too.
+  const edit = dialog(colourBooking(RECORDED), { edit: refused }, WITH_COLOUR, () => CHECKING);
+  assert.equal(submitButton(edit.render()).props.disabled, true);
 });

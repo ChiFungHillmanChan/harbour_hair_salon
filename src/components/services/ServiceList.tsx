@@ -7,12 +7,15 @@ import { useDraftState } from '@/i18n/draft-store';
 import type { PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { standardPriceRange } from '@/app/services/pricing/public-catalog';
 import { menuItemDescription } from '@/app/services/pricing/policy';
+import { requiresEligibilityProof } from '@/app/services/pricing/eligibility';
 import { OfferingPrices } from '@/components/pricing/OfferingPrices';
-import { Duration, PriceFinePrint, useCategoryLabel, useFormatPrice } from '@/components/pricing/PriceParts';
+import { ConsultationCreditNote, Duration, PriceFinePrint, useCategoryLabel, useFormatPrice, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
 interface ServiceListProps {
   categories: { category: string; entries: PriceListEntry[] }[];
   categorySlugs?: Record<string, string>;
+  /** Each consultation-required service's consultation price in pence, by service id (consultationFeeByServiceId). */
+  consultationFees?: Record<string, number>;
 }
 
 type IconProps = { className?: string };
@@ -65,10 +68,11 @@ const CategoryIcon = ({ category, className }: { category: string; className?: s
 
 const entryServices = (entry: PriceListEntry) => (entry.kind === 'offering' ? entry.options : [entry.service]);
 
-export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
+export function ServiceList({ categories, categorySlugs, consultationFees }: ServiceListProps) {
   const t = useT('services');
   const tp = useT('pricing');
   const formatPrice = useFormatPrice();
+  const formatServicePrice = useFormatServicePrice();
   const categoryLabel = useCategoryLabel();
   // The open tab survives a language switch (in memory only).
   const [activeCategory, setActiveCategory] = useDraftState<string>('services-list:tab', categories[0]?.category ?? '');
@@ -76,14 +80,22 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
   const activeSlug = active ? categorySlugs?.[active.category] : undefined;
 
   // "From" ranges quote STANDARD prices only: an NHS price is not a price
-  // everyone can book, so it never becomes the advertised minimum.
+  // everyone can book, so it never becomes the advertised minimum. A category
+  // made only of consultation-required services has no upper bound to show:
+  // each of its prices is a starting point (effectivePriceNature).
   const rangeByCategory = useMemo(() => {
-    const map: Record<string, { min: number; max: number } | null> = {};
-    for (const group of categories) map[group.category] = standardPriceRange(group.entries.flatMap(entryServices));
+    const map: Record<string, { min: number; max: number; fromOnly: boolean } | null> = {};
+    for (const group of categories) {
+      const services = group.entries.flatMap(entryServices);
+      const range = standardPriceRange(services);
+      map[group.category] = range && { ...range, fromOnly: services.every((service) => service.requiresConsultation) };
+    }
     return map;
   }, [categories]);
 
   if (!active) return null;
+  // Said once, under the price list, when any listed option is an NHS/student price.
+  const hasEligibilityPrice = categories.some((group) => group.entries.flatMap(entryServices).some(requiresEligibilityProof));
   const activeRange = rangeByCategory[active.category];
 
   return (
@@ -154,7 +166,7 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
               {tp('from')}
             </p>
             <p className="text-2xl font-serif text-zinc-900">
-              {activeRange.min === activeRange.max
+              {activeRange.min === activeRange.max || activeRange.fromOnly
                 ? formatPrice(activeRange.min)
                 : tp('range', { min: formatPrice(activeRange.min), max: formatPrice(activeRange.max) })}
             </p>
@@ -187,6 +199,10 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
           const translated = entry.kind === 'offering' ? entry.offering.translated : entry.service.translated;
           const description = entry.kind === 'offering' ? menuItemDescription(entry.offering.description, entry.options) : entry.service.description;
           const note = entry.kind === 'offering' ? entry.options.find((o) => o.priceNote)?.priceNote : entry.service.priceNote;
+          // The consultation's own price, when this item needs a consultation first.
+          const creditFee = entry.kind === 'offering'
+            ? entryServices(entry).map((option) => consultationFees?.[option.id]).find((fee) => fee !== undefined)
+            : consultationFees?.[entry.service.id];
           return (
             <article
               key={key}
@@ -206,7 +222,7 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
                 {entry.kind === 'single' && (
                   <div className="text-right whitespace-nowrap flex-shrink-0">
                     <span className="text-2xl font-serif font-semibold text-zinc-900 tabular-nums">
-                      {formatPrice(entry.service.amountPence)}
+                      {formatServicePrice(entry.service)}
                     </span>
                     <PriceFinePrint service={entry.service} showNhs />
                   </div>
@@ -218,10 +234,12 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
                   {description}
                 </p>
               )}
+              {entry.kind === 'single' && <ConsultationCreditNote feePence={creditFee} className="mb-3" />}
 
               {entry.kind === 'offering' ? (
                 <div className="mt-auto pt-3 border-t border-dashed border-zinc-200">
                   <OfferingPrices options={entry.options} />
+                  <ConsultationCreditNote feePence={creditFee} className="mt-2" />
                   {note && <p className="mt-2 text-xs text-zinc-500">{note}</p>}
                 </div>
               ) : (
@@ -242,6 +260,7 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
       </div>
 
       <p className="mt-10 text-center text-xs text-zinc-500">{t('list.nhsNote')}</p>
+      {hasEligibilityPrice && <p className="mt-2 text-center text-xs text-zinc-500">{tp('eligibilityProof')}</p>}
     </div>
   );
 }

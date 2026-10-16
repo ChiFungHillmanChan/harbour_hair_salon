@@ -17,6 +17,14 @@
  * needs rules for how they combine with NHS prices, which do not exist yet.
  */
 export const DISCOUNTS_PAUSED = true as const;
+// BEFORE unpausing:
+// - the offer items on /booking-terms and /offers (legal.bookingTerms.offers)
+//   must be enforced in code, not just stated: one discount code per booking,
+//   never combined with NHS/student prices or another offer, no cash value (it
+//   applies to the listed price);
+// - the booking wizard's discount-code field must show a one-line summary of
+//   those terms linking to /booking-terms (spec 2026-10-16 §5, E2). The wizard
+//   has no code field while this is true, so the summary is built with it.
 
 export const PRICE_TYPES = ['STANDARD', 'NHS'] as const;
 export type PriceType = (typeof PRICE_TYPES)[number];
@@ -43,6 +51,16 @@ export type PriceNature = (typeof PRICE_NATURES)[number];
 
 const oneOf = <T extends string>(values: readonly T[]) => (value: unknown): value is T =>
   typeof value === 'string' && (values as readonly string[]).includes(value);
+
+/**
+ * A consultation-required service's price is a starting point: the stylist
+ * confirms the final price at the consultation (owner, 2026-10-16). The rule
+ * lives here, not in each service row, so a service switched to "consultation
+ * required" reads right everywhere at once.
+ */
+export function effectivePriceNature(service: { requiresConsultation: boolean; priceNature: string }): PriceNature {
+  return service.requiresConsultation ? 'SUBJECT_TO_CONSULTATION' : (service.priceNature as PriceNature);
+}
 
 export const isPriceType = oneOf(PRICE_TYPES);
 export const isHairLength = oneOf(HAIR_LENGTHS);

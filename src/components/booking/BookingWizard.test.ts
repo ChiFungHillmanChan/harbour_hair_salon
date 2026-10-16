@@ -24,7 +24,7 @@ const STYLIST = { id: 'lox', name: 'Lox', role: 'Stylist', imageUrl: null, trans
  * (keyed like `booking-wizard:<name>`, by <name>) and every draft setter call
  * is recorded. Effects never run, so nothing is fetched.
  */
-function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unknown) => Promise<unknown> = async () => ({ success: true })) {
+function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unknown) => Promise<unknown> = async () => ({ success: true }), extraProps: Record<string, unknown> = {}) {
   const sets: Record<string, unknown[]> = {};
   const initial = (value: unknown) => (typeof value === 'function' ? (value as () => unknown)() : value);
   const wizard = loadServerModule<typeof import('./BookingWizard')>('src/components/booking/BookingWizard.tsx', {
@@ -52,9 +52,10 @@ function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unkno
     '@/components/pricing/PriceParts': {
       Duration: () => null, OptionLabel: () => null, PriceFinePrint: () => null, SurchargeBreakdown: () => null,
       useCategoryLabel: () => (category: string) => category, useFormatPrice: () => (pence: number) => `£${(pence / 100).toFixed(2)}`,
+      useFormatServicePrice: () => (service: { amountPence: number }) => `£${(service.amountPence / 100).toFixed(2)}`,
     },
   });
-  const props = { services: [SERVICE], offerings: [], categories: [], stylists: [STYLIST], closedContact: { phone: '0113 496 0000', marketplaces: [] } };
+  const props = { services: [SERVICE], offerings: [], categories: [], stylists: [STYLIST], closedContact: { phone: '0113 496 0000', marketplaces: [] }, ...extraProps };
   return { render: () => wizard.BookingWizard(props as never), sets };
 }
 
@@ -199,6 +200,7 @@ function mountWizard(options: { draft: Record<string, unknown>; preview?: unknow
     '@/components/pricing/PriceParts': {
       Duration: () => null, OptionLabel: () => null, PriceFinePrint: () => null, SurchargeBreakdown: () => null,
       useCategoryLabel: () => (category: string) => category, useFormatPrice: () => (pence: number) => `£${(pence / 100).toFixed(2)}`,
+      useFormatServicePrice: () => (service: { amountPence: number }) => `£${(service.amountPence / 100).toFixed(2)}`,
     },
   });
   const props = {
@@ -441,4 +443,49 @@ test('the taken-time notice exists in both languages', () => {
     assert.ok(t('date.timeTaken', { time: '11:00', date: 'x' }).includes('11:00'), locale);
     assert.ok(t('date.timeTakenCard').length > 0, locale);
   }
+});
+
+const ELIGIBILITY = {
+  'en-GB': 'NHS and student prices: please bring a valid NHS staff ID or student card to your appointment. Without one, the standard price applies.',
+  'zh-HK': 'NHS 及學生價：到店時請出示有效的 NHS 員工證或學生證，否則按標準價收費。',
+};
+
+test('the option chooser says what NHS and student prices need only when an NHS option is listed', () => {
+  const option = (id: string, priceType: string) => ({ ...SERVICE, id, name: 'Colour', offeringId: 'offering-1', hairLength: 'LONG', priceType });
+  const offering = { id: 'offering-1', key: 'colour', category: 'Colouring', name: 'Colour', description: null, translated: true, displayOrder: 0, searchText: 'colour' };
+  const chooser = (options: ReturnType<typeof option>[]) => {
+    const props = { services: options, offerings: [offering], categories: [{ category: 'Colouring', entries: [{ kind: 'offering', offering, options }] }] };
+    return words(elements(loadWizard({ offering: 'offering-1', category: 'Colouring' }, undefined, props).render()));
+  };
+  const withNhs = chooser([option('s', 'STANDARD'), option('n', 'NHS')]);
+  assert.ok(withNhs.includes(ELIGIBILITY['en-GB']), 'an NHS option is listed');
+  assert.ok(!chooser([option('s', 'STANDARD')]).includes(ELIGIBILITY['en-GB']), 'standard options only');
+  assert.equal(translator('zh-HK', 'pricing')('eligibilityProof'), ELIGIBILITY['zh-HK']);
+});
+
+test('the confirm step repeats what an NHS price needs, and says nothing for a standard price', () => {
+  const confirm = { step: 'CONFIRM', service: 'service-1', stylist: 'lox', day: '2026-10-06', time: '11:00' };
+  const at = (priceType: string) => words(elements(loadWizard(confirm, undefined, { services: [{ ...SERVICE, priceType }] }).render()));
+  assert.ok(at('NHS').includes(ELIGIBILITY['en-GB']));
+  assert.ok(!at('STANDARD').includes(ELIGIBILITY['en-GB']));
+});
+
+// The consultation gate says the consultation's fee comes off the treatment's
+// price (spec §2.4); a free consultation has nothing to credit.
+test('the consultation gate promises the credit with the consultation’s own price, and says nothing of credit when it is free', () => {
+  const treatment = { ...SERVICE, id: 'colour', name: 'Colour', requiresConsultation: true };
+  const consultation = (amountPence: number) => ({ ...SERVICE, id: 'consult', name: 'Consultation', isConsultation: true, requiresConsultation: false, price: amountPence / 100, amountPence });
+  const gate = (amountPence: number) => {
+    const { render } = loadWizard({ gate: 'colour' }, undefined, { services: [{ ...treatment, price: 120 }, consultation(amountPence)] });
+    return words(elements(render()));
+  };
+  assert.ok(gate(1500).includes('This service needs a £15.00 consultation first. If you go ahead with the treatment within 6 months, the £15.00 is taken off its price.'), gate(1500));
+  assert.ok(gate(2500).includes('needs a £25.00 consultation first') && gate(2500).includes('the £25.00 is taken off'), 'the consultation’s actual price, never a literal £15');
+  const free = gate(0);
+  assert.ok(free.includes('We\'ll book you a free consultation to discuss it'), free);
+  assert.ok(!free.includes('taken off'));
+  // Chinese: written out in both languages, with the months and the fee filled in.
+  const zh = translator('zh-HK', 'booking');
+  assert.equal(zh('gate.byConsultation', { fee: '£15.00', months: 6 }), '此服務需要先預約 £15.00 諮詢。如你在 6 個月內進行療程，£15.00 會在療程價錢中扣除。');
+  assert.equal(zh('gate.byConsultationFree', { fee: zh('gate.freeFee') }), '此服務須先諮詢。我們會為你預約免費諮詢，商討後再為你安排服務。');
 });

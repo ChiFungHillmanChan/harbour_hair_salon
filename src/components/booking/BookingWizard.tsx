@@ -3,6 +3,7 @@
 import { Stylist } from '@prisma/client';
 import type { ClientPublicService } from '@/app/services/public-service-select';
 import type { ClientOffering, PriceListEntry } from '@/app/services/pricing/public-catalog';
+import { requiresEligibilityProof } from '@/app/services/pricing/eligibility';
 import { format, addDays, startOfToday } from 'date-fns';
 import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import Link from '@/i18n/link';
@@ -17,13 +18,13 @@ import { DepositCardForm } from './DepositCardForm';
 import { DepositRows, DepositTerms, PaymentUnavailableNotice } from './DepositSummary';
 import { depositVerificationDetails, SQUARE_TOKENIZE_TIMEOUT_MS, withTimeout, type DepositCard, type DepositPayer, type SquarePublicConfig } from './square-web-payments';
 import { afterDepositAnswer, PAYMENT_ANSWER_CODES, reusableSubmission, submissionFingerprint, type DepositSubmission } from './deposit-submission';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, meetsMinimumNotice } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, CONSULTATION_CREDIT_MONTHS, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, meetsMinimumNotice } from '@/app/lib/booking-constants';
 import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
 import { useDraftState, clearDraft } from '@/i18n/draft-store';
 import { formatCalendarDay } from '@/i18n/dates';
-import { Duration, OptionLabel, PriceFinePrint, SurchargeBreakdown, useCategoryLabel, useFormatPrice } from '@/components/pricing/PriceParts';
+import { Duration, OptionLabel, PriceFinePrint, SurchargeBreakdown, useCategoryLabel, useFormatPrice, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
 // Services reach the browser through the public select, so this type must
 // stay narrower than the full Service row (see app/services/public-service-select.ts).
@@ -68,6 +69,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
   const tc = useT('common');
   const locale = useLocale();
   const formatPrice = useFormatPrice();
+  const formatServicePrice = useFormatServicePrice();
   const categoryLabel = useCategoryLabel();
 
   // Everything the customer has chosen survives a language switch (in memory
@@ -536,7 +538,9 @@ export function BookingWizard({ services, offerings, categories, stylists, close
           </div>
           {standard.length > 0 && (
             <span className="font-serif text-lg text-zinc-900 font-medium whitespace-nowrap">
-              {Math.min(...standard) === Math.max(...standard)
+              {needsConsultation
+                ? tp('fromPrice', { price: formatPrice(Math.min(...standard)) })
+                : Math.min(...standard) === Math.max(...standard)
                 ? formatPrice(standard[0])
                 : tp('range', { min: formatPrice(Math.min(...standard)), max: formatPrice(Math.max(...standard)) })}
             </span>
@@ -575,7 +579,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                       </span>
                     </span>
                     <span className="text-right">
-                      <span className="block font-serif text-base text-zinc-900 tabular-nums">{formatPrice(option.amountPence)}</span>
+                      <span className="block font-serif text-base text-zinc-900 tabular-nums">{formatServicePrice(option)}</span>
                       <PriceFinePrint service={option} showNhs />
                       <SurchargeBreakdown option={option} base={base} />
                     </span>
@@ -583,6 +587,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                 );
               })}
             </div>
+            {options.some(requiresEligibilityProof) && <p className="mt-3 text-xs text-zinc-500">{tp('eligibilityProof')}</p>}
             <button
               type="button"
               disabled={!chosen || !isSelectable(chosen)}
@@ -626,7 +631,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
         </div>
       </div>
       <span className="text-right">
-        <span className="block font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">{formatPrice(service.amountPence)}</span>
+        <span className="block font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">{formatServicePrice(service)}</span>
         <PriceFinePrint service={service} showNhs />
       </span>
     </button>
@@ -651,7 +656,9 @@ export function BookingWizard({ services, offerings, categories, stylists, close
               {pendingGate.hasTarget ? (
                 <>
                   <p className="text-sm text-zinc-700">
-                    {t('gate.byConsultation', { fee: pendingGate.fee > 0 ? formatPrice(pendingGate.fee) : t('gate.freeFee') })}
+                    {pendingGate.fee > 0
+                      ? t('gate.byConsultation', { fee: formatPrice(pendingGate.fee), months: CONSULTATION_CREDIT_MONTHS })
+                      : t('gate.byConsultationFree', { fee: t('gate.freeFee') })}
                   </p>
                   <div className="mt-4 flex gap-3">
                     <button
@@ -935,6 +942,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                           {tp('nhsApplied')}
                         </span>
                       )}
+                      {requiresEligibilityProof(priceSource) && <span className="block mt-2 text-xs text-zinc-500">{tp('eligibilityProof')}</span>}
                       <PriceFinePrint service={priceSource} className="mt-1" />
                     </dd>
                   </div>

@@ -2,7 +2,7 @@
 
 import { useT } from '@/i18n/client';
 import type { ClientPublicService } from '@/app/services/public-service-select';
-import { Duration, OptionLabel, PriceFinePrint, SurchargeBreakdown, useFormatPrice } from './PriceParts';
+import { Duration, OptionLabel, PriceFinePrint, SurchargeBreakdown, useFormatServicePrice } from './PriceParts';
 
 type Row = { key: string; label: ClientPublicService; standard?: ClientPublicService; nhs?: ClientPublicService };
 
@@ -27,7 +27,7 @@ export function rowsFor(options: ClientPublicService[]): Row[] {
  */
 export function OfferingPrices({ options }: { options: ClientPublicService[] }) {
   const t = useT('pricing');
-  const format = useFormatPrice();
+  const format = useFormatServicePrice();
   const rows = rowsFor(options);
   const hasNhs = rows.some((row) => row.nhs);
   const byId = new Map(options.map((option) => [option.id, option]));
@@ -37,7 +37,7 @@ export function OfferingPrices({ options }: { options: ClientPublicService[] }) 
     const base = option.surchargeBaseServiceId ? byId.get(option.surchargeBaseServiceId) : undefined;
     return (
       <span className="block">
-        <span className="font-serif text-lg font-semibold text-zinc-900 tabular-nums">{format(option.amountPence)}</span>
+        <span className="font-serif text-lg font-semibold text-zinc-900 tabular-nums">{format(option)}</span>
         <PriceFinePrint service={option} showNhs={isNhs} />
         <SurchargeBreakdown option={option} base={base} />
       </span>

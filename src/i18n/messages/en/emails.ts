@@ -29,6 +29,7 @@ const emails = {
     duration: 'Duration',
     price: 'Price',
     deposit: 'Deposit',
+    consultationCredit: 'Consultation credit',
     previousDate: 'Previous date',
     currentTime: 'Current booking',
     customer: 'Customer',
@@ -43,13 +44,15 @@ const emails = {
     unknownPrice: 'Not recorded — please ask the salon',
     nhsPrice: 'NHS price',
     vatExcluded: 'VAT excluded',
-    subjectToConsultation: 'may be adjusted after consultation',
+    subjectToConsultation: 'final price confirmed at your consultation',
     /** An amount with the price's fine print, e.g. what is left to pay (values.vatExcluded / subjectToConsultation). */
     withNotes: '{amount} ({notes})',
     nameNotGiven: 'Name not given',
     notProvided: 'Not provided',
     depositHeld: '{amount} held on your card — not taken yet',
     depositPaid: '{amount} paid',
+    /** A recorded consultation credit shown as a deduction, e.g. −£15.00. */
+    creditDeduction: '−{amount}',
     depositRefunding: '{amount} — being refunded',
     depositReleased: '{amount} hold released — nothing taken',
     depositKept: '{amount} kept',
@@ -66,9 +69,18 @@ const emails = {
     textIntro: 'Your appointment at Harbour Hair Salon is confirmed.',
     textManage: 'Manage your booking up to 24 hours before the appointment from the My Bookings page: {url}',
     footnoteWithDeposit: 'Need to make a change? You can cancel (your deposit is refunded in full) or request a new time from My Bookings up to 24 hours before your appointment.',
+    /** confirmation.footnote without its payment sentence: a consultation-credit sentence already says what is left to pay. */
+    footnoteNoPayment: 'Need to make a change? You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.',
     depositPaid: 'Your {deposit} deposit is paid; {remainder} is left to pay in the salon. Cash and card are accepted.',
     depositPaidNoTotal: 'Your {deposit} deposit is paid; the rest is due at the salon. Cash and card are accepted.',
     depositPaidInFull: 'Your {deposit} deposit covers the full price: there is nothing left to pay in the salon.',
+    /** A consultation's own confirmation. {months}: CONSULTATION_CREDIT_MONTHS. */
+    consultationCredit: 'If you go ahead with your treatment within {months} months, this consultation’s {amount} is taken off its price.',
+    /** A treatment booking with a consultation credit recorded. */
+    creditToPay: 'Your {credit} consultation credit is taken off the price: {remainder} is left to pay in the salon. Cash and card are accepted.',
+    creditCoversPrice: 'Your {credit} consultation credit covers the full price: there is nothing left to pay in the salon.',
+    depositPaidWithCredit: 'Your {deposit} deposit is paid and your {credit} consultation credit is taken off: {remainder} is left to pay in the salon. Cash and card are accepted.',
+    depositAndCreditCover: 'Your {deposit} deposit and your {credit} consultation credit cover the full price: there is nothing left to pay in the salon.',
   },
   request: {
     subject: 'We’ve received your booking request — Harbour Hair Salon',
