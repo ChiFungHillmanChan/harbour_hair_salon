@@ -83,7 +83,10 @@ model GoogleCalendarSyncState {
 
 Google-only events become `ExternalBusyBlock` rows with `source='GOOGLE'`,
 keyed `(source, stylistId, externalUid)` like the iCal imports;
-`summary` stays null (titles are free text, possibly customer names).
+`summary` stays null (titles are free text, possibly customer names). Google is
+NOT a `CalendarConnection` and NOT in `CALENDAR_PROVIDERS`: a connection row
+would be refused by `evaluateSyncCoverage` (`PROVIDER_UNSUPPORTED`) and close
+online booking. The admin board's label gains a "Google" branch.
 
 ## 5. Website → Google (outbound)
 
@@ -99,12 +102,15 @@ keyed `(source, stylistId, externalUid)` like the iCal imports;
 **Which appointments:** start ≥ today − 7 days. PENDING and CONFIRMED → present;
 COMPLETED → present (history); CANCELLED → deleted from Google.
 
-**Real time:** every server action that changes an appointment already calls
-`invalidateStylistIcalFeed(stylistId)`. That helper also schedules, through
-`after()`, `pushGoogleCalendar({ stylistId })`: render the stylist's appointments
-changed in the last 15 minutes (or never synced, or failed) and write those
-whose hash differs. Cron-side changes (`invalidateStylistIcalFeedFromCron`:
-lapses, late cancellations) are picked up by the same cron run (§7).
+**Real time:** every server action that changes an appointment's time or
+status already calls `invalidateStylistIcalFeed()` (no arguments: the feed tag is
+global) after its commit. That helper also schedules, through `after()`,
+`pushGoogleCalendar()`: render the appointments updated in the last 15 minutes
+(plus any never synced or failed) and write those whose hash differs. Mutations
+that change only event text (reschedule request/withdraw/decline, erasure) call
+`scheduleGoogleCalendarPush()` directly. Cron-side changes
+(`invalidateStylistIcalFeedFromCron`: lapses, late cancellations) are picked up
+by the same cron run (§7).
 
 **Writes:** `PUT events/{eventId}`; 404 → `POST` with the id; 409 on insert →
 `PUT` (a deleted event with that id is restored by `status: confirmed`). Delete =
@@ -129,6 +135,10 @@ covers changes during a pull).
   rendered booking. Moved, edited or deleted while the booking is open → write
   the rendered version back (D6). Equal → nothing. A cancelled event whose
   booking is closed → nothing.
+- **Echo guard:** booking availability reads every `ExternalBusyBlock` with
+  no source filter, so a website event imported as a block would make every
+  booking clash with itself. An event carrying `harbourAppointmentId` is never
+  a block, whatever its state; a test pins this.
 - **Google-only events** (confirmed, `transparency` ≠ `transparent`):
   - Stylist: the title starts with an active stylist's name, case-insensitive,
     followed by end, space, `:`, `-`, `·` or `：` (longest name first) → that
@@ -179,9 +189,11 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
 - The privacy notice (en + zh) adds Google (calendar hosting) as a processor of
   the customer's name, phone, booking and notes, kept in the salon's calendar.
 - Erasure re-renders the customer's events with the anonymised name.
-- Retention: housekeeping deletes Google events for appointments that ended more
-  than the booking-record retention the privacy notice states (read it in the
-  plan and match it).
+- Retention: booking records are kept up to 6 years (privacy notice), but the
+  Google copy is a working diary. Housekeeping deletes Google events for
+  appointments that ended more than **12 months** ago, and the notice says so
+  ("Copies in the salon's Google Calendar: up to 12 months after the
+  appointment"). Owner may change the period at spec review.
 
 ## 10. Testing
 
