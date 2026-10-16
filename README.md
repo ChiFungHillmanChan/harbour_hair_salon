@@ -7,7 +7,7 @@ It offers:
 - customer appointment management with Google Calendar links and `.ics` files;
 - an admin panel and a staff kiosk;
 - availability exchanged with Fresha through iCal busy feeds;
-- an optional two-way sync with the salon's own Google Calendar.
+- a two-way sync with the salon's own Google Calendar.
 
 It runs on Vercel with Neon PostgreSQL 18 in London.
 
@@ -16,7 +16,8 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 - The public site is live. Releases #62 (review follow-ups, Google Calendar links, i18n) and #63 (Square deposits) are deployed and verified.
 - Deployed on 2026-10-16: Fresha blocked time labelled "Blocked" in the schedule (#68), sign-out that ends every session (#69), late-arrival auto-cancel (#70, switched off), consultation credit, "From £X" prices for consultation services, move confirmation and NHS/student and offer terms (#71), and two-way Google Calendar sync (#72, switched off).
 - **Online booking is closed.** It opens only once Square production credentials are set, after the sandbox acceptance checklist has passed. Until then customers book by phone, Fresha or Treatwell.
-- **Switched off until the salon is ready:** the late-arrival rule (Admin → Settings, after briefing staff) and Google Calendar sync (needs five `GOOGLE_CALENDAR_*` variables on Vercel Production; see [the runbook](docs/google-calendar-setup.md)).
+- **Switched off until the salon is ready:** the late-arrival rule (Admin → Settings, after briefing staff).
+- **Google Calendar sync is on** (since 2026-10-16): bookings are written to the "Harbour website bookings" calendar on harbourhairuk@gmail.com, and staff busy time there blocks the website and Fresha ([runbook](docs/google-calendar-setup.md)). Google sign-in and the calendar's service account both live in the `harbourhair` Google Cloud project.
 - The remaining launch steps, in order, are in [LAUNCH.md](LAUNCH.md).
 
 ## What it does

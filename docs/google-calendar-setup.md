@@ -46,7 +46,10 @@ page only shows its status, a "Sync now" button and "Clear Google busy time" (§
 ## 2. Google Cloud and the calendar (one-off)
 
 1. **Google Cloud Console** → the project that already holds the Google sign-in client
-   ("Continue with Google"). APIs & Services → Library → **Google Calendar API** → Enable.
+   ("Continue with Google"): **`harbourhair`** (`harbourhair-511821`), signed in as
+   harbourhairuk@gmail.com. APIs & Services → Library → **Google Calendar API** → Enable.
+   (Done 2026-10-16: service account `harbour-website-calendar@harbourhair-511821.iam.gserviceaccount.com`,
+   calendar "Harbour website bookings" on harbourhairuk@gmail.com.)
 2. APIs & Services → Credentials → Create credentials → **Service account**. Name it
    `harbour-website-calendar`; no project roles are needed. Copy its email
    (`…@….iam.gserviceaccount.com`): this is `GOOGLE_CALENDAR_SA_EMAIL`.

@@ -12,7 +12,7 @@ Harbour Hair Salon — a bilingual Next.js 16 website for a hair salon in Leeds:
 - **Customer appointments:** view, cancel, request a reschedule, add to Google Calendar / `.ics`.
 - **Admin panel:** schedule (arrivals, late-arrival restore, drag/resize with confirmation, consultation credit), services & pricing, stylists, shifts, timesheets and payroll, blog, FAQs, offers, discounts, reviews, users (with erasure), settings (booking switch, deposits, late-arrival rule), integrations (Fresha feeds, Google Calendar) and operations.
 - **Staff kiosk.**
-- **Calendars:** Fresha availability exchanged both ways through iCal busy feeds; optional two-way sync with one shared salon Google Calendar (ships off).
+- **Calendars:** Fresha availability exchanged both ways through iCal busy feeds; two-way sync with one shared salon Google Calendar (on in production since 2026-10-16).
 
 **Production state (2026-10-16):** online booking closed (`SiteSettings.bookingEnabled=false` plus the Square lock); `NOTIFICATIONS_ENABLED=false`; `CALENDAR_SYNC_ENABLED=true`; housekeeping on; late-arrival rule off; Google Calendar sync off until its five `GOOGLE_CALENDAR_*` variables are set on Production. Remaining launch steps: `LAUNCH.md`.
 
@@ -67,7 +67,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - **Calendars**:
   - Each stylist has a token-protected outbound busy feed, `/api/ical/[stylistId]`, served from the Data Cache; Fresha imports it as blocked time.
   - The calendar-sync cron imports the stylists' inbound feeds into `ExternalBusyBlock`; Admin → Schedule shows Fresha blocked time as "Blocked" and Fresha appointments as "Fresha booking" (`services/calendar-busy-kind.ts`, `lib/calendar-busy-display.ts`).
-  - **Google Calendar sync** (ships off; runbook `docs/google-calendar-setup.md`): website bookings are pushed to one shared calendar ("Harbour website bookings" on the salon's Google account) through a service account; staff events on it become `ExternalBusyBlock` source `GOOGLE` — a title starting with a stylist's name blocks that stylist, any other title blocks the whole salon — and are exported in the outbound busy feed so Fresha stops selling the hour. Google calls `POST /api/webhooks/google-calendar`, which refuses (404/401) before any DB access and pulls single-flight after answering; the webhook and the pull never push. Copies are kept 12 months.
+  - **Google Calendar sync** (on in production since 2026-10-16; runbook `docs/google-calendar-setup.md`): website bookings are pushed to one shared calendar ("Harbour website bookings" on the salon's Google account) through a service account; staff events on it become `ExternalBusyBlock` source `GOOGLE` — a title starting with a stylist's name blocks that stylist, any other title blocks the whole salon — and are exported in the outbound busy feed so Fresha stops selling the hour. Google calls `POST /api/webhooks/google-calendar`, which refuses (404/401) before any DB access and pulls single-flight after answering; the webhook and the pull never push. Copies are kept 12 months.
 - **Crons** (`vercel.json`, UTC): reminders `0 8` (plus the daily "needs attention" email), notifications `*/30 8-19`, calendar-sync `*/30` (skips ticks outside staff hours ±15 min before touching the DB; also runs the late-arrival rule and the Google Calendar retry/pull) and housekeeping `15 3` (retention, request lapses, Square reconciliation, the daily Google Calendar run).
 
 ### Environment Variables
@@ -79,7 +79,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - `CALENDAR_SYNC_ENABLED` — `"true"` lets the calendar-sync cron run (production: `true`); the late-arrival rule and the Google Calendar 30-minute step run inside it.
 - `HOUSEKEEPING_ENABLED` — the daily housekeeping cron runs unless this is `"false"`.
 - `TREATWELL_SYNC_ENABLED` / `TREATWELL_API_ENABLED` — deliberately off.
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google sign-in.
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google sign-in (OAuth client in the `harbourhair` Google Cloud project, harbourhairuk@gmail.com).
 - `GOOGLE_CALENDAR_SYNC_ENABLED`, `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_SA_EMAIL`, `GOOGLE_CALENDAR_SA_PRIVATE_KEY`, `GOOGLE_CALENDAR_WEBHOOK_SECRET` — Google Calendar sync (`lib/google-calendar-config.ts`). **Vercel Production only, never Preview** (a preview is off whatever the env says). All five must be present and the flag exactly `"true"`, else the sync is off. The private key keeps its newlines as literal `\n`.
 - `SQUARE_*` (seven variables) — Square deposits: sandbox values on Preview only, production values on Production only (`docs/square-payments-setup.md` §2).
 - `KV_REST_API_URL` / `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` / `_TOKEN`) — rate limits.
