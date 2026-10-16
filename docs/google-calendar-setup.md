@@ -55,7 +55,8 @@ page only shows its status, a "Sync now" button and "Clear Google busy time" (§
    (`…@….iam.gserviceaccount.com`): this is `GOOGLE_CALENDAR_SA_EMAIL`.
 3. The service account → Keys → Add key → Create new key → **JSON**. The download holds the
    `private_key` (a PEM). **Never commit this file** or paste it into a chat, a ticket or
-   the repo; delete the download once it is in Vercel (§3).
+   the repo; delete the download once it is in Vercel (§3), or keep it only in the git-ignored
+   `.secrets/` folder (mode 600; `.gitignore` covers `.secrets/` and `client_secret_*.json`).
 4. Sign in to Google Calendar as **harbourhairuk@gmail.com** (the salon's account):
    - Other calendars → Create new calendar → name it **Harbour website bookings**.
    - Its Settings and sharing → **Share with specific people** → add the service account's
