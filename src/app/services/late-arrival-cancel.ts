@@ -2,7 +2,7 @@ import 'server-only';
 import prisma from '@/app/lib/prisma';
 import { appendAuditEvent } from '@/app/lib/audit';
 import { describeFault } from '@/app/lib/fault';
-import { lateCancelWindow } from '@/app/lib/late-arrival';
+import { isLateCancelCandidate, lateCancelWindow } from '@/app/lib/late-arrival';
 import { LATE_CANCEL_EMAIL_DELAY_MINUTES } from '@/app/lib/booking-constants';
 import { runSerializableWithRetry } from './booking-service';
 import { BookingError } from './booking-errors';
@@ -54,7 +54,9 @@ export async function cancelLateArrivals(
     try {
       const done = await runSerializableWithRetry(async (tx) => {
         const current = await tx.appointment.findUnique({ where: { id }, include: lateInclude });
-        if (!current || current.status !== 'CONFIRMED' || current.arrivedAt) return null;
+        // Still due: CONFIRMED, not arrived, and still in the late window — staff
+        // may have moved it (or approved its reschedule) since the candidate read.
+        if (!current || !isLateCancelCandidate(current, since, now)) return null;
         const api = getTreatwellApiConfiguration();
         const closed = await tx.appointment.updateMany({
           where: { id, status: 'CONFIRMED', arrivedAt: null, date: current.date },
@@ -74,7 +76,8 @@ export async function cancelLateArrivals(
             treatwellSyncError: null,
           },
         });
-        // Staff tapped "Arrived" (or moved it) since the re-read: theirs wins.
+        // Staff tapped "Arrived", or moved it, since the re-read (the write's
+        // status, arrivedAt and date guards): theirs wins.
         if (closed.count !== 1) return null;
         // A no-show keeps its deposit (owner policy 2026-10-16). A capture in
         // flight throws DEPOSIT_IN_PROGRESS: the whole closing rolls back and

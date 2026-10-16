@@ -29,6 +29,9 @@ type FixtureRow = {
   deposit?: { status: string; amountPence?: number };
 };
 
+/** The salon phone on the settings row, for the email's call-us line. */
+const SALON_PHONE = '07831 830898';
+
 const SANDBOX = { environment: 'sandbox', accessToken: 'sandbox-token', applicationId: 'sandbox-sq0idb-fixture', locationId: 'fixture-location', webhookSignatureKey: 'key', webhookNotificationUrl: 'https://example.test/api/webhooks/square' };
 
 /** A Prisma-style filter: equality (null and Dates included), `in`, `gt`, `gte`, `lte`. */
@@ -64,7 +67,7 @@ function fixture(rows: FixtureRow[], hooks: Hooks = {}) {
   const refunds: { id: string; attemptId: string; amountPence: number; status: string }[] = [];
   const attemptFor = (appointmentId: string) => attempts.find((attempt) => attempt.appointmentId === appointmentId);
   const withDeposit = (row: Row) => ({ ...structuredClone(row), paymentAttempt: structuredClone(attemptFor(row.id) ?? null) });
-  const enqueued: { id: string; kind: string; version: number; depositOutcome?: string; deposit?: unknown; notBefore?: Date }[] = [];
+  const enqueued: { id: string; kind: string; version: number; salonPhone?: string; depositOutcome?: string; deposit?: unknown; notBefore?: Date }[] = [];
   const audits: { actorUserId: string | null; action: string; targetId: string; metadata: Record<string, unknown> }[] = [];
   const counts = { settingsReads: 0, appointmentQueries: 0, transactions: 0, invalidations: 0 };
   const square: string[] = [];
@@ -72,7 +75,7 @@ function fixture(rows: FixtureRow[], hooks: Hooks = {}) {
     siteSettings: { findUnique: async ({ select }: { select: Record<string, boolean> }) => {
       counts.settingsReads++;
       if (select.lateAutoCancelSince) return hooks.settings === undefined ? { lateAutoCancelSince: SINCE } : hooks.settings;
-      return null; // no salon phone on file
+      return { phone: SALON_PHONE };
     } },
     appointment: {
       findMany: async ({ where, take }: { where: Record<string, unknown>; take: number }) => {
@@ -156,11 +159,12 @@ function fixture(rows: FixtureRow[], hooks: Hooks = {}) {
     './notification-outbox-service': {
       enqueueAppointmentNotification: async (
         _db: unknown, kind: string, appointment: Row & { paymentAttempt?: unknown },
-        options: { depositOutcome?: string; notBefore?: Date },
+        options: { salonPhone?: string; depositOutcome?: string; notBefore?: Date },
       ) => {
         if (hooks.failEnqueueFor === appointment.id) throw new Error('enqueue failed');
         enqueued.push({
           id: appointment.id, kind, version: appointment.notificationVersion,
+          ...(options.salonPhone ? { salonPhone: options.salonPhone } : {}),
           ...(options.depositOutcome ? { depositOutcome: options.depositOutcome, deposit: appointment.paymentAttempt } : {}),
           ...(options.notBefore ? { notBefore: options.notBefore } : {}),
         });
@@ -194,7 +198,7 @@ test('cancels a CONFIRMED booking 15+ min late: KEPT deposit, delayed email, aud
   assert.equal(f.attempts[0].status, 'KEPT', 'kept as for a no-show');
   assert.deepEqual([f.refunds, f.square], [[], []], 'nothing refunded, Square never asked');
   assert.deepEqual(f.enqueued, [{
-    id: 'late', kind: 'LATE_CANCELLED', version: 1, depositOutcome: 'KEPT', deposit: { status: 'CAPTURED', amountPence: 1500 },
+    id: 'late', kind: 'LATE_CANCELLED', version: 1, salonPhone: SALON_PHONE, depositOutcome: 'KEPT', deposit: { status: 'CAPTURED', amountPence: 1500 },
     notBefore: minutes(30),
   }]);
   assert.deepEqual(f.audits, [{
@@ -257,6 +261,20 @@ test('a concurrent arrival wins', async () => {
   }
 });
 
+// Staff move the booking (or approve its reschedule) after the candidate read:
+// it is CONFIRMED and not arrived still, but no longer late.
+test('a booking moved to a later time meanwhile is not cancelled', async () => {
+  const f = fixture([{ id: 'moved', date: minutes(-20), deposit: { status: 'CAPTURED' } }], {
+    onBeforeTransaction: (rows) => { rows[0].date = minutes(30); },
+  });
+  assert.deepEqual(await f.service.cancelLateArrivals(now), { enabled: true, cancelled: 0, skipped: 1, failed: 0 });
+  const [row] = f.appointments;
+  assert.deepEqual([row.status, row.date, row.lateCancelledAt, row.notificationVersion], ['CONFIRMED', minutes(30), null, 0]);
+  assert.equal(f.attempts[0].status, 'CAPTURED', 'the deposit stays taken');
+  assert.deepEqual([f.enqueued, f.audits, f.refunds, f.square], [[], [], [], []]);
+  assert.equal(f.counts.invalidations, 0);
+});
+
 test('a capture in flight is skipped and retried later', async (t) => {
   const errors = t.mock.method(console, 'error', () => {});
   for (const status of ['CAPTURING', 'CAPTURE_UNKNOWN']) {
@@ -296,6 +314,6 @@ test('no deposit: cancelled without deposit wording', async () => {
   assert.deepEqual(await f.service.cancelLateArrivals(now), { enabled: true, cancelled: 1, skipped: 0, failed: 0 });
   assert.equal(f.appointments[0].status, 'CANCELLED');
   assert.equal(f.enqueued[0].depositOutcome, undefined, 'no deposit wording');
-  assert.deepEqual(f.enqueued, [{ id: 'cash', kind: 'LATE_CANCELLED', version: 1, notBefore: minutes(30) }]);
+  assert.deepEqual(f.enqueued, [{ id: 'cash', kind: 'LATE_CANCELLED', version: 1, salonPhone: SALON_PHONE, notBefore: minutes(30) }]);
   assert.deepEqual(f.audits[0].metadata, { from: 'CONFIRMED', to: 'CANCELLED', start: minutes(-45).toISOString(), minutesLate: 45, notified: true });
 });
