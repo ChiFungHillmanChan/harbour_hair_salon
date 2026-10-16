@@ -8,21 +8,26 @@ Harbour Hair Salon — a bilingual Next.js 16 website for a hair salon in Leeds:
 
 - **Public pages:** home, services & pricing, stylists, blog, offers, reviews, contact, privacy notice and booking terms.
 - **Sign-in:** email + password, or Google.
-- **Online booking requests** that staff confirm, with Square card deposits (locked until production credentials).
+- **Online booking requests** that staff confirm, with Square card deposits (locked until production credentials). Consultation-required services show "From £X" and their consultation fee is credited against the treatment.
 - **Customer appointments:** view, cancel, request a reschedule, add to Google Calendar / `.ics`.
-- **Admin panel:** schedule, services & pricing, stylists, staff shifts and payroll, blog, FAQs, offers, discounts, reviews, users (with erasure), site settings (with deposits), integrations and operations.
+- **Admin panel:** schedule (arrivals, late-arrival restore, drag/resize with confirmation, consultation credit), services & pricing, stylists, staff shifts and payroll, blog, FAQs, offers, discounts, reviews, users (with erasure), site settings (deposits, late-arrival rule), integrations (Fresha feeds, Google Calendar) and operations.
 - **Staff kiosk.**
 - **Fresha availability:** exchanged both ways through iCal busy feeds.
+- **Google Calendar:** optional two-way sync with one shared salon calendar (ships off).
 
 Deployed on Vercel (Pro plan) with Neon PostgreSQL.
 
-## Current state (2026-10-13)
+## Current state (2026-10-16)
 
-- Releases #62 (review follow-ups, Google Calendar links, i18n) and #63 (Square deposits) are live and verified read-only against production — see `LAUNCH.md` §0.
+- Releases #62 (review follow-ups, Google Calendar links, i18n) and #63 (Square deposits) are live since 2026-10-13 and verified read-only against production — see `LAUNCH.md` §0.
+- Deployed to production on 2026-10-16: #68 (Fresha blocked time shows as "Blocked", Fresha bookings as "Fresha booking"), #69 (sign-out ends every session), #70 (late-arrival auto-cancel, ships off), #71 (consultation credit, price after consultation, move confirmation, NHS/student proof and offer terms) and #72 (two-way Google Calendar sync, ships off).
 - **Online booking is closed in production:** `SiteSettings.bookingEnabled=false`, and the Square lock keeps it shut until Square production credentials are set. Those may only be set after the sandbox acceptance list in `docs/square-payments-setup.md` §4 has passed. Until then customers book by phone, Fresha or Treatwell (`/book` shows exactly that).
 - **Deposit policy (owner, set in production 2026-10-15):** 50% of the price, minimum £0. Both consultations take a fixed £15 override, which is their full price: the general Consultation went from free to £15. Nothing is charged while booking is locked. A no-show's deposit is never refunded (decided 2026-10-16); the late-cancellation rule is still open, so the terms say "may keep".
+- **Styling** (the 7 blow-dry services) is booked directly since 2026-10-16 (production data change, `requiresConsultation=false`); Colouring and Perms keep the consultation.
 - Production flags: `NOTIFICATIONS_ENABLED=false` (no booking emails and no daily ops alert yet; the go-live gate needs it `true`), `CALENDAR_SYNC_ENABLED=true`, and housekeeping on (first run 2026-10-14 03:15 UTC).
-- The remaining launch steps, in order: `LAUNCH.md` §2–§3.
+- Late-arrival rule: OFF (`SiteSettings.lateAutoCancelSince` null); brief the staff on Arrived first (`LAUNCH.md` §4), then switch it on in Admin → Settings.
+- Google Calendar sync: code live, switched off until the five GOOGLE_CALENDAR_* variables are set on Production — runbook `docs/google-calendar-setup.md`.
+- The remaining launch steps, in order: `LAUNCH.md` §2–§3; open owner decisions and staff briefings in §4.
 
 ## Commands
 
@@ -88,15 +93,15 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - **Rate limiting**: Upstash Redis through `lib/rate-limit.ts` (`KV_REST_API_URL`/`KV_REST_API_TOKEN`, or `UPSTASH_REDIS_REST_URL`/`_TOKEN`). It never fails open.
 - **Calendars**:
   - Each stylist has a token-protected outbound busy feed, `/api/ical/[stylistId]`, served from the Data Cache. Fresha imports it as blocked time.
-  - The calendar-sync cron imports the stylists' inbound feeds into `ExternalBusyBlock`. Its `summary` keeps only Fresha's generic titles (`services/calendar-busy-kind.ts`), so Admin → Schedule tells a stylist's blocked time from a Fresha booking; any other title is never stored.
+  - The calendar-sync cron imports the stylists' inbound feeds into `ExternalBusyBlock`. Its `summary` keeps only Fresha's generic titles (`services/calendar-busy-kind.ts`), so Admin → Schedule (`lib/calendar-busy-display.ts`) shows part-day blocked time as "Blocked", a Fresha appointment as "Fresha booking" and a whole-day block as "Unavailable"; any other title is never stored.
   - Customers get Google Calendar links and `.ics` files (`lib/calendar-links.ts`).
   - **Google Calendar sync** (two-way, shipped OFF; runbook `docs/google-calendar-setup.md`, design `docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md`): one shared salon calendar written through a service account (`services/google-calendar-*.ts`, `lib/google-calendar-config.ts`). It is not a `CalendarConnection`.
     - **Push**: every booking is one event (id `hh` + sha256 of the appointment id). `invalidateStylistIcalFeed` (Server Actions only) schedules the push with `after()` (`scheduleGoogleCalendarPush`); the calendar-sync cron retries and catches cron-made changes (45-minute look-back); housekeeping re-renders the whole window and deletes copies of appointments that ended over **12 months** ago. A Google failure never fails a booking action: the row keeps `attempts`/`lastError` and the cron retries (a booking before the 7-day window only while `attempts < 5`; a row erasure marked for re-rendering until it lands).
     - **Pull**: `POST /api/webhooks/google-calendar` checks sync-enabled (404) and the `X-Goog-Channel-Token` (HMAC over the channel id, carrying its own expiry, `lib/google-channel-token.ts`; 401) before any DB access, answers 200 and pulls in `after()`, single-flight (`runPullSingleFlight`: one pull at a time plus one re-run). The watch channel is made by the daily run (housekeeping renews it within 48 hours of its expiry) and by Admin → Integrations → "Sync now", which replaces it at once (`runGoogleCalendarJob('daily', { renew: true })`). The webhook and the pull NEVER push (`invalidateStylistIcalFeedFromCron` never schedules one), or every notification would start a push, a notification and a pull again without end.
-    - **Blocks**: events titled with a stylist's name (whole word, case-insensitive) block that stylist, any other title blocks the whole salon, as `ExternalBusyBlock` source `GOOGLE` (`services/google-busy-mapping.ts`). Website events (private property `harbourAppointmentId`, or an id shaped `hh` + 40 hex should the property be stripped) are NEVER blocks, and an edited or deleted one is written back (a loop breaker: not within 10 minutes of its own write, `GOOGLE_EVENT_NOT_KEPT`). GOOGLE blocks ARE exported in the stylist's outbound busy feed so Fresha stops selling the hour; FRESHA/TREATWELL blocks are not. The pull writes (and drops the feed cache) only when the blocks that have not ended differ from the stored ones that have not ended.
+    - **Blocks**: an event whose title starts with a stylist's full name as in Admin → Stylists (case-insensitive, longest name first, then the end, a space, `:`, `：`, `-` or `·`) blocks that stylist; any other title, or none, blocks the whole salon — as `ExternalBusyBlock` source `GOOGLE` (`services/google-busy-mapping.ts`). Website events (private property `harbourAppointmentId`, or an id shaped `hh` + 40 hex should the property be stripped) are NEVER blocks, and an edited or deleted one is written back (a loop breaker: not within 10 minutes of its own write, `GOOGLE_EVENT_NOT_KEPT`). GOOGLE blocks ARE exported in the stylist's outbound busy feed so Fresha stops selling the hour; FRESHA/TREATWELL blocks are not. The pull writes (and drops the feed cache) only when the blocks that have not ended differ from the stored ones that have not ended.
     - **Config**: `GOOGLE_CALENDAR_SYNC_ENABLED` is the kill-switch, set on **Production only** (the preview database holds real customers; `VERCEL_ENV=preview` is off whatever the env says). Status, "Sync now" and "Clear Google busy time" (deletes every GOOGLE block, so turning the sync off is reversible; audited) live in Admin → Integrations. Failures reach the daily ops alert through two job rows: `google-calendar` (the 30-minute run, which also checks health: a live watch channel and a successful pull within 24 hours) and `google-calendar-daily` (housekeeping and Sync now).
 - **Validation**: Zod
-- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC; also sends the salon's daily "needs attention" email, `services/ops-alert-service.ts`, only when something is wrong), notifications (`*/30 8-19` UTC, daytime only), calendar-sync (`*/30`, but the route skips ticks outside saved staff hours ±15 min before touching the DB) and housekeeping (daily 03:15 UTC: retention clean-up, unanswered-request lapses, Square reconciliation `services/payment-reconciliation.ts` and the daily Google Calendar run `services/google-calendar-job.ts`). See "Neon compute budget" below before adding another; `neon-compute-budget.test.ts` pins these.
+- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC; also sends the salon's daily "needs attention" email, `services/ops-alert-service.ts`, only when something is wrong), notifications (`*/30 8-19` UTC, daytime only), calendar-sync (`*/30`, but the route skips ticks outside saved staff hours ±15 min before touching the DB; after the feeds it runs the late-arrival rule and the Google Calendar retry/pull) and housekeeping (daily 03:15 UTC: retention clean-up, unanswered-request lapses, Square reconciliation `services/payment-reconciliation.ts` and the daily Google Calendar run `services/google-calendar-job.ts`). See "Neon compute budget" below before adding another; `neon-compute-budget.test.ts` pins these.
 
 ### Environment Variables
 
@@ -108,7 +113,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - `SALON_NOTIFY_EMAIL` — the salon inbox for new-request alerts and the daily ops alert. Falls back to `EMAIL_REPLY_TO`.
 - `RESEND_AUDIENCE_ID` — the marketing list. Unsubscribe and customer erasure remove contacts from it.
 - `NOTIFICATIONS_ENABLED` — `"true"` turns on booking emails, reminders and the daily ops alert. Anything else makes the notifications and reminders crons return before touching the DB. The online-booking go-live gate also requires it (`lib/booking-maintenance.ts`). Production: `false` until launch.
-- `CALENDAR_SYNC_ENABLED` — `"true"` lets the calendar-sync cron run (production: `true`).
+- `CALENDAR_SYNC_ENABLED` — `"true"` lets the calendar-sync cron run (production: `true`). The late-arrival rule runs inside it, so it stops too when the cron is off (as do the Google Calendar steps, below).
 - `GOOGLE_CALENDAR_SYNC_ENABLED` / `GOOGLE_CALENDAR_ID` / `GOOGLE_CALENDAR_SA_EMAIL` / `GOOGLE_CALENDAR_SA_PRIVATE_KEY` / `GOOGLE_CALENDAR_WEBHOOK_SECRET` — the Google Calendar sync (`lib/google-calendar-config.ts`). **Vercel Production only, never Preview.** All five must be present and `GOOGLE_CALENDAR_SYNC_ENABLED` must be `"true"`, else the sync is off (webhook 404). The private key is a PEM whose newlines are the literal characters `\n`. Rotating the webhook secret refuses the live channel's notifications (401) until Sync now, which replaces the channel at once (redeploy, then Sync now: `docs/google-calendar-setup.md` §5). The 30-minute retry of failed writes and the safety-net pull run inside the calendar-sync cron, so they need `CALENDAR_SYNC_ENABLED=true` and run in staff hours only.
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google sign-in.
 - `KV_REST_API_URL` / `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` / `_TOKEN`) — Upstash Redis for rate limits (`lib/redis-credentials.ts`).
@@ -184,7 +189,7 @@ Rules that follow from this:
   page must do the same or stay off the database.
 - **Site settings are cached for 24 hours** (`getSiteSettings`, tag `site-settings`). Admin → Settings, opening hours and content saves drop the tag. A direct database write is not seen until then: press Save in Admin → Settings. The settings form and the deposit policy read the live row (`getSiteSettingsForEditing`); a form built from the cached copy once switched booking off when saved.
 - **Each Google Calendar notification wakes the database** (the webhook pulls after answering; a pull reads and may replace busy blocks). That is a public endpoint something external calls: the website's own writes notify it too, so bursts collapse into one pull at a time plus one re-run, the webhook refuses (404/401) before any DB access, and its token expires with its channel. Notifications only follow a change on the salon calendar, so volume is bookings plus the staff's own events, and the Google steps ride the existing calendar-sync and housekeeping crons (no new cron). Watch Neon's operations log after turning it on.
-- **Housekeeping is on by default**: one daily wake at 03:15 UTC, about 2.5 CU-hours a month. It already carries retention, request lapses and Square reconciliation, so put a new daily chore there rather than adding a cron.
+- **Housekeeping is on by default**: one daily wake at 03:15 UTC, about 2.5 CU-hours a month. It already carries retention, request lapses, Square reconciliation and the daily Google Calendar run, so put a new daily chore there rather than adding a cron. Likewise, a 30-minute chore rides calendar-sync (as the late-arrival rule does).
 - **Never return a fallback from inside a cached function.** `unstable_cache`
   stores whatever the callback returns, so a `catch { return DEFAULTS }` inside it
   caches the fallback for the whole revalidate period. Site settings did exactly
@@ -198,7 +203,9 @@ Rules that follow from this:
   real customer data**: treat it like production. Previews never migrate, so
   apply every new migration to it too (`prisma migrate deploy` with the preview
   env) or every PR's "Deploy Preview" fails. The last one applied by hand was
-  `20261013120000_square_deposits` (2026-10-13). Refresh the copy with a PostgreSQL 18
+  `20261016150000_google_calendar_sync` (2026-10-16, with
+  `20261016120000_late_arrival_auto_cancel` and `20261016140000_consultation_credit`
+  the same day). Refresh the copy with a PostgreSQL 18
   `pg_dump` of production restored into it. The old us-east-1 project
   (`neon-beige-river`) is kept, unused, by owner decision.
 - `infra/aws/treatwell-sync/` is a **dormant** EventBridge→Lambda fallback for
@@ -212,28 +219,31 @@ Rules that follow from this:
     - `admin/`: the schedule home page, `services`, `stylists`, `shifts`, `timesheets`, `payroll`, `employees`, `blog`, `faqs`, `offers`, `discounts`, `reviews`, `users`, `settings`, `opening-hours`, `integrations` and `operations`.
   - `actions/` — Server actions by domain:
     - `auth.ts`, `booking.ts`, `booking-quote.ts`, `admin.ts`;
-    - `admin-erasure.ts`, `admin-payments.ts`, `admin-settings.ts`, `admin-operations.ts`, …
+    - `admin-erasure.ts`, `admin-payments.ts`, `admin-settings.ts`, `admin-operations.ts`;
+    - `admin-arrivals.ts` (Arrived, late-cancel restore), `admin-consultation-credit.ts`, `admin-google-calendar.ts` (Sync now, Clear Google busy time), …
   - `lib/` — Shared utilities:
     - `prisma.ts`, `session.ts`, `session-hint.ts`, `rate-limit.ts`;
     - `booking-maintenance.ts` (the go-live gate), `online-booking-lock.ts`, `square-config.ts`;
-    - `calendar-links.ts`, `preview-email.ts`, …
+    - `booking-constants.ts` (notice, late-arrival and consultation-credit constants), `late-arrival.ts`;
+    - `calendar-links.ts`, `calendar-busy-display.ts`, `google-calendar-config.ts`, `google-channel-token.ts`, `preview-email.ts`, …
   - `services/` — Business logic:
-    - booking (`booking-service.ts`, `pending-request-lapse.ts`, `reschedule-request-lapse.ts`);
+    - booking (`booking-service.ts`, `pending-request-lapse.ts`, `reschedule-request-lapse.ts`, `late-arrival-cancel.ts`, `consultation-credit.ts`);
+    - pricing (`pricing/`: `policy.ts`, `eligibility.ts`, `quote.ts`, `public-catalog.ts`, …);
     - email (`email-service.ts`, `notification-outbox-service.ts`, `ops-alert-service.ts`);
     - `housekeeping-service.ts` and `operations-messages.ts`;
-    - calendars (`calendar-sync-service.ts`, `stylist-ical-feed.ts`, `stylist-ical-cache.ts`);
+    - calendars (`calendar-sync-service.ts`, `calendar-busy-kind.ts`, `stylist-ical-feed.ts`, `stylist-ical-cache.ts`, `google-calendar-*.ts`, `google-busy-mapping.ts`);
     - deposits (`deposit-*.ts`, `payment-*.ts`, `square-gateway.ts`, `square-webhook-events.ts`).
   - `api/` — API routes:
     - `cron/`: reminders, notifications, calendar-sync, housekeeping, and the gated treatwell-sync;
-    - `health/`, `ical/[stylistId]/` (busy feeds), `webhooks/square/`;
-    - `auth/` (Google OAuth, email verification) and `session/`.
+    - `health/`, `ical/[stylistId]/` (busy feeds), `webhooks/square/`, `webhooks/google-calendar/`;
+    - `auth/` (Google OAuth, email verification, sign-out) and `session/`.
 - `src/i18n/` — locales, routing helpers and the `messages/{en,zh}` dictionaries.
 - `src/components/` — React components by feature (`booking/`, `admin/`, `appointments/`, `emails/`, `layout/`, …).
 - `src/test/` — shared fixtures (`booking-fixture.ts`, `deposit-fixture.ts`, `payments-fixture.ts`) and page tests (`src/test/pages/`). `node --test` reads `[locale]` in a path as a glob, so a test placed under `src/app/[locale]/` never runs.
 - `src/middleware.ts` — route protection and locale rewrites.
 - `prisma/{dev,vercel,prod}/` — the three schemas, each with its own migrations folder; seed scripts.
 - `scripts/` — `production-build-guard.mjs`, the PostgreSQL verification suites (`verify-*.ts`) and the handover PDF builder (`pdf/`).
-- `docs/` — runbooks (`square-payments-setup.md`, `data-erasure.md`) and design specs and plans (`superpowers/`).
+- `docs/` — runbooks (`square-payments-setup.md`, `google-calendar-setup.md`, `data-erasure.md`) and design specs and plans (`superpowers/`).
 - `infra/` — Vercel firewall rules (`vercel-firewall/`) and the dormant AWS fallback (`aws/`).
 - `LAUNCH.md` — the launch checklist and the last verified production state.
 - `vercel.json` — Cron job configuration
@@ -253,6 +263,8 @@ Rules that follow from this:
 - **Customer reschedules are staff-approved requests** (`requestReschedule` → `decideRescheduleRequest`); the booking stays CONFIRMED at its original time until approval, which refreshes the stylist's Fresha feeds and re-checks the slot in a Serializable transaction. Unanswered requests lapse 24 h before the requested time (notifications cron).
 - **Consultation credit** (`services/consultation-credit.ts`, spec `2026-10-16-consultation-credit-pricing-ux-design.md` §2): a paid consultation or patch test (COMPLETED, or CONFIRMED and started and not late-cancelled) is taken off a consultation-required treatment starting within `CONSULTATION_CREDIT_MONTHS` (6, salon-local calendar months), **used once**: a live booking holding it uses it up, and a cancelled treatment frees it. **Staff apply it, in Admin only** (online customers cannot book consultation-required services): the booking dialog previews it (`actions/admin-consultation-credit.ts`) and `createAppointmentByAdmin` / `editAppointmentByAdmin` — and a late-cancellation restore — **look it up again inside the booking's Serializable transaction**, never trusting an amount from the browser. Capped at the price less any captured deposit; recorded beside the price (`consultationCreditFromId`, `consultationCreditPence`) — `priceAtBooking` / `quoteJson` never change. Shown as "Consultation credit −£X" plus what is left to pay on the confirmation and reminder emails, My Bookings and the admin board (not on a cancelled booking). Treatments booked through Fresha or by phone outside Admin are not tracked: staff deduct the fee at the till (`LAUNCH.md` §4).
 - **Price after consultation:** `effectivePriceNature(service)` (`services/pricing/policy.ts`) makes a consultation-required service's price `SUBJECT_TO_CONSULTATION` whatever its row stores — a code rule, not per-service data. It is applied to the public catalogue (`public-catalog.ts`: "From £X — final price confirmed at your consultation", JSON-LD `minPrice`) and to every recorded quote (`buildQuote`), so confirmations, reminders and My Bookings never state a fixed amount left to pay for such a booking.
+- **NHS/student prices and offer terms:** an NHS-priced option (`requiresEligibilityProof`, `services/pricing/eligibility.ts`) carries the `pricing.eligibilityProof` notice (bring an NHS staff ID or student card, else the standard price applies) in the booking wizard, the request, confirmation and reminder emails and My Bookings. The five offer and discount-code terms (`legal.bookingTerms.offers`, rendered by `components/legal/OfferTerms.tsx`) appear on `/booking-terms` and `/offers`. Discount codes stay paused (`DISCOUNTS_PAUSED` in `services/pricing/policy.ts`, a constant); before unpausing, those terms must be enforced in code, not only stated.
+- **Admin calendar drags and resizes ask first** (`components/admin/MoveConfirmDialog.tsx`): nothing is saved until staff press Move; focus starts on Cancel, and clicks in the first 350 ms are ignored (iPad ghost taps).
 - **Use regular `<img>` for external/CDN images**, `next/image` only for local `public/` assets.
 - **Tailwind CSS only** for styling. The brand is **monochrome black/white/grey** (client requirement) — never reintroduce the old blue `#174F7F` or gold.
 - **readme/structure.md**: Check before creating new functions/components to avoid duplication.
@@ -262,8 +274,8 @@ Rules that follow from this:
 - **Online requests need `MIN_BOOKING_NOTICE_MINUTES` (120) notice** (`lib/booking-constants.ts`); staff-entered bookings are exempt. A repeat submission (same customer, service and start — with the same stylist when one is named, any stylist for "Anyone") returns the existing request instead of booking twice, and the wizard says it was already requested; the same time with a different named stylist is a deliberate second booking. When a deposit is due the same rule (`findExistingRequest`, sharing `repeatRequestWhere` with `findRepeatRequest`) is checked before the card is touched, so a repeat never authorizes a card; keep the two lookups on one rule.
 - **Unanswered requests lapse once their appointment has ended** (start + `durationAtBooking ?? service.duration`, `hasAppointmentEnded`; `services/pending-request-lapse.ts`, run by the notifications cron and by housekeeping) — never at the start: a staff pencil-in is PENDING too, its customer may be in the chair, and a cancelled booking leaves the busy feed at once. Staff cannot confirm a request that has started, but can mark it completed or decline it; a decline after the start sends the `REQUEST_LAPSED` email under the lapse step's own rule (`services/request-lapse-notice.ts`). Cron code invalidates the busy feed with `invalidateStylistIcalFeedFromCron()` — `updateTag` only works in Server Actions.
 - **"Mark completed" only once an appointment has started** (a confirmed booking, or a started request whose customer came in). The outbound busy feed exports every non-cancelled booking until it ends, completed ones included, so Fresha cannot resell a chair that is still in use.
-- **Late arrivals** (`services/late-arrival-cancel.ts`, spec `2026-10-16-late-arrival-auto-cancel-design.md`): switched on in Admin → Settings (`SiteSettings.lateAutoCancelSince`, off by default). The calendar-sync cron then cancels a CONFIRMED booking not marked Arrived 15 minutes after its start, only if it was both created and starts after the switch-on, started within the last 120 minutes and has no open customer reschedule request. The deposit is kept (KEPT, as a no-show) and `LATE_CANCELLED` is emailed 30 minutes later. Staff tap Arrived (arrivals panel / booking dialog) or move the booking when a customer phones ahead; Mark completed and staff bookings starting within 15 minutes of entry count as arrived. A move outside the arrival window clears the arrival, unless the customer is already there and it stays the same day. Restore within 24 h (KEPT → CAPTURED, drops the unsent email). The privacy notice describes it as the one automated decision.
-- **Calendar files** (`lib/calendar-links.ts`) — Google Calendar option A, links and files only, no Google API:
+- **Late arrivals** (`services/late-arrival-cancel.ts`, rules in `lib/late-arrival.ts`, constants in `lib/booking-constants.ts`, spec `2026-10-16-late-arrival-auto-cancel-design.md`): switched on in Admin → Settings (`SiteSettings.lateAutoCancelSince`, off by default; read from the live row, never the cached settings). The calendar-sync cron (no new cron; it needs `CALENDAR_SYNC_ENABLED=true` and runs in staff hours) then cancels, at its first tick 15 minutes or more after the start, a CONFIRMED booking not marked Arrived, only if it was both created and starts after the switch-on, started within the last 120 minutes and has no open customer reschedule request. The deposit is kept (KEPT, as a no-show) and `LATE_CANCELLED` is emailed 30 minutes later. Staff tap Arrived (arrivals panel `components/admin/LateArrivalPanel.tsx` / booking dialog; `markArrived` in `actions/admin-arrivals.ts`) or move the booking when a customer phones ahead; Mark completed and staff bookings starting within 15 minutes of entry count as arrived. A move outside the arrival window clears the arrival, unless the customer is already there and it stays the same day. Restore within 24 h (`restoreLateCancellation`, audited `APPOINTMENT.LATE_CANCEL_RESTORED`: KEPT → CAPTURED, drops the unsent email, re-checks any consultation credit). The privacy notice describes it as the one automated decision.
+- **Calendar files** (`lib/calendar-links.ts`) — the customer's side, Google Calendar option A: links and files only, no Google API (the salon calendar's two-way sync, under Architecture → Calendars, is separate):
   - Confirmed bookings carry an "Add to Google Calendar" link and an RFC 5545 `.ics` on the confirmation, reschedule and reminder emails and on My appointments.
   - The emailed file has an ORGANIZER and a matching `method` on its MIME type.
   - A cancellation sends `METHOD:CANCEL` only when the booking had been confirmed (`wasConfirmed`); a request that was never confirmed gets no calendar file.
