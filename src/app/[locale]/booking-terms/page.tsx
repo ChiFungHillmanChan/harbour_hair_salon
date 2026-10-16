@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import Link from '@/i18n/link';
 import { getSiteSettings } from '@/app/services/site-settings-service';
-import { MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
+import { LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
 import { PATCH_TEST_MIN_LEAD_HOURS } from '@/app/services/patch-test-eligibility';
 import { toTelHref } from '@/app/lib/phone';
 import { getLocale, getT } from '@/i18n/server';
@@ -11,7 +11,7 @@ import { formatCalendarDay } from '@/i18n/dates';
 import { rich } from '@/i18n/rich';
 
 /** Change this, and the wording in the `legal.bookingTerms` dictionary, together. */
-const LAST_UPDATED = '2026-10-13';
+const LAST_UPDATED = '2026-10-16';
 
 // Static copy plus the salon phone from the day-cached settings, so the page is
 // served from the ISR cache and never reads the database per request (CLAUDE.md,
@@ -87,6 +87,7 @@ export default async function BookingTermsPage() {
           <p>{text(t('bookingTerms.cancelling.confirmed'))}</p>
           <p>{t('bookingTerms.cancelling.late')}</p>
           <p>{t('bookingTerms.cancelling.lateOrNoShow')}</p>
+          <p>{t('bookingTerms.cancelling.lateArrival', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })}</p>
           <p>{t('bookingTerms.cancelling.salon')}</p>
         </Section>
 
@@ -105,7 +106,7 @@ export default async function BookingTermsPage() {
         </Section>
 
         <Section id="rights" title={t('bookingTerms.rights.title')}>
-          <p>{t('bookingTerms.rights.body')}</p>
+          <p>{t('bookingTerms.rights.body', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })}</p>
         </Section>
 
         {/* Not "contact": the site footer already uses that id. */}

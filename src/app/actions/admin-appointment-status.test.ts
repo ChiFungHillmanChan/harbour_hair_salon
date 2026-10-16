@@ -17,6 +17,7 @@ type FixtureOptions = {
   announced?: boolean;
   salonPhone?: string;
   settingsReadFails?: boolean;
+  arrivedAt?: Date | null;
 };
 
 function fixture(options: FixtureOptions = {}) {
@@ -26,6 +27,7 @@ function fixture(options: FixtureOptions = {}) {
     durationAtBooking: 60, priceAtBooking: 80, notificationVersion: 0, notes: null,
     updatedAt: new Date('2099-08-01T00:00:00Z'), treatwellBookingId: null,
     rescheduleRequestedDate: null as Date | null, rescheduleRequestedAt: null as Date | null,
+    arrivedAt: options.arrivedAt ?? null,
     user: { email: 'customer@example.test', name: 'Customer' },
     stylist: { name: 'Stylist', treatwellExternalId: null },
     service: { name: 'Cut', price: 80, duration: 60, treatwellExternalId: null },
@@ -34,12 +36,14 @@ function fixture(options: FixtureOptions = {}) {
   const queued: { kind: string; version: number; options: Record<string, unknown> }[] = [];
   const audits: { action: string; metadata: Record<string, unknown> }[] = [];
   const counts = { dispatches: 0, invalidations: 0, slotChecks: 0, refreshes: 0, writes: 0, settingsReads: 0 };
+  const written: Record<string, unknown>[] = [];
   const tx = {
     appointment: {
       findUnique: async (args: { select?: Record<string, unknown> }) =>
         args.select ? { stylistId: appointment.stylistId, date: appointment.date } : structuredClone(appointment),
       updateMany: async ({ where, data }: { where: { status: string; date: Date }; data: Record<string, unknown> }) => {
         counts.writes++;
+        written.push(data);
         if (where.status !== appointment.status || where.date.getTime() !== appointment.date.getTime()) return { count: 0 };
         for (const [key, value] of Object.entries(data)) {
           const record = appointment as unknown as Record<string, unknown>;
@@ -88,7 +92,7 @@ function fixture(options: FixtureOptions = {}) {
     'next/cache': { revalidatePath: () => undefined, updateTag: () => undefined },
     'next/server': { after: (callback: () => unknown) => callback() },
   });
-  return { admin, appointment, enqueued, queued, audits, counts };
+  return { admin, appointment, enqueued, queued, audits, counts, written };
 }
 
 const text = (code: Parameters<typeof bookingErrorText>[1]) => bookingErrorText('en-GB', code);
@@ -114,6 +118,32 @@ test('a booking can be marked completed once its start time has come, even while
     assert.equal(f.counts.dispatches, 0);
     assert.equal(f.counts.invalidations, 1, 'the busy feed is refreshed after the change');
   }
+});
+
+// The late-arrival rule never cancels an arrived booking, and a completed visit
+// is one the customer came to (late-arrival design §4.1).
+test('marking completed records the arrival when it was missing', async () => {
+  for (const status of ['CONFIRMED', 'PENDING']) {
+    const f = fixture({ status, date: minutes(-30) });
+    assert.deepEqual(await f.admin.updateAppointmentStatus(f.appointment.id, 'COMPLETED'), { success: true });
+    assert.equal(f.written.length, 1);
+    assert.deepEqual(f.written[0].arrivedAt, NOW);
+    assert.deepEqual(f.appointment.arrivedAt, NOW);
+  }
+  // Cancelling records no arrival.
+  const cancelled = fixture({ date: minutes(-30) });
+  assert.deepEqual(await cancelled.admin.updateAppointmentStatus(cancelled.appointment.id, 'CANCELLED'), { success: true });
+  assert.equal('arrivedAt' in cancelled.written[0], false);
+  assert.equal(cancelled.appointment.arrivedAt, null);
+});
+
+test('marking completed keeps an earlier arrival time', async () => {
+  const arrived = minutes(-25);
+  const f = fixture({ date: minutes(-30), arrivedAt: arrived });
+  assert.deepEqual(await f.admin.updateAppointmentStatus(f.appointment.id, 'COMPLETED'), { success: true });
+  assert.equal(f.written.length, 1);
+  assert.equal('arrivedAt' in f.written[0], false);
+  assert.deepEqual(f.appointment.arrivedAt, arrived);
 });
 
 // A request is only closed once its appointment has ended (pending-request-lapse.ts);

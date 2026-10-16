@@ -40,6 +40,8 @@ export default async function AdminSettingsPage() {
     booksyUrl: settings.booksyUrl,
     bookingEnabled: settings.bookingEnabled,
     salonNotificationLocale: settings.salonNotificationLocale,
+    // The live row's instant: it decides whether the late-arrival box shows ticked.
+    lateAutoCancelSince: settings.lateAutoCancelSince,
     ...deposits,
   };
 

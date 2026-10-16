@@ -6,7 +6,12 @@ import type { Namespace } from '../../i18n/messages';
 
 type Element = { type: unknown; props: Record<string, unknown> };
 type Query = Record<string, string | string[] | undefined>;
-type Row = { id: string; date: Date; status: string; paymentAttempt?: unknown };
+type Row = { id: string; date: Date; status: string; paymentAttempt?: unknown; arrivedAt?: Date | null };
+
+/** What the arrivals panel's loader (services/late-arrival-board.ts, tested on its own) hands the page. */
+const ARRIVALS = { ruleOn: true, due: [], lateCancelled: [] };
+/** The arrivals panel, found by type in the rendered tree. */
+const ArrivalsPanel = () => null;
 
 function elements(node: unknown): Element[] {
   if (Array.isArray(node)) return node.flatMap(elements);
@@ -23,6 +28,8 @@ async function renderCalendar(query: Query, rows: Row[] = []) {
     '@/components/admin/CalendarSetupNotice': { CalendarSetupNotice: () => null },
     '@/app/services/site-settings-service': { getSiteSettings: async () => ({ bookingEnabled: false }) },
     '@/components/admin/ScheduleCalendar': { ScheduleCalendar: Calendar },
+    '@/components/admin/LateArrivalPanel': { LateArrivalPanel: ArrivalsPanel },
+    '@/app/services/late-arrival-board': { getLateArrivalBoard: async () => ARRIVALS },
     '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
     '@/app/services/admin-calendar-data': loadServerModule('src/app/services/admin-calendar-data.ts', {
       '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
@@ -55,7 +62,7 @@ async function renderCalendar(query: Query, rows: Row[] = []) {
   const rendered = await (content.type as (props: Record<string, unknown>) => Promise<unknown>)(content.props);
   const calendar = elements(rendered).find((element) => element.type === Calendar);
   assert.ok(calendar, 'the loaded schedule must reach the calendar');
-  return { props: calendar.props, dateQueries, rendered };
+  return { props: calendar.props, dateQueries, rendered, calendarType: Calendar };
 }
 
 test('a booking 75 days ahead is loaded when its day is selected', async () => {
@@ -108,6 +115,21 @@ test('bookings and pending requests carry their card deposit as a state and an a
   assert.deepEqual(byId(result.props.pendingAppointments), { held: { state: 'HELD', amountPence: 2000 } });
   const serialized = JSON.stringify([result.props.appointments, result.props.pendingAppointments]);
   assert.ok(!serialized.includes('square-secret') && !serialized.includes('paymentAttempt'), 'only the deposit view reaches the board');
+});
+
+test('the arrivals panel sits above the calendar, and an arrived booking says so on the board', async () => {
+  const result = await renderCalendar({ date: '2099-12-01', view: 'day' }, [
+    { id: 'arrived', date: new Date('2099-12-01T10:00:00Z'), status: 'CONFIRMED', arrivedAt: new Date('2099-12-01T09:55:00Z') },
+    { id: 'expected', date: new Date('2099-12-01T11:00:00Z'), status: 'CONFIRMED' },
+  ]);
+  const tree = elements(result.rendered);
+  const panel = tree.findIndex((element) => element.type === ArrivalsPanel);
+  assert.ok(panel >= 0, 'the arrivals panel must be rendered');
+  assert.equal(tree[panel].props.board, ARRIVALS);
+  assert.ok(panel < tree.findIndex((element) => element.type === result.calendarType), 'the panel comes before the calendar');
+  assert.deepEqual(Object.fromEntries((result.props.appointments as { id: string; arrivedAt: unknown }[]).map((row) => [row.id, row.arrivedAt])), {
+    arrived: '2099-12-01T09:55:00.000Z', expected: null,
+  });
 });
 
 test('a request whose time has passed stays on the calendar itself', async () => {

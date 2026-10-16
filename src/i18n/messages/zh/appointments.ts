@@ -18,6 +18,7 @@ const appointments: Localized<Messages['appointments']> = {
     PENDING: '待確認',
     CONFIRMED: '已確認',
     CANCELLED: '已取消',
+    LATE_CANCELLED: '已取消 — 遲到超過 {minutes} 分鐘',
     COMPLETED: '已完成',
   },
   card: {

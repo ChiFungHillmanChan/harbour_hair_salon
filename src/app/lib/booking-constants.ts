@@ -41,3 +41,19 @@ export const ONLINE_CANCEL_NOTICE_HOURS = 24;
 export function meetsMinimumNotice(start: Date, now: Date = new Date(), minutes: number = MIN_BOOKING_NOTICE_MINUTES): boolean {
   return start.getTime() - now.getTime() >= minutes * 60_000;
 }
+
+/**
+ * Late arrivals (docs/superpowers/specs/2026-10-16-late-arrival-auto-cancel-design.md).
+ * A CONFIRMED booking whose customer is not marked arrived this many minutes
+ * after its start is cancelled by the calendar-sync cron while Admin →
+ * Settings has the rule switched on. The booking terms and emails read it.
+ */
+export const LATE_ARRIVAL_CANCEL_MINUTES = 15;
+/** Bookings that started longer ago than this are left for staff, never cancelled late (a missed cron tick). */
+export const LATE_ARRIVAL_LOOKBACK_MINUTES = 120;
+/** The late-cancel email waits this long, so a restore made meanwhile drops it unsent. */
+export const LATE_CANCEL_EMAIL_DELAY_MINUTES = 30;
+/** How long after the automatic cancellation staff may restore the booking. */
+export const LATE_CANCEL_RESTORE_HOURS = 24;
+/** "Arrived" can be recorded from this many minutes before the start. */
+export const ARRIVAL_EARLY_MINUTES = 60;

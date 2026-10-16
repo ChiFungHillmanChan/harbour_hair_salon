@@ -11,6 +11,7 @@ import { EMAIL_VERIFICATION_TTL_HOURS } from '../../app/lib/email-verification';
 import { RESET_TOKEN_TTL_MS } from '../../app/lib/password-reset';
 import { UNSUBSCRIBE_TOKEN_TTL_DAYS } from '../../app/lib/unsubscribe-token';
 import { EMAIL_SEND_DAILY_POLICY } from '../../app/lib/rate-limit';
+import { LATE_ARRIVAL_CANCEL_MINUTES } from '../../app/lib/booking-constants';
 
 type Element = { type: unknown; props: Record<string, unknown> };
 
@@ -94,6 +95,29 @@ test('Square is described as an independent controller, not a processor acting f
   assert.ok(zh.includes('除下文另有說明外，他們代表我們並按我們的指示處理'));
 });
 
+// Late-arrival final review M8: arrival times are recorded, and the rule can cancel a booking.
+test('the bookings line says arrivals are recorded and a booking can be cancelled for lateness', async () => {
+  const en = (await privacyPage('en-GB')).text;
+  assert.ok(en.includes(`We also record when you arrive for your appointment: if you are more than ${LATE_ARRIVAL_CANCEL_MINUTES} minutes late without letting us know, your booking can be cancelled automatically, as our booking terms explain.`));
+  const zh = (await privacyPage('zh-HK')).text;
+  assert.ok(zh.includes(`我們亦會記錄你到達本店的時間：如你遲到超過 ${LATE_ARRIVAL_CANCEL_MINUTES} 分鐘而沒有通知本店，你的預約可能會被自動取消`));
+  for (const body of [en, zh]) assert.doesNotMatch(body, /\{minutes\}/);
+});
+
+// The late-arrival rule is the one automated decision the notice must own up to.
+test('the automated-decisions section describes the late-arrival cancellation', async () => {
+  const en = (await privacyPage('en-GB')).text;
+  assert.ok(en.includes('We do not profile you. One booking decision can be made automatically: while our late-arrival rule is switched on'));
+  assert.ok(en.includes(`if you have not been marked as arrived ${LATE_ARRIVAL_CANCEL_MINUTES} minutes after your appointment starts`));
+  assert.ok(en.includes('keeps your deposit. Our staff record arrivals, can reverse such a cancellation within 24 hours'));
+  assert.doesNotMatch(en, /do not make decisions about you by automated means alone/);
+  const zh = (await privacyPage('zh-HK')).text;
+  assert.ok(zh.includes(`預約開始 ${LATE_ARRIVAL_CANCEL_MINUTES} 分鐘後，你仍未被記錄為已到達`));
+  assert.ok(zh.includes('員工可在 24 小時內撤銷這類取消'));
+  assert.doesNotMatch(zh, /不會只靠自動化方式/);
+  for (const body of [en, zh]) assert.doesNotMatch(body, /\{minutes\}/);
+});
+
 test('the notice names every cookie the code sets for visitors', async () => {
   for (const locale of ['en-GB', 'zh-HK'] as const) {
     const { text: body } = await privacyPage(locale);
@@ -105,7 +129,7 @@ test('the notice names every cookie the code sets for visitors', async () => {
 
 test('the periods the notice states are the ones the code enforces', async () => {
   const en = (await privacyPage('en-GB')).text;
-  assert.ok(en.includes('Last updated: 13 October 2026'));
+  assert.ok(en.includes('Last updated: 16 October 2026'));
   assert.ok(en.includes(`email confirmation after ${EMAIL_VERIFICATION_TTL_HOURS} hours`));
   assert.ok(en.includes(`password reset after ${RESET_TOKEN_TTL_MS / 3_600_000} hour`));
   assert.ok(en.includes(`unsubscribe after ${UNSUBSCRIBE_TOKEN_TTL_DAYS} days`));

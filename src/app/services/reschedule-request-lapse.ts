@@ -2,6 +2,7 @@ import 'server-only';
 import prisma from '@/app/lib/prisma';
 import { appendAuditEvent } from '@/app/lib/audit';
 import { isRescheduleRequestMoot, RESCHEDULE_REQUEST_LEAD_HOURS } from '@/app/lib/reschedule-request';
+import { LATE_ARRIVAL_LOOKBACK_MINUTES } from '@/app/lib/booking-constants';
 import { runSerializableWithRetry } from './booking-service';
 import { enqueueAppointmentNotification } from './notification-outbox-service';
 
@@ -14,7 +15,11 @@ const lapseInclude = {
 /**
  * Close reschedule requests nobody answered before the requested time came
  * within 24 hours, or before the booking's original time arrived (a visit that
- * already happened needs no answer). Runs inside the notifications cron (same
+ * already happened needs no answer). Once the original time has come, the
+ * request is kept until the late-arrival lookback (2 hours after the start) has
+ * passed, and only then tidied away: the late-arrival rule never cancels a
+ * booking whose customer asked to move it, so clearing the request earlier
+ * would hand that booking to the rule. Runs inside the notifications cron (same
  * tick, no extra Neon wake). Each request is cleared and its email queued in
  * one transaction, and only if it is still the same request, so a re-run or a
  * racing staff decision never sends twice. The customer is emailed only while
@@ -24,12 +29,16 @@ const lapseInclude = {
  */
 export async function lapseExpiredRescheduleRequests(now: Date, limit = 50): Promise<{ lapsed: number; failed: number }> {
   const cutoff = new Date(now.getTime() + RESCHEDULE_REQUEST_LEAD_HOURS * 3_600_000);
+  // Original starts at or after this, up to now, keep their request (late-arrival final review I3).
+  const lookback = new Date(now.getTime() - LATE_ARRIVAL_LOOKBACK_MINUTES * 60_000);
   const due = await prisma.appointment.findMany({
     where: {
       status: 'CONFIRMED',
       OR: [
-        { rescheduleRequestedDate: { lt: cutoff } },
-        { date: { lt: now }, rescheduleRequestedDate: { not: null } },
+        // Still ahead, the requested time under 24 hours away: lapsed, the customer emailed.
+        { date: { gt: now }, rescheduleRequestedDate: { lt: cutoff } },
+        // Started before the lookback: tidied away without an email.
+        { date: { lt: lookback }, rescheduleRequestedDate: { not: null } },
       ],
     },
     select: { id: true },
@@ -55,6 +64,8 @@ export async function lapseExpiredRescheduleRequests(now: Date, limit = 50): Pro
         const current = await tx.appointment.findUnique({ where: { id }, include: lapseInclude });
         if (!current || current.status !== 'CONFIRMED' || !current.rescheduleRequestedAt || !current.rescheduleRequestedDate
           || !isRescheduleRequestMoot({ date: current.date, rescheduleRequestedDate: current.rescheduleRequestedDate }, now)) return false;
+        // Its original time has come, but not yet the end of the late-arrival lookback: kept.
+        if (current.date <= now && current.date >= lookback) return false;
         const cleared = await tx.appointment.updateMany({
           where: { id, status: 'CONFIRMED', date: current.date, rescheduleRequestedAt: current.rescheduleRequestedAt },
           data: { rescheduleRequestedDate: null, rescheduleRequestedAt: null },

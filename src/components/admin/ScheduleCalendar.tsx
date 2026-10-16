@@ -507,6 +507,7 @@ export function ScheduleCalendar({
       serviceColor: appt.service.calendarColor,
       updatedAt: new Date(appt.updatedAt).toISOString(),
       moveRequested: Boolean(appt.rescheduleRequestedAt),
+      arrived: Boolean(appt.arrivedAt),
       ...(appt.deposit ? { deposit: appt.deposit } : {}),
     }));
   const weekKeys = weekDayKeys(dateStr);
@@ -521,6 +522,7 @@ export function ScheduleCalendar({
     serviceColor: appt.service.calendarColor,
     updatedAt: new Date(appt.updatedAt).toISOString(),
     moveRequested: Boolean(appt.rescheduleRequestedAt),
+    arrived: Boolean(appt.arrivedAt),
     ...(appt.deposit ? { deposit: appt.deposit } : {}),
   }));
   const weekStylists: WeekStylist[] = stylists.map((stylist) => ({
@@ -556,6 +558,8 @@ export function ScheduleCalendar({
       date: appt.date,
       rescheduleRequestedDate: appt.rescheduleRequestedDate,
       rescheduleRequestedAt: appt.rescheduleRequestedAt,
+      // Only a booking staff marked arrived carries one.
+      ...(appt.arrivedAt ? { arrivedAt: appt.arrivedAt } : {}),
       // Only a booking with a card deposit carries one.
       ...(appt.deposit ? { deposit: appt.deposit } : {}),
     });
@@ -851,6 +855,7 @@ export function ScheduleCalendar({
           stylists={stylists.map(({ id, name }) => ({ id, name }))}
           onClose={closeDialog}
           onSaved={savedDialog}
+          onRefresh={() => router.refresh()}
         />
       )}
     </div>

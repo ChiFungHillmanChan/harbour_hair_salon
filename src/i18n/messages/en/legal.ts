@@ -23,7 +23,8 @@ const legal = {
       intro: 'We collect only what we need to run your account and your appointments:',
       account: '<b>Account details:</b> your name, email address, phone number (optional) and a securely scrambled (hashed) version of your password. We also record when you confirmed your email address, and the language you use our site in so that our emails reach you in that language.',
       google: '<b>Google sign-in:</b> if you choose “Continue with Google”, Google gives us your name, your email address and an ID for your Google account. We never see your Google password.',
-      bookings: '<b>Bookings:</b> the service, stylist, date, time, price and status of each appointment, any change of time you ask for, and notes our staff add to help with your visit.',
+      /** {minutes}: LATE_ARRIVAL_CANCEL_MINUTES (the late-arrival rule in the booking terms). */
+      bookings: '<b>Bookings:</b> the service, stylist, date, time, price and status of each appointment, any change of time you ask for, and notes our staff add to help with your visit. We also record when you arrive for your appointment: if you are more than {minutes} minutes late without letting us know, your booking can be cancelled automatically, as our <terms>booking terms</terms> explain.',
       payments: '<b>Online deposits:</b> if your booking needs a deposit, its amount, whether it is held, taken, released or refunded, the dates, and the references Square gives the payment and any refund. Your card details go straight to Square: we never see or store your card number.',
       patchTests: '<b>Patch tests and consultations:</b> some colour services need a skin patch test first. We keep a record of your patch tests and consultations (when they took place, and which service a consultation was for) so that we can check whether a colour service is safe to book. If you tell us about an allergy or a reaction, we may note it on your booking.',
       staffBookings: '<b>Bookings made with our staff:</b> if you book by phone, WhatsApp or in the salon, we record your name and, if you give them, your phone number and email address.',
@@ -108,7 +109,7 @@ const legal = {
     },
     automated: {
       title: 'Automated decisions',
-      body: 'We do not make decisions about you by automated means alone that have legal or similarly significant effects, and we do not profile you. The booking system does check things such as opening hours and whether a patch test is needed; if it cannot book what you want, you can always call us.',
+      body: 'We do not profile you. One booking decision can be made automatically: while our late-arrival rule is switched on, if you have not been marked as arrived {minutes} minutes after your appointment starts and you haven’t let us know you’re running late, the booking system cancels the booking and, as our <terms>booking terms</terms> explain, keeps your deposit. Our staff record arrivals, can reverse such a cancellation within 24 hours, and you can ask us to review it by calling the salon. The booking system also checks things such as opening hours and whether a patch test is needed; if it cannot book what you want, you can always call us.',
     },
     changes: {
       title: 'Changes to this policy',
@@ -159,6 +160,8 @@ const legal = {
       request: 'You can withdraw a request we haven’t confirmed yet at any time in <bookings>My Bookings</bookings>. We release the hold and you are not charged.',
       confirmed: 'You can cancel a confirmed booking in <bookings>My Bookings</bookings> up to 24 hours before your appointment, and we refund your deposit in full.',
       late: 'Less than 24 hours before your appointment, please call us to cancel.',
+      /** {minutes}: LATE_ARRIVAL_CANCEL_MINUTES. Applies while Admin → Settings has the rule on; the salon decided it 2026-10-16. */
+      lateArrival: 'If you are more than {minutes} minutes late and haven’t let us know, we cancel your appointment so that the time can go to another client, and we keep your deposit, as for a missed appointment. If you’re running late, please call us.',
       /**
        * OWNER POLICY (2026-10-16): a no-show's deposit is never refunded; the
        * rule for late cancellations is not decided yet, so it stays "may".
@@ -193,7 +196,7 @@ const legal = {
      */
     rights: {
       title: 'Your rights',
-      body: 'You can cancel a confirmed booking online up to 24 hours before your appointment for a full refund of your deposit, or contact us at any time before your appointment. If you miss your appointment, we keep your deposit; if you cancel late, we may keep it. We never keep more than the deposit. Your statutory rights are not affected.',
+      body: 'You can cancel a confirmed booking online up to 24 hours before your appointment for a full refund of your deposit, or contact us at any time before your appointment. If you miss your appointment, or are more than {minutes} minutes late without letting us know, we keep your deposit; if you cancel late, we may keep it. We never keep more than the deposit. Your statutory rights are not affected.',
     },
     contact: {
       title: 'Questions',

@@ -12,6 +12,7 @@ import { useLocale, useT } from '@/i18n/client';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useDraftState } from '@/i18n/draft-store';
 import { appointmentGoogleCalendarUrl, appointmentIcsBlob, type AppointmentCalendarEvent } from '@/app/lib/calendar-links';
+import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { RescheduleModal } from './RescheduleModal';
 
 /**
@@ -28,6 +29,8 @@ type SerializedAppointment = {
   id: string;
   date: string; // ISO string
   status: string;
+  /** The salon cancelled it because the customer was late (never set on a restored booking's status). */
+  lateCancelled?: boolean;
   stylist: { name: string };
   stylistId: string;
   /** nameIsEnglish: no published translation, so the English name is shown (marked lang="en"). */
@@ -200,7 +203,9 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
                 statusColors[appointment.status] || 'bg-zinc-100 text-zinc-600'
               }`}
             >
-              {t.dynamic(`status.${appointment.status}`, undefined, appointment.status)}
+              {appointment.status === 'CANCELLED' && appointment.lateCancelled
+                ? t('status.LATE_CANCELLED', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })
+                : t.dynamic(`status.${appointment.status}`, undefined, appointment.status)}
             </span>
 
             {isUpcoming && (

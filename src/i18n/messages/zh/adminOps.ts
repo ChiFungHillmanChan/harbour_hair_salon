@@ -209,6 +209,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       PAYMENT_ORPHAN_RELEASED: '此訂金預留款項沒有對應的預約，因此已經解除。沒有扣款。',
       PAYMENT_LATE_CAPTURE_REFUNDED: '預約已結束或從未建立，但 Square 仍收取了此訂金，因此正全數退還。',
       PAYMENT_UNKNOWN_CANCELLING: 'Square 一直未有確認此訂金授權。系統每日都會按冪等鍵再次要求取消，直至任何預留款項都已到期（7 日）。沒有建立預約。',
+      LATE_ARRIVAL_FAILED: '遲到檢查未能完成。預約保持不變，下次日曆同步會再檢查。',
     },
     report: {
       title: '最新就緒報告',
@@ -246,6 +247,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       kind: {
         REQUEST_RECEIVED: '已收到預約申請',
         REQUEST_LAPSED: '預約申請已失效',
+        LATE_CANCELLED: '遲到取消',
         SALON_ALERT: '店方通知',
         CONFIRMATION: '預約確認',
         CANCELLATION: '取消預約',

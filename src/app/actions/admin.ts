@@ -595,6 +595,8 @@ export async function updateAppointmentStatus(
           ...(status !== 'CONFIRMED' ? { rescheduleRequestedDate: null, rescheduleRequestedAt: null } : {}),
           notificationVersion: { increment: 1 },
           ...(status === 'CANCELLED' ? cancelledSyncFields(current) : {}),
+          // Marking a visit completed means the customer came.
+          ...(status === 'COMPLETED' && !current.arrivedAt ? { arrivedAt: now } : {}),
         };
 
         const result = await tx.appointment.updateMany({

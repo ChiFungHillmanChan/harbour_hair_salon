@@ -213,6 +213,7 @@ const adminOps = {
       PAYMENT_ORPHAN_RELEASED: 'No booking was made with this deposit hold, so it was released. Nothing was taken.',
       PAYMENT_LATE_CAPTURE_REFUNDED: 'Square took this deposit although its booking had closed or was never made, so it is being refunded in full.',
       PAYMENT_UNKNOWN_CANCELLING: 'Square never confirmed this deposit authorization. It is cancelled by its idempotency key again every day until any hold would have run out (7 days). Nothing was booked.',
+      LATE_ARRIVAL_FAILED: 'The late-arrival check could not complete. Bookings were left as they were; it runs again with the next calendar sync.',
     },
     report: {
       title: 'Latest readiness report',
@@ -250,6 +251,7 @@ const adminOps = {
       kind: {
         REQUEST_RECEIVED: 'Booking request received',
         REQUEST_LAPSED: 'Booking request lapsed',
+        LATE_CANCELLED: 'Late arrival — cancelled',
         SALON_ALERT: 'Salon alert',
         CONFIRMATION: 'Confirmation',
         CANCELLATION: 'Cancellation',

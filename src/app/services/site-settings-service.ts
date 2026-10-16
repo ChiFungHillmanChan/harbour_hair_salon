@@ -33,6 +33,8 @@ export type SiteSettings = {
   depositPercent: number;
   /** Services quoted below this many pence take no percentage deposit. */
   depositMinimumServicePence: number;
+  /** ISO instant the late-arrival rule was switched on; null = off. */
+  lateAutoCancelSince: string | null;
 };
 
 const SINGLETON_ID = 'singleton';
@@ -59,6 +61,8 @@ const DEFAULTS: SiteSettings = {
   depositsEnabled: false,
   depositPercent: 0,
   depositMinimumServicePence: 0,
+  // Ships off: nothing is cancelled for lateness until the salon switches it on.
+  lateAutoCancelSince: null,
 };
 
 function mapRow(row: {
@@ -80,6 +84,7 @@ function mapRow(row: {
   depositsEnabled: boolean;
   depositPercent: number;
   depositMinimumServicePence: number;
+  lateAutoCancelSince: Date | null;
 }): SiteSettings {
   return {
     phone: row.phone,
@@ -100,6 +105,7 @@ function mapRow(row: {
     depositsEnabled: row.depositsEnabled,
     depositPercent: row.depositPercent,
     depositMinimumServicePence: row.depositMinimumServicePence,
+    lateAutoCancelSince: row.lateAutoCancelSince?.toISOString() ?? null,
   };
 }
 

@@ -83,3 +83,20 @@ test('the settings form uses the field with the saved percentage, and says a fix
   assert.equal(text(minimumHelp), 'Services priced below this take no deposit, unless the service has its own fixed deposit. 0.00 means every priced service does.');
   assert.match(translator('zh-HK', 'adminContent')('settings.deposits.minimumHelp'), /除非該服務設有自己的固定訂金/);
 });
+
+// Late-arrival final review F5: the switch shows ticked only when the saved row
+// says the rule is on — a settings object without the field fails closed.
+test('the late-arrival switch is ticked only when the rule is on', () => {
+  const base = {
+    bookingEnabled: true, depositsEnabled: true, depositPercent: 25, depositMinimumServicePence: 2000, phone: '0113 496 0000',
+    salonNotificationLocale: 'en-GB', instagramUrl: '', googleBusinessUrl: '', facebookUrl: '', treatwellUrl: '', freshaUrl: '', booksyUrl: '',
+    twitterHandle: '', gscVerification: '',
+  };
+  const { form } = loadForm('en-GB');
+  const box = (settings: Record<string, unknown>) =>
+    elements(form.SiteSettingsForm({ settings: settings as never })).find((node) => node.props.name === 'lateAutoCancelEnabled')!;
+  assert.equal(box({ ...base, lateAutoCancelSince: null }).props.defaultChecked, false, 'null: off');
+  assert.equal(box(base).props.defaultChecked, false, 'missing: off');
+  assert.equal(box({ ...base, lateAutoCancelSince: '2026-10-16T09:00:00.000Z' }).props.defaultChecked, true, 'ISO string: on');
+  assert.equal(box({ ...base, lateAutoCancelSince: new Date('2026-10-16T09:00:00Z') }).props.defaultChecked, true, 'Date: on');
+});

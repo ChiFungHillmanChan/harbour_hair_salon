@@ -13,6 +13,8 @@ import { DepositRecheckButton } from './DepositRecheckButton';
 import { DepositSettleRefundButton } from './DepositSettleRefundButton';
 import type { DepositView } from '@/app/lib/deposit-display';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
+import { isArrivalWindowOpen, lateCancelDueAt } from '@/app/lib/late-arrival';
+import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useLocale, useT } from '@/i18n/client';
 import { DEFAULT_LOCALE, HTML_LANG, LOCALE_LABEL, LOCALES, isLocale, type Locale } from '@/i18n/config';
@@ -62,6 +64,8 @@ export type DialogTarget =
       rescheduleRequestedAt: string | null;
       /** The booking's card deposit (lib/deposit-display.ts), when it has one. */
       deposit?: DepositView | null;
+      /** When staff marked the customer arrived (ISO instant); the late-arrival rule never cancels an arrived booking. */
+      arrivedAt?: string | null;
     };
 
 /**
@@ -107,12 +111,15 @@ export function AppointmentDialog({
   stylists,
   onClose,
   onSaved,
+  onRefresh,
 }: {
   target: DialogTarget;
   services: DialogService[];
   stylists: DialogStylist[];
   onClose: () => void;
   onSaved: () => void;
+  /** Reload the board without closing the dialog: a refused change may mean the booking moved on. */
+  onRefresh?: () => void;
 }) {
   const t = useT('adminSchedule');
   const tp = useT('pricing');
@@ -282,6 +289,30 @@ export function AppointmentDialog({
       setError(result.error ?? t('dialog.cancelFailed'));
     } catch {
       setError(t('dialog.cancelUnknown'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Arrived / Not arrived (late-arrival rule, actions/admin-arrivals.ts).
+  const toggleArrived = async () => {
+    if (target.mode !== 'edit' || saving) return;
+    // Past the 15-minute mark, "not arrived" lets the next run cancel the booking.
+    if (target.arrivedAt && Date.now() >= lateCancelDueAt(target.date).getTime()
+      && !window.confirm(t('arrivals.clearArrivedConfirm', { minutes: LATE_ARRIVAL_CANCEL_MINUTES }))) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { markArrived } = await import('@/app/actions/admin-arrivals');
+      const result = await markArrived(target.appointmentId, !target.arrivedAt);
+      if (result.success) return saved();
+      setError(result.error);
+      // Refused: the rule or a colleague may have changed the booking meanwhile.
+      onRefresh?.();
+    } catch {
+      // The request itself failed: say so here, never in the error boundary.
+      setError(t('appointment.updateFailed'));
+      onRefresh?.();
     } finally {
       setSaving(false);
     }
@@ -567,6 +598,12 @@ export function AppointmentDialog({
           {isEdit && (target.status === 'PENDING' || target.status === 'CONFIRMED') && (
             <button type="button" disabled={saving} onClick={cancelBooking} className="mr-auto rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
               {t('dialog.cancelBooking')}
+            </button>
+          )}
+          {isEdit && target.status === 'CONFIRMED' && isArrivalWindowOpen(target.date, target.durationMin) && (
+            <button type="button" disabled={saving} onClick={toggleArrived}
+              className="rounded border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50">
+              {target.arrivedAt ? t('arrivals.clearArrived') : t('arrivals.markArrived')}
             </button>
           )}
           <button type="button" disabled={saving} onClick={close} className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50">

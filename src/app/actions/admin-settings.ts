@@ -80,6 +80,8 @@ const settingsSchema = z.object({
   depositsEnabled: z.boolean().default(false),
   depositPercent: wholePercent.default(0),
   depositMinimumServicePence: poundsAsPence.default(0),
+  // Not a column: it becomes `lateAutoCancelSince` (the instant it was switched on).
+  lateAutoCancelEnabled: z.boolean().default(false),
 });
 
 export type SettingsActionState =
@@ -98,6 +100,7 @@ export async function updateSiteSettings(
     ...Object.fromEntries(formData),
     bookingEnabled: formData.get('bookingEnabled') === 'on',
     depositsEnabled: formData.get('depositsEnabled') === 'on',
+    lateAutoCancelEnabled: formData.get('lateAutoCancelEnabled') === 'on',
     // The box holds pounds, so it is named for them; the column holds pence.
     depositMinimumServicePence: formData.get('depositMinimumServicePounds') ?? undefined,
   });
@@ -155,10 +158,15 @@ export async function updateSiteSettings(
           return reasons.length ? reasons : [t('settings.errors.READINESS')];
         }
       }
+      const { lateAutoCancelEnabled, ...columns } = parsed.data;
+      // Switching on records the instant: only bookings that start after it
+      // are ever cancelled. Saving again keeps the original instant.
+      const existing = await tx.siteSettings.findUnique({ where: { id: 'singleton' }, select: { lateAutoCancelSince: true } });
+      const lateAutoCancelSince = lateAutoCancelEnabled ? existing?.lateAutoCancelSince ?? new Date() : null;
       await tx.siteSettings.upsert({
         where: { id: 'singleton' },
-        update: parsed.data,
-        create: { id: 'singleton', ...parsed.data },
+        update: { ...columns, lateAutoCancelSince },
+        create: { id: 'singleton', ...columns, lateAutoCancelSince },
       });
       await appendAuditEvent({
         actorUserId: session.userId,
@@ -171,6 +179,7 @@ export async function updateSiteSettings(
           depositsEnabled: parsed.data.depositsEnabled,
           depositPercent: parsed.data.depositPercent,
           depositMinimumServicePence: parsed.data.depositMinimumServicePence,
+          lateAutoCancel: lateAutoCancelEnabled,
         },
       }, tx);
       return [];

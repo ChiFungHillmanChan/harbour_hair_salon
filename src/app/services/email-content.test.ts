@@ -257,7 +257,7 @@ test('a confirmed booking’s cancellation, or one queued before the flag existe
 
 test('the attached file names the organizer it is given, and none otherwise', () => {
   const organizer = { name: 'Harbour Hair Salon', email: 'hello@harbourhair.co.uk' };
-  for (const kind of ['CONFIRMATION', 'RESCHEDULE', 'REMINDER', 'CANCELLATION'] as const) {
+  for (const kind of ['CONFIRMATION', 'RESCHEDULE', 'REMINDER', 'CANCELLATION', 'LATE_CANCELLED'] as const) {
     const file = appointmentCalendarFile(kind, requestAppointment, 'en-GB', { oldDate: requestedDate, sequence: 2 }, organizer)!;
     assert.match(file.ics.replace(/\r\n /g, ''), /\r\nORGANIZER;CN="Harbour Hair Salon":mailto:hello@harbourhair\.co\.uk\r\n/, kind);
     assert.doesNotMatch(appointmentCalendarFile(kind, requestAppointment, 'en-GB', { oldDate: requestedDate, sequence: 2 })!.ics, /ORGANIZER/, kind);
@@ -385,8 +385,9 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
   test(`the confirmation says what the deposit paid and what is left to pay in the salon (${locale})`, () => {
     const content = appointmentEmailContent('CONFIRMATION', taken, locale);
     assert.deepEqual(content.details.at(-1), words.paidRow);
-    assert.deepEqual(content.footnotes.slice(0, 2), [words.change, words.paid]);
-    assert.equal(content.footnotes.length, 3, 'and the calendar file note');
+    // The arrive-on-time line comes first; the calendar file note follows.
+    assert.deepEqual(content.footnotes.slice(1, 3), [words.change, words.paid]);
+    assert.equal(content.footnotes.length, 4, 'and the arrive-on-time line and the calendar file note');
     assert.ok(renderPlainText(content).includes(words.paid));
     // A booking whose price was never recorded: no remainder is invented.
     assert.ok(appointmentEmailContent('CONFIRMATION', { ...taken, price: { known: false } }, locale).footnotes.includes(words.paidNoTotal));
@@ -417,7 +418,7 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
 test('the amount left to pay carries the price’s own fine print when it is not exact', () => {
   const remainder = (locale: 'en-GB' | 'zh-HK', vatDisplay: string | null, priceNature: string | null) => appointmentEmailContent('CONFIRMATION', {
     ...taken, price: { known: true, amountPence: 10000, priceType: null, vatDisplay, priceNature } as EmailAppointment['price'],
-  }, locale).footnotes[1];
+  }, locale).footnotes[2];
   assert.equal(remainder('en-GB', 'UNSPECIFIED', 'LISTED'), 'Your £20.00 deposit is paid; £80.00 is left to pay in the salon. Cash and card are accepted.', 'an exact price: as before');
   assert.equal(remainder('en-GB', null, 'SUBJECT_TO_CONSULTATION'), 'Your £20.00 deposit is paid; £80.00 (may be adjusted after consultation) is left to pay in the salon. Cash and card are accepted.');
   assert.equal(remainder('en-GB', 'EXCLUDED', null), 'Your £20.00 deposit is paid; £80.00 (VAT excluded) is left to pay in the salon. Cash and card are accepted.');
@@ -433,4 +434,45 @@ test('mail queued before deposit outcomes existed renders exactly as it always d
     assert.deepEqual(appointmentEmailContent(kind, priced, 'en-GB', { depositOutcome: 'REFUNDING' }), appointmentEmailContent(kind, priced, 'en-GB'), kind);
   }
   assert.deepEqual(appointmentEmailContent('CONFIRMATION', { ...priced, deposit: null }, 'zh-HK'), appointmentEmailContent('CONFIRMATION', priced, 'zh-HK'));
+});
+
+test('LATE_CANCELLED says why, keeps the deposit wording, and removes the calendar entry', () => {
+  const zh = appointmentEmailContent('LATE_CANCELLED', taken, 'zh-HK');
+  assert.match(zh.intro, /以便把時段讓給其他客人/);
+  assert.equal(zh.subject, '你的預約因遲到已取消 — Harbour Hair Salon');
+  assert.ok(zh.footnotes.includes('如你認為有誤，請致電本店。'), 'the salon is 本店 in customer text');
+  assert.match(appointmentEmailContent('LATE_CANCELLED', taken, 'en-GB').intro, /^You hadn’t arrived within 15 minutes of your appointment on .+, so we cancelled it so that the time could go to another client, as our booking terms say\.$/);
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const words = s3Wording[locale];
+    const content = appointmentEmailContent('LATE_CANCELLED', taken, locale, { depositOutcome: 'KEPT', salonPhone: '07831 830898' });
+    assert.ok(content.intro.includes('15'), `names the 15 minutes (${locale})`);
+    // Its own subject, so the inbox tells it apart from an ordinary cancellation (final review F3).
+    assert.notEqual(content.subject, appointmentEmailContent('CANCELLATION', taken, locale).subject, `${locale} subject`);
+    assert.equal(content.details.at(-1)?.value, words.kept[0], 'deposit row');
+    assert.ok(content.footnotes.includes(words.kept[1]), 'deposit kept sentence');
+    assert.ok(content.footnotes.includes(calendarText[locale].cancelled), 'calendar entry removed');
+    assert.ok(content.callout?.body.includes('07831 830898'), 'salon phone');
+    assert.equal(calendarMethodFor('LATE_CANCELLED'), 'CANCEL');
+    assert.equal(appointmentCalendarFile('LATE_CANCELLED', taken, locale, { sequence: 3 })?.method, 'CANCEL');
+    // Without a queued outcome (or a phone) nothing is claimed about the deposit.
+    const plain = appointmentEmailContent('LATE_CANCELLED', taken, locale);
+    assert.equal(plain.callout, undefined);
+    assert.ok(!plain.footnotes.includes(words.kept[1]));
+  }
+});
+
+test('the confirmation and the reminder ask the customer to arrive on time, first among the footnotes', () => {
+  const words = {
+    'en-GB': 'Please arrive on time: if you are more than 15 minutes late without letting us know, we cancel the appointment and keep any deposit.',
+    'zh-HK': '請準時到達：如遲到超過 15 分鐘而沒有通知本店，本店會取消預約，如有訂金，亦不會退還。',
+  } as const;
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    for (const kind of ['CONFIRMATION', 'REMINDER'] as const) {
+      assert.equal(appointmentEmailContent(kind, requestAppointment, locale).footnotes[0], words[locale], `${kind} ${locale}`);
+    }
+    // Only the mails sent to a customer with a confirmed booking carry it.
+    for (const kind of ['REQUEST_RECEIVED', 'CANCELLATION', 'LATE_CANCELLED', 'REVIEW_REQUEST'] as const) {
+      assert.ok(!appointmentEmailContent(kind, requestAppointment, locale).footnotes.includes(words[locale]), `${kind} ${locale}`);
+    }
+  }
 });

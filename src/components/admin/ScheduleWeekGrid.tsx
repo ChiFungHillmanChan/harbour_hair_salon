@@ -508,6 +508,7 @@ export function ScheduleWeekGrid({
                     <div className="pl-1 pr-0.5 py-0.5 text-[10px] leading-[1.15] pointer-events-none">
                       <div className="font-semibold tabular-nums">{timeLabel(place.startMin)}</div>
                       <div className="truncate">{firstName(appt.customerName, customerFallback)}</div>
+                      {appt.arrived && <div className="truncate font-semibold uppercase">{t('arrivals.arrivedMark')}</div>}
                       {appt.moveRequested && <div className="truncate uppercase">{t('rescheduleRequests.badge')}</div>}
                       {appt.deposit && <div className="truncate"><DepositChip deposit={appt.deposit} t={t} onColour /></div>}
                     </div>

@@ -154,3 +154,26 @@ test('the card says what happened to the deposit, and cancelling says what will 
   const chinese = renderCard({ deposit: { state: 'KEPT', amountPence: 2000 } }, 'zh-HK');
   assert.match(chinese.all, /訂金：根據我們的預約條款，£20\.00 不予退還。/);
 });
+
+// A booking the salon cancelled because the customer was late (Admin →
+// Settings switch): My Bookings says so, instead of a plain "Cancelled".
+test('My Bookings labels a late-arrival cancellation, and only that', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') });
+  const { cards: shown, selects } = await cards([
+    { ...row('late', 'CANCELLED', null), lateCancelledAt: new Date('2099-09-14T12:20:00Z') },
+    row('plain', 'CANCELLED', null),
+  ]);
+  const byId = Object.fromEntries(shown.map((card) => [card.id, card]));
+  assert.equal(byId.late.lateCancelled, true);
+  assert.equal(byId.plain.lateCancelled, false);
+  for (const select of selects as { lateCancelledAt?: boolean }[]) assert.equal(select.lateCancelledAt, true);
+
+  const label = { 'en-GB': ['Cancelled — more than 15 minutes late', 'Cancelled'], 'zh-HK': ['已取消 — 遲到超過 15 分鐘', '已取消'] } as const;
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    assert.ok(renderCard({ status: 'CANCELLED', lateCancelled: true }, locale).all.includes(label[locale][0]), locale);
+    const plain = renderCard({ status: 'CANCELLED' }, locale).all;
+    assert.ok(plain.includes(label[locale][1]) && !plain.includes(label[locale][0]), locale);
+    // A restored booking is CONFIRMED again; a stale flag never labels it.
+    assert.ok(!renderCard({ status: 'CONFIRMED', lateCancelled: true }, locale).all.includes(label[locale][0]), locale);
+  }
+});

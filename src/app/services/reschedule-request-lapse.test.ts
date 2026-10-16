@@ -13,8 +13,14 @@ type Hooks = {
   /** The SiteSettings read throws (a Neon blip). */
   settingsReadFails?: boolean;
 };
-/** Due: requested time under 24 h away, OR the booking's original time has passed with a request still open. */
-type DueWhere = { status: string; OR: ({ rescheduleRequestedDate: { lt: Date } } | { date: { lt: Date }; rescheduleRequestedDate: { not: null } })[] };
+/**
+ * Due: still ahead with the requested time under 24 h away, OR the booking's
+ * original time passed more than the late-arrival lookback ago with a request still open.
+ */
+type Range = { gt?: Date; lt?: Date; not?: null };
+type DueWhere = { status: string; OR: { date: Range; rescheduleRequestedDate: Range }[] };
+/** Every branch needs the field set (`not: null`), then within `gt`/`lt`. */
+const inRange = (value: Date | null, range: Range) => value !== null && (!range.gt || value > range.gt) && (!range.lt || value < range.lt);
 type Row = { id: string; rescheduleRequestedDate: Date | null; rescheduleRequestedAt: Date | null; [key: string]: unknown };
 
 function fixture(rows: { id: string; requestedDate: Date | null; requestedAt: Date | null; status?: string; date?: Date }[], hooks: Hooks = {}) {
@@ -36,9 +42,7 @@ function fixture(rows: { id: string; requestedDate: Date | null; requestedAt: Da
     } },
     appointment: {
       findMany: async ({ where }: { where: DueWhere }) => appointments.filter((row) => row.status === where.status && where.OR.some((part) =>
-        'date' in part
-          ? row.date < part.date.lt && row.rescheduleRequestedDate !== null
-          : row.rescheduleRequestedDate !== null && row.rescheduleRequestedDate < part.rescheduleRequestedDate.lt)).map((row) => ({ id: row.id })),
+        inRange(row.date, part.date) && inRange(row.rescheduleRequestedDate, part.rescheduleRequestedDate))).map((row) => ({ id: row.id })),
       findUnique: async ({ where }: { where: { id: string } }) => {
         const found = structuredClone(appointments.find((row) => row.id === where.id) ?? null);
         hooks.onFindUnique?.(where.id, appointments as unknown as Row[]); // mutates AFTER the clone: the write then races
@@ -147,6 +151,39 @@ test('a request on a booking whose original time has passed is cleared and audit
   assert.equal(f.appointments[1].rescheduleRequestedAt, null);
   assert.ok(f.appointments[2].rescheduleRequestedAt, 'a future booking with a request over 24 h away is untouched');
   assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(now), { lapsed: 0, failed: 0 }, 're-running is a no-op');
+});
+
+// Late-arrival final review I3: the late-arrival rule never cancels a booking
+// with an open request, so the request must outlive the rule's lookback (the
+// start + 2 hours) — clearing it at the start would hand the booking to the rule.
+test('a request on a booking whose original time has just come is kept until two hours after the start', async () => {
+  const start = new Date('2099-09-01T11:00:00Z'); // an hour before `now`
+  const rows = [
+    { id: 'expired', date: start, requestedDate: new Date('2099-09-02T09:00:00Z'), requestedAt: new Date('2099-08-30T10:00:00Z') },
+    { id: 'far', date: new Date('2099-09-01T10:00:00Z'), requestedDate: new Date('2099-09-10T09:00:00Z'), requestedAt: new Date('2099-08-30T10:00:00Z') },
+    // At the start itself, and exactly at the lookback's edge.
+    { id: 'starting', date: now, requestedDate: new Date('2099-09-02T09:00:00Z'), requestedAt: new Date('2099-08-30T10:00:00Z') },
+  ];
+  const f = fixture(rows);
+  assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(now), { lapsed: 0, failed: 0 });
+  assert.equal(f.transactions(), 0, 'not even a candidate');
+  assert.ok(f.appointments.every((row) => row.rescheduleRequestedAt), 'every request stays open');
+  assert.deepEqual([f.enqueued, f.audits], [[], []]);
+
+  // Exactly two hours after the 10:00 start: still kept. A minute later, tidied away without an email.
+  assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(new Date('2099-09-01T12:00:00Z')), { lapsed: 0, failed: 0 });
+  assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(new Date('2099-09-01T12:01:00Z')), { lapsed: 1, failed: 0 });
+  assert.deepEqual(f.appointments.map((row) => [row.id, row.rescheduleRequestedAt === null]), [['expired', false], ['far', true], ['starting', false]]);
+  assert.deepEqual(await f.service.lapseExpiredRescheduleRequests(new Date('2099-09-01T13:01:00Z')), { lapsed: 1, failed: 0 });
+  assert.equal(f.appointments[0].rescheduleRequestedAt, null);
+  assert.deepEqual(f.enqueued, [], 'a visit that has started is never emailed about');
+
+  // Read as still ahead, then moved by staff to a time that has just come: kept.
+  const moved = fixture([due('moved', 11)], { onBeforeTransaction: (_n, list) => { list[0].date = new Date('2099-09-01T11:30:00Z'); } });
+  assert.deepEqual(await moved.service.lapseExpiredRescheduleRequests(now), { lapsed: 0, failed: 0 });
+  assert.equal(moved.transactions(), 1);
+  assert.ok(moved.appointments[0].rescheduleRequestedAt);
+  assert.deepEqual([moved.enqueued, moved.audits], [[], []]);
 });
 
 test('lapse emails carry the salon phone, read once per run, and each audit names its request', async () => {

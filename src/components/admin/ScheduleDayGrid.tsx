@@ -44,6 +44,8 @@ export type GridAppointment = {
   updatedAt: string;
   /** A customer has asked to move this booking (an open reschedule request). */
   moveRequested?: boolean;
+  /** Staff marked the customer arrived. */
+  arrived?: boolean;
   /** The booking's card deposit (lib/deposit-display.ts), when it has one. */
   deposit?: DepositView | null;
 };
@@ -516,6 +518,7 @@ export function ScheduleDayGrid({
                           {timeLabel(position.startMin)} {appt.customerName ?? t('appointment.customerFallback')}
                         </div>
                         <div className="truncate opacity-90">{appt.serviceName}</div>
+                        {appt.arrived && <div className="font-semibold uppercase">{t('arrivals.arrivedMark')}</div>}
                         {appt.moveRequested && <div className="font-semibold uppercase">{t('rescheduleRequests.badge')}</div>}
                         {appt.deposit && <div><DepositChip deposit={appt.deposit} t={t} onColour /></div>}
                         <div className="opacity-80">{t('grid.minutes', { count: position.durationMin })}</div>

@@ -176,6 +176,34 @@ test('an admin booking publishes its busy period before waiting for confirmation
   })));
 });
 
+// The late-arrival rule cancels a CONFIRMED booking nobody marked arrived 15
+// minutes after its start: a walk-in entered once its time has come is in the
+// chair already (late-arrival design §4.1). The dialog's default time is the
+// NEXT quarter hour, so a walk-in entered at 09:50 starts at 10:00: anything
+// starting within one board step (15 minutes) is arrived too (final review I1).
+test('a walk-in whose start has passed, or is within the next quarter hour, is arrived on creation', async (t) => {
+  const start = new Date('2099-09-15T10:00:00Z'); // SLOT
+  for (const now of [start, new Date('2099-09-15T10:40:00Z'), new Date('2099-09-15T09:50:00Z'), new Date('2099-09-15T09:45:00Z')]) {
+    t.mock.timers.enable({ apis: ['Date'], now });
+    const { actions, created } = fixture();
+    assert.equal((await actions.createAppointmentByAdmin(newBooking())).success, true);
+    assert.deepEqual(created[0].arrivedAt, now, `entered at ${now.toISOString()}`);
+    t.mock.timers.reset();
+  }
+
+  // A booking further ahead (30 minutes, or just over the step), and a pencilled-in request, are not arrived.
+  for (const [now, status] of [
+    [new Date('2099-09-15T09:30:00Z'), 'CONFIRMED'], [new Date('2099-09-15T09:44:59Z'), 'CONFIRMED'], [new Date('2099-09-15T10:40:00Z'), 'PENDING'],
+  ] as const) {
+    t.mock.timers.enable({ apis: ['Date'], now });
+    const { actions, created } = fixture();
+    assert.equal((await actions.createAppointmentByAdmin(newBooking({ status }))).success, true);
+    assert.equal(created[0].status, status);
+    assert.equal('arrivedAt' in created[0], false, `${status} at ${now.toISOString()}`);
+    t.mock.timers.reset();
+  }
+});
+
 test('a phone booking for someone with no email is saved and mails nobody', async () => {
   const { actions, created, users, enqueued } = fixture();
 

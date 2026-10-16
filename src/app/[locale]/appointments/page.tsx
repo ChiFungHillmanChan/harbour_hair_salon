@@ -59,6 +59,8 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
   // No live service price: a booking shows what was recorded when it was made.
   const select = {
     id: true, date: true, status: true, stylistId: true, serviceId: true,
+    // Set when the salon cancelled the booking because the customer was late.
+    lateCancelledAt: true,
     priceAtBooking: true, quoteJson: true, durationAtBooking: true,
     stylist: { select: { name: true } },
     service: { select: { name: true, duration: true } },
@@ -98,6 +100,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
         id: a.id,
         date: a.date.toISOString(),
         status: a.status,
+        lateCancelled: a.lateCancelledAt != null,
         stylistId: a.stylistId,
         stylist: a.stylist,
         serviceId: a.serviceId,

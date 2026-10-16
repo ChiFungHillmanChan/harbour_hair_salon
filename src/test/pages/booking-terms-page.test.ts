@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { loadServerModule } from '../load-server-module';
 import { translator, type Namespace } from '../../i18n/messages';
 import type { Locale } from '../../i18n/config';
-import { MIN_BOOKING_NOTICE_MINUTES } from '../../app/lib/booking-constants';
+import { LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '../../app/lib/booking-constants';
 import { PATCH_TEST_MIN_LEAD_HOURS } from '../../app/services/patch-test-eligibility';
 
 type Element = { type: unknown; props: Record<string, unknown> };
@@ -63,6 +63,9 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
     }
     // The owner's late-cancellation / no-show policy line is shown as written.
     assert.ok(page.text.includes(t('bookingTerms.cancelling.lateOrNoShow')));
+    // The late-arrival rule, with its minutes from the one constant.
+    assert.ok(page.text.includes(t('bookingTerms.cancelling.lateArrival', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })));
+    assert.ok(page.text.includes(t('bookingTerms.rights.body', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })), 'your rights agrees with it');
     assert.ok(page.text.includes('0113 496 0000'), 'the salon phone from settings');
     assert.equal(page.metadata.title, t('bookingTerms.meta.title'));
 
@@ -90,7 +93,7 @@ test('the page is served from the ISR cache, never rendered per request', () => 
 
 test('the periods the terms state are the ones the code enforces', async () => {
   const en = (await termsPage('en-GB')).text;
-  assert.ok(en.includes('Last updated: 13 October 2026'));
+  assert.ok(en.includes('Last updated: 16 October 2026'));
   assert.ok(en.includes(`at least ${MIN_BOOKING_NOTICE_MINUTES / 60} hours’ notice`));
   assert.ok(en.includes(`at least ${PATCH_TEST_MIN_LEAD_HOURS} hours before your colour appointment`));
   assert.ok(en.includes('up to 24 hours before your appointment'));
@@ -106,7 +109,7 @@ test('the terms state the customer’s rights as the site applies them, and prom
   const en = (await termsPage('en-GB')).text;
   assert.ok(en.includes('Your rights'));
   assert.ok(en.includes('You can cancel a confirmed booking online up to 24 hours before your appointment for a full refund of your deposit, or contact us at any time before your appointment.'));
-  assert.ok(en.includes('If you miss your appointment, we keep your deposit; if you cancel late, we may keep it. We never keep more than the deposit.'));
+  assert.ok(en.includes('If you miss your appointment, or are more than 15 minutes late without letting us know, we keep your deposit; if you cancel late, we may keep it. We never keep more than the deposit.'));
   assert.ok(en.includes('Your statutory rights are not affected.'));
   // No claim about cooling-off exemptions (owner's legal advice first), and no
   // partial keep: staff can only refund a whole deposit or keep all of it.
@@ -121,7 +124,10 @@ test('the terms state the customer’s rights as the site applies them, and prom
   assert.ok(zh.includes('如你沒有出席預約，本店會保留你的訂金。'), 'a missed appointment, as in English');
   assert.ok(zh.includes('如你在預約前 24 小時內取消，本店可能會保留你的訂金。'));
   assert.ok(en.includes('If you don’t come to your appointment, we keep your deposit.'));
-  assert.doesNotMatch(zh, /依時|遲到|準時/, 'lateness alone never forfeits a deposit');
+  // Owner decision 2026-10-16 (late arrival): more than 15 minutes late without notice is treated as a missed appointment.
+  assert.ok(en.includes('If you are more than 15 minutes late and haven’t let us know, we cancel your appointment so that the time can go to another client, and we keep your deposit, as for a missed appointment.'));
+  assert.ok(zh.includes('如你遲到超過 15 分鐘而沒有通知本店，本店會取消你的預約，把時段讓給其他客人，並按缺席處理，不退還訂金。如你預計會遲到，請致電本店。'));
+  assert.ok(zh.includes('如你缺席預約，或遲到超過 15 分鐘而沒有通知本店，本店會保留訂金；如你臨時取消，本店可能會保留訂金。'));
   assert.ok(zh.includes('本店未確認的申請不會生效'));
 });
 
