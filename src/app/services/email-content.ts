@@ -257,6 +257,7 @@ export function appointmentEmailContent(
   const service = appointment.service.name;
   const duration = t('values.minutes', { count: appointment.service.duration });
   const price = describeEmailPrice(appointment.price, locale);
+  const lateArrival = t('common.lateArrival', { minutes: LATE_ARRIVAL_CANCEL_MINUTES });
   const base = { locale, palette: 'ink' as const, greeting, footnotes: [] as string[], reference: t('common.reference', { reference }), address: t('common.address') };
   const labels = (key: 'service' | 'stylist' | 'date' | 'time' | 'requestedDate' | 'requestedTime' | 'duration' | 'price' | 'deposit' | 'previousDate' | 'currentTime', value: string) => ({ label: t(`labels.${key}`), value });
 
@@ -277,7 +278,7 @@ export function appointmentEmailContent(
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('confirmation.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: paid ? [t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')] : [t('confirmation.footnote'), t('calendar.attached')],
+        footnotes: paid ? [lateArrival, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')] : [lateArrival, t('confirmation.footnote'), t('calendar.attached')],
       };
     }
     case 'REQUEST_RECEIVED': {
@@ -382,7 +383,7 @@ export function appointmentEmailContent(
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('reminder.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: [t('reminder.footnote'), t('calendar.attached')],
+        footnotes: [lateArrival, t('reminder.footnote'), t('calendar.attached')],
       };
     }
     case 'REVIEW_REQUEST':

@@ -18,6 +18,8 @@ const appointments = {
     PENDING: 'Pending',
     CONFIRMED: 'Confirmed',
     CANCELLED: 'Cancelled',
+    /** {minutes}: LATE_ARRIVAL_CANCEL_MINUTES. A booking the salon cancelled because the customer was late. */
+    LATE_CANCELLED: 'Cancelled — more than {minutes} minutes late',
     COMPLETED: 'Completed',
   },
   card: {

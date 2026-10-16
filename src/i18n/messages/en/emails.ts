@@ -16,6 +16,8 @@ const emails = {
     reference: 'Booking reference: {reference}',
     referenceShort: 'Reference: {reference}',
     subjectSuffix: '— Harbour Hair Salon',
+    /** {minutes}: LATE_ARRIVAL_CANCEL_MINUTES. First footnote of the confirmation and the reminder. */
+    lateArrival: 'Please arrive on time: if you are more than {minutes} minutes late without letting us know, we cancel the appointment and keep any deposit.',
   },
   labels: {
     service: 'Service',

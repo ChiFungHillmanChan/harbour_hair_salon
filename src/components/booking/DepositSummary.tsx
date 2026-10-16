@@ -1,4 +1,5 @@
 import Link from '@/i18n/link';
+import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { rich } from '@/i18n/rich';
 import type { Translate } from '@/i18n/translator';
 import type { Messages } from '@/i18n/messages/types-client';
@@ -67,7 +68,7 @@ export function DepositTerms({ t, amount, startsWithin24Hours = false }: {
       <p>{t('deposit.payNothingNow', { amount })}</p>
       <ul className="mt-2 list-disc space-y-1 pl-5">
         <li>{t('deposit.refund')}</li>
-        <li>{t('deposit.lateOrNoShow')}</li>
+        <li>{t('deposit.lateOrNoShow', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })}</li>
       </ul>
       {startsWithin24Hours && (
         <p className="mt-3 rounded border border-zinc-400 bg-white px-3 py-2 font-medium text-zinc-900" role="note">

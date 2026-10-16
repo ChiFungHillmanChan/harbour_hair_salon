@@ -385,8 +385,9 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
   test(`the confirmation says what the deposit paid and what is left to pay in the salon (${locale})`, () => {
     const content = appointmentEmailContent('CONFIRMATION', taken, locale);
     assert.deepEqual(content.details.at(-1), words.paidRow);
-    assert.deepEqual(content.footnotes.slice(0, 2), [words.change, words.paid]);
-    assert.equal(content.footnotes.length, 3, 'and the calendar file note');
+    // The arrive-on-time line comes first; the calendar file note follows.
+    assert.deepEqual(content.footnotes.slice(1, 3), [words.change, words.paid]);
+    assert.equal(content.footnotes.length, 4, 'and the arrive-on-time line and the calendar file note');
     assert.ok(renderPlainText(content).includes(words.paid));
     // A booking whose price was never recorded: no remainder is invented.
     assert.ok(appointmentEmailContent('CONFIRMATION', { ...taken, price: { known: false } }, locale).footnotes.includes(words.paidNoTotal));
@@ -417,7 +418,7 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
 test('the amount left to pay carries the price’s own fine print when it is not exact', () => {
   const remainder = (locale: 'en-GB' | 'zh-HK', vatDisplay: string | null, priceNature: string | null) => appointmentEmailContent('CONFIRMATION', {
     ...taken, price: { known: true, amountPence: 10000, priceType: null, vatDisplay, priceNature } as EmailAppointment['price'],
-  }, locale).footnotes[1];
+  }, locale).footnotes[2];
   assert.equal(remainder('en-GB', 'UNSPECIFIED', 'LISTED'), 'Your £20.00 deposit is paid; £80.00 is left to pay in the salon. Cash and card are accepted.', 'an exact price: as before');
   assert.equal(remainder('en-GB', null, 'SUBJECT_TO_CONSULTATION'), 'Your £20.00 deposit is paid; £80.00 (may be adjusted after consultation) is left to pay in the salon. Cash and card are accepted.');
   assert.equal(remainder('en-GB', 'EXCLUDED', null), 'Your £20.00 deposit is paid; £80.00 (VAT excluded) is left to pay in the salon. Cash and card are accepted.');
@@ -450,5 +451,21 @@ test('LATE_CANCELLED says why, keeps the deposit wording, and removes the calend
     const plain = appointmentEmailContent('LATE_CANCELLED', taken, locale);
     assert.equal(plain.callout, undefined);
     assert.ok(!plain.footnotes.includes(words.kept[1]));
+  }
+});
+
+test('the confirmation and the reminder ask the customer to arrive on time, first among the footnotes', () => {
+  const words = {
+    'en-GB': 'Please arrive on time: if you are more than 15 minutes late without letting us know, we cancel the appointment and keep any deposit.',
+    'zh-HK': '請準時到達：如遲到超過 15 分鐘而沒有通知我們，我們會取消預約，並不退還訂金。',
+  } as const;
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    for (const kind of ['CONFIRMATION', 'REMINDER'] as const) {
+      assert.equal(appointmentEmailContent(kind, requestAppointment, locale).footnotes[0], words[locale], `${kind} ${locale}`);
+    }
+    // Only the mails sent to a customer with a confirmed booking carry it.
+    for (const kind of ['REQUEST_RECEIVED', 'CANCELLATION', 'LATE_CANCELLED', 'REVIEW_REQUEST'] as const) {
+      assert.ok(!appointmentEmailContent(kind, requestAppointment, locale).footnotes.includes(words[locale]), `${kind} ${locale}`);
+    }
   }
 });

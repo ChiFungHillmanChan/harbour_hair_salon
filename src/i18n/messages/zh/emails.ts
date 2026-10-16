@@ -16,6 +16,7 @@ const emails: Localized<Messages['emails']> = {
     reference: '預約編號：{reference}',
     referenceShort: '編號：{reference}',
     subjectSuffix: '— Harbour Hair Salon',
+    lateArrival: '請準時到達：如遲到超過 {minutes} 分鐘而沒有通知我們，我們會取消預約，並不退還訂金。',
   },
   labels: {
     service: '服務',

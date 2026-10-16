@@ -159,6 +159,8 @@ const legal = {
       request: 'You can withdraw a request we haven’t confirmed yet at any time in <bookings>My Bookings</bookings>. We release the hold and you are not charged.',
       confirmed: 'You can cancel a confirmed booking in <bookings>My Bookings</bookings> up to 24 hours before your appointment, and we refund your deposit in full.',
       late: 'Less than 24 hours before your appointment, please call us to cancel.',
+      /** {minutes}: LATE_ARRIVAL_CANCEL_MINUTES. Applies while Admin → Settings has the rule on; the salon decided it 2026-10-16. */
+      lateArrival: 'If you are more than {minutes} minutes late and haven’t let us know, we cancel your appointment so that the time can go to another client, and we keep your deposit, as for a missed appointment. If you’re running late, please call us.',
       /**
        * OWNER POLICY (2026-10-16): a no-show's deposit is never refunded; the
        * rule for late cancellations is not decided yet, so it stays "may".
@@ -193,7 +195,7 @@ const legal = {
      */
     rights: {
       title: 'Your rights',
-      body: 'You can cancel a confirmed booking online up to 24 hours before your appointment for a full refund of your deposit, or contact us at any time before your appointment. If you miss your appointment, we keep your deposit; if you cancel late, we may keep it. We never keep more than the deposit. Your statutory rights are not affected.',
+      body: 'You can cancel a confirmed booking online up to 24 hours before your appointment for a full refund of your deposit, or contact us at any time before your appointment. If you miss your appointment, or are more than {minutes} minutes late without letting us know, we keep your deposit; if you cancel late, we may keep it. We never keep more than the deposit. Your statutory rights are not affected.',
     },
     contact: {
       title: 'Questions',

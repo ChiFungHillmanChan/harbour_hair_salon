@@ -53,12 +53,12 @@ const DISCLOSURE = {
   'en-GB': [
     'You pay nothing now. We place a hold on your card and take the £12.50 deposit only when we confirm your booking; if we decline or don’t confirm your request, the hold is released.',
     'Cancel at least 24 hours before your appointment for a full refund.',
-    'If you miss your appointment, we keep the deposit. If you cancel less than 24 hours before it, we may keep it.',
+    'If you miss your appointment, or are more than 15 minutes late without letting us know, we keep the deposit. If you cancel less than 24 hours before it, we may keep it.',
   ],
   'zh-HK': [
     '你現在毋須付款。我們會先在你的信用卡預留款項，只有在本店確認你的預約後，才會收取 £12.50 訂金；如本店拒絕或未有確認你的申請，預留款項會被解除。',
     '於預約前最少 24 小時取消可獲全數退款。',
-    '如你缺席預約，本店會保留訂金；如你在預約前不足 24 小時取消，本店可能會保留訂金。',
+    '如你缺席預約，或遲到超過 15 分鐘而沒有通知本店，本店會保留訂金；如你在預約前不足 24 小時取消，本店可能會保留訂金。',
   ],
 } as const;
 const SOON = {
