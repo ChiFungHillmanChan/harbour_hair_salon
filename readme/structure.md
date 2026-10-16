@@ -188,12 +188,13 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 ## Components (auth)
 - `src/components/auth/PasswordVisibilityToggle.tsx` — eye / eye-off button overlaid on password inputs (used by signin + register pages)
 - `src/components/auth/GoogleAuthButton.tsx` — shared Google sign-in/register button that preserves safe post-auth redirects
+- `src/app/api/auth/signout/route.ts` — sign-out (POST only; refuses a cross-site `Sec-Fetch-Site`): `endAllSessions()` bumps `sessionVersion` so every session of the account on every device ends, deletes the session, hint and MFA-challenge cookies, then 303s to the visitor's home page with `Clear-Site-Data: "cache", "storage"` (not cookies: the language, kiosk and `login_device` cookies stay); route-tested
 - `src/app/api/auth/google/route.ts` — starts Google OAuth using signed state, nonce, and PKCE
 - `src/app/api/auth/google/callback/route.ts` — verifies Google identity, signs in by linked Google id, otherwise applies `decideGoogleLink` (refusals redirect to sign-in with `google_email_unverified` / `google_admin_link`, and a refused match is audited as `AUTH.GOOGLE_LINK_REFUSED`), and issues the existing JWT session; route-tested
 
 ## CDN / Public shell
 - `src/components/layout/Header.tsx` — static server wrapper for public offer state.
-- `src/components/layout/HeaderClient.tsx` — shared-cache-safe marketing header; account links read the `session_hint` cookie on hydration and on every navigation (survives soft navs in the root layout), with `/api/session` as one-time fallback for pre-hint sessions; sign-out flips the UI optimistically via `useTransition` before the server action clears cookies and redirects.
+- `src/components/layout/HeaderClient.tsx` — shared-cache-safe marketing header; account links read the `session_hint` cookie on hydration and on every navigation (survives soft navs in the root layout), with `/api/session` as one-time fallback for pre-hint sessions; sign-out flips the UI optimistically, then `submitSignOut` (`src/app/lib/sign-out.ts`) clears drafts and web storage and does a full-page POST to `/api/auth/signout`; a signed-in page whose hint changes (another tab signed out, or a back/forward-cache restore) reloads on focus/pageshow.
 - Public pages export route revalidation intervals and are delivered through Vercel ISR. Homepage output is static with a one-hour revalidation interval; Admin and API routes remain dynamic.
 
 ## Components (responsive shell)
