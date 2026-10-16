@@ -249,6 +249,8 @@ export function AppointmentDialog({
   const creditKey = creditLookup ? JSON.stringify(creditLookup) : '';
   const creditPreview = useConsultationCreditPreview(creditLookup);
   const creditAnswer = takesCredit && creditPreview.state === 'answered' ? creditPreview.preview : null;
+  // Save waits for the answer, so a booking is never saved before staff could see its credit.
+  const creditChecking = takesCredit && creditPreview.state === 'checking';
   // Where the box starts: ticked for a new booking (again whenever its customer,
   // service or time changes); for an edit, as the booking stands — a credit that
   // became available is added only by ticking it.
@@ -677,7 +679,7 @@ export function AppointmentDialog({
           </button>
           <button
             type="button"
-            disabled={saving || !serviceId || !stylistId}
+            disabled={saving || !serviceId || !stylistId || creditChecking}
             onClick={() => submit(false)}
             className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
           >

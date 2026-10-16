@@ -344,6 +344,11 @@ export function ScheduleDayGrid({
     await commit(state);
   };
 
+  /** The browser took the pointer away (a scroll, a system gesture): snap back, ask nothing, open nothing. */
+  const cancelDrag = () => {
+    if (drag) setDrag(null);
+  };
+
   /** Click a gap in a stylist's column to start a booking with them, then. */
   const createAt = (stylistId: string) => (event: React.MouseEvent<HTMLDivElement>) => {
     if (drag || saving || pendingMove) return;
@@ -434,7 +439,7 @@ export function ScheduleDayGrid({
         style={{ height: gridHeight }}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        onPointerCancel={cancelDrag}
       >
         {/* Time gutter */}
         <div className="w-14 flex-shrink-0 relative">

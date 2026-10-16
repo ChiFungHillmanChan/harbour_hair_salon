@@ -16,19 +16,33 @@ interface MoveConfirmDialogProps {
 }
 
 /**
+ * On an iPad the tap that ends a drag can arrive a moment later as a click on
+ * whatever the dialog has put under the finger. Clicks this soon after the
+ * dialog opens are ignored, so nothing is moved — or cancelled — by accident.
+ */
+const GHOST_TAP_MS = 350;
+
+/**
  * "Move this booking?" — asked after a drop or resize, before anything is
  * saved. Focus starts on Cancel so a stray Enter never moves a booking; Esc and
- * a click outside cancel; Tab stays inside.
+ * a click outside cancel; Tab stays inside. Clicks in the first GHOST_TAP_MS
+ * do nothing.
  */
 export function MoveConfirmDialog({ customer, service, changes, onMove, onCancel }: MoveConfirmDialogProps) {
   const t = useT('adminSchedule');
   const titleId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
   const moveRef = useRef<HTMLButtonElement>(null);
+  // When the dialog mounted; null until then (a click before that is the ghost tap too).
+  const openedAt = useRef<number | null>(null);
 
   useEffect(() => {
+    openedAt.current = Date.now();
     cancelRef.current?.focus();
   }, []);
+
+  /** A real click: the dialog has been open long enough to have been read. */
+  const settled = () => openedAt.current !== null && Date.now() - openedAt.current >= GHOST_TAP_MS;
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Escape') {
@@ -51,15 +65,17 @@ export function MoveConfirmDialog({ customer, service, changes, onMove, onCancel
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 p-4"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onCancel();
+        if (event.target === event.currentTarget && settled()) onCancel();
       }}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        // Focusable itself: after a click on its text, Esc and Tab still reach onKeyDown.
+        tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-5 shadow-xl"
+        className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-5 shadow-xl focus:outline-none"
       >
         <h2 id={titleId} className="text-base font-semibold text-zinc-900">{t('moveConfirm.title')}</h2>
         <p className="mt-1 text-sm text-zinc-600">{customer} · {service}</p>
@@ -85,7 +101,9 @@ export function MoveConfirmDialog({ customer, service, changes, onMove, onCancel
           <button
             ref={cancelRef}
             type="button"
-            onClick={onCancel}
+            onClick={() => {
+              if (settled()) onCancel();
+            }}
             className="rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-zinc-900"
           >
             {t('moveConfirm.cancel')}
@@ -93,7 +111,9 @@ export function MoveConfirmDialog({ customer, service, changes, onMove, onCancel
           <button
             ref={moveRef}
             type="button"
-            onClick={onMove}
+            onClick={() => {
+              if (settled()) onMove();
+            }}
             className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
           >
             {t('moveConfirm.move')}

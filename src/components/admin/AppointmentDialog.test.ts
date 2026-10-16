@@ -491,3 +491,32 @@ test('editing a booking without a credit never adds an available one unless staf
   await save(nodes);
   assert.equal(sent(calls[1]), true);
 });
+
+// Final review M1: Save waits for the credit answer, so staff never save a
+// consultation-required booking before seeing whether a credit applies.
+test('Save is disabled while the consultation credit is being checked, and only then', () => {
+  let answer: unknown = CHECKING;
+  const { render, patchDraft } = dialog({ mode: 'create', dateStr: '2099-10-15', time: '11:00' }, { create: refused }, WITH_COLOUR, () => answer);
+  render();
+  patchDraft({ picked: { ...MEI, preferredLocale: 'en-GB' } });
+  let nodes = render();
+  assert.equal(submitButton(nodes).props.disabled, false, 'a service that needs no consultation: nothing to wait for');
+
+  choose(nodes, 'colour');
+  nodes = render();
+  assert.equal(submitButton(nodes).props.disabled, true, 'checking');
+  for (const settled of [AVAILABLE, NONE_LEFT, FAILED]) {
+    answer = settled;
+    assert.equal(submitButton(render()).props.disabled, false, JSON.stringify(settled));
+  }
+
+  // No customer yet: nothing is being checked, so nothing to wait for.
+  const fresh = dialog({ mode: 'create', dateStr: '2099-10-15', time: '11:00' }, { create: refused }, WITH_COLOUR, (lookup) => (lookup ? CHECKING : { state: 'idle' }));
+  fresh.render();
+  fresh.patchDraft({ serviceId: 'colour' });
+  assert.equal(submitButton(fresh.render()).props.disabled, false);
+
+  // Editing waits too.
+  const edit = dialog(colourBooking(RECORDED), { edit: refused }, WITH_COLOUR, () => CHECKING);
+  assert.equal(submitButton(edit.render()).props.disabled, true);
+});

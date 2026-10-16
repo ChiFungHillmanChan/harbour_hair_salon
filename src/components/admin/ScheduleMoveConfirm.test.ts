@@ -91,7 +91,7 @@ function mountGrid(view: 'Day' | 'Week', locale: Locale = 'en-GB') {
     target: { setPointerCapture: () => undefined },
   });
   /** Press the booking block, then drag it by (dx, dy) pixels and release. */
-  const drag = async (dy: number, options: { handle?: 'move' | 'top' | 'bottom'; dx?: number } = {}) => {
+  const drag = async (dy: number, options: { handle?: 'move' | 'top' | 'bottom'; dx?: number; release?: 'up' | 'cancel' } = {}) => {
     const blocks = find((node) => String(node.props.className ?? '').includes('cursor-grab'));
     assert.equal(blocks.length, 1);
     const handles = elements(blocks[0].props.children).filter((node) => String(node.props.className ?? '').includes('cursor-ns-resize'));
@@ -99,7 +99,8 @@ function mountGrid(view: 'Day' | 'Week', locale: Locale = 'en-GB') {
     down(event(100, 100));
     const body = () => find((node) => String(node.props.className ?? '').includes('select-none'))[0];
     (body().props.onPointerMove as Handler)(event(100 + (options.dx ?? 0), 100 + dy));
-    await (body().props.onPointerUp as Handler)(event(100 + (options.dx ?? 0), 100 + dy));
+    const release = options.release === 'cancel' ? body().props.onPointerCancel : body().props.onPointerUp;
+    await (release as Handler)(event(100 + (options.dx ?? 0), 100 + dy));
   };
   const pxPerMinute = view === 'Day' ? 1.2 : 0.9;
   return { drag, dialog, find, render, moves, calls, pxPerMinute };
@@ -162,6 +163,23 @@ for (const view of ['Day', 'Week'] as const) {
     await grid.drag(5 * grid.pxPerMinute); // under half a 15-minute step: snaps back
     assert.equal(grid.dialog(), undefined);
     assert.deepEqual(grid.moves, []);
+  });
+
+  // Final review M3: the browser took the pointer away (a scroll, a system
+  // gesture, an incoming call): the block snaps back and nothing is asked.
+  test(`${view} grid: a cancelled pointer snaps back without opening the confirmation`, async () => {
+    const grid = mountGrid(view);
+    await grid.drag(90 * grid.pxPerMinute, { release: 'cancel' });
+    assert.equal(grid.dialog(), undefined, 'no confirmation');
+    assert.deepEqual(grid.moves, []);
+    assert.deepEqual(grid.calls, { selected: 0, moved: 0 }, 'not taken as a click on the booking either');
+    // The board is usable again: the next drag asks as usual.
+    await grid.drag(90 * grid.pxPerMinute);
+    assert.ok(grid.dialog());
+
+    const pressed = mountGrid(view);
+    await pressed.drag(0, { release: 'cancel' });
+    assert.equal(pressed.calls.selected, 0, 'a cancelled press opens nothing');
   });
 
   test(`${view} grid: no new drag starts while the confirmation is open`, async () => {
@@ -233,7 +251,8 @@ test('MoveConfirmDialog is an in-page modal dialog that lists what changed', () 
   assert.match(all, /45 → 60 min/);
 });
 
-test('MoveConfirmDialog: focus starts on Cancel, Esc cancels, Move is a plain button', () => {
+test('MoveConfirmDialog: focus starts on Cancel, Esc cancels, Move is a plain button', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
   const { tree, calls, runtime } = mountDialog();
   const buttons = tree.filter((node) => node.type === 'button');
   const cancel = buttons.find((node) => text(node) === 'Cancel')!;
@@ -252,21 +271,63 @@ test('MoveConfirmDialog: focus starts on Cancel, Esc cancels, Move is a plain bu
   assert.equal(prevented, true);
   (dialog.props.onKeyDown as Handler)({ key: 'Enter', preventDefault: () => undefined, stopPropagation: () => undefined });
   assert.equal(calls.move, 0, 'Enter on the dialog itself never moves; only the focused Move button does');
+  assert.equal(dialog.props.tabIndex, -1, 'focusable itself, so Esc and Tab still work after clicking its text');
 
+  t.mock.timers.tick(350);
   (move.props.onClick as () => void)();
   assert.equal(calls.move, 1);
   (cancel.props.onClick as () => void)();
   assert.equal(calls.cancel, 2);
 });
 
-test('MoveConfirmDialog: a click on the backdrop cancels, a click inside does not', () => {
-  const { tree, calls } = mountDialog();
+test('MoveConfirmDialog: a click on the backdrop cancels, a click inside does not', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  const { tree, calls, runtime } = mountDialog();
+  runtime.effects.forEach((effect) => effect());
+  t.mock.timers.tick(350);
   const backdrop = tree.find((node) => String(node.props.className ?? '').includes('fixed inset-0'))!;
   const onClick = backdrop.props.onClick as Handler;
   onClick({ target: 'inside', currentTarget: 'backdrop' });
   assert.equal(calls.cancel, 0);
   onClick({ target: 'backdrop', currentTarget: 'backdrop' });
   assert.equal(calls.cancel, 1);
+});
+
+// Final review I5: on an iPad the tap that ends a drag arrives a moment later
+// as a click on whatever the dialog put under the finger. The owner's point is
+// that nothing moves by accident, so every click in the first 350 ms is ignored.
+test('MoveConfirmDialog ignores clicks in its first 350 ms (the iPad ghost tap), then Move and Cancel work', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  const { tree, calls, runtime } = mountDialog();
+  const buttons = tree.filter((node) => node.type === 'button');
+  const click = (label: string) => (buttons.find((node) => text(node) === label)!.props.onClick as () => void)();
+  const backdrop = () => (tree.find((node) => String(node.props.className ?? '').includes('fixed inset-0'))!.props.onClick as Handler)({ target: 'backdrop', currentTarget: 'backdrop' });
+
+  // Before the dialog has even finished mounting.
+  click('Move');
+  backdrop();
+  assert.deepEqual(calls, { move: 0, cancel: 0 });
+
+  runtime.effects.forEach((effect) => effect()); // mounted: the clock starts
+  click('Move');
+  click('Cancel');
+  backdrop();
+  t.mock.timers.tick(349);
+  click('Move');
+  backdrop();
+  assert.deepEqual(calls, { move: 0, cancel: 0 }, 'nothing within 350 ms');
+
+  // Esc is a key, never a ghost tap: it works at once.
+  const dialog = tree.find((node) => node.props.role === 'dialog')!;
+  (dialog.props.onKeyDown as Handler)({ key: 'Escape', preventDefault: () => undefined, stopPropagation: () => undefined });
+  assert.equal(calls.cancel, 1);
+
+  t.mock.timers.tick(1);
+  click('Move');
+  assert.equal(calls.move, 1, 'Move works after 350 ms');
+  click('Cancel');
+  backdrop();
+  assert.equal(calls.cancel, 3, 'Cancel and the backdrop too');
 });
 
 test('MoveConfirmDialog speaks Chinese', () => {

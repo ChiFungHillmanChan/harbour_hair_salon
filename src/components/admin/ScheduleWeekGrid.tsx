@@ -341,6 +341,11 @@ export function ScheduleWeekGrid({
     await commit(state);
   };
 
+  /** The browser took the pointer away (a scroll, a system gesture): snap back, ask nothing, open nothing. */
+  const cancelDrag = () => {
+    if (drag) setDrag(null);
+  };
+
   /** Click an empty part of a column to start a booking at that day and time. */
   const createAt = (dayKey: string) => (event: React.MouseEvent<HTMLDivElement>) => {
     if (drag || saving || pendingMove) return;
@@ -415,7 +420,7 @@ export function ScheduleWeekGrid({
         style={{ height: gridHeight }}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        onPointerCancel={cancelDrag}
       >
         {/* Time gutter */}
         <div className="w-12 flex-shrink-0 relative">
