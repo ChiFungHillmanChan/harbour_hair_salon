@@ -76,7 +76,7 @@ const legal = {
       emails: '<b>Copies of emails waiting to be sent:</b> deleted as soon as the email is sent, or after 30 days if it could not be sent. The record that an email was sent (without its content) is deleted after 12 months.',
       rateLimits: '<b>IP addresses used to limit repeated attempts:</b> deleted automatically within 2 days.',
       links: '<b>Links in our emails</b> stop working after a set time: email confirmation after 48 hours, password reset after 1 hour, unsubscribe after 30 days.',
-      googleCalendar: '<b>Copies in the salon’s Google Calendar:</b> up to 12 months after the appointment, then deleted. If you ask us to delete your account, the copies show no name, phone number or notes.',
+      googleCalendar: '<b>Copies in the salon’s Google Calendar:</b> up to 12 months after the appointment, then deleted. A deleted copy can stay in Google Calendar’s bin for up to about 30 days before Google removes it. If you ask us to delete your account, the copies show no name, phone number or notes.',
       marketing: '<b>Marketing list:</b> until you unsubscribe. After that we keep your address marked as unsubscribed, so that we never send you marketing again.',
     },
     rights: {

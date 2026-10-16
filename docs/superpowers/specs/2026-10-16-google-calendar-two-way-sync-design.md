@@ -234,7 +234,11 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
   Google copy is a working diary. Housekeeping deletes Google events for
   appointments that ended more than **12 months** ago, and the notice says so
   ("Copies in the salon's Google Calendar: up to 12 months after the
-  appointment"). Owner may change the period at spec review.
+  appointment"). Owner may change the period at spec review. A deleted event
+  stays in Google Calendar's bin for up to about 30 days before Google removes
+  it; the notice says that too.
+- Only staff write to the salon calendar: no app's Google sync (Fresha's
+  included) may point at it, or its events would block every stylist.
 
 ## 10. Testing
 
@@ -259,6 +263,6 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
 2. Google Cloud: enable the Calendar API, create the service account and key.
 3. harbourhairuk@gmail.com: create "Harbour website bookings", share it with the
    service account ("Make changes to events"), copy its calendar ID.
-4. Vercel **Production** env (sensitive is fine: runtime only), redeploy.
+4. Vercel **Production** env (keep them Sensitive: runtime only), redeploy.
 5. Admin → Integrations → Sync now; check one booking appears, one Google test
    event blocks a slot, then delete the test event.

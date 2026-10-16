@@ -31,9 +31,9 @@ How the website shares the salon's appointment diary with Google Calendar, how t
   every stylist (that is how to close the salon, e.g. `Stock take`).
   Tentative events still block; cancelled events and events marked "Show as: Available" do not.
 - **The website's own events are never blocks**, and an edit or deletion of one in Google is
-  reverted (the website is the authority for bookings). If Google keeps changing an event
-  the website writes it back at most once every 10 minutes and shows "Google Calendar did
-  not keep the event" in Operations.
+  reverted (the website is the authority for bookings). If Google keeps changing an event,
+  the website writes it back at most once every 10 minutes. Until then the booking counts
+  under "Bookings Google would not take" on Admin → Integrations (§7).
 - **Real time.** Google calls `POST /api/webhooks/google-calendar` for every change; the
   website answers at once and pulls afterwards, one pull at a time. If a notification is
   missed, the 30-minute calendar-sync run (staff hours, §3) pulls anyway.
@@ -61,6 +61,9 @@ page only shows its status, a "Sync now" button and "Clear Google busy time" (§
      (`…@group.calendar.google.com`): this is `GOOGLE_CALENDAR_ID`.
 5. Staff who want to add busy time need access to that calendar too (share it with them,
    "Make changes to events"). They add events there, not on their own calendars.
+6. **Only staff write to this calendar.** Never point Fresha's, or any other app's, Google
+   sync at it: their events would land in it as busy time and, naming no stylist, block
+   every stylist.
 
 ---
 
@@ -86,7 +89,10 @@ vercel env add GOOGLE_CALENDAR_WEBHOOK_SECRET production
   production with real customers: with the variables present it would write their names and
   phone numbers to the salon's calendar. The code also switches the sync off whenever
   `VERCEL_ENV` is `preview`, whatever the variables say, but do not rely on that alone.
-- Sensitive is fine (these are read at runtime only, never by the build).
+- **Keep them Sensitive** (the team's default for new variables; never add these with
+  `--no-sensitive`). They hold the service account's key and the webhook secret, and only
+  the runtime reads them, never the build, so the `[SENSITIVE]` placeholder a build would
+  see does not matter here.
 - A missing or blank variable means the sync stays off: no Google call, no database read
   from the webhook (it answers 404).
 - **Depends on `CALENDAR_SYNC_ENABLED=true`.** The 30-minute retry of failed writes, the
@@ -132,6 +138,8 @@ vercel env add GOOGLE_CALENDAR_WEBHOOK_SECRET production
 **Fresha:** link each stylist's Fresha calendar import to their **own** Google calendar if
 they use one, **never** to the shared "Harbour website bookings" calendar. Importing the
 shared calendar into Fresha would hand every customer's name and phone number to Fresha.
+Nor may Fresha's Google sync, or any other app's, write **into** the shared calendar: only
+staff write to it (§2.6).
 
 ---
 
@@ -187,23 +195,40 @@ Cloud.
 
 ## 7. What staff see when something fails
 
-- **Admin → Integrations → Google Calendar:** on/off, calendar id (first characters only),
-  channel expiry, last check of Google and its result, and "Bookings Google would not take"
-  (rows failing to write).
+- **Admin → Integrations → Google Calendar:**
+  - on/off, the calendar id (first characters only) and the channel expiry;
+  - the last check of Google and its last problem (`GOOGLE_PULL_FAILED`);
+  - "Bookings Google would not take": a count of bookings whose Google copy is failing.
+    That covers a write that failed or was refused (`GOOGLE_PUSH_FAILED`,
+    `GOOGLE_PUSH_REFUSED`) and an event Google did not keep as written
+    (`GOOGLE_EVENT_NOT_KEPT`). These are per booking: they appear nowhere else.
 - **Admin → Operations** and the **daily "needs attention" email** (when notifications are
-  on): the job `google-calendar` lists, while it is failing: a booking that could not be
-  written (`GOOGLE_PUSH_FAILED` / `GOOGLE_PUSH_REFUSED` / `GOOGLE_EVENTS_FAILED`), a pull that
-  could not complete (`GOOGLE_PULL_FAILED`, `GOOGLE_SYNC_FAILED`), notifications that could
-  not be set up (`GOOGLE_CHANNEL_FAILED`), and an event Google would not keep as written
-  (`GOOGLE_EVENT_NOT_KEPT`).
+  on) show two job rows, each with one sentence while it is failing.
+  - **Rows.** `google-calendar` is the 30-minute run. `google-calendar-daily` is
+    housekeeping at 03:15 UTC and Sync now. A night's failure stays on the daily row,
+    whatever the 30-minute runs do after it.
+  - **Sentences**, most urgent first:
+    - `GOOGLE_SYNC_FAILED`: a push or pull could not complete, or Google refused the
+      website's access. The push then stops at the first booking instead of trying every one.
+    - `GOOGLE_PULL_STALE` (30-minute row): no check of Google has succeeded for 24 hours.
+    - `GOOGLE_CHANNEL_FAILED` (daily row): the notification channel could not be made.
+    - `GOOGLE_CHANNEL_MISSING` (30-minute row): there is no live notification channel.
+      Sync now makes one.
+    - `GOOGLE_EVENTS_FAILED`: the run ended with bookings Google would not take (see the
+      count on Integrations).
+  - The health checks behind `GOOGLE_PULL_STALE` and `GOOGLE_CHANNEL_MISSING` run in the
+    30-minute run only. They need `CALENDAR_SYNC_ENABLED=true` (§3) and staff hours.
 - **Bookings are never affected.** A booking, cancellation or reschedule succeeds even when
-  Google is down; its Google copy is retried by the calendar-sync cron. A booking more than a
-  week in the past is retried five times only; after that it stays counted under "Bookings
-  Google would not take" until it changes again or its copy is deleted at 12 months (an
-  erased customer's copy is retried until it lands).
+  Google is down; its Google copy is retried by the calendar-sync cron.
+- **Before the 7-day window.** A booking more than a week in the past is retried five times
+  only. After that it stays counted under "Bookings Google would not take" until its copy is
+  deleted at 12 months. A change to such a booking is not written to Google at all: the sync
+  only follows bookings from a week back onwards. The exception is an erased customer, whose
+  copy is retried until it lands.
 - Common causes: the calendar is not shared with the service account (403/404), the private
   key lost its `\n` escapes, the Calendar API is not enabled, or the secret was rotated
-  without pressing Sync now (§5).
+  without pressing Sync now (§5). After fixing the setup, press **Sync now**: it rewrites the
+  whole window, including bookings a stopped run never reached.
 
 ---
 
@@ -211,6 +236,8 @@ Cloud.
 
 - The Google copy holds the customer's name, phone number, booking details and notes: the
   privacy notice says so and that copies are kept up to **12 months after the appointment**.
+  A copy the website deletes goes to Google Calendar's bin first. Google removes it from
+  there after about 30 days; the notice says that too.
 - Erasing a customer (Admin → Users, `docs/data-erasure.md`) re-renders their events with the
   anonymised name and without phone or notes; if Google is unreachable the calendar-sync cron
   retries.
