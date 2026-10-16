@@ -23,10 +23,11 @@ test('My Bookings sends the recorded price and duration to cards and their resch
   }));
   const page = loadServerModule<typeof import('../../app/[locale]/appointments/page')>('src/app/[locale]/appointments/page.tsx', {
     '@/components/admin/Pagination': { Pagination: () => null },
-    '@/app/lib/prisma': { appointment: { findMany: async ({ where }: { where: { OR?: unknown } }) => where.OR ? [] : appointments } },
+    '@/app/lib/prisma': { user: { findUnique: async () => ({ email: 'customer@example.com', emailVerifiedAt: new Date('2026-01-01T00:00:00Z'), oauthAccounts: [] }) }, appointment: { findMany: async ({ where }: { where: { OR?: unknown } }) => where.OR ? [] : appointments } },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1' }) },
     '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
     '@/components/appointments/AppointmentCard': { AppointmentCard: card },
+    '@/components/auth/VerifyEmailResendForm': { VerifyEmailResendForm: () => null },
     '@/i18n/ClientMessages': { ClientMessages: ({ children }: { children: unknown }) => children },
     '@/i18n/server': { getLocale: async () => 'en-GB', getT: async (namespace: Namespace) => translator('en-GB', namespace) },
   });

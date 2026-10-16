@@ -1,4 +1,6 @@
 import { verifySession } from '@/app/lib/session';
+import { EMAIL_VERIFICATION_SELECT, hasVerifiedEmail } from '@/app/lib/email-verification';
+import { VerifyEmailResendForm } from '@/components/auth/VerifyEmailResendForm';
 import prisma from '@/app/lib/prisma';
 import { OG_BASE } from '@/app/lib/og-defaults';
 import { AppointmentCard, type BookedPrice } from '@/components/appointments/AppointmentCard';
@@ -29,6 +31,27 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AppointmentsPage({ searchParams }: { searchParams?: Promise<{ page?: string; upcoming?: string }> }) {
   const session = await verifySession();
   const [locale, t] = await Promise.all([getLocale(), getT('appointments')]);
+
+  // Bookings belong to whoever proved the address: staff attach phone bookings
+  // to the account that holds the customer's email, and anyone can register
+  // an address they do not own (security review 2026-10-16). As on /book, say
+  // so up front with a way to get a new link.
+  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: { email: true, ...EMAIL_VERIFICATION_SELECT } });
+  if (account && !hasVerifiedEmail(account)) {
+    const ta = await getT('auth');
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
+        <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-8 md:p-12 text-center">
+          <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
+          <h1 className="text-3xl md:text-4xl font-serif text-zinc-900 mb-4 tracking-tight">{ta('verifyEmail.manageTitle')}</h1>
+          <p className="text-zinc-600 leading-relaxed mb-8 break-words">{ta('verifyEmail.manageBody', { email: account.email })}</p>
+          <ClientMessages sections={{ auth: ['verifyEmail'] }}>
+            <VerifyEmailResendForm email={account.email} />
+          </ClientMessages>
+        </div>
+      </div>
+    );
+  }
   const query = await searchParams;
   const page = pageNumber(query?.page);
   const upcomingPage = pageNumber(query?.upcoming);

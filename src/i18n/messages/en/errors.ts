@@ -51,6 +51,8 @@ const errors = {
     SLOTS_FAILED: 'Failed to fetch available slots',
     TOO_MANY_BOOKINGS: 'Too many booking attempts. Please try again shortly.',
     EMAIL_NOT_VERIFIED: 'Please confirm your email address before booking online. Use the link we emailed you, or reload the booking page to get a new one.',
+    MANAGE_EMAIL_NOT_VERIFIED: 'Please confirm your email address to manage your bookings online. Use the link we emailed you, or call the salon.',
+    TOO_MANY_CANCELLATIONS: 'Too many cancellations today. Please call the salon.',
     TOO_MANY_ATTEMPTS: 'Too many attempts. Please try again shortly.',
     BOOKING_FAILED: 'Failed to create booking',
     PAST_TIME: 'Cannot book a time in the past',

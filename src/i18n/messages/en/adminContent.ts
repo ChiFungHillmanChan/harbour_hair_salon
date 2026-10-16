@@ -406,6 +406,8 @@ const adminContent = {
     },
     rating: '{rating} / 5',
     anonymous: 'Anonymous client',
+    visit: 'Visit {date}',
+    visitNotConfirmed: 'This visit was never confirmed or was cancelled. Check the schedule before publishing.',
     actions: {
       approve: 'Approve',
       publish: 'Publish',

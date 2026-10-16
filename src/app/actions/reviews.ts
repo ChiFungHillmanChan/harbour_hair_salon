@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
+import { EMAIL_VERIFICATION_SELECT, hasVerifiedEmail } from '@/app/lib/email-verification';
 
 // Messages are codes, translated into `reviews.errors.*` in the visitor's language.
 const createReviewSchema = z.object({
@@ -57,8 +58,16 @@ export async function createReview(
     return { error: t('errors.ALREADY_REVIEWED') };
   }
 
+  // Bookings belong to whoever proved the address (actions/booking.ts hasProvedEmail).
+  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: EMAIL_VERIFICATION_SELECT });
+  if (!account || !hasVerifiedEmail(account)) {
+    return { error: t('errors.EMAIL_NOT_VERIFIED') };
+  }
+
   const now = new Date();
-  if (appointment.status === 'CANCELLED') {
+  // A request staff never confirmed was not a visit, as for the review email
+  // (notification-outbox-service.ts): only confirmed or completed visits count.
+  if (appointment.status === 'CANCELLED' || appointment.status === 'PENDING') {
     return { error: t('errors.CANCELLED') };
   }
   if (appointment.date.getTime() > now.getTime()) {

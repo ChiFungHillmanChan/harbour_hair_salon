@@ -406,6 +406,8 @@ const adminContent: Localized<Messages['adminContent']> = {
     },
     rating: '{rating} / 5',
     anonymous: '匿名顧客',
+    visit: '到訪日期：{date}',
+    visitNotConfirmed: '此預約從未確認或已取消，發佈前請先查看日程。',
     actions: {
       approve: '批准',
       publish: '發布',

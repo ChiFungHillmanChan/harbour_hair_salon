@@ -106,7 +106,7 @@ test('the terms state the customer’s rights as the site applies them, and prom
   const en = (await termsPage('en-GB')).text;
   assert.ok(en.includes('Your rights'));
   assert.ok(en.includes('You can cancel a confirmed booking online up to 24 hours before your appointment for a full refund of your deposit, or contact us at any time before your appointment.'));
-  assert.ok(en.includes('We only keep a deposit for a late cancellation or a missed appointment, and only if the salon decides to — never more than the deposit.'));
+  assert.ok(en.includes('If you miss your appointment, we keep your deposit; if you cancel late, we may keep it. We never keep more than the deposit.'));
   assert.ok(en.includes('Your statutory rights are not affected.'));
   // No claim about cooling-off exemptions (owner's legal advice first), and no
   // partial keep: staff can only refund a whole deposit or keep all of it.
@@ -117,7 +117,10 @@ test('the terms state the customer’s rights as the site applies them, and prom
 
   const zh = (await termsPage('zh-HK')).text;
   assert.ok(zh.includes('你的權利') && zh.includes('你的法定權利不受影響。'));
-  assert.ok(zh.includes('或沒有出席預約，本店可能會保留你的訂金。'), 'a missed appointment, as in English');
+  // Owner decision 2026-10-16: a no-show's deposit is kept; a late cancellation "may" be.
+  assert.ok(zh.includes('如你沒有出席預約，本店會保留你的訂金。'), 'a missed appointment, as in English');
+  assert.ok(zh.includes('如你在預約前 24 小時內取消，本店可能會保留你的訂金。'));
+  assert.ok(en.includes('If you don’t come to your appointment, we keep your deposit.'));
   assert.doesNotMatch(zh, /依時|遲到|準時/, 'lateness alone never forfeits a deposit');
   assert.ok(zh.includes('本店未確認的申請不會生效'));
 });

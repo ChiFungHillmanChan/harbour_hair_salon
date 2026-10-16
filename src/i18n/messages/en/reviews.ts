@@ -64,6 +64,7 @@ const reviews = {
     ALREADY_REVIEWED: 'You have already left a review for this appointment.',
     CANCELLED: 'You can only review appointments you actually attended.',
     NOT_YET: 'You can only review appointments after they have taken place.',
+    EMAIL_NOT_VERIFIED: 'Please confirm your email address before leaving a review.',
     UNAUTHORIZED: 'Unauthorized',
     INVALID_MODERATION: 'Invalid moderation payload',
     REVIEW_GONE: 'That review no longer exists.',

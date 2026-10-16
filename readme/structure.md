@@ -148,7 +148,7 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `kiosk.ts` — `clockToggle` (employee clock-in/out with PIN + rate-limit), `enableKioskMode` (current-admin check, kiosk cookie, clear user session/hint, redirect to `/kiosk`), `disableKioskMode`; handoff regression tests in `kiosk-session.test.ts`.
 - `timesheets.ts` — admin timesheet management: create/edit/delete TimesheetEntry rows
 - `payroll.ts` — `runPayrollAction(year, month)`, `updateAdjustmentAction`, `finalizePayrollAction`; delegates to `payroll-service.ts`
-- `password-reset.ts` — `requestPasswordReset` (enumeration-safe: identical response whether or not the email exists) and `resetPassword` (single-use token redeemed in a transaction, bumps `sessionVersion` to sign out every existing session)
+- `password-reset.ts` — `requestPasswordReset` (identical message whether or not the email exists; timing and registration still reveal accounts — an accepted trade-off) and `resetPassword` (single-use token redeemed in a transaction, bumps `sessionVersion` to sign out every existing session)
 - `admin-integrations.ts` — admin-only provider connection setup, bounded manual calendar sync, and per-stylist busy-feed token rotation with subscription invalidation.
 - `unsubscribe.ts` — `unsubscribeFromMarketing` (the public form: never changes the Resend audience; emails a signed confirmation link only to a subscribed address, same answer either way, per-IP + hashed per-address limits) and `confirmUnsubscribe` (the link page's POST button: verifies the token, then `contacts.update({ unsubscribed: true })`); `sendMarketingUnsubscribeConfirmation` + `marketingUnsubscribeContent` build the mail. Tests in `unsubscribe.test.ts`.
 
@@ -159,7 +159,7 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 - `src/app/admin/timesheets/page.tsx` — admin timesheet browser and manual entry editor
 - `src/app/admin/payroll/page.tsx` — admin payroll runner: period picker, computed gross lines, CSV export, finalize
 - `src/app/admin/integrations/page.tsx` — per-stylist Fresha/Treatwell setup and synchronization evidence. Inbound URLs stay masked; secret outbound subscription URLs are available only to administrators.
-- `src/app/[locale]/auth/forgot-password/page.tsx` + `src/components/auth/ForgotPasswordForm.tsx` — request a reset link (mail in the page's language); always shows the same confirmation so accounts cannot be enumerated
+- `src/app/[locale]/auth/forgot-password/page.tsx` + `src/components/auth/ForgotPasswordForm.tsx` — request a reset link (mail in the page's language); always shows the same confirmation (registration still says an address is taken, so this is not an enumeration guarantee)
 - `src/app/[locale]/auth/reset-password/page.tsx` + `src/components/auth/ResetPasswordForm.tsx` — redeem `?token=` and set a new password; handles missing/invalid/expired links
 - `src/app/kiosk/page.tsx` — PIN kiosk screen: employee roster with clock-in/out via `KioskClock`
 

@@ -127,7 +127,7 @@ function bookingFixture(
     '@/app/lib/booking-maintenance': bookingReadiness,
     '@/app/services/notification-outbox-service': queue,
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
-    '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true } },
+    '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, bookingDailyLimiter: { check: async () => true }, discountLimiter: { check: async () => true } },
     '@/app/services/stylist-ical-cache': {
       invalidateStylistIcalFeed: () => {
         assert.equal(transactionActive, false, 'feed invalidation must follow commit');

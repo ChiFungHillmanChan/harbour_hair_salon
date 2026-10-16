@@ -232,7 +232,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
               </div>
             )}
 
-            {!isUpcoming && appointment.status !== 'CANCELLED' && !appointment.hasReview && (
+            {!isUpcoming && appointment.status !== 'CANCELLED' && appointment.status !== 'PENDING' && !appointment.hasReview && (
               <Link
                 href={`/reviews/new?appointmentId=${appointment.id}`}
                 className="px-4 py-2 text-sm bg-zinc-900 text-white rounded-md font-medium hover:bg-black transition-colors"

@@ -58,7 +58,10 @@ function getClientIp(headersList: Headers): string {
  * Step 1 — email a reset link.
  *
  * Always reports the same generic message regardless of whether the address
- * exists, so this form cannot be used to enumerate customer accounts.
+ * exists. The response time still differs (a real account waits for the
+ * email), and registration openly says an address is taken, so accounts CAN be
+ * enumerated: an accepted trade-off for a salon's customer list (security
+ * review 2026-10-16), held down by the per-IP and per-account limits.
  */
 export async function requestPasswordReset(
   _prev: RequestResetState,

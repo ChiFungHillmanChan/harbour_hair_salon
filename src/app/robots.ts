@@ -8,7 +8,10 @@ export default function robots(): MetadataRoute.Robots {
       // Robots rules are path prefixes, so `/book` below would also hide the
       // booking terms (in the sitemap). Crawlers follow the longest matching
       // rule, which makes these two allows win over it.
-      allow: ['/', '/booking-terms', '/zh-hk/booking-terms'],
+      // `/api/ical/` likewise beats `/api/`: Google Calendar's "From URL"
+      // importer has refused robots-disallowed feeds. Each stylist's feed is
+      // token-protected and busy-only, so crawlers gain nothing from it.
+      allow: ['/', '/booking-terms', '/zh-hk/booking-terms', '/api/ical/'],
       // Private and transactional pages in both languages. These pages are
       // also noindex and protected server-side; robots is not the lock.
       disallow: [

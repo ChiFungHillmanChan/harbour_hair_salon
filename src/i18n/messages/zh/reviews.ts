@@ -63,6 +63,7 @@ const reviews: Localized<Messages['reviews']> = {
     ALREADY_REVIEWED: '你已就這次預約留下評價。',
     CANCELLED: '只可評價你實際出席的預約。',
     NOT_YET: '預約完成後才可留下評價。',
+    EMAIL_NOT_VERIFIED: '請先確認你的電郵地址，才可留下評價。',
     UNAUTHORIZED: '未獲授權',
     INVALID_MODERATION: '審核資料無效',
     REVIEW_GONE: '此評價已不存在。',

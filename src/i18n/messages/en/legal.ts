@@ -160,13 +160,15 @@ const legal = {
       confirmed: 'You can cancel a confirmed booking in <bookings>My Bookings</bookings> up to 24 hours before your appointment, and we refund your deposit in full.',
       late: 'Less than 24 hours before your appointment, please call us to cancel.',
       /**
-       * OWNER POLICY — the salon's rule for late cancellations and no-shows.
-       * Staff apply it booking by booking when they cancel: the whole deposit
-       * is refunded (the default) or the whole deposit is kept — the website
-       * cannot keep part of one. Keep this sentence in step with what the
-       * salon actually does, and with booking.deposit.lateOrNoShow.
+       * OWNER POLICY (2026-10-16): a no-show's deposit is never refunded; the
+       * rule for late cancellations is not decided yet, so it stays "may".
+       * Staff apply it when they cancel: the whole deposit is refunded or the
+       * whole deposit is kept (the website cannot keep part of one), and the
+       * admin dialog starts unticked ("keep") once the appointment time has
+       * passed. Keep this sentence in step with what the salon actually does,
+       * and with booking.deposit.lateOrNoShow.
        */
-      lateOrNoShow: 'If you cancel less than 24 hours before your appointment, or don’t come to it, we may keep your deposit.',
+      lateOrNoShow: 'If you don’t come to your appointment, we keep your deposit. If you cancel less than 24 hours before your appointment, we may keep your deposit.',
       salon: 'If we have to cancel your appointment, we refund your deposit in full.',
     },
     refunds: {
@@ -191,7 +193,7 @@ const legal = {
      */
     rights: {
       title: 'Your rights',
-      body: 'You can cancel a confirmed booking online up to 24 hours before your appointment for a full refund of your deposit, or contact us at any time before your appointment. We only keep a deposit for a late cancellation or a missed appointment, and only if the salon decides to — never more than the deposit. Your statutory rights are not affected.',
+      body: 'You can cancel a confirmed booking online up to 24 hours before your appointment for a full refund of your deposit, or contact us at any time before your appointment. If you miss your appointment, we keep your deposit; if you cancel late, we may keep it. We never keep more than the deposit. Your statutory rights are not affected.',
     },
     contact: {
       title: 'Questions',

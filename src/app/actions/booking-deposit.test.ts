@@ -323,6 +323,34 @@ test('card testing across accounts: after 5 declines from one address in a day, 
   assert.equal(f.squareCalls.authorize.length, 5);
 });
 
+// Security review 2026-10-16: the decline budgets are read before Square is
+// asked and counted only after it answers, so submissions sent together all
+// passed them. One address's authorizations are spent first, atomically.
+test('card testing: one address gets at most 20 card authorizations a day, of any outcome', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const f = deposited({ square: { authorize: async () => { throw new SquareGatewayError('provider_error', 401); } } });
+  for (let n = 1; n <= 20; n++) {
+    f.asCustomer(`user-${n}`);
+    const answer = await f.actions.submitBooking(request({ attemptKey: keyNumber(n), paymentToken: `cnon:card-${n}` }));
+    assert.equal(!answer.success && answer.code, 'PAYMENT_UNAVAILABLE', `account ${n}`);
+  }
+  assert.equal(f.squareCalls.authorize.length, 20);
+  f.asCustomer('user-21');
+  const refused = await f.actions.submitBooking(request({ attemptKey: keyNumber(21), paymentToken: 'cnon:card-21' }));
+  assert.equal(!refused.success && refused.code, 'PAYMENT_UNAVAILABLE');
+  assert.equal(f.squareCalls.authorize.length, 20, 'the 21st never reaches Square');
+  assert.equal(f.attempts.length, 20, 'and no attempt is written for it');
+});
+
+test('card testing in parallel: submissions sent together cannot all slip past the budgets', async () => {
+  const f = deposited({ square: declining });
+  await Promise.all(Array.from({ length: 30 }, (_, i) => {
+    f.asCustomer(`user-${i + 1}`);
+    return f.actions.submitBooking(request({ attemptKey: keyNumber(i + 1), paymentToken: `cnon:card-${i + 1}` }));
+  }));
+  assert.ok(f.squareCalls.authorize.length <= 20, `${f.squareCalls.authorize.length} authorizations reached Square`);
+});
+
 test('only declines count: holds that succeed, and payments switched off, never use up the budget', async () => {
   const f = deposited();
   for (let n = 1; n <= 4; n++) {

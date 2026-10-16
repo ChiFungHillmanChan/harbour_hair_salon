@@ -255,6 +255,8 @@ export function depositFixture(options: DepositFixtureOptions = {}) {
   }
   const db = {
     ...client(null),
+    // The customer has confirmed their address (managing a booking needs it).
+    user: { findUnique: async () => ({ email: 'customer@example.test', emailVerifiedAt: NOW, oauthAccounts: [] }) },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       const number = ++transactionNumber;
       counts.transactions++;
@@ -316,6 +318,7 @@ export function depositFixture(options: DepositFixtureOptions = {}) {
     '@/app/lib/rate-limit': {
       bookingLimiter: { check: async () => true }, availabilityLimiter: { check: async () => true },
       rescheduleLimiter: { check: async () => true }, appointmentRescheduleLimiter: { check: async () => true },
+      cancelLimiter: { check: async () => true },
     },
     'next/headers': { headers: async () => new Headers() },
   });

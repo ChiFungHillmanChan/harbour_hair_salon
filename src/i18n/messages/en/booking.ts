@@ -115,7 +115,7 @@ const booking = {
      */
     payNothingNow: 'You pay nothing now. We place a hold on your card and take the {amount} deposit only when we confirm your booking; if we decline or don’t confirm your request, the hold is released.',
     refund: 'Cancel at least 24 hours before your appointment for a full refund.',
-    lateOrNoShow: 'If you cancel less than 24 hours before your appointment, or miss it, we may keep the deposit.',
+    lateOrNoShow: 'If you miss your appointment, we keep the deposit. If you cancel less than 24 hours before it, we may keep it.',
     soonWarning: 'Your appointment is less than 24 hours away: once we confirm it, the deposit can’t be refunded online if you cancel.',
     termsLink: 'Read the full <link>booking terms</link>.',
     opensInNewTab: '(opens in a new tab)',

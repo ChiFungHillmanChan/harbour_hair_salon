@@ -23,7 +23,7 @@ import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
 import {
-  appointmentRescheduleLimiter, availabilityLimiter, bookingLimiter, depositDeclineAccountLimiter, depositDeclineIpLimiter, rescheduleLimiter,
+  appointmentRescheduleLimiter, availabilityLimiter, bookingDailyLimiter, bookingLimiter, cancelLimiter, depositAuthorizeIpLimiter, depositDeclineAccountLimiter, depositDeclineIpLimiter, rescheduleLimiter,
 } from '@/app/lib/rate-limit';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
 import { isBookingEnabled, assertOnlineBookingReady } from '@/app/lib/booking-maintenance';
@@ -56,6 +56,17 @@ async function clientAddress(): Promise<string> {
 // The availability lookups need no session, so they are limited per address.
 async function availabilityAllowed(): Promise<boolean> {
   return availabilityLimiter.check(await clientAddress());
+}
+
+/**
+ * Whether the signed-in customer has proved their address. Booking needs it,
+ * and so does seeing or changing a booking: staff attach phone bookings to the
+ * account that holds the customer's email, and anyone can register an address
+ * they do not own (security review 2026-10-16).
+ */
+async function hasProvedEmail(userId: string): Promise<boolean> {
+  const account = await prisma.user.findUnique({ where: { id: userId }, select: EMAIL_VERIFICATION_SELECT });
+  return Boolean(account && hasVerifiedEmail(account));
 }
 
 /** The decline budgets' keys for this customer and address (rate-limit.ts DEPOSIT_DECLINE_*). */
@@ -345,7 +356,7 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
 
   // Per-user rate limit. Degrades to in-process limiting on a Redis outage or
   // missing config, rather than failing open.
-  if (!(await bookingLimiter.check(`user:${session.userId}`))) {
+  if (!(await bookingLimiter.check(`user:${session.userId}`)) || !(await bookingDailyLimiter.check(`user:${session.userId}`))) {
     return failure(locale, 'TOO_MANY_BOOKINGS');
   }
 
@@ -644,6 +655,9 @@ async function submitWithDeposit(context: {
     depositDeclineAccountLimiter.allows(declines.account), depositDeclineIpLimiter.allows(declines.address),
   ]);
   if (!accountAllowed || !addressAllowed) return failure(locale, 'PAYMENT_UNAVAILABLE');
+  // The declines above are counted only once Square answers; this budget is
+  // spent now, atomically, so simultaneous submissions cannot all slip past.
+  if (!(await depositAuthorizeIpLimiter.check(declines.address))) return failure(locale, 'PAYMENT_UNAVAILABLE');
 
   const attempt = await payments.create({
     userId,
@@ -729,6 +743,7 @@ export async function cancelAppointment(appointmentId: string) {
   if (!appointment || appointment.userId !== session.userId) {
     return failure(locale, 'APPOINTMENT_NOT_FOUND');
   }
+  if (!(await hasProvedEmail(session.userId))) return failure(locale, 'MANAGE_EMAIL_NOT_VERIFIED');
 
   if (appointment.status !== 'CONFIRMED' && appointment.status !== 'PENDING') {
     return failure(locale, 'CANCEL_ONLY_ACTIVE');
@@ -740,6 +755,8 @@ export async function cancelAppointment(appointmentId: string) {
   if (appointment.status === 'CONFIRMED' && hoursUntil < ONLINE_CANCEL_NOTICE_HOURS) {
     return failure(locale, 'CANCEL_TOO_LATE');
   }
+  // Every withdrawal emails the customer and frees the slot (bookingDailyLimiter).
+  if (!(await cancelLimiter.check(`user:${session.userId}`))) return failure(locale, 'TOO_MANY_CANCELLATIONS');
 
   const treatwellApi = getTreatwellApiConfiguration();
   const treatwellSyncStatus = changedTreatwellSyncStatus({
@@ -837,6 +854,7 @@ export async function requestReschedule(appointmentId: string, dateStr: string, 
 
   const appointment = await prisma.appointment.findUnique({ where: { id: appointmentId }, include: requestInclude });
   if (!appointment || appointment.userId !== session.userId) return failure(locale, 'APPOINTMENT_NOT_FOUND');
+  if (!(await hasProvedEmail(session.userId))) return failure(locale, 'MANAGE_EMAIL_NOT_VERIFIED');
   if (appointment.status !== 'CONFIRMED') return failure(locale, 'RESCHEDULE_ONLY_CONFIRMED');
   if ((appointment.date.getTime() - Date.now()) / 3_600_000 < 24) return failure(locale, 'RESCHEDULE_TOO_LATE');
 
@@ -912,6 +930,7 @@ export async function withdrawRescheduleRequest(appointmentId: string) {
     select: { id: true, userId: true, status: true, date: true, rescheduleRequestedDate: true, rescheduleRequestedAt: true },
   });
   if (!appointment || appointment.userId !== session.userId) return failure(locale, 'APPOINTMENT_NOT_FOUND');
+  if (!(await hasProvedEmail(session.userId))) return failure(locale, 'MANAGE_EMAIL_NOT_VERIFIED');
   if (!appointment.rescheduleRequestedAt) return failure(locale, 'RESCHEDULE_REQUEST_CHANGED');
   const withdrawn = {
     from: appointment.date.toISOString(),

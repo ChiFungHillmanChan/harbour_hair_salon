@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { loadServerModule } from './load-server-module';
-import { createFailureLimiter, DEPOSIT_DECLINE_ACCOUNT_POLICY, DEPOSIT_DECLINE_IP_POLICY } from '../app/lib/rate-limit';
+import { createFailureLimiter, createRateLimiter, DEPOSIT_AUTHORIZE_IP_POLICY, DEPOSIT_DECLINE_ACCOUNT_POLICY, DEPOSIT_DECLINE_IP_POLICY } from '../app/lib/rate-limit';
 import { BookingError } from '../app/services/booking-errors';
 import type { SquarePayment } from '../app/services/square-gateway';
 import type { DepositSettings } from '../app/services/deposit-quote';
@@ -92,6 +92,10 @@ export function bookingFixture(options: {
   const declineLimiters = {
     depositDeclineAccountLimiter: createFailureLimiter(DEPOSIT_DECLINE_ACCOUNT_POLICY, { redis: null }),
     depositDeclineIpLimiter: createFailureLimiter(DEPOSIT_DECLINE_IP_POLICY, { redis: null }),
+  };
+  // The real authorization budget too, spent before Square is asked.
+  const authorizeLimiters = {
+    depositAuthorizeIpLimiter: createRateLimiter(DEPOSIT_AUTHORIZE_IP_POLICY, { redisLimiter: null }),
   };
   const rows: Row[] = [];
   const attempts: AttemptRow[] = [];
@@ -244,7 +248,7 @@ export function bookingFixture(options: {
     '@/app/lib/booking-maintenance': readiness,
     '@/app/services/notification-outbox-service': queue,
     '@/app/lib/session': { verifySession: async () => ({ userId: customerId, role: 'USER' }) },
-    '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, availabilityLimiter: { check: async () => true }, ...declineLimiters },
+    '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, bookingDailyLimiter: { check: async () => true }, cancelLimiter: { check: async () => true }, availabilityLimiter: { check: async () => true }, ...declineLimiters, ...authorizeLimiters },
     '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { effects.feedInvalidations++; } },
     '@/app/lib/online-booking-lock': { usableSquareConfig: () => realLock.usableSquareConfig(squareEnv) },
     // The gateway the action builds is the fake; the configuration it was

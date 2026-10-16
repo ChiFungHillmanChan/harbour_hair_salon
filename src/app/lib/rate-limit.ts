@@ -231,6 +231,12 @@ export const registerLimiter = createRateLimiter({ prefix: 'rl:register', limit:
 export const EMAIL_SEND_DAILY_POLICY: RateLimitPolicy = { prefix: 'rl:email-ip-day', limit: 20, windowSeconds: 24 * 60 * 60 };
 export const emailSendDailyLimiter = createRateLimiter(EMAIL_SEND_DAILY_POLICY);
 export const bookingLimiter = createRateLimiter({ prefix: 'rl:booking', limit: 6, windowSeconds: 60 * 60 });
+// Each request and each withdrawal emails the customer (and a request the
+// salon too), and a withdrawal frees the slot to be requested again: without a
+// daily ceiling one verified account could loop request → withdraw all day
+// (security review 2026-10-16). Far above what a real customer does.
+export const bookingDailyLimiter = createRateLimiter({ prefix: 'rl:booking-day', limit: 10, windowSeconds: 24 * 60 * 60 });
+export const cancelLimiter = createRateLimiter({ prefix: 'rl:cancel', limit: 10, windowSeconds: 24 * 60 * 60 });
 export const discountLimiter = createRateLimiter({ prefix: 'rl:discount', limit: 10, windowSeconds: 15 * 60 });
 export const clockLimiter = createRateLimiter({ prefix: 'rl:clock', limit: 8, windowSeconds: 5 * 60 });
 export const passwordResetLimiter = createRateLimiter({ prefix: 'rl:pwreset', limit: 5, windowSeconds: 60 * 60 });
@@ -254,3 +260,14 @@ export const DEPOSIT_DECLINE_ACCOUNT_POLICY: RateLimitPolicy = { prefix: 'rl:dec
 export const DEPOSIT_DECLINE_IP_POLICY: RateLimitPolicy = { prefix: 'rl:decline-ip', limit: 5, windowSeconds: 24 * 60 * 60 };
 export const depositDeclineAccountLimiter = createFailureLimiter(DEPOSIT_DECLINE_ACCOUNT_POLICY);
 export const depositDeclineIpLimiter = createFailureLimiter(DEPOSIT_DECLINE_IP_POLICY);
+/**
+ * Card authorizations of any outcome from one address, spent BEFORE Square is
+ * asked. The decline budgets above are read first and counted only after
+ * Square answers, so submissions sent at the same moment — across many
+ * accounts on one address — all passed them (security review 2026-10-16).
+ * This spends atomically, so a burst can never exceed it. Per account,
+ * bookingLimiter and bookingDailyLimiter already spend atomically. Generous,
+ * because mobile networks put many customers behind one address.
+ */
+export const DEPOSIT_AUTHORIZE_IP_POLICY: RateLimitPolicy = { prefix: 'rl:authorize-ip', limit: 20, windowSeconds: 24 * 60 * 60 };
+export const depositAuthorizeIpLimiter = createRateLimiter(DEPOSIT_AUTHORIZE_IP_POLICY);

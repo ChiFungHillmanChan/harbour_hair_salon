@@ -174,8 +174,10 @@ Square and payment records.
 - [x] Deposit amount (decided 2026-10-15): 50% of the price for every service booked directly;
       £15 to book either consultation, which is now that consultation's full price (the general
       Consultation went from free to £15).
-- [ ] Refund and no-show rules. `/booking-terms` currently says a late cancellation (under 24 hours) or a no-show "may" lose
-      the deposit, and that a salon cancellation is refunded in full — confirm or reword
+- [x] No-show (decided 2026-10-16): the deposit is never refunded. `/booking-terms` says so (en + zh),
+      and Admin → Schedule's cancel dialog starts at "keep" once a confirmed visit's time has passed.
+- [ ] Late cancellation (under 24 hours): not decided. `/booking-terms` says the salon "may keep" the
+      deposit, and that a salon cancellation is refunded in full — confirm or reword
       (`legal.bookingTerms.cancelling`, en + zh).
 - [ ] Staff approval time (holds expire after 7 days; aim for same-day replies).
 - [ ] Legal entity name and retention periods for the privacy notice (payment records: 6 years)

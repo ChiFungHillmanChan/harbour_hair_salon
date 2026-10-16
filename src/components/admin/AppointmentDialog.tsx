@@ -85,7 +85,7 @@ type DialogForm = {
   customerLocale: Locale;
   /** A newer price the server reported for the chosen service; saving again confirms it. */
   priceChange: AdminQuote | null;
-  /** Cancelling a confirmed booking whose deposit was taken: refund it (ticked by default) or keep it. */
+  /** Cancelling a confirmed booking whose deposit was taken: refund it (ticked by default; unticked for a no-show) or keep it. */
   refundDeposit: boolean;
 };
 
@@ -140,7 +140,9 @@ export function AppointmentDialog({
     phone: '',
     customerLocale: DEFAULT_LOCALE,
     priceChange: null,
-    refundDeposit: true,
+    // A no-show keeps its deposit (salon policy, /booking-terms): once a
+    // confirmed visit's time has passed, cancelling starts at "keep".
+    refundDeposit: !(isEdit && target.status === 'CONFIRMED' && new Date(target.date).getTime() <= Date.now()),
   }));
   const update = (patch: Partial<DialogForm>) => setForm((previous) => ({ ...previous, ...patch }));
   const { serviceId, stylistId, dateStr, time, durationMin, notes, status, notifyCustomer, customerQuery, picked, name, email, phone, customerLocale, priceChange } = form;
@@ -291,6 +293,8 @@ export function AppointmentDialog({
   // refunded (default) or kept; a request's hold is released.
   const deposit = target.mode === 'edit' ? target.deposit ?? null : null;
   const keepChoice = target.mode === 'edit' && target.status === 'CONFIRMED' && deposit?.state === 'PAID';
+  // Read once when the dialog opens (a no-show keeps its deposit: the help text says so).
+  const [visitPassed] = useState(() => target.mode === 'edit' && new Date(target.date).getTime() <= Date.now());
   function cancelConfirmText() {
     const customer = target.mode === 'edit' ? target.customerName : '';
     if (deposit?.state === 'PAID') {
@@ -538,7 +542,7 @@ export function AppointmentDialog({
                 <input type="checkbox" checked={refundDeposit} onChange={(event) => update({ refundDeposit: event.target.checked })} />
                 {t('deposit.refund', { amount: formatPrice(deposit.amountPence) })}
               </label>
-              <p className="mt-1 text-xs text-zinc-500">{t('deposit.refundHelp')}</p>
+              <p className="mt-1 text-xs text-zinc-500">{t(visitPassed ? 'deposit.noShowHelp' : 'deposit.refundHelp')}</p>
             </div>
           )}
           {isEdit && target.status === 'PENDING' && deposit?.state === 'HELD' && (

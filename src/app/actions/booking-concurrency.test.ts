@@ -153,6 +153,8 @@ function fixture(options: {
   };
   const db = {
     ...tx,
+    // The customer has confirmed their address (managing a booking needs it).
+    user: { findUnique: async () => ({ email: 'customer@example.com', emailVerifiedAt: new Date('2026-01-01T00:00:00Z'), oauthAccounts: [] }) },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       const before = structuredClone(appointment);
       transactions++;
@@ -213,6 +215,7 @@ function fixture(options: {
     '@/app/lib/rate-limit': {
       rescheduleLimiter: { check: async (key: string) => { limiterKeys.push(key); return options.rescheduleSpent !== 'user'; } },
       appointmentRescheduleLimiter: { check: async (key: string) => { limiterKeys.push(key); return options.rescheduleSpent !== 'appointment'; } },
+      cancelLimiter: { check: async () => true },
     },
     '@/app/services/site-settings-service': {},
     '@/app/actions/admin-services': {},

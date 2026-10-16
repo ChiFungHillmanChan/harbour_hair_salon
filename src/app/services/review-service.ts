@@ -85,6 +85,9 @@ export async function getReviewsForModeration(status: ReviewStatus, limit = 26, 
       user: { select: { name: true, email: true } },
       appointment: {
         select: {
+          // When the visit was and whether it happened, so a moderator can tell.
+          date: true,
+          status: true,
           service: { select: { name: true } },
           stylist: { select: { name: true } },
         },

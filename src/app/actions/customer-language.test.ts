@@ -68,7 +68,7 @@ function bookAs(saved: string | null, pageLocale: Locale) {
     },
     '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
-    '@/app/lib/rate-limit': { bookingLimiter: allow },
+    '@/app/lib/rate-limit': { bookingLimiter: allow, bookingDailyLimiter: allow },
     '@/app/services/booking-service': { createBooking: async (input: Record<string, unknown>) => { bookings.push(input); return { id: 'appt-1' }; } },
     '@/app/services/notification-outbox-service': { dispatchAppointmentNotifications: async () => {} },
     '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => {} },

@@ -20,7 +20,7 @@ Deployed on Vercel (Pro plan) with Neon PostgreSQL.
 
 - Releases #62 (review follow-ups, Google Calendar links, i18n) and #63 (Square deposits) are live and verified read-only against production — see `LAUNCH.md` §0.
 - **Online booking is closed in production:** `SiteSettings.bookingEnabled=false`, and the Square lock keeps it shut until Square production credentials are set. Those may only be set after the sandbox acceptance list in `docs/square-payments-setup.md` §4 has passed. Until then customers book by phone, Fresha or Treatwell (`/book` shows exactly that).
-- **Deposit policy (owner, set in production 2026-10-15):** 50% of the price, minimum £0. Both consultations take a fixed £15 override, which is their full price: the general Consultation went from free to £15. Nothing is charged while booking is locked.
+- **Deposit policy (owner, set in production 2026-10-15):** 50% of the price, minimum £0. Both consultations take a fixed £15 override, which is their full price: the general Consultation went from free to £15. Nothing is charged while booking is locked. A no-show's deposit is never refunded (decided 2026-10-16); the late-cancellation rule is still open, so the terms say "may keep".
 - Production flags: `NOTIFICATIONS_ENABLED=false` (no booking emails and no daily ops alert yet; the go-live gate needs it `true`), `CALENDAR_SYNC_ENABLED=true`, and housekeeping on (first run 2026-10-14 03:15 UTC).
 - The remaining launch steps, in order: `LAUNCH.md` §2–§3.
 
@@ -271,6 +271,12 @@ Rules that follow from this:
 - **Any code that sets a password** (admin reset, bootstrap, Google takeover defence, reset redemption) revokes that account's unused `PasswordResetToken`s in the same transaction. New passwords are capped at **72 UTF-8 bytes** (`fitsBcryptLimit`) — bcrypt ignores the rest.
 - **Rate limits** go through `lib/rate-limit.ts` and never fail open. Login and reset requests have per-IP *and* per-account buckets (keyed by `accountRateLimitKey`, a hash); a signed `login_device` cookie (`lib/login-device.ts`) lets a browser that signed in before skip the account bucket so strangers cannot lock the owner out.
 - **Self-service booking requires a confirmed email** (`hasVerifiedEmail`: `User.emailVerifiedAt` or a linked Google account).
+- **Security review 2026-10-16 (keep):**
+  - Seeing or changing a booking needs the address proved too: My Bookings shows a confirm-your-email prompt; `cancelAppointment` / `requestReschedule` / `withdrawRescheduleRequest` answer `MANAGE_EMAIL_NOT_VERIFIED`; `createReview` is gated the same way. Reason: staff attach phone bookings to whichever account holds the email, and anyone can register an address.
+  - Reviews only for CONFIRMED or COMPLETED visits (never PENDING), and moderation shows the visit's date and whether it happened.
+  - Daily ceilings: `bookingDailyLimiter` (10 a day per user, alongside 6 an hour) and `cancelLimiter` (10 a day). `depositAuthorizeIpLimiter` (20 card authorizations a day per address) is spent atomically BEFORE Square is asked, because the decline budgets are only counted after Square answers.
+  - Registration names refuse links, `@`, `<>` and control characters (they greet the address owner in booking emails).
+  - Account enumeration through registration and reset timing is an accepted trade-off.
 - **Public availability actions** refuse any date outside `isBookableDateWindow` *before* touching the database, and have a per-IP limiter. Requesting the booking's current (or already-requested) time is a no-op; real requests are limited per customer and per appointment.
 - **Marketing unsubscribe** needs the signed emailed link (`lib/unsubscribe-token.ts`); the form never changes the list.
 - **Vercel Firewall:** the scanner-probe deny rule lives in the **project firewall**, versioned in `infra/vercel-firewall/` (apply with the CLI, see its README). **Never** put `routes` + `mitigate` in `vercel.json`: that deployment challenged *every* request, which Fresha's and Treatwell's iCal pollers cannot pass. Rate-limit rules are usage-billed — none are used.

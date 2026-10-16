@@ -133,8 +133,11 @@ export default async function AdminReviewsPage({
                   <p className="text-xs text-zinc-500 mt-0.5">{review.user.email}</p>
                   <p className="text-xs text-zinc-400 mt-1">
                     {review.appointment.service.name} · {review.appointment.stylist.name} ·{' '}
-                    {formatSalonMediumDate(locale, review.createdAt)}
+                    {t('reviews.visit', { date: formatSalonMediumDate(locale, review.appointment.date) })}
                   </p>
+                  {review.appointment.status !== 'CONFIRMED' && review.appointment.status !== 'COMPLETED' && (
+                    <p className="text-xs font-medium text-zinc-900 mt-1">{t('reviews.visitNotConfirmed')}</p>
+                  )}
                 </div>
                 <div className="flex gap-2 shrink-0">
                   {activeStatus !== 'APPROVED' && (

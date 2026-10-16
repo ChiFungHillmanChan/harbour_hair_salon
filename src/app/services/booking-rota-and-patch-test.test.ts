@@ -92,6 +92,7 @@ function fixture(options: { requiresPatchTest?: boolean; patchTestDate?: Date } 
     '@/app/lib/rate-limit': {
       bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true },
       rescheduleLimiter: { check: async () => true }, appointmentRescheduleLimiter: { check: async () => true },
+      bookingDailyLimiter: { check: async () => true }, cancelLimiter: { check: async () => true },
     },
     '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     'next/server': { after: (callback: () => unknown) => callback() },

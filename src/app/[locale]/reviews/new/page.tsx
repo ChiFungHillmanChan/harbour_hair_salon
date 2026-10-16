@@ -4,6 +4,7 @@ import Link from '@/i18n/link';
 import prisma from '@/app/lib/prisma';
 import { loadPublishedTranslations } from '@/app/services/content/translations';
 import { verifySession } from '@/app/lib/session';
+import { EMAIL_VERIFICATION_SELECT, hasVerifiedEmail } from '@/app/lib/email-verification';
 import { ReviewForm } from '@/components/reviews/ReviewForm';
 import { getLocale, getT } from '@/i18n/server';
 import { ClientMessages } from '@/i18n/ClientMessages';
@@ -30,6 +31,11 @@ export default async function NewReviewPage({
   const [locale, t] = await Promise.all([getLocale(), getT('reviews')]);
 
   if (!appointmentId) {
+    redirect(localizeHref(locale, '/appointments'));
+  }
+  // My Bookings asks an unproved address to confirm itself first (actions/booking.ts hasProvedEmail).
+  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: EMAIL_VERIFICATION_SELECT });
+  if (!account || !hasVerifiedEmail(account)) {
     redirect(localizeHref(locale, '/appointments'));
   }
 
@@ -72,7 +78,8 @@ export default async function NewReviewPage({
   }
 
   const isPast = appointment.date.getTime() < now.getTime();
-  const isCancelled = appointment.status === 'CANCELLED';
+  // A request staff never confirmed was not a visit (actions/reviews.ts).
+  const isCancelled = appointment.status === 'CANCELLED' || appointment.status === 'PENDING';
   if (!isPast || isCancelled) {
     return (
       <div className="min-h-screen bg-white">

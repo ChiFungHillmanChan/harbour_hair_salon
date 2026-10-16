@@ -31,8 +31,15 @@ const loginSchema = z.object({
   password: z.string().min(1, 'PASSWORD_REQUIRED').max(128, 'PASSWORD_TOO_LONG'),
 });
 
+/**
+ * Whoever registers an address types its name, and staff bookings and booking
+ * emails later greet the address's real owner with it ("Hi {name},"). A name
+ * is never a link, an address or several lines (security review 2026-10-16).
+ */
+const NOT_A_NAME = /[\p{Cc}@<>]|:\/\/|www\./iu;
+
 const registerSchema = z.object({
-  name: z.string().min(2, 'NAME_TOO_SHORT').max(100, 'NAME_TOO_LONG'),
+  name: z.string().trim().min(2, 'NAME_TOO_SHORT').max(100, 'NAME_TOO_LONG').refine((name) => !NOT_A_NAME.test(name), { message: 'NAME_INVALID' }),
   email: z.string().email('EMAIL_INVALID').max(254, 'EMAIL_TOO_LONG'),
   // 8 minimum, matching the admin-user schema in actions/admin.ts. The upper
   // bound is bcrypt's 72 bytes (see lib/password.ts).

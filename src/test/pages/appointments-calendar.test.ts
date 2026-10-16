@@ -12,12 +12,14 @@ async function cards(locale: Locale, rows: { upcoming: Record<string, unknown>[]
   const page = loadServerModule<typeof import('../../app/[locale]/appointments/page')>('src/app/[locale]/appointments/page.tsx', {
     '@/components/admin/Pagination': { Pagination: () => null },
     '@/app/lib/prisma': {
+      user: { findUnique: async () => ({ email: 'customer@example.com', emailVerifiedAt: new Date('2026-01-01T00:00:00Z'), oauthAccounts: [] }) }, 
       appointment: { findMany: async ({ where }: { where: { OR?: unknown } }) => { queries.push('appointment'); return where.OR ? rows.past ?? [] : rows.upcoming; } },
       contentTranslation: { findMany: async () => { queries.push('contentTranslation'); return [{ entityId: 'service-1', fieldsJson: JSON.stringify({ name: '洗剪吹' }) }]; } },
     },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1' }) },
     '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
     '@/components/appointments/AppointmentCard': { AppointmentCard: card },
+    '@/components/auth/VerifyEmailResendForm': { VerifyEmailResendForm: () => null },
     '@/i18n/ClientMessages': { ClientMessages: ({ children }: { children: unknown }) => children },
     '@/i18n/server': { getLocale: async () => locale, getT: async (namespace: Namespace) => translator(locale, namespace) },
   });

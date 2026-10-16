@@ -523,7 +523,8 @@ Only once §4 has passed on a Preview deployment of `main` (S1–S4 are merged a
 **What staff see.** Admin → Schedule shows each booking's deposit (held, taken, released, refund
 pending, refunded, or needing attention). **Approve** takes the deposit; **Decline** releases it;
 **Cancel** on a confirmed booking offers "Refund the £X deposit" (ticked; untick to keep it for a
-late cancellation or no-show, as the booking terms allow); **Mark completed** releases a hold that
+late cancellation, as the booking terms allow — once the visit's time has passed it starts unticked,
+because a no-show's deposit is never refunded, owner decision 2026-10-16); **Mark completed** releases a hold that
 was never taken (collect the full price in the salon — the confirm question says so) and keeps a
 taken deposit towards the bill; **Re-check payment** asks Square again; **Mark refund as settled
 outside the website** (shown next to it only for a refund Square has not confirmed) records that you
