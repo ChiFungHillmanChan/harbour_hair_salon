@@ -70,3 +70,60 @@ test('a password-only administrator session reaches protected actions', async (t
   assert.deepEqual(await session.verifySession(), { userId: 'admin', role: 'ADMIN' });
   assert.deepEqual(await session.requireAdmin(), { userId: 'admin', role: 'ADMIN' });
 });
+
+function signOutFixture(t: TestContext, stored: { sessionVersion: number }, failWrite = false) {
+  const previousSecret = process.env.SESSION_SECRET;
+  process.env.SESSION_SECRET = 'fixture-session-security-test-secret';
+  t.after(() => { if (previousSecret === undefined) delete process.env.SESSION_SECRET; else process.env.SESSION_SECRET = previousSecret; });
+  const values = new Map<string, string>();
+  const store = {
+    get: (key: string) => values.has(key) ? { value: values.get(key)! } : undefined,
+    set: (key: string, value: string) => { values.set(key, value); },
+    delete: (key: string) => { values.delete(key); },
+  };
+  const session = loadServerModule<typeof import('./session')>('src/app/lib/session.ts', {
+    'next/headers': { cookies: async () => store },
+    'next/navigation': { redirect },
+    '@/app/lib/prisma': {
+      user: {
+        updateMany: async ({ where, data }: { where: { id: string; sessionVersion: number }; data: { sessionVersion: { increment: number } } }) => {
+          if (failWrite) throw new Error('database unreachable');
+          if (where.id !== 'customer' || where.sessionVersion !== stored.sessionVersion) return { count: 0 };
+          stored.sessionVersion += data.sessionVersion.increment;
+          return { count: 1 };
+        },
+      },
+    },
+  });
+  t.mock.method(console, 'error', () => {});
+  return { values, session };
+}
+
+test('signing out ends every session of the account, not only this cookie', async (t) => {
+  const stored = { sessionVersion: 2 };
+  const { session, values } = signOutFixture(t, stored);
+  await session.createSession('customer', 'USER', 2);
+  await session.endAllSessions();
+  // Every token carrying version 2 — other devices, copied cookies — is now refused.
+  assert.equal(stored.sessionVersion, 3);
+  assert.equal(values.has('session'), false);
+  assert.equal(values.has('session_hint'), false);
+});
+
+test('an already-revoked cookie cannot sign the owner out of their other devices', async (t) => {
+  const stored = { sessionVersion: 5 };
+  const { session, values } = signOutFixture(t, stored);
+  await session.createSession('customer', 'USER', 4);
+  await session.endAllSessions();
+  assert.equal(stored.sessionVersion, 5);
+  assert.equal(values.has('session'), false);
+});
+
+test('this browser is still signed out when the database cannot be reached', async (t) => {
+  const stored = { sessionVersion: 0 };
+  const { session, values } = signOutFixture(t, stored, true);
+  await session.createSession('customer', 'USER', 0);
+  await session.endAllSessions();
+  assert.equal(values.has('session'), false);
+  assert.equal(values.has('session_hint'), false);
+});

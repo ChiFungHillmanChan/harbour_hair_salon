@@ -2,14 +2,13 @@
 
 import Link from '@/i18n/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, useTransition } from 'react';
-import { logout } from '@/app/actions/auth';
+import { useEffect, useRef, useState } from 'react';
 import { parseSessionHint } from '@/app/lib/session-hint';
+import { submitSignOut } from '@/app/lib/sign-out';
 import { MobileNav } from './MobileNav';
 import { useT } from '@/i18n/client';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
-import { clearAllDrafts } from '@/i18n/draft-store';
-import { stripLocale } from '@/i18n/paths';
+import { splitLocalePath, stripLocale } from '@/i18n/paths';
 
 /** Signed-in role, null when signed out, undefined before the first client read. */
 type HeaderRole = string | null | undefined;
@@ -19,7 +18,8 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
   const businessPath = stripLocale(pathname);
   const t = useT('common');
   const [role, setRole] = useState<HeaderRole>(undefined);
-  const [isSigningOut, startSignOut] = useTransition();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const shownRole = useRef<HeaderRole>(undefined);
 
   // Instant, network-free auth state from the non-httpOnly session_hint
   // cookie. Re-read on every navigation: this component lives in the root
@@ -34,21 +34,45 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
     setRole(parseSessionHint(document.cookie));
   }, [pathname]);
 
+  useEffect(() => {
+    shownRole.current = role;
+  }, [role]);
+
+  // Signing out in another tab (or this page coming back from the
+  // back/forward cache after signing out) must not leave a page that still
+  // shows the account: once the hint has changed under a signed-in page,
+  // reload it so the server decides afresh. This component is mounted on
+  // admin and kiosk pages too, so those are covered.
+  useEffect(() => {
+    const recheck = (event: Event) => {
+      if (document.visibilityState === 'hidden') return;
+      const current = parseSessionHint(document.cookie);
+      if (shownRole.current && current !== shownRole.current) {
+        window.location.reload();
+        return;
+      }
+      if (event.type === 'pageshow') setIsSigningOut(false);
+      setRole(current);
+    };
+    window.addEventListener('focus', recheck);
+    window.addEventListener('pageshow', recheck);
+    document.addEventListener('visibilitychange', recheck);
+    return () => {
+      window.removeEventListener('focus', recheck);
+      window.removeEventListener('pageshow', recheck);
+      document.removeEventListener('visibilitychange', recheck);
+    };
+  }, []);
+
   const handleSignOut = () => {
     if (isSigningOut) return;
     // Optimistic flip: the header switches to signed-out immediately, so the
     // click has a visible effect and the button can't be pressed repeatedly.
+    setIsSigningOut(true);
     setRole(null);
-    // Unsaved drafts (and any one-time MFA result) belong to this account only.
-    clearAllDrafts();
-    startSignOut(async () => {
-      try {
-        await logout();
-      } catch {
-        // Action failed before clearing the session — restore the true state.
-        setRole(parseSessionHint(document.cookie));
-      }
-    });
+    // A full-page POST: the route ends every session of the account and clears
+    // the site's cache and storage; the page and its router cache are replaced.
+    submitSignOut(splitLocalePath(pathname).locale);
   };
 
   // Admin and kiosk provide their own full-screen navigation shells.

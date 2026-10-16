@@ -99,6 +99,30 @@ export async function deleteSession() {
   cookieStore.delete(SESSION_HINT_COOKIE);
 }
 
+/**
+ * Sign-out: ends EVERY session of this account, on every device, then removes
+ * this browser's cookies. Sessions are stateless JWTs, so deleting the cookie
+ * alone would leave a copied token valid until it expires; bumping
+ * sessionVersion makes verifySession refuse every token issued so far. Only a
+ * token that is still current may bump it, so an already-revoked cookie cannot
+ * keep signing the owner out of their other devices.
+ */
+export async function endAllSessions() {
+  const session = await getSession();
+  if (session?.userId) {
+    try {
+      await prisma.user.updateMany({
+        where: { id: session.userId, sessionVersion: session.sessionVersion ?? 0 },
+        data: { sessionVersion: { increment: 1 } },
+      });
+    } catch (error) {
+      // This browser must still be signed out when the database is unreachable.
+      console.error('Sign-out could not end the account\'s other sessions:', error);
+    }
+  }
+  await deleteSession();
+}
+
 async function kioskSessionId(): Promise<string | null> {
   const cookie = (await cookies()).get('kiosk')?.value;
   if (!cookie) return null;

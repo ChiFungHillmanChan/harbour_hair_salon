@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { fitsBcryptLimit, hashPassword, verifyPassword } from '@/app/lib/password';
-import { createSession, deleteSession } from '@/app/lib/session';
+import { createSession } from '@/app/lib/session';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { accountRateLimitKey, emailSendDailyLimiter, loginAccountLimiter, loginLimiter, registerLimiter } from '@/app/lib/rate-limit';
@@ -14,7 +14,7 @@ import { decideRegistration } from '@/app/lib/register-gate';
 import { appendAuditEvent } from '@/app/lib/audit';
 import { after } from 'next/server';
 import { sendEmailVerification } from '@/app/services/email-service';
-import { getActionT, localizedPath } from '@/i18n/request';
+import { getActionT } from '@/i18n/request';
 
 function getClientIp(headersList: Headers): string {
   const forwarded = headersList.get('x-forwarded-for');
@@ -182,9 +182,4 @@ export async function register(prevState: unknown, formData: FormData) {
     }
   });
   redirect(redirectTo);
-}
-
-export async function logout() {
-  await deleteSession();
-  redirect(await localizedPath('/'));
 }

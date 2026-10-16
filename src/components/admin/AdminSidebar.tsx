@@ -3,11 +3,10 @@
 import Link from '@/i18n/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { useFormStatus } from 'react-dom';
 import { useT } from '@/i18n/client';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
-import { clearAllDrafts } from '@/i18n/draft-store';
-import { stripLocale } from '@/i18n/paths';
+import { clearLocalAccountState, SIGN_OUT_PATH } from '@/app/lib/sign-out';
+import { splitLocalePath, stripLocale } from '@/i18n/paths';
 import type { Messages } from '@/i18n/messages/types-client';
 import type { MessageKey } from '@/i18n/translator';
 
@@ -40,12 +39,10 @@ function isActive(path: string, href: string): boolean {
 
 interface AdminSidebarProps {
   userId: string;
-  logoutAction: () => Promise<void>;
 }
 
-/** Disables itself while the logout action runs so it can't be re-clicked. */
-function SignOutButton() {
-  const { pending } = useFormStatus();
+/** Disables itself once the sign-out POST has left so it can't be re-clicked. */
+function SignOutButton({ pending }: { pending: boolean }) {
   const t = useT('admin');
   return (
     <button
@@ -63,8 +60,9 @@ function SignOutButton() {
  * route-change all close it). From lg up it is the always-visible sidebar,
  * sticky and viewport-height so Sign Out stays reachable on short screens.
  */
-export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
+export function AdminSidebar({ userId }: AdminSidebarProps) {
   const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const pathname = usePathname();
   const path = stripLocale(pathname);
   const t = useT('admin');
@@ -176,10 +174,19 @@ export function AdminSidebar({ userId, logoutAction }: AdminSidebarProps) {
             <p className="text-xs uppercase text-zinc-500">{t('sidebar.loggedInAs')}</p>
             <p className="truncate text-sm font-medium">{userId}</p>
           </div>
-          {/* Unsaved drafts kept for a language switch belong to this admin
-              session only; drop them before the account signs out. */}
-          <form action={logoutAction} onSubmit={() => clearAllDrafts()}>
-            <SignOutButton />
+          {/* A plain POST: the route ends every session of this admin and
+              clears the site's cache and storage. Unsaved drafts kept for a
+              language switch belong to this session only; they go first. */}
+          <form
+            method="post"
+            action={SIGN_OUT_PATH}
+            onSubmit={() => {
+              clearLocalAccountState();
+              setSigningOut(true);
+            }}
+          >
+            <input type="hidden" name="locale" value={splitLocalePath(pathname).locale} />
+            <SignOutButton pending={signingOut} />
           </form>
         </div>
       </aside>
