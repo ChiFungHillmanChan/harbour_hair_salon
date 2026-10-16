@@ -445,6 +445,12 @@ const adminContent: Localized<Messages['adminContent']> = {
       minimumHelp: '價格低於此金額的服務不收訂金，除非該服務設有自己的固定訂金。填 0.00 即所有收費服務都會收取訂金。',
       squareNote: '<strong>訂金經 Square 收取，須先為本網站設定 Square。</strong>設定好 Square 正式環境憑證之前，正式網站的網上預約會保持關閉。',
     },
+    lateArrivals: {
+      title: '遲到',
+      help: '開啟後，已確認的預約如在開始 {minutes} 分鐘後仍未標記「已到達」，便會自動取消。訂金會按缺席處理不予退還，並會電郵通知客人。',
+      label: '客人遲到 {minutes} 分鐘或以上時自動取消預約',
+      explain: '開啟前，請確保員工在每位客人到達時於日程表按「已到達」。開啟前已開始的預約永遠不會被取消。已取消的預約可於 24 小時內在日程表還原。',
+    },
     contact: {
       title: '聯絡資料',
     },

@@ -9,6 +9,7 @@ import {
 import type { SiteSettings } from '@/app/services/site-settings-service';
 import { penceToDecimalString } from '@/app/services/pricing/money';
 import { HIGH_DEPOSIT_PERCENT, isHighDepositPercent } from '@/app/services/deposit-policy';
+import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { LOCALES } from '@/i18n/config';
 import { useT } from '@/i18n/client';
 import { rich } from '@/i18n/rich';
@@ -218,6 +219,25 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
             strong: (text) => <strong>{text}</strong>,
           })}
         </p>
+      </section>
+
+      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+        <div>
+          <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.lateArrivals.title')}</h2>
+          <p className="text-xs text-zinc-500 mt-1">{t('settings.lateArrivals.help', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })}</p>
+        </div>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            name="lateAutoCancelEnabled"
+            defaultChecked={settings.lateAutoCancelSince !== null}
+            className="mt-1 h-5 w-5 rounded border-zinc-300 text-zinc-900 focus:ring-2 focus:ring-zinc-900"
+          />
+          <span>
+            <span className="block text-sm font-medium text-zinc-900">{t('settings.lateArrivals.label', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })}</span>
+            <span className="block text-xs text-zinc-500 mt-1">{t('settings.lateArrivals.explain')}</span>
+          </span>
+        </label>
       </section>
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">

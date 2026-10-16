@@ -446,6 +446,12 @@ const adminContent = {
       minimumHelp: 'Services priced below this take no deposit, unless the service has its own fixed deposit. 0.00 means every priced service does.',
       squareNote: '<strong>Deposits are taken through Square, which must be set up for this website first.</strong> Until Square production credentials are configured, online booking stays closed on the live site.',
     },
+    lateArrivals: {
+      title: 'Late arrivals',
+      help: 'When this is on, a confirmed booking is cancelled automatically if the customer has not been marked Arrived {minutes} minutes after the start. The deposit is kept, as for a no-show, and the customer is emailed.',
+      label: 'Cancel bookings automatically when the customer is {minutes}+ minutes late',
+      explain: 'Before switching this on, make sure staff tap “Arrived” on the schedule when each customer comes in. Bookings that started before you switch it on are never cancelled. A cancelled booking can be restored for 24 hours from the schedule.',
+    },
     contact: {
       title: 'Contact',
     },
