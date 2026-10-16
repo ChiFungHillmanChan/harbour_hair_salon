@@ -11,7 +11,7 @@ import { formatCalendarDay } from '@/i18n/dates';
 import { rich } from '@/i18n/rich';
 
 /** Change this, and the wording in the `legal.bookingTerms` dictionary, together. */
-const LAST_UPDATED = '2026-10-13';
+const LAST_UPDATED = '2026-10-16';
 
 // Static copy plus the salon phone from the day-cached settings, so the page is
 // served from the ISR cache and never reads the database per request (CLAUDE.md,

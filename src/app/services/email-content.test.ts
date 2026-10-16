@@ -457,7 +457,7 @@ test('LATE_CANCELLED says why, keeps the deposit wording, and removes the calend
 test('the confirmation and the reminder ask the customer to arrive on time, first among the footnotes', () => {
   const words = {
     'en-GB': 'Please arrive on time: if you are more than 15 minutes late without letting us know, we cancel the appointment and keep any deposit.',
-    'zh-HK': '請準時到達：如遲到超過 15 分鐘而沒有通知我們，我們會取消預約，並不退還訂金。',
+    'zh-HK': '請準時到達：如遲到超過 15 分鐘而沒有通知本店，本店會取消預約，如有訂金，亦不會退還。',
   } as const;
   for (const locale of ['en-GB', 'zh-HK'] as const) {
     for (const kind of ['CONFIRMATION', 'REMINDER'] as const) {
