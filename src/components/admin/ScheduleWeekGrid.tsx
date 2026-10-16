@@ -452,7 +452,10 @@ export function ScheduleWeekGrid({
                     className={`absolute overflow-hidden rounded border px-0.5 leading-3 focus-visible:outline-2 focus-visible:outline-zinc-900 ${
                       wholeDay
                         ? 'border-zinc-400 border-l-2 border-l-zinc-600 bg-[repeating-linear-gradient(135deg,var(--color-zinc-200)_0_6px,var(--color-zinc-100)_6px_12px)] text-[10px] text-zinc-800'
-                        : 'border-zinc-300 border-l-2 border-l-zinc-500 bg-zinc-100 text-[9px] text-zinc-700'
+                        : label.kind === 'blocked'
+                          // A stylist's own blocked time: hatched and dashed, never mistaken for a booking.
+                          ? 'border-dashed border-zinc-400 border-l-2 border-l-zinc-500 bg-[repeating-linear-gradient(135deg,var(--color-zinc-100)_0_5px,var(--color-white)_5px_10px)] text-[9px] text-zinc-600'
+                          : 'border-zinc-300 border-l-2 border-l-zinc-500 bg-zinc-100 text-[9px] text-zinc-700'
                     }`}
                     style={{
                       top: minutesToOffset(startMin, bounds.startMin, PX_PER_MINUTE),

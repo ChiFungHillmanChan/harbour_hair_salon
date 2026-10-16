@@ -8,7 +8,7 @@ const busy = empty.replace('END:VCALENDAR', 'BEGIN:VEVENT\r\nUID:shared-uid\r\nD
 function connection(id = 'c1', stylistId = 's1', provider = 'TREATWELL'): CalendarConnection {
   return { id, stylistId, provider, receivesBookings: true, inboundEnabled: true, inboundUrl: 'https://example.com/private?token=secret', outboundConfirmedAt: now, lastAttemptAt: null, lastSuccessAt: null, lastError: null, lockToken: null, lockedUntil: null, createdAt: now, updatedAt: now };
 }
-type Block = { source: string; stylistId: string; externalUid: string; start: Date; end: Date; lastSyncAt: Date };
+type Block = { source: string; stylistId: string; externalUid: string; start: Date; end: Date; lastSyncAt: Date; summary?: string | null };
 type StalePart = { lastSuccessAt?: null | { lt: Date }; lastError?: { not: null } };
 /** The `staleBefore` predicate: never succeeded, succeeded before the cutoff, or last attempt failed. */
 function isStale(row: CalendarConnection, parts?: StalePart[]): boolean {
@@ -251,4 +251,23 @@ test('the pre-approval refresh logs a database failure by name and code, and sti
   assert.match(line, /PrismaClientInitializationError/);
   assert.match(line, /P1001/);
   assert.doesNotMatch(line, /db\.example\.com/);
+});
+
+test('only a recognised generic title is stored; free text never reaches the database', async () => {
+  const state = fakeDb([connection('c1', 's1', 'FRESHA')]);
+  const event = (uid: string, start: string, summary: string) =>
+    `BEGIN:VEVENT\r\nUID:${uid}\r\nDTSTART:${start}\r\nDTEND:${start.replace('T10', 'T11')}\r\nSUMMARY:${summary}\r\nEND:VEVENT`;
+  const feed = empty.replace('END:VCALENDAR', [
+    event('blocked', '20260912T100000Z', 'Fresha Blocked Time'),
+    event('appt', '20260913T100000Z', 'Fresha Appointment'),
+    event('private', '20260914T100000Z', 'Jane Smith - colour'),
+  ].join('\r\n') + '\r\nEND:VCALENDAR');
+  const [result] = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => feed });
+  assert.equal(result.ok, true);
+  const summaries = state.blocks.map((block) => [block.start.toISOString(), block.summary]).sort();
+  assert.deepEqual(summaries, [
+    ['2026-09-12T10:00:00.000Z', 'Fresha Blocked Time'],
+    ['2026-09-13T10:00:00.000Z', 'Fresha Appointment'],
+    ['2026-09-14T10:00:00.000Z', null],
+  ]);
 });

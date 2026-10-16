@@ -3,8 +3,9 @@ import { formatSalonDateTime } from '@/i18n/dates';
 import type { Translate } from '@/i18n/translator';
 import type { Messages } from '@/i18n/messages/types-client';
 import { salonDateKey, salonMinutesOfDay } from '@/app/services/salon-time';
+import { busyKindOf, type BusyKind } from '@/app/services/calendar-busy-kind';
 
-export type CalendarBusyBlock = Pick<ExternalBusyBlock, 'id' | 'stylistId' | 'source'> & {
+export type CalendarBusyBlock = Pick<ExternalBusyBlock, 'id' | 'stylistId' | 'source' | 'summary'> & {
   start: string;
   end: string;
   lastSyncAt: string;
@@ -50,14 +51,27 @@ export function isWholeDayBlock(block: { startMin: number; endMin: number }, win
   return block.startMin <= minutesOf(window.startTime) && block.endMin >= minutesOf(window.endTime);
 }
 
-/** Platform names are brands and stay as they are in every language. */
+/**
+ * Platform names are brands and stay as they are in every language. `kind`
+ * says what the provider called the time: a stylist's blocked time (lunch,
+ * holiday) must not read like a customer's booking. A whole-day block is
+ * "Unavailable" whatever its kind; without a known kind the label is the
+ * provider's name alone. `brand` is always the provider's name.
+ */
 export function calendarBusyLabel(block: CalendarBusyBlock, stylist: string, startMin: number, endMin: number, t: Translate<Messages['adminSchedule']>, wholeDay = false) {
   const provider = block.source === 'TREATWELL' ? 'Treatwell' : block.source === 'FRESHA' ? 'Fresha' : t('busy.external');
   const time = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
   const range = `${time(startMin)}–${time(endMin)}`;
   const synced = formatSalonDateTime(t.locale, new Date(block.lastSyncAt));
-  const detail = wholeDay
-    ? t('busy.unavailableDetail', { provider, stylist, range, synced })
-    : t('busy.detail', { provider, stylist, range, synced });
-  return { provider: wholeDay ? t('busy.unavailable') : provider, range, synced, detail, unavailable: wholeDay };
+  const kind: BusyKind | null = busyKindOf(block.summary);
+  if (wholeDay) {
+    return { provider: t('busy.unavailable'), range, synced, detail: t('busy.unavailableDetail', { provider, stylist, range, synced }), unavailable: true, kind, brand: provider };
+  }
+  if (kind === 'blocked') {
+    return { provider: t('busy.blocked'), range, synced, detail: t('busy.blockedDetail', { provider, stylist, range, synced }), unavailable: false, kind, brand: provider };
+  }
+  if (kind === 'booking') {
+    return { provider: t('busy.booking', { provider }), range, synced, detail: t('busy.bookingDetail', { provider, stylist, range, synced }), unavailable: false, kind, brand: provider };
+  }
+  return { provider, range, synced, detail: t('busy.detail', { provider, stylist, range, synced }), unavailable: false, kind, brand: provider };
 }

@@ -6,6 +6,7 @@ import { fetchCalendarFeed, MAX_CALENDAR_FEED_BYTES, validateCalendarFeedUrl } f
 import { CALENDAR_PROVIDERS, type CalendarProvider } from './treatwell-sync-coverage';
 import { CALENDAR_POLL_MINUTES } from './calendar-sync-window';
 import { describeFault } from '@/app/lib/fault';
+import { storedBusySummary } from './calendar-busy-kind';
 
 export type CalendarSyncResult = {
   connectionId: string; stylistId: string; provider: string;
@@ -96,7 +97,7 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
           await tx.externalBusyBlock.deleteMany({ where: { ...scope, OR: [{ externalUid: { in: batch.map((block) => block.uid) } }] } });
           await tx.externalBusyBlock.createMany({ data: batch.map((block) => ({
             ...scope, externalUid: block.uid, start: block.start, end: block.end,
-            summary: null, lastSyncAt: completed,
+            summary: storedBusySummary(block.summary), lastSyncAt: completed,
           })) });
         }
         return removed;

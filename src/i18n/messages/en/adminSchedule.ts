@@ -178,6 +178,14 @@ const adminSchedule = {
     unavailable: 'Unavailable',
     unavailableDetail: '{stylist} is unavailable · {range} (London time), imported from {provider}. Last imported {synced}. Manage this time in {provider}.',
     agendaUnavailable: '{stylist} · Unavailable all day',
+    /** A stylist's own blocked time in Fresha (lunch, holiday): not a customer booking. */
+    blocked: 'Blocked',
+    blockedDetail: '{stylist} is blocked · {range} (London time), blocked time imported from {provider}. Last imported {synced}. Manage this time in {provider}.',
+    agendaBlocked: '{stylist} · Blocked time',
+    /** A customer's booking made in Fresha. {provider} is the brand name. */
+    booking: '{provider} booking',
+    bookingDetail: '{provider} booking · {stylist} · {range} (London time). Last imported {synced}. Manage this booking in {provider}.',
+    agendaBooking: '{stylist} · {provider} booking',
   },
   clash: {
     bookingTitle: 'This booking clashes:',

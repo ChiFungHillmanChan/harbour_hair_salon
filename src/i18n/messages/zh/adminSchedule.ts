@@ -168,6 +168,12 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     unavailable: '不可預約',
     unavailableDetail: '{stylist} 不可預約 · {range}（倫敦時間），由 {provider} 匯入。最後匯入時間：{synced}。請在 {provider} 管理這段時間。',
     agendaUnavailable: '{stylist} · 全日不可預約',
+    blocked: '已封鎖',
+    blockedDetail: '{stylist} 已封鎖時段 · {range}（倫敦時間），由 {provider} 匯入。最後匯入時間：{synced}。請在 {provider} 管理這段時間。',
+    agendaBlocked: '{stylist} · 已封鎖時段',
+    booking: '{provider} 預約',
+    bookingDetail: '{provider} 預約 · {stylist} · {range}（倫敦時間）。最後匯入時間：{synced}。請在 {provider} 管理這個預約。',
+    agendaBooking: '{stylist} · {provider} 預約',
   },
   clash: {
     bookingTitle: '此預約有衝突：',

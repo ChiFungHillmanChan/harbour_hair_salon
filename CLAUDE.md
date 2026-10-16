@@ -88,7 +88,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 - **Rate limiting**: Upstash Redis through `lib/rate-limit.ts` (`KV_REST_API_URL`/`KV_REST_API_TOKEN`, or `UPSTASH_REDIS_REST_URL`/`_TOKEN`). It never fails open.
 - **Calendars**:
   - Each stylist has a token-protected outbound busy feed, `/api/ical/[stylistId]`, served from the Data Cache. Fresha imports it as blocked time.
-  - The calendar-sync cron imports the stylists' inbound feeds into `ExternalBusyBlock`.
+  - The calendar-sync cron imports the stylists' inbound feeds into `ExternalBusyBlock`. Its `summary` keeps only Fresha's generic titles (`services/calendar-busy-kind.ts`), so Admin → Schedule tells a stylist's blocked time from a Fresha booking; any other title is never stored.
   - Customers get Google Calendar links and `.ics` files (`lib/calendar-links.ts`).
 - **Validation**: Zod
 - **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC; also sends the salon's daily "needs attention" email, `services/ops-alert-service.ts`, only when something is wrong), notifications (`*/30 8-19` UTC, daytime only), calendar-sync (`*/30`, but the route skips ticks outside saved staff hours ±15 min before touching the DB) and housekeeping (daily 03:15 UTC: retention clean-up, unanswered-request lapses and Square reconciliation, `services/payment-reconciliation.ts`). See "Neon compute budget" below before adding another; `neon-compute-budget.test.ts` pins these.

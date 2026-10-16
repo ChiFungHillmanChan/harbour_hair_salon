@@ -131,7 +131,7 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     }),
     view !== 'day' && view !== 'week' ? Promise.resolve([]) : prisma.externalBusyBlock.findMany({
       where: { start: { lt: range.lt }, end: { gt: range.gte } },
-      select: { id: true, stylistId: true, source: true, start: true, end: true, lastSyncAt: true },
+      select: { id: true, stylistId: true, source: true, summary: true, start: true, end: true, lastSyncAt: true },
     }),
     // Only requests that can still be answered: once a request's time has come
     // it cannot be confirmed and the notifications cron closes it
