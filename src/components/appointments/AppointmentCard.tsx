@@ -38,6 +38,8 @@ type SerializedAppointment = {
   service: { name: string; nameIsEnglish?: boolean; duration: number };
   serviceId: string;
   price: BookedPrice;
+  /** The consultation credit recorded on the booking (pence), taken off what is paid in the salon; null: none. */
+  consultationCreditPence?: number | null;
   /** The card deposit's state (lib/deposit-display.ts); absent or null: none. */
   deposit?: DepositView | null;
   hasReview?: boolean;
@@ -107,6 +109,11 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
   // The recorded amount and the notes that were true when it was booked.
   const { price } = appointment;
   const deposit = appointment.deposit ?? null;
+  const credit = appointment.consultationCreditPence && appointment.consultationCreditPence > 0 ? appointment.consultationCreditPence : null;
+  // What is left to pay in the salon once a taken deposit and the credit are off — never below £0.
+  const toPayInSalon = credit !== null && price.known && isUpcoming && ['CONFIRMED', 'PENDING'].includes(appointment.status)
+    ? Math.max(0, price.amountPence - (deposit?.state === 'PAID' ? deposit.amountPence : 0) - credit)
+    : null;
   const priceNotes: string[] = [];
   if (price.known) {
     if (price.priceType === 'NHS') priceNotes.push(tp('nhsApplied'));
@@ -196,6 +203,8 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
               {tp('minutes', { count: appointment.service.duration })} &middot; {price.known ? formatPrice(price.amountPence) : tp('unknownPrice')}
             </p>
             {priceNotes.length > 0 && <p className="text-xs text-zinc-500">{priceNotes.join(' · ')}</p>}
+            {credit !== null && <p className="text-sm text-zinc-700">{t('card.consultationCredit', { amount: formatPrice(credit) })}</p>}
+            {toPayInSalon !== null && <p className="text-sm text-zinc-700">{t('card.toPayInSalon', { amount: formatPrice(toPayInSalon) })}</p>}
             {needsProof && <p className="text-xs text-zinc-500">{tp('eligibilityProof')}</p>}
             {!price.known && <p className="text-xs text-zinc-500">{tp('unknownPriceHelp')}</p>}
             {deposit && (

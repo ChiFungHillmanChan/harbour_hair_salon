@@ -232,6 +232,8 @@ const adminSchedule = {
     cancel: 'Cancel',
   },
   credit: {
+    /** The credit recorded on a booking, in the day list. */
+    row: 'Consultation credit −{amount}',
     available: 'Consultation credit available: {amount} (consultation on {date}) — deduct from this booking',
     help: 'Untick to keep the credit for a later booking. It is checked again when you save.',
     recorded: 'Consultation credit recorded on this booking: −{amount} (consultation on {date})',

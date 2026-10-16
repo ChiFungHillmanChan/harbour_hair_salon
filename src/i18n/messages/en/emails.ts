@@ -29,6 +29,7 @@ const emails = {
     duration: 'Duration',
     price: 'Price',
     deposit: 'Deposit',
+    consultationCredit: 'Consultation credit',
     previousDate: 'Previous date',
     currentTime: 'Current booking',
     customer: 'Customer',
@@ -50,6 +51,8 @@ const emails = {
     notProvided: 'Not provided',
     depositHeld: '{amount} held on your card — not taken yet',
     depositPaid: '{amount} paid',
+    /** A recorded consultation credit shown as a deduction, e.g. −£15.00. */
+    creditDeduction: '−{amount}',
     depositRefunding: '{amount} — being refunded',
     depositReleased: '{amount} hold released — nothing taken',
     depositKept: '{amount} kept',
@@ -69,6 +72,13 @@ const emails = {
     depositPaid: 'Your {deposit} deposit is paid; {remainder} is left to pay in the salon. Cash and card are accepted.',
     depositPaidNoTotal: 'Your {deposit} deposit is paid; the rest is due at the salon. Cash and card are accepted.',
     depositPaidInFull: 'Your {deposit} deposit covers the full price: there is nothing left to pay in the salon.',
+    /** A consultation's own confirmation. {months}: CONSULTATION_CREDIT_MONTHS. */
+    consultationCredit: 'If you go ahead with your treatment within {months} months, this consultation’s {amount} is taken off its price.',
+    /** A treatment booking with a consultation credit recorded. */
+    creditToPay: 'Your {credit} consultation credit is taken off the price: {remainder} is left to pay in the salon. Cash and card are accepted.',
+    creditCoversPrice: 'Your {credit} consultation credit covers the full price: there is nothing left to pay in the salon.',
+    depositPaidWithCredit: 'Your {deposit} deposit is paid and your {credit} consultation credit is taken off: {remainder} is left to pay in the salon. Cash and card are accepted.',
+    depositAndCreditCover: 'Your {deposit} deposit and your {credit} consultation credit cover the full price: there is nothing left to pay in the salon.',
   },
   request: {
     subject: 'We’ve received your booking request — Harbour Hair Salon',

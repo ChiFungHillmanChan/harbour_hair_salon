@@ -47,7 +47,8 @@ const booking: Localized<Messages['booking']> = {
     notBookable: '此選項暫時未能於網上預約，請致電本店。',
   },
   gate: {
-    byConsultation: '此服務須先諮詢。我們會為你預約{fee}諮詢，商討後再為你安排服務。',
+    byConsultation: '此服務需要先預約 {fee} 諮詢。如你在 {months} 個月內進行療程，{fee} 會在療程價錢中扣除。',
+    byConsultationFree: '此服務須先諮詢。我們會為你預約{fee}諮詢，商討後再為你安排服務。',
     freeFee: '免費',
     consultationOnly: '此服務只接受諮詢後安排，請聯絡本店。',
     bookConsultation: '預約諮詢',

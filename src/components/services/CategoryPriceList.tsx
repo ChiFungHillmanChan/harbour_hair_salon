@@ -4,14 +4,14 @@ import type { PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { requiresEligibilityProof } from '@/app/services/pricing/eligibility';
 import { useT } from '@/i18n/client';
 import { OfferingPrices } from '@/components/pricing/OfferingPrices';
-import { Duration, PriceFinePrint, useFormatServicePrice } from '@/components/pricing/PriceParts';
+import { ConsultationCreditNote, Duration, PriceFinePrint, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
 /**
  * The price table on a category page: each menu item with its length ×
  * standard/NHS prices, and standalone services as single rows — from the same
  * catalogue as the services list and the booking wizard.
  */
-export function CategoryPriceList({ entries }: { entries: PriceListEntry[] }) {
+export function CategoryPriceList({ entries, consultationFees }: { entries: PriceListEntry[]; consultationFees?: Record<string, number> }) {
   const formatPrice = useFormatServicePrice();
   const tp = useT('pricing');
   // Said once under the table when any listed option is an NHS/student price.
@@ -28,6 +28,7 @@ export function CategoryPriceList({ entries }: { entries: PriceListEntry[] }) {
           <div className="mt-3">
             <OfferingPrices options={entry.options} />
           </div>
+          <ConsultationCreditNote feePence={entry.options.map((option) => consultationFees?.[option.id]).find((fee) => fee !== undefined)} className="mt-2" />
           {entry.options.find((option) => option.priceNote)?.priceNote && (
             <p className="mt-2 text-xs text-zinc-500">{entry.options.find((option) => option.priceNote)!.priceNote}</p>
           )}
@@ -42,6 +43,7 @@ export function CategoryPriceList({ entries }: { entries: PriceListEntry[] }) {
             <p className="text-xs text-zinc-400 uppercase tracking-wider mt-2">
               <Duration option={entry.service} />
             </p>
+            <ConsultationCreditNote feePence={consultationFees?.[entry.service.id]} className="mt-1" />
           </div>
           <div className="text-right shrink-0">
             <span className="text-lg font-serif font-bold text-zinc-900 tabular-nums">{formatPrice(entry.service)}</span>

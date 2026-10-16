@@ -11,7 +11,7 @@ test('My Bookings sends the recorded price and duration to cards and their resch
     priceVersion: 2, durationMinutes: 90, durationSource: 'SERVICE', discountsApplied: false, priceSource: 'internal-source-reference',
   });
   const appointments = [
-    { id: 'frozen', priceAtBooking: 80, quoteJson: null, durationAtBooking: 60 },
+    { id: 'frozen', priceAtBooking: 80, quoteJson: null, durationAtBooking: 60, consultationCreditPence: 1500 },
     { id: 'free', priceAtBooking: 0, quoteJson: null, durationAtBooking: 45 },
     { id: 'legacy', priceAtBooking: null, quoteJson: null, durationAtBooking: null },
     { id: 'nhs', priceAtBooking: '44.99', quoteJson: nhsQuote, durationAtBooking: 90 },
@@ -46,6 +46,8 @@ test('My Bookings sends the recorded price and duration to cards and their resch
   assert.deepEqual(cards.map(({ id, price, service }) => [id, price.known ? price.amountPence : 'unknown', service.duration]), [
     ['frozen', 8000, 60], ['free', 0, 45], ['legacy', 'unknown', 30], ['nhs', 4499, 90],
   ]);
+  // The recorded credit rides beside the price, which stays the treatment's own £80.
+  assert.deepEqual(cards.map((c) => [c.id, (c as unknown as { consultationCreditPence?: number | null }).consultationCreditPence ?? null]), [['frozen', 1500], ['free', null], ['legacy', null], ['nhs', null]]);
   assert.deepEqual(cards.find((c) => c.id === 'nhs')!.price, { known: true, amountPence: 4499, priceType: 'NHS', vatDisplay: 'EXCLUDED', priceNature: 'LISTED' });
   assert.deepEqual(cards.find((c) => c.id === 'legacy')!.price, { known: false });
   assert.ok(cards.every((appointment) => !('price' in appointment.service)), 'the live service price never reaches the page');

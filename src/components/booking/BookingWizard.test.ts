@@ -469,3 +469,23 @@ test('the confirm step repeats what an NHS price needs, and says nothing for a s
   assert.ok(at('NHS').includes(ELIGIBILITY['en-GB']));
   assert.ok(!at('STANDARD').includes(ELIGIBILITY['en-GB']));
 });
+
+// The consultation gate says the consultation's fee comes off the treatment's
+// price (spec §2.4); a free consultation has nothing to credit.
+test('the consultation gate promises the credit with the consultation’s own price, and says nothing of credit when it is free', () => {
+  const treatment = { ...SERVICE, id: 'colour', name: 'Colour', requiresConsultation: true };
+  const consultation = (amountPence: number) => ({ ...SERVICE, id: 'consult', name: 'Consultation', isConsultation: true, requiresConsultation: false, price: amountPence / 100, amountPence });
+  const gate = (amountPence: number) => {
+    const { render } = loadWizard({ gate: 'colour' }, undefined, { services: [{ ...treatment, price: 120 }, consultation(amountPence)] });
+    return words(elements(render()));
+  };
+  assert.ok(gate(1500).includes('This service needs a £15.00 consultation first. If you go ahead with the treatment within 6 months, the £15.00 is taken off its price.'), gate(1500));
+  assert.ok(gate(2500).includes('needs a £25.00 consultation first') && gate(2500).includes('the £25.00 is taken off'), 'the consultation’s actual price, never a literal £15');
+  const free = gate(0);
+  assert.ok(free.includes('We\'ll book you a free consultation to discuss it'), free);
+  assert.ok(!free.includes('taken off'));
+  // Chinese: written out in both languages, with the months and the fee filled in.
+  const zh = translator('zh-HK', 'booking');
+  assert.equal(zh('gate.byConsultation', { fee: '£15.00', months: 6 }), '此服務需要先預約 £15.00 諮詢。如你在 6 個月內進行療程，£15.00 會在療程價錢中扣除。');
+  assert.equal(zh('gate.byConsultationFree', { fee: zh('gate.freeFee') }), '此服務須先諮詢。我們會為你預約免費諮詢，商討後再為你安排服務。');
+});

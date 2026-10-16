@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { loadServerModule } from '../load-server-module';
 import { translator, type Namespace } from '../../i18n/messages';
 import type { Locale } from '../../i18n/config';
-import { LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '../../app/lib/booking-constants';
+import { CONSULTATION_CREDIT_MONTHS, LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '../../app/lib/booking-constants';
 import { PATCH_TEST_MIN_LEAD_HOURS } from '../../app/services/patch-test-eligibility';
 
 type Element = { type: unknown; props: Record<string, unknown> };
@@ -74,6 +74,10 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
     assert.ok(page.nodes.some((node) => node.type === 'section' && node.props.id === 'offers'), 'the offers section has id="offers"');
     assert.ok(page.text.indexOf(t('bookingTerms.changes.title')) < page.text.indexOf(t('bookingTerms.offers.title')));
     assert.ok(page.text.indexOf(t('bookingTerms.offers.title')) < page.text.indexOf(t('bookingTerms.patchTests.title')), 'between changes and patch tests');
+    // The consultation credit rule follows the patch-test paragraph, with its months from the one constant.
+    const credit = t('bookingTerms.patchTests.credit', { months: CONSULTATION_CREDIT_MONTHS });
+    assert.ok(page.text.includes(credit), 'the consultation credit rule');
+    assert.ok(page.text.indexOf(t('bookingTerms.patchTests.body', { hours: PATCH_TEST_MIN_LEAD_HOURS })) < page.text.indexOf(credit), 'after the patch-test paragraph');
     assert.equal(page.metadata.title, t('bookingTerms.meta.title'));
 
     const links = page.nodes.filter((node) => node.type === 'a').map((node) => node.props.href);
@@ -105,11 +109,13 @@ test('the periods the terms state are the ones the code enforces', async () => {
   assert.ok(en.includes(`at least ${PATCH_TEST_MIN_LEAD_HOURS} hours before your colour appointment`));
   assert.ok(en.includes('up to 24 hours before your appointment'));
   assert.ok(en.includes('A hold lasts up to 7 days'));
+  assert.ok(en.includes(`if you go ahead within ${CONSULTATION_CREDIT_MONTHS} months, we take it off the treatment’s price, once. It isn’t refunded if you decide not to go ahead or miss the consultation.`));
 
   const zh = (await termsPage('zh-HK')).text;
   assert.ok(zh.includes(`最少提前 ${MIN_BOOKING_NOTICE_MINUTES / 60} 小時`));
   assert.ok(zh.includes(`最少 ${PATCH_TEST_MIN_LEAD_HOURS} 小時前`));
   assert.ok(zh.includes('最長 7 日'));
+  assert.ok(zh.includes(`如你在 ${CONSULTATION_CREDIT_MONTHS} 個月內進行療程，我們會在療程價錢中扣除一次。`));
 });
 
 test('the offer terms say what they say, in both languages', async () => {

@@ -8,7 +8,7 @@ import { formatGBP, toPence } from './pricing/money';
 import { requiresEligibilityProof } from './pricing/eligibility';
 import type { PriceNature, PriceType, VatDisplay } from './pricing/policy';
 import { salonRelativeDay } from './salon-time';
-import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
+import { CONSULTATION_CREDIT_MONTHS, LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { appointmentCalendarEvent } from './appointment-calendar';
 import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod, type IcsOrganizer } from '@/app/lib/calendar-links';
 
@@ -46,6 +46,14 @@ export type EmailAppointment = {
   price: EmailPrice;
   notes?: string | null;
   deposit?: EmailDeposit | null;
+  /**
+   * The consultation credit recorded on this booking, in pence (taken off what
+   * is paid in the salon; the price above is the treatment's own). Absent on
+   * mail queued before credit existed.
+   */
+  consultationCreditPence?: number | null;
+  /** The booked service is a consultation or patch test: its confirmation says its fee is credited. */
+  isConsultation?: boolean;
 };
 
 /** Pre-quote callers and old queued events pass `service.price` as a number. */
@@ -142,6 +150,20 @@ function depositAmount(deposit: EmailDeposit | null | undefined): number | null 
   return deposit && Number.isSafeInteger(deposit.amountPence) && deposit.amountPence > 0 ? deposit.amountPence : null;
 }
 
+/** A recorded consultation credit the snapshot can vouch for, or null (none, or an unusable value). */
+function creditAmount(appointment: EmailAppointment): number | null {
+  const pence = appointment.consultationCreditPence;
+  return typeof pence === 'number' && Number.isSafeInteger(pence) && pence > 0 ? pence : null;
+}
+
+/** The "Consultation credit −£15.00" row, or nothing when no credit is recorded. */
+function creditRows(appointment: EmailAppointment, locale: Locale) {
+  const pence = creditAmount(appointment);
+  if (pence === null) return [];
+  const t = translator(locale, 'emails');
+  return [{ label: t('labels.consultationCredit'), value: t('values.creditDeduction', { amount: money(pence, locale) }) }];
+}
+
 /**
  * What a closing email says about the deposit: a Deposit row and one
  * sentence (refunded, released or kept), or nothing without an outcome.
@@ -164,9 +186,10 @@ function depositClosingNote(appointment: EmailAppointment, locale: Locale, outco
  * carries when that amount is not exact: "£80.00 (VAT excluded · final price
  * confirmed at your consultation)" (see describeEmailPrice).
  */
-function remainderText(price: Extract<EmailPrice, { known: true }>, depositPence: number, locale: Locale): string {
+function remainderText(price: Extract<EmailPrice, { known: true }>, depositPence: number, creditPence: number, locale: Locale): string {
   const t = translator(locale, 'emails');
-  const amount = money(price.amountPence - depositPence, locale);
+  // A deposit and a credit together can exceed the price: never below £0.
+  const amount = money(Math.max(0, price.amountPence - depositPence - creditPence), locale);
   const notes = [
     ...(price.vatDisplay === 'EXCLUDED' ? [t('values.vatExcluded')] : []),
     ...(price.priceNature === 'SUBJECT_TO_CONSULTATION' ? [t('values.subjectToConsultation')] : []),
@@ -183,12 +206,33 @@ function depositPaidNote(appointment: EmailAppointment, locale: Locale) {
   if (pence === null) return null;
   const t = translator(locale, 'emails');
   const deposit = money(pence, locale);
+  const creditPence = creditAmount(appointment) ?? 0;
+  const credit = money(creditPence, locale);
   const sentence = !appointment.price.known
     ? t('confirmation.depositPaidNoTotal', { deposit })
-    : appointment.price.amountPence > pence
-      ? t('confirmation.depositPaid', { deposit, remainder: remainderText(appointment.price, pence, locale) })
-      : t('confirmation.depositPaidInFull', { deposit });
+    : appointment.price.amountPence <= pence
+      ? t('confirmation.depositPaidInFull', { deposit })
+      : appointment.price.amountPence <= pence + creditPence
+        ? t('confirmation.depositAndCreditCover', { deposit, credit })
+        : creditPence > 0
+          ? t('confirmation.depositPaidWithCredit', { deposit, credit, remainder: remainderText(appointment.price, pence, creditPence, locale) })
+          : t('confirmation.depositPaid', { deposit, remainder: remainderText(appointment.price, pence, 0, locale) });
   return { row: { label: t('labels.deposit'), value: t('values.depositPaid', { amount: deposit }) }, sentence };
+}
+
+/**
+ * A confirmation's credit wording without a deposit taken: what is left to pay
+ * in the salon once the consultation credit is off, never below £0. Nothing
+ * for a booking with no recorded credit or no recorded price.
+ */
+function creditPaidNote(appointment: EmailAppointment, locale: Locale): string | null {
+  const creditPence = creditAmount(appointment);
+  if (creditPence === null || !appointment.price.known) return null;
+  const t = translator(locale, 'emails');
+  const credit = money(creditPence, locale);
+  return appointment.price.amountPence <= creditPence
+    ? t('confirmation.creditCoversPrice', { credit })
+    : t('confirmation.creditToPay', { credit, remainder: remainderText(appointment.price, 0, creditPence, locale) });
 }
 
 /**
@@ -270,6 +314,11 @@ export function appointmentEmailContent(
       // A deposit taken when the salon confirmed (services/deposit-lifecycle.ts):
       // what was paid and what is left to pay in the salon.
       const paid = depositPaidNote(appointment, locale);
+      // A consultation or patch test says its own fee is credited against the treatment.
+      const consultationCredit = appointment.isConsultation && appointment.price.known && appointment.price.amountPence > 0
+        ? [t('confirmation.consultationCredit', { months: CONSULTATION_CREDIT_MONTHS, amount: money(appointment.price.amountPence, locale) })] : [];
+      // A treatment with a credit recorded: what is left once it is off.
+      const creditNote = paid ? null : creditPaidNote(appointment, locale);
       return {
         ...base,
         subject: t('confirmation.subject'),
@@ -277,12 +326,15 @@ export function appointmentEmailContent(
         eyebrow: t('confirmation.eyebrow'), title: t('confirmation.title'), intro: t('confirmation.intro'),
         details: [
           labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration), labels('price', price),
+          ...creditRows(appointment, locale),
           ...(paid ? [paid.row] : []),
         ],
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('confirmation.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: paid ? [lateArrival, ...eligibility, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')] : [lateArrival, ...eligibility, t('confirmation.footnote'), t('calendar.attached')],
+        footnotes: paid
+          ? [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')]
+          : [lateArrival, ...eligibility, ...consultationCredit, ...(creditNote ? [creditNote] : []), t('confirmation.footnote'), t('calendar.attached')],
       };
     }
     case 'REQUEST_RECEIVED': {
@@ -368,7 +420,7 @@ export function appointmentEmailContent(
         subject: t('reschedule.subject'),
         preview: t('reschedule.preview', { date }),
         eyebrow: t('reschedule.eyebrow'), title: t('reschedule.title'), intro: t('reschedule.intro', { previous }),
-        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('previousDate', previous)],
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('previousDate', previous), ...creditRows(appointment, locale)],
         cta: { label: t('reschedule.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
         footnotes: [...requestNote, t('reschedule.footnote'), t('calendar.moved'), t('calendar.attached')],
@@ -383,7 +435,7 @@ export function appointmentEmailContent(
         eyebrow: t('reminder.eyebrow'),
         title: when === 'today' ? t('reminder.titleToday') : when === 'tomorrow' ? t('reminder.titleTomorrow') : t('reminder.titleSoon'),
         intro: t('reminder.intro'),
-        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration)],
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('duration', duration), ...creditRows(appointment, locale)],
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('reminder.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),

@@ -82,7 +82,7 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
         include: {
           user: { select: { email: true, name: true, phone: true } },
           stylist: { select: { name: true } },
-          service: { select: { name: true, price: true, duration: true } },
+          service: { select: { name: true, price: true, duration: true, isConsultation: true, isPatchTest: true } },
           notifications: { where: { kind }, select: { eventKey: true } },
         },
         orderBy: { id: 'asc' },

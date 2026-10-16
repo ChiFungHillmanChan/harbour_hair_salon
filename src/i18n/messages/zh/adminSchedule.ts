@@ -216,6 +216,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     cancel: '取消',
   },
   credit: {
+    row: '諮詢費抵扣 −{amount}',
     available: '可用諮詢費抵扣：{amount}（{date} 的諮詢）——從此預約扣除',
     help: '取消勾選可把抵扣留待之後的預約使用。儲存時會再次核對。',
     recorded: '此預約已記錄諮詢費抵扣：−{amount}（{date} 的諮詢）',

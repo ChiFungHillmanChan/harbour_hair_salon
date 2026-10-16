@@ -8,6 +8,7 @@ import { Faq } from '@/components/seo/Faq';
 import { getAllCategoryContent } from '@/app/services/category-content-service';
 import { getFaqsByKey } from '@/app/services/faq-service';
 import { getPublicCatalog } from '@/app/services/pricing/public-catalog';
+import { consultationFeeByServiceId } from '@/app/services/consultation-routing';
 import { serviceSchemaItems } from '@/app/services/pricing/json-ld';
 import { SITE_URL } from '@/app/lib/site-url';
 import { getLocale, getT } from '@/i18n/server';
@@ -112,6 +113,7 @@ export default async function ServicesPage() {
             categorySlugs={Object.fromEntries(
               categoryContents.map((c) => [c.category, c.slug])
             )}
+            consultationFees={consultationFeeByServiceId(catalog.services)}
           />
         </ClientMessages>
 

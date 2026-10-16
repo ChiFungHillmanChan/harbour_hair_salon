@@ -60,6 +60,9 @@ someone.)
   Square's references) — accounting records the salon must keep (privacy notice: up to 6 years
   after the payment). They hold no name, email or card details of their own and stay linked to
   the anonymised account.
+- **Consultation credit** (`Appointment.consultationCreditPence` and `consultationCreditFromId`: an
+  amount and a link to another appointment). They hold no personal data of their own, so erasure
+  leaves them with the appointment records they belong to.
 - **Delivery log rows** (email type, status, times) without any content.
 - **Audit events** — they never contain personal data.
 

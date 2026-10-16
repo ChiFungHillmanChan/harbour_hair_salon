@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import Link from '@/i18n/link';
 import { getSiteSettings } from '@/app/services/site-settings-service';
-import { LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
+import { CONSULTATION_CREDIT_MONTHS, LATE_ARRIVAL_CANCEL_MINUTES, MIN_BOOKING_NOTICE_MINUTES } from '@/app/lib/booking-constants';
 import { PATCH_TEST_MIN_LEAD_HOURS } from '@/app/services/patch-test-eligibility';
 import { toTelHref } from '@/app/lib/phone';
 import { getLocale, getT } from '@/i18n/server';
@@ -108,6 +108,7 @@ export default async function BookingTermsPage() {
 
         <Section id="patch-tests" title={t('bookingTerms.patchTests.title')}>
           <p>{t('bookingTerms.patchTests.body', { hours: PATCH_TEST_MIN_LEAD_HOURS })}</p>
+          <p>{t('bookingTerms.patchTests.credit', { months: CONSULTATION_CREDIT_MONTHS })}</p>
         </Section>
 
         <Section id="rights" title={t('bookingTerms.rights.title')}>

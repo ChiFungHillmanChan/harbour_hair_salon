@@ -3,6 +3,7 @@
 import { HTML_LANG } from '@/i18n/config';
 import { useLocale, useT } from '@/i18n/client';
 import { formatGBP } from '@/app/services/pricing/money';
+import { CONSULTATION_CREDIT_MONTHS } from '@/app/lib/booking-constants';
 import type { ClientPublicService } from '@/app/services/public-service-select';
 
 /** "£157.00" — identical figures in both languages, formatted for the page's locale. */
@@ -40,6 +41,23 @@ export function PriceFinePrint({ service, className = '', showNhs = false }: { s
     <span className={`block text-[11px] leading-snug text-zinc-500 ${className}`}>
       {notes.join(' · ')}
     </span>
+  );
+}
+
+/**
+ * The one line under a consultation-required price: the consultation's fee
+ * comes off the treatment. `feePence` is the consultation's actual price
+ * (consultationFeeByServiceId); nothing is shown without one, or for a free
+ * consultation, which has nothing to credit.
+ */
+export function ConsultationCreditNote({ feePence, className = '' }: { feePence: number | null | undefined; className?: string }) {
+  const t = useT('pricing');
+  const format = useFormatPrice();
+  if (!feePence || feePence <= 0) return null;
+  return (
+    <p className={`text-xs text-zinc-500 ${className}`}>
+      {t('consultationCreditNote', { fee: format(feePence), months: CONSULTATION_CREDIT_MONTHS })}
+    </p>
   );
 }
 

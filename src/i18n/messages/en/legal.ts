@@ -196,6 +196,8 @@ const legal = {
       title: 'Patch tests and consultations',
       /** {hours}: PATCH_TEST_MIN_LEAD_HOURS. */
       body: 'Some services need a consultation first. Colour services also need a skin patch test at least {hours} hours before your colour appointment, and a patch test stays valid for 6 months. The booking page tells you when this applies, so that you can book the Consultation & Patch Test first.',
+      /** {months}: CONSULTATION_CREDIT_MONTHS. */
+      credit: 'The consultation fee counts towards your treatment: if you go ahead within {months} months, we take it off the treatment’s price, once. It isn’t refunded if you decide not to go ahead or miss the consultation.',
     },
     /**
      * Only what the website and the salon do today. Says nothing about

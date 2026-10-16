@@ -18,7 +18,7 @@ import { DepositCardForm } from './DepositCardForm';
 import { DepositRows, DepositTerms, PaymentUnavailableNotice } from './DepositSummary';
 import { depositVerificationDetails, SQUARE_TOKENIZE_TIMEOUT_MS, withTimeout, type DepositCard, type DepositPayer, type SquarePublicConfig } from './square-web-payments';
 import { afterDepositAnswer, PAYMENT_ANSWER_CODES, reusableSubmission, submissionFingerprint, type DepositSubmission } from './deposit-submission';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, meetsMinimumNotice } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, CONSULTATION_CREDIT_MONTHS, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, meetsMinimumNotice } from '@/app/lib/booking-constants';
 import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
@@ -656,7 +656,9 @@ export function BookingWizard({ services, offerings, categories, stylists, close
               {pendingGate.hasTarget ? (
                 <>
                   <p className="text-sm text-zinc-700">
-                    {t('gate.byConsultation', { fee: pendingGate.fee > 0 ? formatPrice(pendingGate.fee) : t('gate.freeFee') })}
+                    {pendingGate.fee > 0
+                      ? t('gate.byConsultation', { fee: formatPrice(pendingGate.fee), months: CONSULTATION_CREDIT_MONTHS })
+                      : t('gate.byConsultationFree', { fee: t('gate.freeFee') })}
                   </p>
                   <div className="mt-4 flex gap-3">
                     <button

@@ -11,10 +11,10 @@ import { DEFAULT_LOCALE, isLocale, localeOrDefault, type Locale } from '@/i18n/c
 
 type QueueDb = Pick<Prisma.TransactionClient, 'notificationDelivery' | 'appointment'> & Partial<Pick<Prisma.TransactionClient, 'contentTranslation' | 'siteSettings'>>;
 type NotificationAppointment = Pick<Appointment, 'id' | 'date' | 'priceAtBooking' | 'durationAtBooking' | 'notificationVersion' | 'notes'>
-  & Partial<Pick<Appointment, 'quoteJson' | 'notificationLocale' | 'serviceId'>> & {
+  & Partial<Pick<Appointment, 'quoteJson' | 'notificationLocale' | 'serviceId' | 'consultationCreditPence'>> & {
   user: Pick<User, 'email' | 'name'> & Partial<Pick<User, 'phone'>>;
   stylist: Pick<Stylist, 'name'>;
-  service: Pick<Service, 'name' | 'duration'> & Partial<Pick<Service, 'id' | 'price'>>;
+  service: Pick<Service, 'name' | 'duration'> & Partial<Pick<Service, 'id' | 'price' | 'isConsultation' | 'isPatchTest'>>;
   /** The booking's card deposit, when the caller knows it (services/payment-attempts.ts). */
   paymentAttempt?: Pick<PaymentAttempt, 'status' | 'amountPence'> | null;
 };
@@ -42,6 +42,14 @@ type SnapshotV3 = {
   service: { name: string; duration: number };
   price: EmailPrice;
   deposit: EmailDeposit | null;
+  /**
+   * The consultation credit recorded on the booking (pence), and whether the
+   * booked service is itself a consultation or patch test (its confirmation
+   * says its fee is credited). Both optional: events queued before credit
+   * existed carry neither and render exactly as they did.
+   */
+  consultationCreditPence?: number | null;
+  isConsultation?: boolean;
 };
 type SnapshotV2 = Omit<SnapshotV3, 'schema' | 'deposit'> & { schema: 2 };
 type SnapshotV1 = { id: string; date: string; notes?: string | null; user: SnapshotV2['user']; stylist: SnapshotV2['stylist']; service: { name: string; price: number; duration: number } };
@@ -103,6 +111,11 @@ function emailDeposit(appointment: NotificationAppointment): EmailDeposit | null
   if (!attempt || !Number.isSafeInteger(attempt.amountPence) || attempt.amountPence <= 0) return null;
   return { amountPence: attempt.amountPence, status: attempt.status };
 }
+/** A recorded credit worth showing: a positive whole number of pence, else null. */
+function emailCredit(appointment: NotificationAppointment): number | null {
+  const pence = appointment.consultationCreditPence;
+  return typeof pence === 'number' && Number.isSafeInteger(pence) && pence > 0 ? pence : null;
+}
 const LEASE_MS = 5 * 60_000;
 const RETRY_WINDOW_MS = 23 * 60 * 60_000;
 const MAX_ATTEMPTS = 12;
@@ -137,6 +150,9 @@ export async function enqueueAppointmentNotification(
     // The booking's own frozen amount, never today's price list; unknown stays unknown.
     price: emailPrice(appointment),
     deposit: emailDeposit(appointment),
+    // Recorded beside the price, never inside it: the booking's own amount stays the treatment's.
+    consultationCreditPence: emailCredit(appointment),
+    isConsultation: Boolean(appointment.service.isConsultation || appointment.service.isPatchTest),
   };
   // Saving a booking/cancellation must not depend on email configuration or rendering.
   const payload: NotificationPayload = {

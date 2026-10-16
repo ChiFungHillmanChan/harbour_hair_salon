@@ -9,11 +9,13 @@ import { standardPriceRange } from '@/app/services/pricing/public-catalog';
 import { menuItemDescription } from '@/app/services/pricing/policy';
 import { requiresEligibilityProof } from '@/app/services/pricing/eligibility';
 import { OfferingPrices } from '@/components/pricing/OfferingPrices';
-import { Duration, PriceFinePrint, useCategoryLabel, useFormatPrice, useFormatServicePrice } from '@/components/pricing/PriceParts';
+import { ConsultationCreditNote, Duration, PriceFinePrint, useCategoryLabel, useFormatPrice, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
 interface ServiceListProps {
   categories: { category: string; entries: PriceListEntry[] }[];
   categorySlugs?: Record<string, string>;
+  /** Each consultation-required service's consultation price in pence, by service id (consultationFeeByServiceId). */
+  consultationFees?: Record<string, number>;
 }
 
 type IconProps = { className?: string };
@@ -66,7 +68,7 @@ const CategoryIcon = ({ category, className }: { category: string; className?: s
 
 const entryServices = (entry: PriceListEntry) => (entry.kind === 'offering' ? entry.options : [entry.service]);
 
-export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
+export function ServiceList({ categories, categorySlugs, consultationFees }: ServiceListProps) {
   const t = useT('services');
   const tp = useT('pricing');
   const formatPrice = useFormatPrice();
@@ -191,6 +193,10 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
           const translated = entry.kind === 'offering' ? entry.offering.translated : entry.service.translated;
           const description = entry.kind === 'offering' ? menuItemDescription(entry.offering.description, entry.options) : entry.service.description;
           const note = entry.kind === 'offering' ? entry.options.find((o) => o.priceNote)?.priceNote : entry.service.priceNote;
+          // The consultation's own price, when this item needs a consultation first.
+          const creditFee = entry.kind === 'offering'
+            ? entryServices(entry).map((option) => consultationFees?.[option.id]).find((fee) => fee !== undefined)
+            : consultationFees?.[entry.service.id];
           return (
             <article
               key={key}
@@ -222,10 +228,12 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
                   {description}
                 </p>
               )}
+              {entry.kind === 'single' && <ConsultationCreditNote feePence={creditFee} className="mb-3" />}
 
               {entry.kind === 'offering' ? (
                 <div className="mt-auto pt-3 border-t border-dashed border-zinc-200">
                   <OfferingPrices options={entry.options} />
+                  <ConsultationCreditNote feePence={creditFee} className="mt-2" />
                   {note && <p className="mt-2 text-xs text-zinc-500">{note}</p>}
                 </div>
               ) : (

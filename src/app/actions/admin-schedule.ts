@@ -297,7 +297,7 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
           include: {
             user: { select: { email: true, name: true, phone: true } },
             stylist: { select: { name: true } },
-            service: { select: { name: true, price: true, duration: true } },
+            service: { select: { name: true, price: true, duration: true, isConsultation: true, isPatchTest: true } },
             // A fresh receipt still mentions the request's card hold.
             paymentAttempt: { select: { status: true, amountPence: true } },
           },
@@ -483,7 +483,7 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
         include: {
           user: { select: { email: true, name: true, phone: true } },
           stylist: { select: { name: true } },
-          service: { select: { name: true, price: true, duration: true } },
+          service: { select: { name: true, price: true, duration: true, isConsultation: true, isPatchTest: true } },
         },
       });
 

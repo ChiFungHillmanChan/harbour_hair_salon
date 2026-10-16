@@ -353,6 +353,9 @@ const DayView = ({ dateStr, dayAppts, busyBlocks, stylists, onRefresh, onEdit }:
                                 <span className="font-medium text-zinc-700 tabular-nums">{price.amount}</span>
                                 {price.notes.length > 0 && <span className="ml-1">({price.notes.join(' · ')})</span>}
                               </span>
+                              {appt.consultationCredit && (
+                                <span className="tabular-nums">{t('credit.row', { amount: formatGBP(appt.consultationCredit.amountPence, HTML_LANG[t.locale]) })}</span>
+                              )}
                               {appt.deposit && <DepositChip deposit={appt.deposit} t={t} />}
                           </div>
                           <button type="button" onClick={() => onEdit(appt)} className="mt-2 mr-2 rounded border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-900 hover:bg-white">{t('appointment.edit')}</button>

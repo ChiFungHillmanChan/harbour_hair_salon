@@ -33,3 +33,12 @@ test('a consultation-required service shows "From £X", any other shows the plai
   assert.equal(zh({ amountPence: 15700, requiresConsultation: true }).endsWith('起'), true);
   assert.equal(zh({ amountPence: 4000, requiresConsultation: false }).includes('起'), false);
 });
+
+test('the consultation credit note uses the consultation’s own price and the shared number of months; nothing for a free or unknown one', () => {
+  const en = load('en-GB');
+  assert.equal(text(en.ConsultationCreditNote({ feePence: 1500 })), 'Consultation £15.00, taken off your treatment if you go ahead within 6 months.');
+  assert.equal(text(en.ConsultationCreditNote({ feePence: 2500 })), 'Consultation £25.00, taken off your treatment if you go ahead within 6 months.');
+  assert.equal(en.ConsultationCreditNote({ feePence: 0 }), null);
+  assert.equal(en.ConsultationCreditNote({ feePence: undefined }), null);
+  assert.equal(text(load('zh-HK').ConsultationCreditNote({ feePence: 1500 })), '諮詢費 £15.00，如你在 6 個月內進行療程，會在療程價錢中扣除。');
+});

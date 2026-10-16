@@ -29,6 +29,7 @@ const pricing: Localized<Messages['pricing']> = {
   unknownPriceHelp: '此預約於系統開始為每個預約記錄價格之前建立。如需知道金額，請向本店查詢。',
   from: '價格由',
   fromPrice: '{price} 起',
+  consultationCreditNote: '諮詢費 {fee}，如你在 {months} 個月內進行療程，會在療程價錢中扣除。',
   range: '{min}至{max}',
   notBookableOnline: '此選項請致電本店預約',
   discountsPaused: '優惠及優惠碼現正暫停，所示價格為列明價格。',
