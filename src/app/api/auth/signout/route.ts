@@ -3,17 +3,9 @@ import { endAllSessions } from '@/app/lib/session';
 import { clearAdminMfaChallenge } from '@/app/lib/admin-mfa';
 import { DEFAULT_LOCALE, LOCALES, type Locale } from '@/i18n/config';
 import { localizeHref } from '@/i18n/paths';
+import { SIGN_OUT_CLEAR_SITE_DATA } from '@/app/lib/sign-out-policy';
 
 export const dynamic = 'force-dynamic';
-
-/**
- * Wipes this site's HTTP cache (signed-in pages included) and its browser
- * storage. Cookies are deliberately not on the list: that would also drop the
- * language choice, the salon kiosk's device credential and the login_device
- * cookie that stops strangers locking the owner out. The account's own cookies
- * are removed one by one instead.
- */
-export const SIGN_OUT_CLEAR_SITE_DATA = '"cache", "storage"';
 
 function isLocale(value: unknown): value is Locale {
   return typeof value === 'string' && (LOCALES as readonly string[]).includes(value);

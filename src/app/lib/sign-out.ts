@@ -2,9 +2,7 @@
 
 import { clearAllDrafts } from '@/i18n/draft-store';
 import type { Locale } from '@/i18n/config';
-
-/** `app/api/auth/signout/route.ts`: ends every session and clears site data. */
-export const SIGN_OUT_PATH = '/api/auth/signout';
+import { SIGN_OUT_PATH } from '@/app/lib/sign-out-policy';
 
 /**
  * What this tab holds for the account, cleared before the sign-out request

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NextRequest } from 'next/server';
 import { loadServerModule } from '../../../../test/load-server-module';
+import { SIGN_OUT_CLEAR_SITE_DATA } from '../../../lib/sign-out-policy';
 
 function fixture() {
   const calls: string[] = [];
@@ -31,8 +32,7 @@ test('sign-out ends every session and tells the browser to clear its cache and s
 });
 
 test('cookies are not on the Clear-Site-Data list, so the kiosk and language choice survive', () => {
-  const { route } = fixture();
-  assert.doesNotMatch(route.SIGN_OUT_CLEAR_SITE_DATA, /cookies|\*/);
+  assert.doesNotMatch(SIGN_OUT_CLEAR_SITE_DATA, /cookies|\*/);
 });
 
 test('a Chinese visitor lands on the Chinese home page', async () => {
