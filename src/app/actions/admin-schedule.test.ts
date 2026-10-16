@@ -31,6 +31,8 @@ function fixture(options: {
   conflicting?: boolean;
   requiresPatchTest?: boolean;
   openRequest?: boolean;
+  /** Staff recorded the customer as arrived (late-arrival rule). */
+  arrivedAt?: Date;
 } & NotificationTimingHooks = {}) {
   const appointment = {
     id: 'appt-1',
@@ -46,6 +48,7 @@ function fixture(options: {
     rescheduleRequestedAt: (options.openRequest ? new Date('2099-09-01T11:00:00Z') : null) as Date | null,
     notificationVersion: 0,
     notes: null,
+    arrivedAt: (options.arrivedAt ?? null) as Date | null,
     updatedAt: ORIGINAL_UPDATED_AT,
     treatwellBookingId: null,
     user: { name: 'Sarah W.', email: 'sarah@example.test', phone: null },
@@ -219,6 +222,39 @@ test('a resize never touches the price', async () => {
 
   assert.equal(appointment.priceAtBooking, 80);
   assert.ok(!('priceAtBooking' in writes[0]), 'priceAtBooking must never be written');
+});
+
+// Late-arrival final review M4: an arrival belongs to the visit's time. Moved
+// to a start whose arrival window is closed (more than an hour ahead, or long
+// past), it is no longer true; moved within the window, the customer is still here.
+test('moving an arrived booking keeps the arrival only while the new start keeps the arrival window open', async (t) => {
+  const now = new Date(ORIGINAL_START.getTime() + 10 * 60_000); // ten minutes into the visit
+  t.mock.timers.enable({ apis: ['Date'], now });
+  try {
+    // Salon times (BST, UTC+1); now is 10:10 local. The window opens an hour before
+    // the start and closes two hours after it (the 60-minute service ends sooner).
+    for (const [time, kept] of [['11:00', true], ['11:10', true], ['11:15', false], ['09:30', true], ['08:10', true], ['08:05', false]] as const) {
+      const { actions, appointment } = fixture({ arrivedAt: ORIGINAL_START });
+      // Before opening hours is a clash: overridden, as staff would.
+      assert.deepEqual(await actions.moveAppointmentByAdmin(move({ time, overrideClashes: true })), { success: true });
+      assert.deepEqual(appointment.arrivedAt, kept ? ORIGINAL_START : null, `moved to ${time}`);
+    }
+    // Another day: cleared.
+    const otherDay = fixture({ arrivedAt: ORIGINAL_START });
+    assert.deepEqual(await otherDay.actions.moveAppointmentByAdmin(move({ dateStr: '2099-09-16', time: '10:00' })), { success: true });
+    assert.equal(otherDay.appointment.arrivedAt, null);
+    // A resize or a stylist change keeps the start, and the arrival.
+    const resized = fixture({ arrivedAt: ORIGINAL_START });
+    assert.deepEqual(await resized.actions.editAppointmentByAdmin({ ...move({ time: '10:00', durationMin: 120, stylistId: 'stylist-2' }), notes: 'x' }), { success: true });
+    assert.deepEqual(resized.appointment.arrivedAt, ORIGINAL_START);
+    assert.ok(!('arrivedAt' in resized.writes[0]), 'arrivedAt is not written when the start stays');
+    // Never arrived: nothing to clear, nothing written.
+    const plain = fixture();
+    await plain.actions.moveAppointmentByAdmin(move({ dateStr: '2099-09-16' }));
+    assert.ok(!('arrivedAt' in plain.writes[0]));
+  } finally {
+    t.mock.timers.reset();
+  }
 });
 
 test('moving the date clears the sent-reminder flag', async () => {

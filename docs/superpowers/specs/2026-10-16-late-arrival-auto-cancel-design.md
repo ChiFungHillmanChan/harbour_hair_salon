@@ -66,9 +66,14 @@ in `lib/booking-constants.ts`; the terms and emails read the 15 from there.
   Audited `APPOINTMENT.ARRIVED` / `APPOINTMENT.ARRIVAL_CLEARED`. No email, no
   feed change.
 - "Mark completed" sets `arrivedAt` when it is null (same transaction).
-- A staff-entered booking created CONFIRMED with `date <= now` gets
+- A staff-entered booking created CONFIRMED with `date <= now + 15 min` (one
+  board step, `MIN_DURATION_MINUTES`: the dialog's default time rounds UP to
+  the next quarter hour, so a walk-in entered at 09:50 starts at 10:00) gets
   `arrivedAt = now` on creation.
-- Moving a booking never changes `arrivedAt`.
+- Moving a booking to another start (`editAppointmentByAdmin` /
+  `moveAppointmentByAdmin`) clears `arrivedAt` unless the new start keeps the
+  arrival window open (`isArrivalWindowOpen(newStart, duration, now)`): an
+  arrival belongs to the visit's time. A resize or a stylist change keeps it.
 
 ### 4.2 Automatic cancellation
 
@@ -79,14 +84,25 @@ as `BackgroundJobState('late-arrival-cancel')`. The route's existing kill-switch
 
 1. Read `SiteSettings.lateAutoCancelSince` from the row (not the day cache). Null → return.
 2. Candidates: `status='CONFIRMED'`, `arrivedAt IS NULL`,
-   `date > lateAutoCancelSince`, `date <= now - 15 min`,
+   `rescheduleRequestedAt IS NULL`, `date > lateAutoCancelSince`,
+   `createdAt > lateAutoCancelSince`, `date <= now - 15 min`,
    `date >= now - 120 min`. The lookback bounds the damage of a missed tick: a
-   booking further back is left for staff, never cancelled late.
+   booking further back is left for staff, never cancelled late. A booking with
+   an open (unanswered) customer reschedule request is never a candidate: the
+   customer did contact the salon, and staff answer the request. A booking MADE
+   at or before the switch-on was made under the old terms and is never a
+   candidate either, even when it starts after it (`lateCancelReaches` in
+   `lib/late-arrival.ts` holds these rules for the cron and the arrivals panel).
 3. Each candidate in its own Serializable transaction (the pattern of
    `pending-request-lapse.ts`):
-   - conditional update `WHERE id, status='CONFIRMED', arrivedAt IS NULL` →
+   - re-read `lateAutoCancelSince` and the booking in the transaction; skip
+     when the switch is now off, or the booking no longer qualifies under the
+     re-read switch-on (turned off, or off and on again, during a run);
+   - conditional update `WHERE id, status='CONFIRMED', arrivedAt IS NULL,
+     rescheduleRequestedAt IS NULL, date` →
      `status='CANCELLED'`, `lateCancelledAt=now`, `notificationVersion+1`;
-     0 rows → skip (staff tapped Arrived meanwhile);
+     0 rows → skip (staff tapped Arrived or moved it, or the customer asked to
+     move it, meanwhile);
    - `planDepositForClosing(tx, id, { closing: 'CANCEL', refund: false,
      reason: <the RefundReason staff cancellations use>, requestedById: null, now })` → a taken deposit becomes `KEPT`;
      a capture in flight throws `DEPOSIT_IN_PROGRESS` → roll back, retry next tick;
@@ -99,6 +115,12 @@ as `BackgroundJobState('late-arrival-cancel')`. The route's existing kill-switch
    the chair free.
 5. Result counts go to the job state; failures are logged with `describeFault`.
 
+The reschedule-request lapse step (`services/reschedule-request-lapse.ts`, the
+notifications cron) keeps a request whose booking's ORIGINAL start has come
+until `start + 120 min` (the lookback) has passed, and only then tidies it
+away without an email. Clearing it at the start would hand the booking to
+this rule. A request still ahead lapses (with its email) as before.
+
 ### 4.3 Restore
 
 `restoreLateCancellation(appointmentId, options: { force?: boolean })` —
@@ -106,7 +128,9 @@ admin-only.
 
 - Allowed when `status='CANCELLED'` and `lateCancelledAt` is within 24 hours,
   and the deposit, if any, is `KEPT` (a refunded deposit cannot be undone, so
-  that booking cannot be restored).
+  that booking cannot be restored). A booking that is no longer CANCELLED
+  answers success when it is CONFIRMED with `lateCancelledAt` null (already
+  restored, e.g. a double tap), otherwise `STALE` — never "create a new booking".
 - Clash check as for a staff move (other appointments and synced busy time).
   A clash returns the existing clash list; the dialog offers "Restore anyway"
   (`force`), because the customer is usually already in the chair.
@@ -128,11 +152,17 @@ controls live in two places:
 - **Arrivals panel** (new, top of Admin → Schedule, every view; shown only when
   it has rows): CONFIRMED bookings from 60 minutes before to 120 minutes after
   their start that are not arrived, each with an **Arrived** button, and, while
-  the setting is on and the start has passed, "cancels automatically at HH:MM";
+  the setting is on, the start has passed and the rule will reach the booking
+  (§4.2), "may be cancelled automatically from HH:MM" (the cron runs every 30
+  minutes); while the setting is on, a one-line hint at the top: tap Arrived
+  (or move the booking) when a customer phones to say they're running late;
   below them, bookings late-cancelled in the last 24 hours with **Restore**
   (and the "customer already emailed" note when the email has gone).
 - **Booking dialog**: an **Arrived / Not arrived** toggle for CONFIRMED bookings
-  inside the arrival window.
+  inside the arrival window. Clearing an arrival once the start is 15 minutes
+  past asks for confirmation first (the next run may cancel the booking).
+  Tapping Arrived on a booking the rule has just cancelled says to use Restore
+  in the arrivals panel (`LATE_CANCELLED_USE_RESTORE`).
 - **Grid blocks**: an arrived booking shows a small "Arrived" line.
 - Admin → Settings: a checkbox "Cancel bookings automatically when the customer
   is 15+ minutes late and not marked Arrived". On sets `lateAutoCancelSince=now`;
@@ -151,6 +181,9 @@ controls live in two places:
   the phone number; a `METHOD:CANCEL` calendar file.
 - My Bookings: a cancelled booking with `lateCancelledAt` shows
   "Cancelled — more than 15 minutes late".
+- Privacy notice (`legal.privacy.collect.bookings`): we record when you arrive,
+  and a booking can be cancelled automatically if you are more than 15 minutes
+  late without telling us.
 
 ## 5. Notification outbox
 

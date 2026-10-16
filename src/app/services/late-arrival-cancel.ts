@@ -22,7 +22,8 @@ const lateInclude = {
 /**
  * The late-arrival rule (docs/superpowers/specs/2026-10-16-late-arrival-auto-cancel-design.md),
  * run by the calendar-sync cron after its own gates: a CONFIRMED booking whose
- * customer staff have not marked arrived 15 minutes after its start is
+ * customer staff have not marked arrived 15 minutes after its start (made and
+ * starting after the switch-on, with no reschedule request open) is
  * cancelled, its taken deposit kept as for a no-show, the customer emailed 30
  * minutes later (a restore meanwhile drops the mail), and the stylist's busy
  * feed refreshed so Fresha can resell the chair. Each booking closes in its
@@ -39,7 +40,12 @@ export async function cancelLateArrivals(
   if (!since) return { enabled: false, cancelled: 0, skipped: 0, failed: 0 };
   const window = lateCancelWindow(now, since);
   const due = await prisma.appointment.findMany({
-    where: { status: 'CONFIRMED', arrivedAt: null, date: { gt: window.gt, gte: window.gte, lte: window.lte } },
+    where: {
+      status: 'CONFIRMED', arrivedAt: null, date: { gt: window.gt, gte: window.gte, lte: window.lte },
+      // Made under the new terms, and no reschedule request open (the customer
+      // contacted the salon; staff answer it): lib/late-arrival.ts lateCancelReaches.
+      createdAt: { gt: since }, rescheduleRequestedAt: null,
+    },
     select: { id: true },
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
     take: options.limit ?? 50,
@@ -53,19 +59,21 @@ export async function cancelLateArrivals(
   for (const { id } of due) {
     try {
       const done = await runSerializableWithRetry(async (tx) => {
+        // The switch read again in this transaction: turning the rule off (or on
+        // again, later) while a run is under way stops it at the next booking.
+        const live = await tx.siteSettings.findUnique({ where: { id: 'singleton' }, select: { lateAutoCancelSince: true } });
         const current = await tx.appointment.findUnique({ where: { id }, include: lateInclude });
-        // Still due: CONFIRMED, not arrived, and still in the late window — staff
-        // may have moved it (or approved its reschedule) since the candidate read.
-        if (!current || !isLateCancelCandidate(current, since, now)) return null;
+        // Still due: CONFIRMED, not arrived, no reschedule request open, and still
+        // in the late window — staff may have moved it (or approved its
+        // reschedule) since the candidate read.
+        if (!current || !isLateCancelCandidate(current, live?.lateAutoCancelSince ?? null, now)) return null;
         const api = getTreatwellApiConfiguration();
         const closed = await tx.appointment.updateMany({
-          where: { id, status: 'CONFIRMED', arrivedAt: null, date: current.date },
+          where: { id, status: 'CONFIRMED', arrivedAt: null, rescheduleRequestedAt: null, date: current.date },
           data: {
             status: 'CANCELLED',
             lateCancelledAt: now,
             notificationVersion: { increment: 1 },
-            rescheduleRequestedDate: null,
-            rescheduleRequestedAt: null,
             // Same as a staff cancellation: undo anything already sent to Treatwell.
             treatwellSyncStatus: changedTreatwellSyncStatus({
               apiReady: api.enabled && api.configured,
@@ -76,8 +84,8 @@ export async function cancelLateArrivals(
             treatwellSyncError: null,
           },
         });
-        // Staff tapped "Arrived", or moved it, since the re-read (the write's
-        // status, arrivedAt and date guards): theirs wins.
+        // Staff tapped "Arrived" or moved it, or the customer asked to move it,
+        // since the re-read (the write's guards): theirs wins.
         if (closed.count !== 1) return null;
         // A no-show keeps its deposit (owner policy 2026-10-16). A capture in
         // flight throws DEPOSIT_IN_PROGRESS: the whole closing rolls back and

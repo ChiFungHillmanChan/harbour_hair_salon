@@ -833,8 +833,16 @@ async function main() {
         assert.deepEqual(await lateCancel.cancelLateArrivals(new Date()), { enabled: false, cancelled: 0, skipped: 0, failed: 0 });
         assert.equal(await statusOf(lateBooking.appointment.id), 'CONFIRMED');
 
-        // Switched on a day ago; both bookings started after the switch-on.
-        await db.siteSettings.update({ where: { id: 'singleton' }, data: { lateAutoCancelSince: new Date(Date.now() - 86_400_000) } });
+        // Switched on a minute before this section's earliest start (the raced booking, 25
+        // minutes ago), and nothing here starts earlier: both bookings were made and start after
+        // the switch-on, while any older row — made before it — can never qualify (the rule
+        // needs createdAt and date after the switch-on). The strict counts below rely on it.
+        const switchedOn = new Date(raceStart.getTime() - 60_000);
+        await db.siteSettings.update({ where: { id: 'singleton' }, data: { lateAutoCancelSince: switchedOn } });
+        assert.equal(await db.appointment.count({ where: {
+          status: 'CONFIRMED', arrivedAt: null, date: { gt: switchedOn, lte: new Date() }, createdAt: { gt: switchedOn },
+          id: { notIn: [lateBooking.appointment.id, arrivalRace.appointment.id] },
+        } }), 0, 'no other booking can be due in this section');
         // The race first: a staff "Arrived" write is open (uncommitted) when the cron reads the
         // booking as late; the cron's conditional write queues behind it and loses.
         const arrivalSaved = deferred();
@@ -850,7 +858,8 @@ async function main() {
         await new Promise((resolve) => setTimeout(resolve, 500)); // let the cron's UPDATE reach the row lock
         arrivalSaved.resolve();
         await staffArrival;
-        // The earliest due booking is the raced one (it started 5 minutes before the other).
+        // The earliest due booking is the raced one: it started 5 minutes before the other, and
+        // nothing else is due (asserted above), so `limit: 1` picks it.
         assert.deepEqual(await racingCron, { enabled: true, cancelled: 0, skipped: 1, failed: 0 }, 'a committed arrival beats the cron');
         const kept = await db.appointment.findUniqueOrThrow({ where: { id: arrivalRace.appointment.id } });
         assert.equal(kept.status, 'CONFIRMED');

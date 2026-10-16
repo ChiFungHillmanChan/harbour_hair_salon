@@ -29,6 +29,7 @@ import { isPlaceholderEmail, placeholderEmailFor } from '@/app/lib/walk-in-custo
 import { isErasedEmail } from '@/app/lib/customer-erasure';
 import { resolveSalonDateTime, SALON_DATE_RE, SALON_TIME_RE } from '@/app/services/salon-time';
 import { MIN_DURATION_MINUTES } from '@/app/lib/calendar-geometry';
+import { isArrivalWindowOpen } from '@/app/lib/late-arrival';
 import { BookingError, bookingErrorText, describeBookingError, type BookingErrorCode } from '@/app/services/booking-errors';
 
 /** Every admin write on this board answers to the same gate. */
@@ -183,6 +184,10 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
       const oldDate = current.date;
       const startMoved = oldDate.getTime() !== newDate.getTime();
       const stylistChanged = current.stylistId !== stylistId;
+      // An arrival belongs to the visit's time: moved to a start whose arrival
+      // window is closed, it no longer holds (the late-arrival rule may then
+      // reach the booking at its new time). Within the window the customer is still here.
+      const arrivalLapses = startMoved && Boolean(current.arrivedAt) && !isArrivalWindowOpen(newDate, durationMin, new Date());
       // The customer's open request this edit closes, so their email can say so.
       const closedRequestDate = (startMoved || stylistChanged) && current.rescheduleRequestedAt ? current.rescheduleRequestedDate : null;
 
@@ -216,6 +221,7 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
           ...(notes === undefined ? {} : { notes: notes.trim() || null }),
           // A reminder already sent describes the OLD time.
           ...(startMoved ? { reminderSent: false } : {}),
+          ...(arrivalLapses ? { arrivedAt: null } : {}),
           // Staff have moved it themselves: a customer's pending request is moot.
           ...((startMoved || stylistChanged) ? { rescheduleRequestedDate: null, rescheduleRequestedAt: null } : {}),
           treatwellSyncStatus,
@@ -319,6 +325,15 @@ const createSchema = z.object({
 
 export type CreateAppointmentInput = z.infer<typeof createSchema>;
 
+/**
+ * A staff booking whose start has come, or is within one board step (the
+ * dialog's 15-minute grain, MIN_DURATION_MINUTES) of now: the customer is at
+ * the desk (late-arrival design §4.1).
+ */
+function isWalkIn(start: Date, now: number = Date.now()): boolean {
+  return start.getTime() <= now + MIN_DURATION_MINUTES * 60_000;
+}
+
 export type CreateAppointmentResult =
   | { success: true; appointmentId: string }
   | { success: false; error: string; quote?: AdminQuote }
@@ -391,8 +406,10 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
           durationAtBooking: durationMin,
           notes: notes.trim() || null,
           // A walk-in entered once its start has come is here already: the
-          // late-arrival rule must never cancel it.
-          ...(status === 'CONFIRMED' && date.getTime() <= Date.now() ? { arrivedAt: new Date() } : {}),
+          // late-arrival rule must never cancel it. The dialog's default time
+          // rounds UP to the next board step, so a start within one step of
+          // now is a walk-in too.
+          ...(status === 'CONFIRMED' && isWalkIn(date) ? { arrivedAt: new Date() } : {}),
           treatwellSyncStatus: initialTreatwellSyncStatus({
             apiEnabled: api.enabled && api.configured,
             stylistExternalId: stylist.treatwellExternalId,

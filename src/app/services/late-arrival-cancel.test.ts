@@ -16,15 +16,21 @@ type Row = {
   id: string; status: string; date: Date; arrivedAt: Date | null; lateCancelledAt: Date | null; notificationVersion: number;
   [key: string]: unknown;
 };
+type Settings = { lateAutoCancelSince: Date | null } | null;
 type Hooks = {
   /** The settings row the step reads (default: switched on at SINCE). */
-  settings?: { lateAutoCancelSince: Date | null } | null;
-  onBeforeTransaction?: (rows: Row[], attempts: AttemptRow[]) => void;
+  settings?: Settings;
+  /** `switchTo` changes the settings row from here on (Admin → Settings saved meanwhile). */
+  onBeforeTransaction?: (rows: Row[], attempts: AttemptRow[], switchTo: (settings: Settings) => void) => void;
   onFindUnique?: (rows: Row[]) => void;
   failEnqueueFor?: string;
 };
 type FixtureRow = {
   id: string; status?: string; date: Date; arrivedAt?: Date;
+  /** When the booking was made (default: a week ago, after SINCE). */
+  createdAt?: Date;
+  /** An open customer reschedule request. */
+  rescheduleRequestedAt?: Date;
   /** The booking's card deposit. */
   deposit?: { status: string; amountPence?: number };
 };
@@ -53,8 +59,10 @@ function matches(record: Record<string, unknown> | undefined, filter: Record<str
 function fixture(rows: FixtureRow[], hooks: Hooks = {}) {
   const appointments: Row[] = rows.map((row) => ({
     id: row.id, status: row.status ?? 'CONFIRMED', date: row.date, arrivedAt: row.arrivedAt ?? null, lateCancelledAt: null,
+    createdAt: row.createdAt ?? minutes(-7 * 24 * 60),
     notificationVersion: 0, treatwellBookingId: null, treatwellSyncStatus: 'NOT_REQUIRED', treatwellSyncError: null,
-    rescheduleRequestedDate: null, rescheduleRequestedAt: null, priceAtBooking: null, durationAtBooking: 60, notes: null,
+    rescheduleRequestedDate: row.rescheduleRequestedAt ? minutes(3 * 24 * 60) : null, rescheduleRequestedAt: row.rescheduleRequestedAt ?? null,
+    priceAtBooking: null, durationAtBooking: 60, notes: null,
     user: { email: `${row.id}@example.test`, name: 'Amy', phone: null },
     stylist: { name: 'Ivan', treatwellExternalId: null }, service: { id: 'svc', name: 'Cut', price: 40, duration: 60, treatwellExternalId: null },
   }));
@@ -70,11 +78,13 @@ function fixture(rows: FixtureRow[], hooks: Hooks = {}) {
   const enqueued: { id: string; kind: string; version: number; salonPhone?: string; depositOutcome?: string; deposit?: unknown; notBefore?: Date }[] = [];
   const audits: { actorUserId: string | null; action: string; targetId: string; metadata: Record<string, unknown> }[] = [];
   const counts = { settingsReads: 0, appointmentQueries: 0, transactions: 0, invalidations: 0 };
+  let settings: Settings = hooks.settings === undefined ? { lateAutoCancelSince: SINCE } : hooks.settings;
+  const switchTo = (next: Settings) => { settings = next; };
   const square: string[] = [];
   const tx = {
     siteSettings: { findUnique: async ({ select }: { select: Record<string, boolean> }) => {
       counts.settingsReads++;
-      if (select.lateAutoCancelSince) return hooks.settings === undefined ? { lateAutoCancelSince: SINCE } : hooks.settings;
+      if (select.lateAutoCancelSince) return structuredClone(settings);
       return { phone: SALON_PHONE };
     } },
     appointment: {
@@ -140,7 +150,7 @@ function fixture(rows: FixtureRow[], hooks: Hooks = {}) {
     './deposit-lifecycle': deposits,
     './booking-service': { runSerializableWithRetry: async (fn: (client: unknown) => unknown) => {
       counts.transactions++;
-      hooks.onBeforeTransaction?.(appointments, attempts);
+      hooks.onBeforeTransaction?.(appointments, attempts, switchTo);
       // Mirror a real transaction: if fn throws, undo its writes.
       const snapshot = structuredClone(appointments);
       const attemptSnapshot = structuredClone(attempts);
@@ -233,14 +243,69 @@ test('14 minutes late, arrived, PENDING, COMPLETED, older than 120 min: untouche
 });
 
 test('bookings that start before the switch-on are never touched', async () => {
-  const f = fixture([{ id: 'before', date: minutes(-20) }], { settings: { lateAutoCancelSince: minutes(-10) } });
+  // Made after the switch-on (entered by staff since), so only the start rules it out.
+  const f = fixture([{ id: 'before', date: minutes(-20), createdAt: minutes(-9) }], { settings: { lateAutoCancelSince: minutes(-10) } });
   assert.deepEqual(await f.service.cancelLateArrivals(now), NOTHING_DONE);
   assert.deepEqual([f.appointments[0].status, f.enqueued, f.audits, f.counts.transactions, f.counts.invalidations], ['CONFIRMED', [], [], 0, 0]);
 
   // The switch-on instant itself is out; anything starting after it is in.
-  const edge = fixture([{ id: 'at-switch-on', date: minutes(-20) }, { id: 'after', date: minutes(-19) }], { settings: { lateAutoCancelSince: minutes(-20) } });
+  const edge = fixture([
+    { id: 'at-switch-on', date: minutes(-20), createdAt: minutes(-19) }, { id: 'after', date: minutes(-19), createdAt: minutes(-19) },
+  ], { settings: { lateAutoCancelSince: minutes(-20) } });
   assert.deepEqual(await edge.service.cancelLateArrivals(now), { enabled: true, cancelled: 1, skipped: 0, failed: 0 });
   assert.deepEqual(edge.appointments.map((row) => [row.id, row.status]), [['at-switch-on', 'CONFIRMED'], ['after', 'CANCELLED']]);
+});
+
+// Final review M9: the rule keys on the start, but a booking MADE before the
+// switch-on was made under the old terms.
+test('a booking made before the switch-on is never touched, even when it starts after it', async () => {
+  const since = minutes(-60);
+  const f = fixture([
+    { id: 'old-terms', date: minutes(-20), createdAt: minutes(-24 * 60) },
+    { id: 'made-at-switch-on', date: minutes(-20), createdAt: since },
+    { id: 'new-terms', date: minutes(-20), createdAt: minutes(-30) },
+  ], { settings: { lateAutoCancelSince: since } });
+  assert.deepEqual(await f.service.cancelLateArrivals(now), { enabled: true, cancelled: 1, skipped: 0, failed: 0 });
+  assert.deepEqual(f.appointments.map((row) => [row.id, row.status]), [['old-terms', 'CONFIRMED'], ['made-at-switch-on', 'CONFIRMED'], ['new-terms', 'CANCELLED']]);
+  assert.equal(f.counts.transactions, 1, 'only the booking made after the switch-on is a candidate');
+});
+
+// Final review I3: a customer who asked to move the booking did contact the
+// salon; staff answer the request, and the rule never cancels it.
+test('a booking with an open reschedule request is never cancelled', async () => {
+  const f = fixture([{ id: 'asked', date: minutes(-20), rescheduleRequestedAt: minutes(-24 * 60), deposit: { status: 'CAPTURED' } }]);
+  assert.deepEqual(await f.service.cancelLateArrivals(now), NOTHING_DONE);
+  assert.deepEqual([f.appointments[0].status, f.attempts[0].status, f.enqueued, f.audits, f.counts.transactions], ['CONFIRMED', 'CAPTURED', [], [], 0]);
+
+  // The request arrives after the candidate read: before the re-read, or between it and the write.
+  const request = (rows: Row[]) => Object.assign(rows[0], { rescheduleRequestedDate: minutes(3 * 24 * 60), rescheduleRequestedAt: minutes(-1) });
+  const before = fixture([{ id: 'late', date: minutes(-20), deposit: { status: 'CAPTURED' } }], { onBeforeTransaction: request });
+  const during = fixture([{ id: 'late', date: minutes(-20), deposit: { status: 'CAPTURED' } }], { onFindUnique: request });
+  for (const g of [before, during]) {
+    assert.deepEqual(await g.service.cancelLateArrivals(now), { enabled: true, cancelled: 0, skipped: 1, failed: 0 });
+    assert.deepEqual([g.appointments[0].status, g.appointments[0].lateCancelledAt, g.attempts[0].status], ['CONFIRMED', null, 'CAPTURED']);
+    assert.deepEqual(g.appointments[0].rescheduleRequestedAt, minutes(-1), 'the request stays for staff to answer');
+    assert.deepEqual([g.enqueued, g.audits, g.counts.invalidations], [[], [], 0]);
+  }
+});
+
+// Final review M1: each booking's transaction reads the switch again.
+test('turning the rule off during a run stops it at the next booking', async () => {
+  const f = fixture([
+    { id: 'first', date: minutes(-30) },
+    { id: 'second', date: minutes(-20) },
+  ], { onBeforeTransaction: (rows, _attempts, switchTo) => { if (rows[0].status === 'CANCELLED') switchTo({ lateAutoCancelSince: null }); } });
+  assert.deepEqual(await f.service.cancelLateArrivals(now), { enabled: true, cancelled: 1, skipped: 1, failed: 0 });
+  assert.deepEqual(f.appointments.map((row) => [row.id, row.status]), [['first', 'CANCELLED'], ['second', 'CONFIRMED']]);
+  assert.deepEqual(f.enqueued.map((event) => event.id), ['first']);
+
+  // Off and on again meanwhile: the new switch-on is after the booking was made, so it no longer qualifies.
+  const again = fixture([{ id: 'late', date: minutes(-20), createdAt: minutes(-60) }], {
+    onBeforeTransaction: (_rows, _attempts, switchTo) => switchTo({ lateAutoCancelSince: minutes(-5) }),
+  });
+  assert.deepEqual(await again.service.cancelLateArrivals(now), { enabled: true, cancelled: 0, skipped: 1, failed: 0 });
+  assert.equal(again.appointments[0].status, 'CONFIRMED');
+  assert.deepEqual([again.enqueued, again.audits, again.counts.invalidations], [[], [], 0]);
 });
 
 test('a concurrent arrival wins', async () => {

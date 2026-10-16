@@ -8,6 +8,7 @@ const minutes = (count: number) => new Date(now.getTime() + count * 60_000);
 type Delivery = { id: string; kind: string; status: string };
 type Row = {
   id: string; status: string; date: Date; arrivedAt: Date | null; lateCancelledAt: Date | null;
+  createdAt: Date; rescheduleRequestedAt: Date | null;
   user: { name: string | null }; stylist: { name: string }; service: { name: string };
   notifications: Delivery[];
 };
@@ -16,6 +17,8 @@ type Where = Record<string, unknown>;
 
 const row = (id: string, fields: Partial<Row>): Row => ({
   id, status: 'CONFIRMED', date: now, arrivedAt: null, lateCancelledAt: null,
+  // Booked two days ago, after every switch-on these tests use.
+  createdAt: minutes(-2 * 24 * 60), rescheduleRequestedAt: null,
   user: { name: `Customer ${id}` }, stylist: { name: 'Ivan' }, service: { name: 'Cut' }, notifications: [],
   ...fields,
 });
@@ -102,16 +105,29 @@ test('due lists CONFIRMED, not-arrived bookings from 120 minutes before to 60 mi
   for (const query of queries) assert.ok(query.take && query.take <= 50, 'every read is bounded');
 });
 
-test('a booking made before the rule was switched on never shows a cancellation time', async () => {
+test('a booking starting or made before the rule was switched on never shows a cancellation time', async () => {
   const { getLateArrivalBoard } = loadBoard([
-    row('before', { date: minutes(-60) }),
-    row('after', { date: minutes(-10) }),
+    row('before', { date: minutes(-60), createdAt: minutes(-20) }),
+    row('after', { date: minutes(-10), createdAt: minutes(-20) }),
+    // Final review M9: made under the old terms, though it starts after the switch-on.
+    row('made-before', { date: minutes(-5), createdAt: minutes(-31) }),
   ], minutes(-30));
   const board = await getLateArrivalBoard(now);
   assert.deepEqual(board.due.map((entry) => [entry.id, entry.cancelsAt]), [
     ['before', null],
     ['after', minutes(5).toISOString()],
+    ['made-before', null],
   ]);
+});
+
+// Final review I3: the rule never cancels a booking whose customer asked to move it.
+test('a booking with an open reschedule request never shows a cancellation time', async () => {
+  const { getLateArrivalBoard } = loadBoard([
+    row('asked', { date: minutes(-10), rescheduleRequestedAt: minutes(-24 * 60) }),
+    row('plain', { date: minutes(-5) }),
+  ], minutes(-7 * 24 * 60));
+  const board = await getLateArrivalBoard(now);
+  assert.deepEqual(board.due.map((entry) => [entry.id, entry.cancelsAt]), [['asked', null], ['plain', minutes(10).toISOString()]]);
 });
 
 test('lateCancelled lists the rule’s cancellations of the last 24 hours and whether the customer was emailed', async () => {
