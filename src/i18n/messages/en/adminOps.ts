@@ -217,6 +217,7 @@ const adminOps = {
       GOOGLE_PUSH_FAILED: 'This booking could not be written to Google Calendar: Google was unavailable or refused access to the website. It is tried again with the next calendar sync; if it keeps failing, check the Google Calendar settings in Vercel and that the calendar is shared with the service account.',
       GOOGLE_PUSH_REFUSED: 'Google Calendar refused the event for this booking. It is tried again with the next calendar sync; if it keeps failing, the booking is still correct on the website, but its Google copy is out of date.',
       GOOGLE_PULL_FAILED: 'The Google Calendar check could not complete, so busy time added in Google and website events changed there were not read this time. The busy time last read from Google is kept; the check runs again with the next calendar sync or change in Google. If it keeps failing, check the Google Calendar settings in Vercel and that the calendar is shared with the service account.',
+      GOOGLE_EVENT_NOT_KEPT: 'Google Calendar did not keep the event for this booking as the website wrote it: either Google changed the event itself, or someone edited it in Google straight after the website wrote it. The website does not write it back again within 10 minutes of its own write, so the two cannot undo each other in a loop; the next calendar sync writes it again. If this keeps appearing, Google is changing the event: the booking is still correct on the website.',
     },
     report: {
       title: 'Latest readiness report',

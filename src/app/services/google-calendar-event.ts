@@ -33,6 +33,15 @@ function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Free text as written and compared: \n line endings, no trailing whitespace on
+ * any line. Narrow on purpose (HTML is never stripped): a difference beyond
+ * this is a real edit.
+ */
+function canonicalText(text: string): string {
+  return text.replace(/\r\n?/g, '\n').split('\n').map((line) => line.trimEnd()).join('\n').trim();
+}
+
 export function renderGoogleEvent(
   appt: RenderableAppointment,
   ctx: { locale: Locale; adminDayUrl: string; colorId: string },
@@ -45,7 +54,7 @@ export function renderGoogleEvent(
   const lines: string[] = [];
   const phone = appt.customer.erased ? '' : (appt.customer.phone ?? '').trim();
   if (phone) lines.push(t('googleCalendar.phone', { phone }));
-  const notes = (appt.notes ?? '').trim();
+  const notes = canonicalText(appt.notes ?? '');
   if (notes && !appt.customer.erased) lines.push(t('googleCalendar.notes', { notes }));
   lines.push(t('googleCalendar.status.label', {
     status: t.dynamic(`googleCalendar.status.${appt.status}`, undefined, appt.status),
@@ -101,12 +110,13 @@ function instant(time: GoogleEvent['start']): number | null {
 /**
  * Whether a listed event still reads as the rendered one. Only what staff can
  * edit in Google counts (text, time, colour, deleted); Google's own bookkeeping
- * (etag, updated, sequence) never does. Instants are compared, not strings.
+ * (etag, updated, sequence) never does. Instants are compared, not strings;
+ * text after canonicalText on both sides (line endings, trailing spaces).
  */
 export function sameRenderedEvent(listed: GoogleEvent, expected: GoogleEvent): boolean {
   if ((listed.status === 'cancelled') !== (expected.status === 'cancelled')) return false;
-  if ((listed.summary ?? '').trim() !== (expected.summary ?? '').trim()) return false;
-  if ((listed.description ?? '').trim() !== (expected.description ?? '').trim()) return false;
+  if (canonicalText(listed.summary ?? '') !== canonicalText(expected.summary ?? '')) return false;
+  if (canonicalText(listed.description ?? '') !== canonicalText(expected.description ?? '')) return false;
   if ((listed.colorId ?? '') !== (expected.colorId ?? '')) return false;
   const [ls, le, es, ee] = [instant(listed.start), instant(listed.end), instant(expected.start), instant(expected.end)];
   return ls !== null && le !== null && ls === es && le === ee;

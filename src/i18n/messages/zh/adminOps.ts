@@ -213,6 +213,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       GOOGLE_PUSH_FAILED: '此預約未能寫入 Google 日曆：Google 暫時無法使用，或拒絕了網站的存取。下次日曆同步會再嘗試；如持續失敗，請檢查 Vercel 上的 Google 日曆設定，以及日曆是否已共用給服務帳戶。',
       GOOGLE_PUSH_REFUSED: 'Google 日曆拒絕了此預約的活動。下次日曆同步會再嘗試；如持續失敗，網站上的預約仍然正確，只是 Google 上的副本未有更新。',
       GOOGLE_PULL_FAILED: 'Google 日曆檢查未能完成，因此今次未有讀取在 Google 新增的忙碌時段，以及在 Google 上被更改的網站活動。系統會保留上次從 Google 讀取的忙碌時段；下次日曆同步或 Google 日曆有更改時會再檢查。如持續失敗，請檢查 Vercel 上的 Google 日曆設定，以及日曆是否已共用給服務帳戶。',
+      GOOGLE_EVENT_NOT_KEPT: 'Google 日曆未有保留網站寫入的此預約活動：可能是 Google 自行更改了活動，或有人在網站寫入後隨即在 Google 修改了它。網站在自己寫入後 10 分鐘內不會再次覆寫，以免雙方不斷互相還原；下次日曆同步會再寫入。如此訊息持續出現，即是 Google 在更改活動：網站上的預約仍然正確。',
     },
     report: {
       title: '最新就緒報告',

@@ -27,7 +27,14 @@ const TIME_BUDGET_MS = 40_000;
 const BATCH_SIZE = 100;
 const STATE_ID = 'singleton';
 /** Bookings that keep an event in Google (a cancelled one has its event deleted). */
-const OPEN_STATUSES = new Set(['PENDING', 'CONFIRMED', 'COMPLETED']);
+const OPEN_STATUSES = ['PENDING', 'CONFIRMED', 'COMPLETED'];
+/**
+ * Loop breaker: within this long of the website's own write of the same
+ * rendering, a listing that differs is not written back again. Either Google
+ * changed the event itself (each write would bring another notification and
+ * another write, forever) or someone edited it at once; the next push writes it.
+ */
+const REWRITE_HOLD_MS = 10 * 60_000;
 
 /** Only what the pull needs; the full gateway satisfies it. */
 export type GooglePullGateway = Pick<ReturnType<typeof createGoogleCalendarGateway>, 'listEvents' | 'putEvent' | 'insertEvent' | 'deleteEvent'>;
@@ -86,58 +93,101 @@ async function storeBusyBlocks(db: PrismaClient, blocks: GoogleBusyBlock[], now:
   return true;
 }
 
+/** Logs a bookkeeping write that failed after Google answered; the next push or pull repairs the row. */
+function logRowFailure(appointmentId: string) {
+  return (error: unknown) => {
+    console.error('Recording a Google Calendar write-back failed:', { appointmentId, ...describeFault(error) });
+  };
+}
+
 /**
- * Writes the booking's real state back over each website event changed in
- * Google (D6). Returns how many events were written back. A failed write is
- * recorded on the booking's row, which the next push retries.
+ * Writes the booking's real state back over each website event changed,
+ * moved away or deleted in Google (D6). Returns how many events were written
+ * back. A failed write is recorded on the booking's row, which the next push retries.
  */
 async function revertWebsiteEvents(
-  db: PrismaClient, gateway: GooglePullGateway, events: GoogleEvent[], now: Date, withinBudget: () => boolean,
+  db: PrismaClient, gateway: GooglePullGateway, events: GoogleEvent[], range: { timeMin: Date; timeMax: Date },
+  now: Date, withinBudget: () => boolean,
 ): Promise<number> {
+  // A deleted event may come back as its id and status alone: look events up by id.
+  const listed = new Map(events.map((event) => [event.id, event]));
   // Only an event at the booking's own id is the website's: a copy made in Google carries the property too.
-  const listed = new Map<string, GoogleEvent>();
+  const named = new Set<string>();
   for (const event of events) {
     const appointmentId = websiteAppointmentId(event);
-    if (appointmentId && event.id === googleEventIdFor(appointmentId)) listed.set(appointmentId, event);
+    if (appointmentId && event.id === googleEventIdFor(appointmentId)) named.add(appointmentId);
   }
-  if (listed.size === 0) return 0;
-  const appointments = await db.appointment.findMany({ where: { id: { in: [...listed.keys()] } }, select: appointmentSelect });
+  const appointments = await db.appointment.findMany({
+    where: {
+      OR: [
+        { id: { in: [...named] } },
+        // Every open booking in the listed range whose event the website wrote: one missing from the
+        // listing (or listed as deleted) was deleted, purged or moved out of the range in Google.
+        {
+          status: { in: OPEN_STATUSES },
+          date: { gte: range.timeMin, lt: range.timeMax },
+          googleCalendarEvent: { is: { removed: false, syncedHash: { not: null } } },
+        },
+      ],
+    },
+    select: appointmentSelect,
+  });
   const from = windowStart(now);
-  const open = appointments.filter((appointment) => OPEN_STATUSES.has(appointment.status) && appointment.date >= from);
+  const open = appointments.filter((appointment) => OPEN_STATUSES.includes(appointment.status) && appointment.date >= from);
   const context = open.length > 0 ? await loadRenderContext(db, open) : null;
 
   let reverted = 0;
   for (const appointment of appointments) {
-    const event = listed.get(appointment.id)!;
+    const eventId = googleEventIdFor(appointment.id);
+    const event = listed.get(eventId);
     if (appointment.status === 'CANCELLED') {
-      if (event.status === 'cancelled' || !withinBudget()) continue;
+      if (!event || event.status === 'cancelled' || !withinBudget()) continue;
       try {
-        await gateway.deleteEvent(event.id);
+        await gateway.deleteEvent(eventId);
       } catch (error) {
-        await recordFailure(db, appointment.id, event.id, error);
+        await recordFailure(db, appointment.id, eventId, error);
         continue;
       }
       reverted += 1;
       const removed = { removed: true, syncedHash: null, syncedAt: now, attempts: 0, lastError: null };
       await db.googleCalendarEvent.upsert({
-        where: { appointmentId: appointment.id }, create: { appointmentId: appointment.id, eventId: event.id, ...removed }, update: removed,
-      }).catch(() => undefined);
+        where: { appointmentId: appointment.id }, create: { appointmentId: appointment.id, eventId, ...removed }, update: removed,
+      }).catch(logRowFailure(appointment.id));
       continue;
     }
     if (!context || !open.includes(appointment)) continue;
-    const expected = renderAppointment(appointment, context);
-    if (sameRenderedEvent(event, expected.event) || !withinBudget()) continue;
+    let expected: ReturnType<typeof renderAppointment>;
+    try {
+      expected = renderAppointment(appointment, context);
+    } catch (error) {
+      await recordFailure(db, appointment.id, eventId, error);
+      continue;
+    }
+    // Missing or deleted in Google counts as changed (sameRenderedEvent compares the deleted state).
+    if (event && sameRenderedEvent(event, expected.event)) continue;
+    const row = appointment.googleCalendarEvent;
+    // Keyed on the hash: a real booking change since that write is never held back.
+    if (row && !row.removed && row.syncedHash === expected.hash && row.syncedAt && now.getTime() - row.syncedAt.getTime() < REWRITE_HOLD_MS) {
+      const notKept = { lastError: OPERATIONS_MESSAGES.GOOGLE_EVENT_NOT_KEPT };
+      await db.googleCalendarEvent.upsert({
+        where: { appointmentId: appointment.id },
+        create: { appointmentId: appointment.id, eventId, ...notKept },
+        update: notKept,
+      }).catch(logRowFailure(appointment.id));
+      continue;
+    }
+    if (!withinBudget()) continue;
     try {
       await writeEvent(gateway, expected.event);
     } catch (error) {
-      await recordFailure(db, appointment.id, expected.event.id, error);
+      await recordFailure(db, appointment.id, eventId, error);
       continue;
     }
     reverted += 1;
-    const synced = { eventId: expected.event.id, syncedHash: expected.hash, syncedAt: now, removed: false, attempts: 0, lastError: null };
+    const synced = { eventId, syncedHash: expected.hash, syncedAt: now, removed: false, attempts: 0, lastError: null };
     await db.googleCalendarEvent.upsert({
       where: { appointmentId: appointment.id }, create: { appointmentId: appointment.id, ...synced }, update: synced,
-    }).catch(() => undefined);
+    }).catch(logRowFailure(appointment.id));
   }
   return reverted;
 }
@@ -157,10 +207,8 @@ export async function pullGoogleCalendar(options: {
   const result: GooglePullResult = { reverted: 0, blocks: 0, changed: false };
 
   try {
-    const events = await gateway.listEvents({
-      timeMin: new Date(now.getTime() - LOOKBACK_MS),
-      timeMax: new Date(now.getTime() + LOOKAHEAD_MS),
-    });
+    const range = { timeMin: new Date(now.getTime() - LOOKBACK_MS), timeMax: new Date(now.getTime() + LOOKAHEAD_MS) };
+    const events = await gateway.listEvents(range);
     // Busy time first: it is what keeps the website from selling a taken chair,
     // and the write-backs after it are the slow part. Website events are never
     // blocks (googleBusyBlocks' echo guard).
@@ -168,7 +216,7 @@ export async function pullGoogleCalendar(options: {
     const blocks = distinct(googleBusyBlocks(events, stylists));
     result.changed = await storeBusyBlocks(db, blocks, now);
     result.blocks = blocks.length;
-    result.reverted = await revertWebsiteEvents(db, gateway, events, now, withinBudget);
+    result.reverted = await revertWebsiteEvents(db, gateway, events, range, now, withinBudget);
     const success = { lastPullAt: now, lastPullSuccessAt: now, lastPullError: null };
     await db.googleCalendarSyncState.upsert({ where: { id: STATE_ID }, create: { id: STATE_ID, ...success }, update: success });
   } catch (error) {

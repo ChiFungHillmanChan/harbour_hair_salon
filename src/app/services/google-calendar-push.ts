@@ -47,7 +47,7 @@ export const appointmentSelect = {
   stylist: { select: { id: true, name: true } },
   service: { select: { id: true, name: true, duration: true } },
   paymentAttempt: { select: depositViewSelect },
-  googleCalendarEvent: { select: { eventId: true, syncedHash: true, removed: true, lastError: true } },
+  googleCalendarEvent: { select: { eventId: true, syncedHash: true, syncedAt: true, removed: true, lastError: true } },
 } satisfies Prisma.AppointmentSelect;
 export type PushAppointment = Prisma.AppointmentGetPayload<{ select: typeof appointmentSelect }>;
 

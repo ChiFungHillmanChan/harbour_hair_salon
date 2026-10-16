@@ -124,3 +124,21 @@ test('sameRenderedEvent compares what the salon can edit', () => {
   assert.equal(sameRenderedEvent({ ...event, end: { date: '2026-10-21' } }, event), false);
   assert.equal(sameRenderedEvent({ ...event, start: undefined }, event), false);
 });
+
+test('sameRenderedEvent ignores line endings and trailing spaces, never HTML', () => {
+  const { event } = renderGoogleEvent({ ...appt, notes: 'Wants a fringe\nShort at the back' }, ctx);
+  const crlf = event.description!.replace(/\n/g, '\r\n');
+  assert.equal(sameRenderedEvent({ ...event, description: crlf }, event), true);
+  assert.equal(sameRenderedEvent({ ...event, description: event.description!.replace(/\n/g, '  \n') + ' \n' }, event), true);
+  assert.equal(sameRenderedEvent({ ...event, summary: `${event.summary}\r\n` }, event), true);
+  assert.equal(sameRenderedEvent({ ...event, description: event.description!.replace(/\n/g, '<br>') }, event), false);
+  assert.equal(sameRenderedEvent({ ...event, description: event.description!.replace('Short', 'short') }, event), false);
+});
+
+test('notes are written with canonical line endings, so body and hash do not depend on them', () => {
+  const lf = renderGoogleEvent({ ...appt, notes: 'Wants a fringe\nShort at the back' }, ctx);
+  const crlf = renderGoogleEvent({ ...appt, notes: 'Wants a fringe  \r\nShort at the back\r' }, ctx);
+  assert.equal(crlf.event.description, lf.event.description);
+  assert.equal(crlf.hash, lf.hash);
+  assert.ok(!crlf.event.description!.includes('\r'));
+});
