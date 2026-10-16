@@ -29,7 +29,9 @@ export type CalendarSyncDependencies = {
 /**
  * One lease per stylist/provider, and a transactional compare-and-set before
  * reconciliation. Failed/partial/stale runs cannot prune last-known blocks.
- * External busy times are never copied to outbound feeds (calendar echo loops).
+ * External busy times are never copied to outbound feeds (calendar echo loops),
+ * except Google-only time the salon added itself; Fresha never re-exports
+ * imported events (verified 2026-09-29).
  */
 export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Promise<CalendarSyncResult[]> {
   const db = deps.db ?? (await import('@/app/lib/prisma')).default;

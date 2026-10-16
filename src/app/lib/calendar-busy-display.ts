@@ -59,7 +59,7 @@ export function isWholeDayBlock(block: { startMin: number; endMin: number }, win
  * provider's name alone. `brand` is always the provider's name.
  */
 export function calendarBusyLabel(block: CalendarBusyBlock, stylist: string, startMin: number, endMin: number, t: Translate<Messages['adminSchedule']>, wholeDay = false) {
-  const provider = block.source === 'TREATWELL' ? 'Treatwell' : block.source === 'FRESHA' ? 'Fresha' : t('busy.external');
+  const provider = block.source === 'TREATWELL' ? 'Treatwell' : block.source === 'FRESHA' ? 'Fresha' : block.source === 'GOOGLE' ? 'Google' : t('busy.external');
   const time = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
   const range = `${time(startMin)}–${time(endMin)}`;
   const synced = formatSalonDateTime(t.locale, new Date(block.lastSyncAt));

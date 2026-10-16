@@ -62,3 +62,14 @@ test('the labels are translated', () => {
   assert.equal(calendarBusyLabel(block('Fresha Blocked Time'), 'Ivan', 780, 960, tz).provider, '已封鎖');
   assert.equal(calendarBusyLabel(block('Fresha Appointment'), 'Ivan', 780, 960, tz).provider, 'Fresha 預約');
 });
+
+test('Google-only time is labelled Google in both languages (a brand, never translated)', () => {
+  const google: CalendarBusyBlock = { ...block(null), source: 'GOOGLE' };
+  const tz = createTranslator('zh-HK', zh.adminSchedule, 'adminSchedule');
+  for (const translate of [t, tz]) {
+    const label = calendarBusyLabel(google, 'Ivan', 780, 960, translate);
+    assert.equal(label.provider, 'Google');
+    assert.equal(label.brand, 'Google');
+    assert.equal(label.kind, null);
+  }
+});
