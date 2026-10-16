@@ -37,9 +37,9 @@
 
 ---
 
-### Task G1: Schema and migrations
+### Task 1 (G1): Schema and migrations
 
-**Files:** `prisma/{vercel,dev,prod}/schema.prisma`; `prisma/*/migrations/20261016130000_google_calendar_sync/migration.sql`; test `src/app/lib/google-calendar-schema.test.ts`.
+**Files:** `prisma/{vercel,dev,prod}/schema.prisma`; `prisma/*/migrations/20261016150000_google_calendar_sync/migration.sql`; test `src/app/lib/google-calendar-schema.test.ts`.
 
 **Interfaces — Produces:** models `GoogleCalendarEvent`, `GoogleCalendarSyncState` exactly as in spec §4, plus on `Appointment`: `googleCalendarEvent GoogleCalendarEvent?`.
 
@@ -49,7 +49,7 @@
 - [ ] Step 4: generate each provider's migration with `pnpm exec prisma migrate diff --from-schema-datamodel <old copy in scratchpad> --to-schema-datamodel prisma/P/schema.prisma --script`; wrap the SQL Server one in the TRY/TRAN frame used by `prisma/prod/migrations/20261009120000_reschedule_requests/migration.sql`.
 - [ ] Step 5: `pnpm db:vercel:generate`; run → PASS; commit `feat(gcal): schema for Google Calendar sync`.
 
-### Task G2: Configuration and the Google gateway
+### Task 2 (G2): Configuration and the Google gateway
 
 **Files:** create `src/app/lib/google-calendar-config.ts`, `src/app/services/google-calendar-gateway.ts`; tests `src/app/lib/google-calendar-config.test.ts`, `src/app/services/google-calendar-gateway.test.ts`.
 
@@ -129,7 +129,7 @@ async function accessToken(config: GoogleCalendarConfig, transport: typeof fetch
   Export a `resetGoogleTokenCacheForTests()` for the tests.
 - [ ] Step 4: run → PASS; commit `feat(gcal): configuration and REST gateway (service account JWT)`.
 
-### Task G3: Pure event rendering and busy mapping
+### Task 3 (G3): Pure event rendering and busy mapping
 
 **Files:** create `src/app/services/google-calendar-event.ts`, `src/app/services/google-busy-mapping.ts`; tests alongside.
 
@@ -163,7 +163,7 @@ export function googleBusyHash(blocks: GoogleBusyBlock[]): string;
 - [ ] Step 3: implement. Use `fromZonedTime` (`date-fns-tz`, already used in `calendar-ical.ts`) for all-day bounds. Title prefix rule: `new RegExp('^' + escapeRegExp(name) + '(?=$|[\\s:：\\-·])', 'i')`, longest stylist name first. Messages for the event text live in a new `googleCalendar` section of `src/i18n/messages/{en,zh}/emails.ts` (salon-facing strings: `request`, `phone`, `notes`, `status.{PENDING,CONFIRMED,COMPLETED}`, `deposit`, `adminLink`, `editWarning`).
 - [ ] Step 4: run → PASS; commit `feat(gcal): event rendering and Google busy-time mapping`.
 
-### Task G4: Outbound push
+### Task 4 (G4): Outbound push
 
 **Files:** create `src/app/services/google-calendar-push.ts`; test alongside; add `GOOGLE_PUSH_FAILED`, `GOOGLE_PUSH_REFUSED` to `operations-messages.ts` (+ en/zh `adminOps.operations.messages`).
 
@@ -182,7 +182,7 @@ Behaviour:
 - [ ] Step 2–4: run FAIL → implement → PASS.
 - [ ] Step 5: commit `feat(gcal): push website bookings to Google`.
 
-### Task G5: Inbound pull
+### Task 5 (G5): Inbound pull
 
 **Files:** create `src/app/services/google-calendar-pull.ts`; test alongside; `GOOGLE_PULL_FAILED` in operations messages (+ labels).
 
@@ -198,7 +198,7 @@ Behaviour:
 - [ ] Step 1: failing tests: website events never become blocks; moved website event → reverted once, and a second pull with the reverted listing → 0 writes; deleted (cancelled) website event of a CONFIRMED booking → put back; Google-only event "Ivan: dentist" → one Ivan block, unchanged second pull → no transaction; failure → lastPullError, no throw.
 - [ ] Step 2–4: FAIL → implement → PASS. Commit `feat(gcal): pull Google-only events as busy time; revert edited website events`.
 
-### Task G6: Busy time everywhere — feed export and admin label
+### Task 6 (G6): Busy time everywhere — feed export and admin label
 
 **Files:** modify `src/app/services/stylist-ical-feed.ts` (`loadBusyEvents`), `src/app/lib/calendar-busy-display.ts` (`calendarBusyLabel` provider name), `src/i18n/messages/{en,zh}/adminSchedule.ts` if needed; tests `stylist-ical-feed.test.ts`, `calendar-busy-display.test.ts`.
 
@@ -206,7 +206,7 @@ Behaviour:
 - [ ] Step 2–4: implement — in `loadBusyEvents`, a second query `externalBusyBlock.findMany({ where: { stylistId, source: 'GOOGLE', end: { gt: now } }, select: { externalUid: true, start: true, end: true } })` merged and sorted by start; minutes = `(end - start) / 60000`. Update the doc comments (sync service's "External busy times are never copied to outbound feeds" → "except Google-only time the salon added itself; Fresha never re-exports imported events").
 - [ ] Step 5: commit `feat(gcal): Google-only busy time blocks Fresha too (busy feed) and shows as Google`.
 
-### Task G7: Webhook and watch channel
+### Task 7 (G7): Webhook and watch channel
 
 **Files:** create `src/app/api/webhooks/google-calendar/route.ts`, `src/app/services/google-calendar-channel.ts`, `src/app/lib/google-channel-token.ts`; tests alongside (`route.test.ts` next to the route, like Square's).
 
@@ -219,19 +219,19 @@ Behaviour:
 - [ ] Step 1: failing tests: 404/401 paths make zero prisma imports/queries (stub `@/app/lib/prisma` with a counter as Square's route test does); `sync` → no `after`; `exists` → one `after` scheduled; channel: none → watch called with address `${SITE_URL}/api/webhooks/google-calendar` and token = HMAC; current (expires in 5 days) → `current`; expiring in 1 day → new then stop old; single-flight: two overlapping calls → one pull plus one trailing re-run.
 - [ ] Step 2–4: FAIL → implement → PASS. Commit `feat(gcal): push webhook, watch channel and single-flight pull`.
 
-### Task G8: Wiring into actions and crons
+### Task 8 (G8): Wiring into actions and crons
 
 **Files:** modify `src/app/services/stylist-ical-cache.ts` (`invalidateStylistIcalFeed` also schedules `after(() => pushGoogleCalendar({ mode: 'recent' }))`, guarded by try/catch and a lazy import), add `scheduleGoogleCalendarPush(appointmentIds?: string[])` there; call it from `booking.ts` `requestReschedule` / `withdrawRescheduleRequest`, `admin.ts` reschedule DECLINE, and `admin-erasure.ts` after commit (with the customer's appointment ids, `mode: 'all'` semantics via `appointmentIds`); `src/app/api/cron/calendar-sync/route.ts` (after the late-arrival step: `pushGoogleCalendar({ mode: 'recent' })` then `runPullSingleFlight(pullGoogleCalendar)`, own job row `google-calendar`, never fails the sync); `src/app/api/cron/housekeeping/route.ts` (guarded block: `ensureGoogleWatchChannel({ renew: false })`, `pushGoogleCalendar({ mode: 'all' })`, `pullGoogleCalendar()`), tests for each route and for the cache helper (stub `next/server.after`).
 
 - [ ] Steps: failing tests (route order and isolation: a Google failure never changes the sync/housekeeping status code; disabled config → zero Google calls and zero extra queries), implement, run, commit `feat(gcal): run push/pull from actions, calendar-sync and housekeeping`.
 
-### Task G9: Admin → Integrations status and "Sync now"
+### Task 9 (G9): Admin → Integrations status and "Sync now"
 
 **Files:** create `src/app/actions/admin-google-calendar.ts` (`syncGoogleCalendarNow()`: admin-only, audited `INTEGRATION.GOOGLE_CALENDAR_SYNC`, runs `ensureGoogleWatchChannel({ renew: false })`, `pushGoogleCalendar({ mode: 'all' })`, `pullGoogleCalendar()`, redirects back with `?gcal=done|error`), `src/components/admin/GoogleCalendarStatus.tsx`; modify `src/app/[locale]/admin/integrations/page.tsx`; messages `adminOps.integrations.google.*` en/zh; loader `getGoogleCalendarStatus()` in `services/google-calendar-status.ts` (enabled, calendarId masked to its first 6 chars + `…`, channel expiry, last pull/success/error, failed event count = rows with `lastError`).
 
 - [ ] Steps: failing loader + action auth tests, implement, run, commit `feat(gcal): Integrations status and Sync now`.
 
-### Task G10: Privacy, docs, verification, PR
+### Task 10 (G10): Privacy, docs, verification, PR
 
 - [ ] Privacy notice (`legal.ts` en/zh): extend `share.google` — "Google (Google Calendar): the salon's appointment diary holds your name, phone number, booking details and notes" — the transfers sentence, and `retention` — "Copies in the salon's Google Calendar: up to 12 months after the appointment". Update the page test that pins the notice.
 - [ ] `docs/google-calendar-setup.md` runbook: GCP steps (enable Calendar API; service account; JSON key; never commit it), calendar creation + sharing ("Make changes to events"), the five env vars (Production only; `vercel env add NAME production`; the PEM with `\n` escapes), first "Sync now", verification (book a test appointment → appears; add "Ivan: test" in Google → Ivan's slot greys on /book within a minute; delete both), turning it off (`GOOGLE_CALENDAR_SYNC_ENABLED` unset → webhook 404s, Google stops retrying after failures; stop the channel via Sync now first if possible).
