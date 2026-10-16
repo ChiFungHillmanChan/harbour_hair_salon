@@ -214,6 +214,15 @@ test('outside the window or not CONFIRMED is refused', async () => {
   assert.deepEqual(await missing.actions.markArrived('appointment-2', true), { success: false, error: text('APPOINTMENT_NOT_FOUND') });
 });
 
+// Final review M2: the rule cancelled it a moment ago — the way back is Restore, not "only a confirmed booking".
+test('Arrived on a booking the rule has cancelled points staff to Restore', async () => {
+  const f = fixture({ status: 'CANCELLED', lateCancelledAt: minutes(-2), deposit: 'KEPT' });
+  assert.deepEqual(await f.actions.markArrived('appointment-1', true), { success: false, error: text('LATE_CANCELLED_USE_RESTORE') });
+  assert.equal(text('LATE_CANCELLED_USE_RESTORE'), 'This booking was cancelled by the late-arrival rule. Use Restore in the Arrivals panel.');
+  assert.deepEqual([f.state.appointment.status, f.state.appointment.arrivedAt, f.state.attempt?.status], ['CANCELLED', null, 'KEPT']);
+  assert.deepEqual([f.counts.writes, f.audits], [0, []]);
+});
+
 test('an arrival racing the late-arrival rule is refused once the rule has cancelled the booking', async () => {
   const f = fixture({
     afterRead: (state) => Object.assign(state.appointment, { status: 'CANCELLED', lateCancelledAt: NOW }),
@@ -258,8 +267,6 @@ test('restore refused after 24 h, without lateCancelledAt, or when the deposit i
     // Cancelled by staff or the customer, never by the rule.
     { status: 'CANCELLED', lateCancelledAt: null },
     { status: 'CANCELLED', lateCancelledAt: null, deposit: 'KEPT' },
-    // Not cancelled at all.
-    { status: 'CONFIRMED', lateCancelledAt: minutes(-5) },
     // The deposit went back or is anything but kept: a refund cannot be undone.
     { status: 'CANCELLED', lateCancelledAt: minutes(-5), deposit: 'CAPTURED' },
     { status: 'CANCELLED', lateCancelledAt: minutes(-5), deposit: 'VOIDED' },
@@ -273,6 +280,28 @@ test('restore refused after 24 h, without lateCancelledAt, or when the deposit i
     assert.equal(f.clashChecks.length, 0);
     assert.deepEqual(f.audits, []);
     assert.equal(f.counts.invalidations, 0);
+  }
+});
+
+// Final review F4: a booking that is no longer CANCELLED is never "create a new booking".
+test('restore on a booking that is no longer cancelled: already restored is success, anything else is STALE', async () => {
+  // A double tap: the first restore committed before this one read the booking.
+  const restored = fixture({ status: 'CONFIRMED', lateCancelledAt: null, arrivedAt: minutes(-1), deposit: 'CAPTURED' });
+  const untouched = structuredClone(restored.state);
+  assert.deepEqual(await restored.actions.restoreLateCancellation('appointment-1'), { success: true });
+  assert.deepEqual(restored.state, untouched, 'nothing changes');
+  assert.deepEqual([restored.counts.writes, restored.clashChecks.length, restored.audits, restored.counts.invalidations], [0, 0, [], 0]);
+
+  for (const options of [
+    { status: 'CONFIRMED', lateCancelledAt: minutes(-5) },
+    { status: 'COMPLETED', lateCancelledAt: null },
+    { status: 'PENDING', lateCancelledAt: null },
+  ] satisfies FixtureOptions[]) {
+    const f = fixture(options);
+    const before = structuredClone(f.state);
+    assert.deepEqual(await f.actions.restoreLateCancellation('appointment-1', { force: true }), { success: false, error: text('STALE') }, JSON.stringify(options));
+    assert.deepEqual(f.state, before);
+    assert.deepEqual([f.counts.writes, f.clashChecks.length, f.audits, f.counts.invalidations], [0, 0, [], 0]);
   }
 });
 

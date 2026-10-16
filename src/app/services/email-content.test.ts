@@ -437,10 +437,17 @@ test('mail queued before deposit outcomes existed renders exactly as it always d
 });
 
 test('LATE_CANCELLED says why, keeps the deposit wording, and removes the calendar entry', () => {
+  const zh = appointmentEmailContent('LATE_CANCELLED', taken, 'zh-HK');
+  assert.match(zh.intro, /以便把時段讓給其他客人/);
+  assert.equal(zh.subject, '你的預約因遲到已取消 — Harbour Hair Salon');
+  assert.ok(zh.footnotes.includes('如你認為有誤，請致電本店。'), 'the salon is 本店 in customer text');
+  assert.match(appointmentEmailContent('LATE_CANCELLED', taken, 'en-GB').intro, /^You hadn’t arrived within 15 minutes of your appointment on .+, so we cancelled it so that the time could go to another client, as our booking terms say\.$/);
   for (const locale of ['en-GB', 'zh-HK'] as const) {
     const words = s3Wording[locale];
     const content = appointmentEmailContent('LATE_CANCELLED', taken, locale, { depositOutcome: 'KEPT', salonPhone: '07831 830898' });
     assert.ok(content.intro.includes('15'), `names the 15 minutes (${locale})`);
+    // Its own subject, so the inbox tells it apart from an ordinary cancellation (final review F3).
+    assert.notEqual(content.subject, appointmentEmailContent('CANCELLATION', taken, locale).subject, `${locale} subject`);
     assert.equal(content.details.at(-1)?.value, words.kept[0], 'deposit row');
     assert.ok(content.footnotes.includes(words.kept[1]), 'deposit kept sentence');
     assert.ok(content.footnotes.includes(calendarText[locale].cancelled), 'calendar entry removed');

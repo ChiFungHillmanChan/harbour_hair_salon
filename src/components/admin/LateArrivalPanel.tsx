@@ -25,6 +25,8 @@ export function LateArrivalPanel({ board }: { board: LateArrivalBoard }) {
   return (
     <section aria-label={t('arrivals.title')} className="mb-4 rounded-lg border border-zinc-300 bg-white p-4">
       <h2 className="font-semibold text-zinc-900">{t('arrivals.title')}</h2>
+      {/* The terms cancel only customers who didn't let us know. */}
+      {board.ruleOn && <p className="mt-1 text-sm text-zinc-600">{t('arrivals.lateCallHint')}</p>}
       {board.due.length > 0 && (
         <ul className="mt-3 divide-y divide-zinc-200">
           {board.due.map((row) => <DueArrival key={row.id} row={row} onDone={refresh} />)}
@@ -56,9 +58,14 @@ function DueArrival({ row, onDone }: { row: DueRow; onDone: () => void }) {
   const locale = useLocale();
   const [pending, startTransition] = useTransition();
   const arrive = () => startTransition(async () => {
-    const { markArrived } = await import('@/app/actions/admin-arrivals');
-    const result = await markArrived(row.id, true);
-    if (!result.success) alert(result.error);
+    try {
+      const { markArrived } = await import('@/app/actions/admin-arrivals');
+      const result = await markArrived(row.id, true);
+      if (!result.success) alert(result.error);
+    } catch {
+      // The request itself failed: say so, never the error boundary.
+      alert(t('appointment.updateFailed'));
+    }
     onDone();
   });
   // Said only once the start has passed, and only when the rule will reach this booking.
@@ -84,14 +91,19 @@ function LateCancelled({ row, onDone }: { row: CancelledRow; onDone: () => void 
   const locale = useLocale();
   const [pending, startTransition] = useTransition();
   const restore = () => startTransition(async () => {
-    const { restoreLateCancellation } = await import('@/app/actions/admin-arrivals');
-    let result = await restoreLateCancellation(row.id);
-    // Fresha may have resold the time; the customer is usually already in the chair.
-    if (!result.success && 'clashes' in result) {
-      if (!window.confirm(t('arrivals.restoreClash'))) return onDone();
-      result = await restoreLateCancellation(row.id, { force: true });
+    try {
+      const { restoreLateCancellation } = await import('@/app/actions/admin-arrivals');
+      let result = await restoreLateCancellation(row.id);
+      // Fresha may have resold the time; the customer is usually already in the chair.
+      if (!result.success && 'clashes' in result) {
+        if (!window.confirm(t('arrivals.restoreClash'))) return onDone();
+        result = await restoreLateCancellation(row.id, { force: true });
+      }
+      if (!result.success) alert('error' in result ? result.error : t('appointment.updateFailed'));
+    } catch {
+      // The request itself failed: say so, never the error boundary.
+      alert(t('appointment.updateFailed'));
     }
-    if (!result.success) alert('error' in result ? result.error : t('appointment.updateFailed'));
     onDone();
   });
   return (

@@ -106,15 +106,15 @@ const emails: Localized<Messages['emails']> = {
     footnote: '期待很快再見到你。',
   },
   lateCancelled: {
-    subject: '你的預約已取消 — Harbour Hair Salon',
+    subject: '你的預約因遲到已取消 — Harbour Hair Salon',
     preview: '你於 {date} 的 {service} 預約已取消',
     eyebrow: '預約已取消',
     title: '我們已取消你的預約。',
-    intro: '你於 {date} {time} 的預約開始 {minutes} 分鐘後仍未到達，因此我們按預約條款取消了預約，並把時段讓給其他客人。',
+    intro: '你於 {date} {time} 的預約開始 {minutes} 分鐘後仍未到達，因此我們按預約條款取消了預約，以便把時段讓給其他客人。',
     calloutTitle: '想重新預約？',
     calloutBody: '請致電 {phone}，我們會為你安排其他時間。',
     cta: '預約其他時間',
-    footnote: '如你認為有誤，請致電髮廊。',
+    footnote: '如你認為有誤，請致電本店。',
   },
   reschedule: {
     subject: '你的預約已改期 — Harbour Hair Salon',

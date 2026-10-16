@@ -6,9 +6,10 @@ import { getLocale, getT } from '@/i18n/server';
 import { alternatesFor } from '@/i18n/metadata';
 import { formatCalendarDay } from '@/i18n/dates';
 import { rich } from '@/i18n/rich';
+import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 
 /** Change this, and the wording in the `legal.privacy` dictionary, together. */
-const LAST_UPDATED = '2026-10-13';
+const LAST_UPDATED = '2026-10-16';
 
 // Each list's items, in the order the page shows them (keys of legal.privacy.*).
 const COLLECTED = ['account', 'google', 'bookings', 'payments', 'patchTests', 'staffBookings', 'emails', 'reviews', 'marketing', 'security', 'visits', 'tryColour'] as const;
@@ -79,7 +80,8 @@ export default async function PrivacyPage() {
 
         <Section id="collect" title={t('privacy.collect.title')}>
           <p>{t('privacy.collect.intro')}</p>
-          <List items={COLLECTED.map((key) => text(t(`privacy.collect.${key}`)))} />
+          {/* {minutes}: only the bookings line uses it (the late-arrival rule). */}
+          <List items={COLLECTED.map((key) => text(t(`privacy.collect.${key}`, { minutes: LATE_ARRIVAL_CANCEL_MINUTES })))} />
           <p>{t('privacy.collect.required')}</p>
         </Section>
 

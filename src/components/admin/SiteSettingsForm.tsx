@@ -230,7 +230,7 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
           <input
             type="checkbox"
             name="lateAutoCancelEnabled"
-            defaultChecked={settings.lateAutoCancelSince !== null}
+            defaultChecked={Boolean(settings.lateAutoCancelSince)}
             className="mt-1 h-5 w-5 rounded border-zinc-300 text-zinc-900 focus:ring-2 focus:ring-zinc-900"
           />
           <span>

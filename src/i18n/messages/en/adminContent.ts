@@ -450,7 +450,7 @@ const adminContent = {
       title: 'Late arrivals',
       help: 'When this is on, a confirmed booking is cancelled automatically if the customer has not been marked Arrived {minutes} minutes after the start. The deposit is kept, as for a no-show, and the customer is emailed.',
       label: 'Cancel bookings automatically when the customer is {minutes}+ minutes late',
-      explain: 'Before switching this on, make sure staff tap “Arrived” on the schedule when each customer comes in. Bookings that started before you switch it on are never cancelled. A cancelled booking can be restored for 24 hours from the schedule.',
+      explain: 'Before switching this on, make sure staff tap “Arrived” on the schedule when each customer comes in, and tap “Arrived” (or move the booking) when a customer phones to say they’re running late. Bookings made, or starting, before you switch it on are never cancelled, nor are bookings whose customer has asked to move them. A cancelled booking can be restored for 24 hours from the schedule.',
     },
     contact: {
       title: 'Contact',

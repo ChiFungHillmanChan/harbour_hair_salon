@@ -41,12 +41,24 @@ const Recheck = () => null;
 const SettleOutside = () => null;
 
 /** Renders the dialog with an in-memory draft store, so a re-render sees every update. */
-function dialog(target: DialogTarget, actions: Record<string, (input: Record<string, unknown>) => Promise<unknown>>) {
+function dialog(
+  target: DialogTarget,
+  actions: Record<string, (input: Record<string, unknown>) => Promise<unknown>>,
+  /** markArrived (actions/admin-arrivals.ts): answers, or rejects. */
+  markArrived: (id: string, arrived: boolean) => Promise<unknown> = async () => ({ success: true }),
+) {
   const store = new Map<string, unknown>();
   const calls: Record<string, unknown>[] = [];
   const statusCalls: unknown[][] = [];
+  const arrivalCalls: [string, boolean][] = [];
+  /** Every value a state setter was given (setError, setSaving…), in order. */
+  const stateSets: unknown[] = [];
+  const events = { saved: 0, refreshed: 0 };
   const { AppointmentDialog } = loadServerModule<typeof import('./AppointmentDialog')>('src/components/admin/AppointmentDialog.tsx', {
-    react: { useEffect: () => undefined, useRef: (value: unknown) => ({ current: value }), useState: (value: unknown) => [value, () => undefined] },
+    react: {
+      useEffect: () => undefined, useRef: (value: unknown) => ({ current: value }),
+      useState: (value: unknown) => [typeof value === 'function' ? (value as () => unknown)() : value, (next: unknown) => stateSets.push(next)],
+    },
     '@/i18n/client': { useT: (namespace: Namespace) => translator('en-GB', namespace), useLocale: () => 'en-GB' },
     './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     './DepositRecheckButton': { DepositRecheckButton: Recheck },
@@ -66,16 +78,20 @@ function dialog(target: DialogTarget, actions: Record<string, (input: Record<str
     '@/app/actions/admin': {
       updateAppointmentStatus: async (...args: unknown[]) => { statusCalls.push(args); return { success: true }; },
     },
+    '@/app/actions/admin-arrivals': {
+      markArrived: async (id: string, arrived: boolean) => { arrivalCalls.push([id, arrived]); return markArrived(id, arrived); },
+    },
   });
   const render = () => elements(AppointmentDialog({
-    target, services: SERVICES, stylists: [{ id: 's1', name: 'Ivan' }], onClose: () => undefined, onSaved: () => undefined,
+    target, services: SERVICES, stylists: [{ id: 's1', name: 'Ivan' }], onClose: () => undefined,
+    onSaved: () => { events.saved++; }, onRefresh: () => { events.refreshed++; },
   }));
   /** Edit the open draft the way the dialog's own controls would (e.g. picking a search result). */
   const patchDraft = (patch: Record<string, unknown>) => {
     const key = `schedule-dialog:${target.mode === 'edit' ? target.appointmentId : 'new'}`;
     store.set(key, { ...(store.get(key) as Record<string, unknown>), ...patch });
   };
-  return { render, calls, patchDraft, statusCalls };
+  return { render, calls, patchDraft, statusCalls, arrivalCalls, stateSets, events };
 }
 
 const submitButton = (nodes: Element[]) => nodes.filter((node) => node.type === 'button').at(-1)!;
@@ -278,4 +294,65 @@ test('a refund Square has not confirmed can be marked settled outside the websit
   for (const deposit of [{ state: 'REFUND_PENDING', amountPence: 2000 }, { state: 'REFUNDED', amountPence: 2000 }, { state: 'PAID', amountPence: 2000 }]) {
     assert.equal(dialog(depositTarget('CANCELLED', deposit), {}).render().find((node) => node.type === SettleOutside)?.props.refund, null, deposit.state);
   }
+});
+
+// The Arrived / Not arrived toggle (late-arrival rule). Final review M3: clearing
+// an arrival once the start is 15 minutes past asks first — the next run may
+// cancel the booking. F6: a failed request shows an error and refreshes the
+// board instead of reaching the error boundary.
+const arrivalTarget = (startMinutesAgo: number, arrivedAt: string | null): DialogTarget => ({
+  mode: 'edit', appointmentId: 'appt-1', dateStr: '2099-09-15', time: '10:00', stylistId: 's1', serviceId: 'blow-dry',
+  durationMin: 45, notes: '', customerName: 'Mei', status: 'CONFIRMED', updatedAt: '2099-09-01T00:00:00.000Z', price: { known: false },
+  rescheduleRequestedDate: null, rescheduleRequestedAt: null, deposit: null, arrivedAt,
+  date: new Date(Date.now() - startMinutesAgo * 60_000).toISOString(),
+});
+
+async function pressArrival(nodes: Element[], label: string, answer = true) {
+  const asked: string[] = [];
+  const previous = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = { confirm: (message: string) => { asked.push(message); return answer; } };
+  try {
+    const button = nodes.find((node) => node.type === 'button' && text(node) === label);
+    assert.ok(button, `the dialog offers ${label}`);
+    await (button.props.onClick as () => Promise<void>)();
+  } finally {
+    (globalThis as { window?: unknown }).window = previous;
+  }
+  return asked;
+}
+
+const CLEAR_CONFIRM = 'This booking is already past its 15-minute mark. If you mark it not arrived, it may be cancelled automatically. Continue?';
+
+test('clearing an arrival past the 15-minute mark asks first; declining changes nothing', async () => {
+  const declined = dialog(arrivalTarget(20, new Date().toISOString()), {});
+  assert.deepEqual(await pressArrival(declined.render(), 'Not arrived', false), [CLEAR_CONFIRM]);
+  assert.deepEqual(declined.arrivalCalls, [], 'nothing sent');
+
+  const accepted = dialog(arrivalTarget(20, new Date().toISOString()), {});
+  assert.deepEqual(await pressArrival(accepted.render(), 'Not arrived'), [CLEAR_CONFIRM]);
+  assert.deepEqual(accepted.arrivalCalls, [['appt-1', false]]);
+  assert.equal(accepted.events.saved, 1);
+  assert.match(translator('zh-HK', 'adminSchedule')('arrivals.clearArrivedConfirm', { minutes: 15 }), /15 分鐘/);
+
+  // Before the mark, or marking arrived at any time: no question.
+  const early = dialog(arrivalTarget(10, new Date().toISOString()), {});
+  assert.deepEqual(await pressArrival(early.render(), 'Not arrived'), []);
+  assert.deepEqual(early.arrivalCalls, [['appt-1', false]]);
+  const arriving = dialog(arrivalTarget(20, null), {});
+  assert.deepEqual(await pressArrival(arriving.render(), 'Arrived'), []);
+  assert.deepEqual(arriving.arrivalCalls, [['appt-1', true]]);
+});
+
+test('a failed arrival request shows an error and refreshes the board, never throws', async () => {
+  const rejected = dialog(arrivalTarget(20, null), {}, async () => { throw new Error('network down'); });
+  await pressArrival(rejected.render(), 'Arrived');
+  assert.ok(rejected.stateSets.includes('Failed to update'), 'the generic error is shown');
+  assert.deepEqual([rejected.events.saved, rejected.events.refreshed], [0, 1]);
+  assert.equal(rejected.stateSets.at(-1), false, 'the dialog is usable again');
+
+  // A refusal still shows the server's own text.
+  const refused = dialog(arrivalTarget(20, null), {}, async () => ({ success: false, error: 'This appointment has changed. Please refresh and try again.' }));
+  await pressArrival(refused.render(), 'Arrived');
+  assert.ok(refused.stateSets.includes('This appointment has changed. Please refresh and try again.'));
+  assert.equal(refused.events.refreshed, 1);
 });

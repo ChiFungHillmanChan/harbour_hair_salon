@@ -119,7 +119,7 @@ export type AppointmentEmailOptions = {
    */
   wasConfirmed?: boolean;
   /**
-   * CANCELLATION and REQUEST_LAPSED: what became of the booking's card deposit
+   * CANCELLATION, LATE_CANCELLED and REQUEST_LAPSED: what became of the booking's card deposit
    * (the amount is the queued snapshot's `deposit`). Undefined — no deposit,
    * or mail queued before deposits — adds no deposit wording.
    */

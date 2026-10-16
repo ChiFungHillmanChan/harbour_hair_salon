@@ -75,7 +75,12 @@ const adminSchedule = {
     markArrived: 'Arrived',
     clearArrived: 'Not arrived',
     arrivedMark: 'Arrived',
-    cancelsAt: 'Not arrived — cancels automatically at {time}',
+    /** The cron runs every 30 minutes, so the cancellation comes at the first run from this time. */
+    cancelsAt: 'Not arrived — may be cancelled automatically from {time}',
+    /** Top of the arrivals panel while the rule is on (the terms only cancel customers who didn't let us know). */
+    lateCallHint: 'When a customer phones to say they’re running late, tap Arrived (or move the booking) so it isn’t cancelled automatically.',
+    /** Clearing an arrival once the start is {minutes} minutes past: the next run may cancel the booking. */
+    clearArrivedConfirm: 'This booking is already past its {minutes}-minute mark. If you mark it not arrived, it may be cancelled automatically. Continue?',
     lateCancelled: 'Cancelled at {time}: not arrived {minutes} minutes after the start',
     alreadyEmailed: 'The customer has already been emailed that it was cancelled — tell them it stands.',
     restore: 'Restore',

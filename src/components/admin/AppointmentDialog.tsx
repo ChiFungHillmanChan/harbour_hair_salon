@@ -13,7 +13,8 @@ import { DepositRecheckButton } from './DepositRecheckButton';
 import { DepositSettleRefundButton } from './DepositSettleRefundButton';
 import type { DepositView } from '@/app/lib/deposit-display';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
-import { isArrivalWindowOpen } from '@/app/lib/late-arrival';
+import { isArrivalWindowOpen, lateCancelDueAt } from '@/app/lib/late-arrival';
+import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useLocale, useT } from '@/i18n/client';
 import { DEFAULT_LOCALE, HTML_LANG, LOCALE_LABEL, LOCALES, isLocale, type Locale } from '@/i18n/config';
@@ -296,6 +297,9 @@ export function AppointmentDialog({
   // Arrived / Not arrived (late-arrival rule, actions/admin-arrivals.ts).
   const toggleArrived = async () => {
     if (target.mode !== 'edit' || saving) return;
+    // Past the 15-minute mark, "not arrived" lets the next run cancel the booking.
+    if (target.arrivedAt && Date.now() >= lateCancelDueAt(target.date).getTime()
+      && !window.confirm(t('arrivals.clearArrivedConfirm', { minutes: LATE_ARRIVAL_CANCEL_MINUTES }))) return;
     setSaving(true);
     setError(null);
     try {
@@ -304,6 +308,10 @@ export function AppointmentDialog({
       if (result.success) return saved();
       setError(result.error);
       // Refused: the rule or a colleague may have changed the booking meanwhile.
+      onRefresh?.();
+    } catch {
+      // The request itself failed: say so here, never in the error boundary.
+      setError(t('appointment.updateFailed'));
       onRefresh?.();
     } finally {
       setSaving(false);

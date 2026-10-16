@@ -181,10 +181,12 @@ Square and payment records.
       (`legal.bookingTerms.cancelling`, en + zh).
 - [ ] **Late-arrival auto-cancel (shipped OFF).** First brief the staff: while a customer is at the
       salon they tap **Arrived** (Admin → Schedule arrivals panel or the booking dialog; Mark completed
-      and walk-ins count as arrived). Then switch the rule on in Admin → Settings: from then on a
-      confirmed booking not marked Arrived 15 minutes after its start is cancelled, its deposit kept as
-      for a no-show, and the customer is emailed 30 minutes later; Restore (within 24 hours) undoes it.
-      Only bookings that start after the switch is turned on are affected. Apply the
+      and walk-ins count as arrived), and when a customer phones to say they're running late they tap
+      **Arrived** (or move the booking) — the terms only cancel customers who didn't let us know. Then
+      switch the rule on in Admin → Settings: from then on a confirmed booking not marked Arrived 15
+      minutes after its start is cancelled, its deposit kept as for a no-show, and the customer is
+      emailed 30 minutes later; Restore (within 24 hours) undoes it. Only bookings made and starting
+      after the switch is turned on are affected, and never one with an open reschedule request. Apply the
       `20261016120000_late_arrival_auto_cancel` migration to the preview database by hand as well.
 - [ ] Staff approval time (holds expire after 7 days; aim for same-day replies).
 - [ ] Legal entity name and retention periods for the privacy notice (payment records: 6 years)

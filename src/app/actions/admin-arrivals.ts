@@ -28,9 +28,11 @@ export async function markArrived(appointmentId: string, arrived: boolean): Prom
     await runSerializableWithRetry(async (tx) => {
       const current = await tx.appointment.findUnique({
         where: { id: appointmentId },
-        select: { status: true, date: true, arrivedAt: true, durationAtBooking: true, service: { select: { duration: true } } },
+        select: { status: true, date: true, arrivedAt: true, lateCancelledAt: true, durationAtBooking: true, service: { select: { duration: true } } },
       });
       if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
+      // The rule cancelled it a moment ago: the way back is Restore.
+      if (current.status === 'CANCELLED' && current.lateCancelledAt) throw new BookingError('LATE_CANCELLED_USE_RESTORE');
       if (current.status !== 'CONFIRMED') throw new BookingError('ONLY_CONFIRMED_ARRIVAL');
       if (!isArrivalWindowOpen(current.date, current.durationAtBooking ?? current.service.duration, now)) throw new BookingError('ARRIVAL_WINDOW_CLOSED');
       // Already as asked: the first arrival time stands.
@@ -78,9 +80,15 @@ export async function restoreLateCancellation(
         },
       });
       if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
+      if (current.status !== 'CANCELLED') {
+        // Already restored (a double tap, or a colleague): done. Anything else
+        // changed under the panel: refresh, never "create a new booking".
+        if (current.status === 'CONFIRMED' && !current.lateCancelledAt) return { kind: 'already' as const };
+        throw new BookingError('STALE');
+      }
       // A refunded (or otherwise not kept) deposit cannot be undone, so neither can its booking.
       const deposit = current.paymentAttempt;
-      if (current.status !== 'CANCELLED' || !isLateCancelRestorable(current.lateCancelledAt, now) || (deposit && deposit.status !== 'KEPT')) {
+      if (!isLateCancelRestorable(current.lateCancelledAt, now) || (deposit && deposit.status !== 'KEPT')) {
         throw new BookingError('LATE_CANCEL_NOT_RESTORABLE');
       }
       const clashes = await describeAdminMoveClashes(tx, {
@@ -107,6 +115,10 @@ export async function restoreLateCancellation(
       return { kind: 'restored' as const };
     });
     if (outcome.kind === 'clashes') return { success: false, clashes: outcome.clashes };
+    if (outcome.kind === 'already') {
+      revalidateAllLocales(revalidatePath, '/admin');
+      return { success: true };
+    }
   } catch (error) {
     if (!(error instanceof BookingError)) console.error('Restoring a late cancellation failed:', { appointmentId, ...describeFault(error) });
     return { success: false, error: describeBookingError(error, locale, 'ADMIN_UPDATE_FAILED') };

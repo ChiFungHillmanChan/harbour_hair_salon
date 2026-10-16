@@ -114,7 +114,7 @@ const emails = {
     preview: 'Your appointment for {service} on {date} was cancelled',
     eyebrow: 'Appointment cancelled',
     title: 'We had to cancel your appointment.',
-    intro: 'You hadn’t arrived {minutes} minutes after your appointment on {date} at {time}, so we cancelled it and gave the time to another client, as our booking terms say.',
+    intro: 'You hadn’t arrived within {minutes} minutes of your appointment on {date} at {time}, so we cancelled it so that the time could go to another client, as our booking terms say.',
     calloutTitle: 'Want to book again?',
     calloutBody: 'Call us on {phone} and we’ll find you another time.',
     cta: 'Book another time',
