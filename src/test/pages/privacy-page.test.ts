@@ -145,3 +145,16 @@ test('the periods the notice states are the ones the code enforces', async () =>
   assert.ok(zh.includes(`最長 ${CUSTOMER_SESSION_SECONDS / 86_400} 日（員工為 ${ADMIN_SESSION_SECONDS / 3_600} 小時）`));
   assert.ok(zh.includes(`於 ${(EMAIL_SEND_DAILY_POLICY.windowSeconds * 2) / 86_400} 日內自動刪除`));
 });
+
+// Google Calendar two-way sync: the salon's diary is a Google-hosted copy of customer details.
+test('the notice names Google Calendar as the appointment diary and says how long its copies live', async () => {
+  const en = (await privacyPage('en-GB')).text;
+  assert.ok(en.includes('Google Calendar as the salon’s appointment diary'));
+  assert.ok(en.includes('it holds your name, phone number, booking details and the notes our staff add to your booking'));
+  assert.ok(en.includes('can also stop those times being offered for online booking'));
+  assert.ok(en.includes('Copies in the salon’s Google Calendar: up to 12 months after the appointment, then deleted.'));
+  const zh = (await privacyPage('zh-HK')).text;
+  assert.ok(zh.includes('Google 日曆（Google Calendar）'));
+  assert.ok(zh.includes('預約日期後最多保存 12 個月，其後刪除'));
+  for (const body of [en, zh]) assert.ok(body.includes('Google'));
+});

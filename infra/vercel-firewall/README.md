@@ -29,12 +29,15 @@ After applying, check production: a probe (`/.env`) must answer `403` with
 must answer exactly as before, with no `x-vercel-mitigated` header.
 
 **Machine callers that must always get through:** the iCal feeds (`/api/ical/*`,
-polled by Fresha and Treatwell) and the Square webhook (`POST /api/webhooks/square`,
-deposit and refund notifications). Neither can pass a challenge, so no rule —
-and no Attack Challenge Mode or bot-protection setting — may challenge or deny
-them. The webhook protects itself: it answers `404` while Square is not
+polled by Fresha and Treatwell), the Square webhook (`POST /api/webhooks/square`,
+deposit and refund notifications) and the Google Calendar webhook
+(`POST /api/webhooks/google-calendar`, change notifications). None can pass a
+challenge, so no rule — and no Attack Challenge Mode or bot-protection setting —
+may challenge or deny them. The Google webhook answers `404` while the sync is
+off and `401` to a request whose `X-Goog-Channel-Token` is not valid, before it
+touches the database. The Square webhook protects itself: it answers `404` while Square is not
 configured and `401` to anything not signed with the subscription's key, before
-it touches the database. The test pins both paths in the allowed list.
+it touches the database. The test pins all three paths in the allowed list.
 
 **Do not move these into `vercel.json` `routes` + `mitigate`.** Tried on
 2026-09-29 (PR #55's first commit): that deployment answered EVERY request —

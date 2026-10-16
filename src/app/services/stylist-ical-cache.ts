@@ -48,6 +48,16 @@ import {
  * the appointment entry — preserving the property (asserted in
  * stylist-ical-feed.test.ts) that a failed auth never scans the Appointment
  * table, at the cache layer as well as the database layer.
+ *
+ * The cached events are the stylist's non-cancelled appointments AND the
+ * Google-only busy time (`ExternalBusyBlock` source GOOGLE: events the staff
+ * add on the salon's Google Calendar), so Fresha stops selling an hour the
+ * salon has blocked there. That time reaches this entry by the Google pull
+ * (services/google-calendar-pull.ts), which has no Server Action around it and
+ * so drops the tag itself, with `invalidateStylistIcalFeedFromCron()`, only
+ * when the blocks it stored actually changed (an unchanged pull wakes no poller).
+ * The timed expiry below stays a day for the same reason as before: both
+ * kinds of change invalidate the tag.
  */
 const EVENTS_TAG = 'stylist-ical-feed';
 const TOKEN_TAG = 'stylist-ical-token';

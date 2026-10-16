@@ -57,7 +57,7 @@ const legal = {
       resend: '<b>Resend:</b> sends our emails and holds our marketing mailing list.',
       upstash: '<b>Upstash:</b> stores the short-lived records that limit repeated attempts.',
       square: '<b>Square:</b> takes our deposit payments. Your card details go from your browser straight to Square, which also receives the name and email address on your account so that the payment can be verified. Square handles card payments and its fraud checks as an independent controller, under its own privacy notice — not on our behalf.',
-      google: '<b>Google:</b> only if you choose to sign in with Google, or to show the map on our Contact page. Google handles that information under its own privacy policy.',
+      google: '<b>Google:</b> if you choose to sign in with Google, or to show the map on our Contact page, Google handles that information under its own privacy policy. We also use <b>Google Calendar</b> as the salon’s appointment diary, which Google hosts on our behalf: it holds your name, phone number, booking details and the notes our staff add to your booking. Times our staff block out in that diary can also stop those times being offered for online booking.',
       marketplaces: '<b>Booking marketplaces such as Fresha and Treatwell:</b> they receive only the times each stylist is busy, so that they do not double-book. Never your name or any other details.',
       cdn: 'Some images, and the software the Virtual Hair Colour Try-On runs on, load from other content networks (such as Cloudinary, jsDelivr and Google). Like any site you load files from, they see your IP address; we send them none of your details.',
       law: 'We may also share information when the law requires it, for example with HM Revenue & Customs or the police.',
@@ -76,6 +76,7 @@ const legal = {
       emails: '<b>Copies of emails waiting to be sent:</b> deleted as soon as the email is sent, or after 30 days if it could not be sent. The record that an email was sent (without its content) is deleted after 12 months.',
       rateLimits: '<b>IP addresses used to limit repeated attempts:</b> deleted automatically within 2 days.',
       links: '<b>Links in our emails</b> stop working after a set time: email confirmation after 48 hours, password reset after 1 hour, unsubscribe after 30 days.',
+      googleCalendar: '<b>Copies in the salon’s Google Calendar:</b> up to 12 months after the appointment, then deleted. If you ask us to delete your account, the copies show no name, phone number or notes.',
       marketing: '<b>Marketing list:</b> until you unsubscribe. After that we keep your address marked as unsubscribed, so that we never send you marketing again.',
     },
     rights: {

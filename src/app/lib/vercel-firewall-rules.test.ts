@@ -51,6 +51,8 @@ test('no page, API, asset or standard well-known file the site serves is ever de
     '/api/cron/calendar-sync', '/api/cron/housekeeping', '/api/health', '/api/session',
     // Square's servers post deposit notifications here; they cannot pass a challenge either.
     '/api/webhooks/square',
+    // Google Calendar's push notifications: Google cannot pass a challenge either.
+    '/api/webhooks/google-calendar',
     '/robots.txt', '/sitemap.xml', '/favicon.ico', '/llms.txt', '/humans.txt', '/ads.txt', '/security.txt',
     '/.well-known/security.txt', '/.well-known/traffic-advice', '/.well-known/acme-challenge/token',
     '/.well-known/vercel/microfrontend-routing', '/_next/static/chunks/app/page.js', '/_next/image',
