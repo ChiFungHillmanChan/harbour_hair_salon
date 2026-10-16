@@ -179,6 +179,14 @@ model Appointment {
   arrivedAt           DateTime?
   /// Set when the late-arrival rule cancelled this booking; cleared on restore.
   lateCancelledAt     DateTime?
+  /// The consultation whose fee is credited against this booking (B1,
+  /// services/consultation-credit.ts). NoAction: SQL Server refuses cascading
+  /// actions on a self-relation, and appointments are never deleted one by one.
+  consultationCreditFromId String?
+  consultationCreditFrom   Appointment?  @relation("ConsultationCredit", fields: [consultationCreditFromId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  consultationCreditUsedBy Appointment[] @relation("ConsultationCredit")
+  /// The amount credited, frozen when it was applied (pence).
+  consultationCreditPence  Int?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -211,6 +219,7 @@ model Appointment {
   @@index([treatwellSyncStatus, updatedAt])
   @@index([date])
   @@index([rescheduleRequestedDate])
+  @@index([consultationCreditFromId])
 }
 
 model ExternalBusyBlock {
