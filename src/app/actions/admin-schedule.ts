@@ -390,6 +390,9 @@ export async function createAppointmentByAdmin(input: CreateAppointmentInput): P
           notificationLocale: user.preferredLocale ?? chosenLocale ?? 'en-GB',
           durationAtBooking: durationMin,
           notes: notes.trim() || null,
+          // A walk-in entered once its start has come is here already: the
+          // late-arrival rule must never cancel it.
+          ...(status === 'CONFIRMED' && date.getTime() <= Date.now() ? { arrivedAt: new Date() } : {}),
           treatwellSyncStatus: initialTreatwellSyncStatus({
             apiEnabled: api.enabled && api.configured,
             stylistExternalId: stylist.treatwellExternalId,
