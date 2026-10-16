@@ -106,7 +106,7 @@ function fakeDb(
     lastPullAt: null, lastPullSuccessAt: null, lastPullError: null, busyHash: null,
   };
   let state: State | null = options.state ? { ...emptyState, ...options.state } : null;
-  const log = { transactions: 0, appointmentQueries: 0, createBatches: [] as number[] };
+  const log = { transactions: 0, appointmentQueries: 0, blockReads: 0, createBatches: [] as number[] };
   const db = {
     appointment: {
       async findMany(args: { where: Record<string, unknown> }) {
@@ -140,6 +140,10 @@ function fakeDb(
     },
     contentTranslation: { async findMany() { return []; } },
     externalBusyBlock: {
+      async findMany(args: { where: Record<string, unknown>; select: Record<string, boolean> }) {
+        log.blockReads += 1;
+        return blocks.filter((row) => matches(row, args.where)).map((row) => Object.fromEntries(Object.keys(args.select).map((key) => [key, row[key as keyof Block]])));
+      },
       async deleteMany(args: { where: Record<string, unknown> }) {
         const before = blocks.length;
         blocks = blocks.filter((row) => !matches(row, args.where));
@@ -254,10 +258,10 @@ test('website events are never busy blocks, whatever their state', async () => {
     { ...rendered(live).event, id: 'copyofa1', start: { dateTime: at(DAY + 120).toISOString() }, end: { dateTime: at(DAY + 180).toISOString() } },
   ]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: true });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false });
   assert.deepEqual(store.blocks, []);
   assert.deepEqual(google.calls, [], 'equal, already deleted, unknown or copied website events need no write');
-  assert.equal(store.state!.busyHash, EMPTY_HASH);
+  assert.equal(store.log.transactions, 0, 'no busy time, none stored: nothing to write');
 });
 
 test('a website event moved in Google is written back once; the next pull finds it equal and writes nothing', async () => {
@@ -361,6 +365,44 @@ test('a Google-only "Ivan: dentist" blocks Ivan alone; an unchanged second pull 
   assert.equal(invalidations.count, 1);
   assert.equal(store.blocks[0].lastSyncAt.getTime(), NOW.getTime());
   assert.equal(store.state!.lastPullSuccessAt!.getTime(), later.getTime());
+});
+
+test('only busy time that has not ended counts: an event ending, or leaving the look-back window, writes nothing and keeps the feeds cached', async () => {
+  // Stored by an earlier pull: one block that ended an hour ago, one to come.
+  const listing = [foreign('ended', 'Ivan: dentist', -120, -60), foreign('coming', 'Lox: lunch', 60, 120)];
+  const store = fakeDb([]);
+  const google = fakeGoogle(listing);
+  const { pull, invalidations } = load();
+  assert.equal((await run(pull, store.db, google.gateway, at(-180))).changed, true);
+  assert.equal(store.blocks.length, 2);
+  assert.equal(invalidations.count, 1);
+
+  // Later: the ended event has left Google's listing (look-back window, or deleted after the fact).
+  google.listing = [listing[1]];
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, changed: false });
+  assert.equal(store.log.transactions, 1, 'no second write');
+  assert.equal(invalidations.count, 1, 'Fresha\'s next poll is not turned into a database wake');
+
+  // The block to come ends while Google still lists it: still nothing to write.
+  assert.equal((await run(pull, store.db, google.gateway, at(121))).changed, false);
+  assert.equal(invalidations.count, 1);
+
+  // Busy time still to come changes: written and the feeds dropped.
+  google.listing = [foreign('coming', 'Lox: lunch', 60, 150)];
+  assert.equal((await run(pull, store.db, google.gateway)).changed, true);
+  assert.equal(store.log.transactions, 2);
+  assert.equal(invalidations.count, 2);
+  assert.equal(store.blocks.find((row) => row.externalUid === googleBusyBlocks(google.listing, ACTIVE)[0].externalUid)!.end.getTime(), at(150).getTime());
+});
+
+test('blocks deleted outside the pull ("Clear Google busy time") are stored again by the next pull while the sync is on', async () => {
+  const listing = [foreign('evt1', 'Ivan: dentist', 60, 120)];
+  // The hash says nothing changed, but the rows are gone: the rows decide.
+  const store = fakeDb([], { state: { busyHash: googleBusyHash(googleBusyBlocks(listing, ACTIVE)) } });
+  const google = fakeGoogle(listing);
+  const { pull } = load();
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, changed: true });
+  assert.equal(store.blocks.length, 1);
 });
 
 test('an event naming no stylist blocks every active stylist; free and cancelled events block nothing', async () => {
@@ -489,6 +531,24 @@ test('a synced open booking missing from the listing (deleted, purged or moved a
   assert.deepEqual(google.calls[0].event, rendered(missing).event);
   assert.equal(store.rows.get('a1')!.syncedAt!.getTime(), NOW.getTime());
   assert.equal(store.log.appointmentQueries, 1);
+});
+
+test('a website event whose private property was stripped in Google is written back, and is never busy time', async () => {
+  const booking = appt('a1');
+  const expected = rendered(booking);
+  const stripped = { ...expected.event, extendedProperties: undefined };
+  const store = fakeDb([booking], { events: [syncedRow(booking)] });
+  const google = fakeGoogle([stripped]);
+  const { pull } = load();
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, changed: false });
+  assert.deepEqual(store.blocks, [], 'its id gives it away: no block, no clash with itself');
+  assert.deepEqual(google.calls.map((call) => [call.op, call.id]), [['put', googleEventIdFor('a1')]]);
+  assert.deepEqual(google.calls[0].event!.extendedProperties, { private: { [GOOGLE_APPOINTMENT_PROPERTY]: 'a1' } });
+  // Written back: the next pull finds it equal.
+  google.listing = [google.calls[0].event!];
+  store.rows.get('a1')!.syncedAt = at(-60);
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false });
+  assert.equal(google.calls.length, 1);
 });
 
 test('a website event listed as a bare deleted id is put back', async () => {

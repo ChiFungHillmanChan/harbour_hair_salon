@@ -22,6 +22,19 @@ export function googleEventIdFor(appointmentId: string): string {
   return 'hh' + createHash('sha256').update(`harbour-appointment:${appointmentId}`).digest('hex').slice(0, 40);
 }
 
+/** The shape of every id googleEventIdFor makes. Google's own ids are 26 base32hex characters. */
+const WEBSITE_EVENT_ID = /^hh[0-9a-f]{40}$/;
+
+/**
+ * Whether the website wrote this event: it carries the private property, or
+ * (should someone or some app strip the property) it sits at an id only the
+ * website makes. The echo guard: such an event is never busy time.
+ */
+export function isWebsiteEvent(event: Pick<GoogleEvent, 'id' | 'extendedProperties'>): boolean {
+  const props = event.extendedProperties?.private;
+  return (props !== undefined && GOOGLE_APPOINTMENT_PROPERTY in props) || WEBSITE_EVENT_ID.test(event.id);
+}
+
 export type RenderableAppointment = {
   id: string; date: Date; status: string; notes: string | null; durationMin: number;
   customer: { name: string | null; phone: string | null; erased: boolean };
@@ -119,12 +132,14 @@ function instant(time: GoogleEvent['start']): number | null {
 
 /**
  * Whether a listed event still reads as the rendered one. Only what staff can
- * edit in Google counts (text, time, colour, deleted); Google's own bookkeeping
- * (etag, updated, sequence) never does. Instants are compared, not strings;
- * text after canonicalText on both sides (line endings, trailing spaces).
+ * edit in Google counts (text, time, colour, deleted, and the private property
+ * marking it as the website's: one stripped is written back); Google's own
+ * bookkeeping (etag, updated, sequence) never does. Instants are compared, not
+ * strings; text after canonicalText on both sides (line endings, trailing spaces).
  */
 export function sameRenderedEvent(listed: GoogleEvent, expected: GoogleEvent): boolean {
   if ((listed.status === 'cancelled') !== (expected.status === 'cancelled')) return false;
+  if (listed.extendedProperties?.private?.[GOOGLE_APPOINTMENT_PROPERTY] !== expected.extendedProperties?.private?.[GOOGLE_APPOINTMENT_PROPERTY]) return false;
   if (canonicalText(listed.summary ?? '') !== canonicalText(expected.summary ?? '')) return false;
   if (canonicalText(listed.description ?? '') !== canonicalText(expected.description ?? '')) return false;
   if ((listed.colorId ?? '') !== (expected.colorId ?? '')) return false;

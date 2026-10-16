@@ -134,20 +134,28 @@ covers changes during a pull).
 - **Website events** (`harbourAppointmentId` present): compare with the
   rendered booking. Moved, edited or deleted while the booking is open → write
   the rendered version back (D6). Equal → nothing. A cancelled event whose
-  booking is closed → nothing.
+  booking is closed → nothing. The private property is part of the comparison:
+  an event at the booking's own id whose property was stripped is written back.
 - **Echo guard:** booking availability reads every `ExternalBusyBlock` with
   no source filter, so a website event imported as a block would make every
-  booking clash with itself. An event carrying `harbourAppointmentId` is never
-  a block, whatever its state; a test pins this.
+  booking clash with itself. An event carrying `harbourAppointmentId`, or whose
+  id has the website's shape (`^hh[0-9a-f]{40}$`, should the property be
+  stripped), is never a block, whatever its state; tests pin both.
 - **Google-only events** (confirmed, `transparency` ≠ `transparent`):
   - Stylist: the title starts with an active stylist's name, case-insensitive,
     followed by end, space, `:`, `-`, `·` or `：` (longest name first) → that
     stylist; no match → every active stylist.
   - All-day events cover salon-local midnight to midnight (DST-correct).
-  - The set of blocks is hashed; equal to `busyHash` → no DB write. Otherwise one
+  - Only blocks that have not ended are compared, with the stored `GOOGLE`
+    rows that have not ended (read at the pull's own `now`). Equal → no DB
+    write and no feed refresh, so an event that ends or leaves the look-back
+    window never turns Fresha's next poll into a Neon wake. Otherwise one
     transaction replaces every `GOOGLE` block in the window (as the iCal sync
-    does), stores the hash, and the affected stylists' busy feeds are
-    invalidated (`…FromCron`: a route handler cannot `updateTag`).
+    does) and stores `busyHash` (diagnosis only). Then the affected stylists'
+    busy feeds are invalidated (`…FromCron`: a route handler cannot
+    `updateTag`). Comparing the rows, not the stored hash, also means blocks
+    deleted by "Clear Google busy time" (§7) are stored again by the next pull
+    while the sync is on.
 - `lastPullAt` / `lastPullSuccessAt` / `lastPullError` record the outcome.
 
 **Effect of a GOOGLE block:** booking availability, the admin board (labelled

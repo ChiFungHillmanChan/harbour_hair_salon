@@ -268,7 +268,7 @@ model GoogleCalendarSyncState {
   lastPullAt        DateTime?
   lastPullSuccessAt DateTime?
   lastPullError     String?
-  /// Hash of the GOOGLE busy blocks last stored; equal → no DB write.
+  /// Hash of the GOOGLE busy blocks not yet ended when last stored (diagnosis only: the pull compares the stored rows).
   busyHash          String?
 }
 

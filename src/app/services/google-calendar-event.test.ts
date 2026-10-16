@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  GOOGLE_APPOINTMENT_PROPERTY, googleEventIdFor, renderGoogleEvent, sameRenderedEvent, stylistColorId,
+  GOOGLE_APPOINTMENT_PROPERTY, googleEventIdFor, isWebsiteEvent, renderGoogleEvent, sameRenderedEvent, stylistColorId,
   type RenderableAppointment,
 } from './google-calendar-event';
 import { ERASED_CUSTOMER_NAME } from '../lib/customer-erasure';
@@ -142,6 +142,21 @@ test('sameRenderedEvent compares what the salon can edit', () => {
   assert.equal(sameRenderedEvent({ ...event, start: { dateTime: '2026-10-20T11:00:00+01:00' } }, event), false);
   assert.equal(sameRenderedEvent({ ...event, end: { date: '2026-10-21' } }, event), false);
   assert.equal(sameRenderedEvent({ ...event, start: undefined }, event), false);
+  // The private property marking it as the website's: stripped or changed is written back.
+  assert.equal(sameRenderedEvent({ ...event, extendedProperties: undefined }, event), false);
+  assert.equal(sameRenderedEvent({ ...event, extendedProperties: { private: {} } }, event), false);
+  assert.equal(sameRenderedEvent({ ...event, extendedProperties: { private: { [GOOGLE_APPOINTMENT_PROPERTY]: 'appt-2' } } }, event), false);
+  // Google's own extras (another app's private key) are not the salon's edit.
+  assert.equal(sameRenderedEvent({ ...event, extendedProperties: { private: { [GOOGLE_APPOINTMENT_PROPERTY]: 'appt-1', other: 'x' } } }, event), true);
+});
+
+test('isWebsiteEvent: the private property, or an id only the website makes', () => {
+  const { event } = renderGoogleEvent(appt, ctx);
+  assert.equal(isWebsiteEvent(event), true);
+  assert.equal(isWebsiteEvent({ id: event.id }), true, 'property stripped');
+  assert.equal(isWebsiteEvent({ id: 'someone-elses-id', extendedProperties: { private: { [GOOGLE_APPOINTMENT_PROPERTY]: 'x' } } }), true, 'a copy made in Google');
+  assert.equal(isWebsiteEvent({ id: 'abc123def456ghi789jkl012mn' }), false);
+  assert.equal(isWebsiteEvent({ id: `${event.id}0` }), false);
 });
 
 test('sameRenderedEvent ignores line endings and trailing spaces, never HTML', () => {

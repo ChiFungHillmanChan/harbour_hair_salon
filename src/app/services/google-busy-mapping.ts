@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { fromZonedTime } from 'date-fns-tz';
 import type { GoogleEvent } from './google-calendar-gateway';
 import { SALON_TIMEZONE } from './salon-time';
-import { GOOGLE_APPOINTMENT_PROPERTY } from './google-calendar-event';
+import { isWebsiteEvent } from './google-calendar-event';
 
 export type GoogleBusyBlock = { externalUid: string; stylistId: string; start: Date; end: Date };
 
@@ -57,9 +57,10 @@ export function googleBusyBlocks(events: GoogleEvent[], stylists: { id: string; 
 
   const blocks: GoogleBusyBlock[] = [];
   for (const event of events) {
-    // Echo guard: an event the website wrote is never a block, whatever its state,
+    // Echo guard: an event the website wrote (its private property, or its id
+    // should the property be stripped) is never a block, whatever its state,
     // or every booking would clash with itself.
-    if (event.extendedProperties?.private && GOOGLE_APPOINTMENT_PROPERTY in event.extendedProperties.private) continue;
+    if (isWebsiteEvent(event)) continue;
     if (event.status === 'cancelled' || event.transparency === 'transparent') continue;
     const interval = eventInterval(event);
     if (!interval) continue;

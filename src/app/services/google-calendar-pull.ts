@@ -59,15 +59,28 @@ function distinct(blocks: GoogleBusyBlock[]): GoogleBusyBlock[] {
   });
 }
 
+/** Only blocks that have not ended can change what is bookable or what the busy feed exports. */
+function notEnded(blocks: GoogleBusyBlock[], now: Date): GoogleBusyBlock[] {
+  return blocks.filter((block) => block.end.getTime() > now.getTime());
+}
+
 /**
  * Replaces every GOOGLE block in the window in one transaction, as the iCal
- * sync does: readers never see an empty calendar. Returns false when the set
- * equals the one last stored (no write at all).
+ * sync does: readers never see an empty calendar. Returns false, writing
+ * nothing and leaving the busy feeds cached, when the blocks that have not
+ * ended equal the stored ones that have not ended. Compared with the stored
+ * rows themselves, at this pull's `now`: an event that has ended, or has left
+ * the look-back window, changes nothing anyone can book or a marketplace can
+ * import, so it never wakes Fresha's next poll. (`busyHash` is still written,
+ * for diagnosis; "Clear Google busy time" deletes the rows, which this sees.)
  */
 async function storeBusyBlocks(db: PrismaClient, blocks: GoogleBusyBlock[], now: Date): Promise<boolean> {
-  const hash = googleBusyHash(blocks);
-  const state = await db.googleCalendarSyncState.findUnique({ where: { id: STATE_ID }, select: { busyHash: true } });
-  if (state?.busyHash === hash) return false;
+  const hash = googleBusyHash(notEnded(blocks, now));
+  const stored = await db.externalBusyBlock.findMany({
+    where: { source: 'GOOGLE', end: { gt: now } },
+    select: { externalUid: true, stylistId: true, start: true, end: true },
+  });
+  if (googleBusyHash(stored) === hash) return false;
   await db.$transaction(async (tx) => {
     await tx.externalBusyBlock.deleteMany({
       where: { source: 'GOOGLE', end: { gt: new Date(now.getTime() - LOOKBACK_MS) }, start: { lt: new Date(now.getTime() + LOOKAHEAD_MS) } },

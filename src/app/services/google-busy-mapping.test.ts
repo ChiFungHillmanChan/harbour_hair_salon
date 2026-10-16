@@ -57,6 +57,16 @@ test('transparent, cancelled and website events are never blocks', () => {
   );
 });
 
+test('a website event whose private property was stripped is still never a block: its id gives it away', () => {
+  const websiteId = 'hh' + createHash('sha256').update('harbour-appointment:a1').digest('hex').slice(0, 40);
+  assert.deepEqual(googleBusyBlocks([ev('Ivan · Jane · Haircut', { id: websiteId })], stylists), []);
+  assert.deepEqual(googleBusyBlocks([ev('Ivan · Jane · Haircut', { id: websiteId, extendedProperties: { private: {} } })], stylists), []);
+  // Only the exact shape: anything else is the salon's own event.
+  for (const id of [websiteId.slice(0, -1), `${websiteId}0`, websiteId.toUpperCase(), `hh${'v'.repeat(40)}`, 'abc123def456ghi789jkl012mn']) {
+    assert.deepEqual(ids([ev('Ivan: dentist', { id })]), ['st-ivan'], id);
+  }
+});
+
 test('an all-day event on the BST to GMT change day spans 25 hours', () => {
   const [block] = googleBusyBlocks([ev('Ivan', { start: { date: '2026-10-25' }, end: { date: '2026-10-26' } })], [ivan]);
   assert.equal(block.start.toISOString(), '2026-10-24T23:00:00.000Z');
