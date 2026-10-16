@@ -72,6 +72,8 @@ function fixture(options: {
   let stagedEvents: Event[] = [];
   let transactionActive = false;
   let dispatches = 0;
+  /** Google Calendar pushes the actions scheduled (services/stylist-ical-cache.ts). */
+  const googlePushes: (string[] | undefined)[] = [];
   let transactions = 0;
   let writes = 0;
   const limiterKeys: string[] = [];
@@ -242,6 +244,10 @@ function fixture(options: {
         options.onFeedInvalidated?.();
       },
       invalidateStylistIcalToken: () => undefined,
+      scheduleGoogleCalendarPush: (ids?: string[]) => {
+        assert.equal(transactionActive, false, 'the Google Calendar push is scheduled after commit');
+        googlePushes.push(ids && [...ids]);
+      },
     },
     'next/cache': { revalidatePath: () => undefined, updateTag: () => undefined },
     'next/server': { after: (callback: () => unknown) => options.scheduleAfterResponse ? options.scheduleAfterResponse(callback) : callback() },
@@ -250,7 +256,7 @@ function fixture(options: {
   const admin = loadServerModule<typeof import('./admin')>('src/app/actions/admin.ts', dependencies);
   return {
     appointment, originalDate, messages, events, dispatches: () => dispatches, actions, admin,
-    transactions: () => transactions, writes: () => writes, limiterKeys, audits,
+    transactions: () => transactions, writes: () => writes, limiterKeys, audits, googlePushes,
   };
 }
 
@@ -265,12 +271,41 @@ for (const operation of ['cancel', 'approve', 'decline'] as const) {
 }
 
 test('rescheduling a frozen 60-minute booking cannot overlap a booking 45 minutes later', async () => {
-  const { actions, appointment, originalDate, messages } = fixture({ conflictingBooking: true });
+  const { actions, appointment, originalDate, messages, googlePushes } = fixture({ conflictingBooking: true });
   const result = await actions.requestReschedule(appointment.id, '2099-09-15', '10:00');
   assert.equal(result.success, false);
   assert.equal(appointment.rescheduleRequestedAt, null);
   assert.equal(appointment.date.getTime(), originalDate.getTime());
   assert.equal(messages.length, 0);
+  assert.deepEqual(googlePushes, [], 'a refused request changes nothing in Google Calendar');
+});
+
+// Spec §5 "Real time": a change that alters only the event's text (the
+// booking keeps its time and status) re-renders that one booking in the
+// salon's Google Calendar; a move goes through invalidateStylistIcalFeed,
+// which schedules the push itself.
+test('a reschedule request, its withdrawal and a declined request each re-render the booking in Google Calendar after commit', async () => {
+  const requested = fixture();
+  assert.deepEqual(await requested.actions.requestReschedule(requested.appointment.id, '2099-09-15', '10:00'), { success: true });
+  assert.deepEqual(requested.googlePushes, [['appointment-1']]);
+
+  const withdrawn = fixture({ openRequest: { requestedDate: new Date('2099-09-15T09:00:00Z'), requestedAt: new Date('2099-09-01T11:00:00Z') } });
+  assert.deepEqual(await withdrawn.actions.withdrawRescheduleRequest(withdrawn.appointment.id), { success: true });
+  assert.deepEqual(withdrawn.googlePushes, [['appointment-1']]);
+
+  let feedInvalidations = 0;
+  const declined = fixture({ openRequest: { requestedDate: new Date('2099-09-15T09:00:00Z'), requestedAt: new Date('2099-09-01T11:00:00Z') }, onFeedInvalidated: () => { feedInvalidations++; } });
+  assert.deepEqual(await declined.admin.decideRescheduleRequest(declined.appointment.id, 'DECLINE', '2099-09-01T11:00:00.000Z'), { success: true });
+  assert.deepEqual(declined.googlePushes, [['appointment-1']]);
+  assert.equal(feedInvalidations, 0, 'the time did not change: the busy feed stays');
+});
+
+test('an approved reschedule reaches Google Calendar through the busy-feed drop, not a second push', async () => {
+  let feedInvalidations = 0;
+  const f = fixture({ openRequest: { requestedDate: new Date('2099-09-15T09:00:00Z'), requestedAt: new Date('2099-09-01T11:00:00Z') }, onFeedInvalidated: () => { feedInvalidations++; } });
+  assert.deepEqual(await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', '2099-09-01T11:00:00.000Z'), { success: true });
+  assert.equal(feedInvalidations, 1);
+  assert.deepEqual(f.googlePushes, []);
 });
 
 test('requesting the time a booking already has sends nothing, however often', async () => {
@@ -289,6 +324,7 @@ test('requesting the time a booking already has sends nothing, however often', a
   assert.equal(f.dispatches(), 0);
   assert.equal(f.messages.length, 0);
   assert.equal(feedInvalidations, 0);
+  assert.deepEqual(f.googlePushes, [], 'nor is the Google Calendar event re-rendered');
   assert.deepEqual(f.limiterKeys, [], 'a no-op spends no reschedule allowance');
 });
 

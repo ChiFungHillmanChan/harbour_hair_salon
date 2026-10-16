@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildStylistIcalFeed } from './stylist-ical-feed';
 
+type FakeBlock = { externalUid: string; source: string; stylistId: string; start: Date; end: Date };
 type FakeAppt = { id: string; date: Date; service: { duration: number }; status?: string };
 
 /** Applies the query's status filter, so a too-narrow filter drops the row. */
@@ -16,12 +17,15 @@ function statusMatches(row: FakeAppt, filter: unknown): boolean {
 function fakeDb(
   stylist: { id: string; icalToken: string | null } | null,
   appointments: FakeAppt[] = [],
+  blocks: FakeBlock[] = [],
 ) {
+  const blockQueries: { where: Record<string, unknown>; select: unknown }[] = [];
   const findUniqueCalls: { where: unknown; select: unknown }[] = [];
   const findManyCalls: { where: unknown; select: unknown; orderBy: unknown }[] = [];
   return {
     findUniqueCalls,
     findManyCalls,
+    blockQueries,
     stylist: {
       findUnique: async (args: { where: unknown; select: unknown }) => {
         findUniqueCalls.push(args);
@@ -32,6 +36,19 @@ function fakeDb(
       findMany: async (args: { where: unknown; select: unknown; orderBy: unknown }) => {
         findManyCalls.push(args);
         return appointments.filter((row) => statusMatches(row, (args.where as { status?: unknown }).status));
+      },
+    },
+    // Applies the query's own filters, so a missing source/stylist/end filter leaks rows.
+    externalBusyBlock: {
+      findMany: async (args: { where: Record<string, unknown>; select: unknown }) => {
+        blockQueries.push(args);
+        const where = args.where as { stylistId: string; source?: string; end?: { gt: Date } };
+        return blocks.filter(
+          (b) =>
+            b.stylistId === where.stylistId &&
+            (where.source === undefined || b.source === where.source) &&
+            (where.end === undefined || b.end > where.end.gt),
+        );
       },
     },
   };
@@ -145,4 +162,61 @@ test('booked duration remains fixed when the current service duration changes', 
   assert.equal(result.status, 200);
   if (result.status === 200) assert.match(result.body, /DTEND:20260805T103000Z/);
   assert.equal((db.findManyCalls[0].select as { durationAtBooking?: boolean }).durationAtBooking, true);
+});
+
+const block = (externalUid: string, start: string, end: string, extra: Partial<FakeBlock> = {}): FakeBlock => ({
+  externalUid, source: 'GOOGLE', stylistId: 's1', start: new Date(start), end: new Date(end), ...extra,
+});
+
+test('Google-only busy time is exported with a stable g- UID and its own length', async () => {
+  const db = fakeDb({ id: 's1', icalToken: 'tok' }, [], [
+    block('abc123', '2026-08-05T09:00:00Z', '2026-08-05T10:30:00Z'),
+  ]);
+  const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW });
+  assert.equal(result.status, 200);
+  if (result.status !== 200) return;
+  assert.match(result.body, /UID:g-abc123@harbourhair\.co\.uk/);
+  assert.match(result.body, /DTSTART:20260805T090000Z/);
+  assert.match(result.body, /DTEND:20260805T103000Z/);
+  assert.match(result.body, /SUMMARY:Busy/);
+});
+
+test('Fresha and Treatwell blocks are NEVER exported (a calendar echo loop)', async () => {
+  const db = fakeDb({ id: 's1', icalToken: 'tok' }, [], [
+    block('fresha-1', '2026-08-05T09:00:00Z', '2026-08-05T10:00:00Z', { source: 'FRESHA' }),
+    block('tw-1', '2026-08-05T11:00:00Z', '2026-08-05T12:00:00Z', { source: 'TREATWELL' }),
+  ]);
+  const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW });
+  assert.equal(result.status, 200);
+  if (result.status !== 200) return;
+  assert.doesNotMatch(result.body, /BEGIN:VEVENT/);
+  assert.equal(db.blockQueries[0].where.source, 'GOOGLE');
+});
+
+test('Google blocks of another stylist, and ones already over, are left out', async () => {
+  const db = fakeDb({ id: 's1', icalToken: 'tok' }, [], [
+    block('other', '2026-08-05T09:00:00Z', '2026-08-05T10:00:00Z', { stylistId: 's2' }),
+    block('over', '2026-07-21T09:00:00Z', '2026-07-21T10:00:00Z'),
+    block('now', '2026-07-21T11:00:00Z', '2026-07-21T13:00:00Z'),
+  ]);
+  const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW });
+  assert.equal(result.status, 200);
+  if (result.status !== 200) return;
+  assert.doesNotMatch(result.body, /g-other@/);
+  assert.doesNotMatch(result.body, /g-over@/);
+  assert.match(result.body, /g-now@/);
+  assert.deepEqual(db.blockQueries[0].where, { stylistId: 's1', source: 'GOOGLE', end: { gt: NOW } });
+});
+
+test('appointments and Google blocks share one feed, ordered by start', async () => {
+  const db = fakeDb(
+    { id: 's1', icalToken: 'tok' },
+    [{ id: 'a1', date: new Date('2026-08-05T12:00:00Z'), service: { duration: 30 } }],
+    [block('early', '2026-08-05T09:00:00Z', '2026-08-05T10:00:00Z')],
+  );
+  const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW });
+  assert.equal(result.status, 200);
+  if (result.status !== 200) return;
+  assert.ok(result.body.indexOf('UID:g-early@') >= 0);
+  assert.ok(result.body.indexOf('UID:g-early@') < result.body.indexOf('UID:a1@'));
 });

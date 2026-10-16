@@ -72,6 +72,7 @@ test('an enabled failed sync persists a safe failure status for the operations p
     '@/app/lib/prisma': { backgroundJobState: { upsert: async () => ({}), update: async ({ where, data }: { where: { name: string }; data: Record<string, unknown> }) => { if (where.name === 'calendar-sync') writes.push(data); } } },
     '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => [{ ok: false, error: 'Calendar could not be reached.' }] },
     '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => ({ enabled: false, cancelled: 0, skipped: 0, failed: 0 }) },
+    '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => ({ skipped: 'disabled' }) },
   });
   await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
     assert.equal((await route.GET(authedRequest())).status, 502);
@@ -90,6 +91,7 @@ test('closed-hours ticks do not access job state or run a feed import', async ()
     '@/app/lib/prisma': { backgroundJobState: { upsert: async () => { queries++; }, update: async () => { queries++; } } },
     '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => { imports++; return []; } },
     '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => { imports++; return { enabled: true, cancelled: 0, skipped: 0, failed: 0 }; } },
+    '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => { imports++; return { skipped: 'disabled' }; } },
   });
   await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
     const response = await route.GET(authedRequest());
@@ -112,6 +114,7 @@ test('runs the late-arrival step after the sync and records it', async () => {
     } },
     '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => { order.push('sync'); return []; } },
     '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => { order.push('late'); return { enabled: true, cancelled: 1, skipped: 0, failed: 0 }; } },
+    '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => ({ skipped: 'disabled' }) },
   });
   await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
     const body = await (await route.GET(authedRequest())).json();
@@ -132,6 +135,7 @@ test('a failing late-arrival step never fails the sync response', async () => {
     } },
     '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => [] },
     '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => { throw new Error('boom'); } },
+    '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => ({ skipped: 'disabled' }) },
   });
   await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
     const response = await route.GET(authedRequest());
@@ -154,6 +158,7 @@ test('a late-arrival step that reports failures is recorded as failed but the sy
     } },
     '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => [] },
     '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => ({ enabled: true, cancelled: 0, skipped: 0, failed: 2 }) },
+    '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => ({ skipped: 'disabled' }) },
   });
   await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
     assert.equal((await route.GET(authedRequest())).status, 200);
@@ -163,7 +168,7 @@ test('a late-arrival step that reports failures is recorded as failed but the sy
   });
 });
 
-test('the kill-switch and closed hours both keep the late-arrival step from running', async () => {
+test('the kill-switch and closed hours both keep the late-arrival and Google Calendar steps from running', async () => {
   const { loadServerModule } = await import('../../../../test/load-server-module');
   let calls = 0;
   for (const [enabled, open] of [[undefined, true], ['true', false]] as const) {
@@ -172,6 +177,7 @@ test('the kill-switch and closed hours both keep the late-arrival step from runn
       '@/app/lib/prisma': { backgroundJobState: { upsert: async () => { calls++; }, update: async () => { calls++; } } },
       '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => { calls++; return []; } },
       '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => { calls++; return { enabled: true, cancelled: 0, skipped: 0, failed: 0 }; } },
+      '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => { calls++; return { skipped: 'disabled' }; } },
     });
     await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: enabled }, async () => {
       assert.equal((await route.GET(authedRequest())).status, 200);
@@ -179,3 +185,150 @@ test('the kill-switch and closed hours both keep the late-arrival step from runn
   }
   assert.equal(calls, 0);
 });
+
+// ── Google Calendar (task G8 of docs/superpowers/plans/2026-10-16-google-calendar-two-way-sync.md) ──
+
+type JobDb = { backgroundJobState: { upsert(args: unknown): Promise<unknown>; update(args: unknown): Promise<unknown> } };
+
+function googleHarness(options: { feeds?: { ok: boolean }[]; google?: () => Promise<unknown> } = {}) {
+  return import('../../../../test/load-server-module').then(({ loadServerModule }) => {
+    const order: string[] = [];
+    const googleCalls: { run: unknown; db: unknown; deadline: unknown; renew: unknown }[] = [];
+    const db: JobDb = { backgroundJobState: { upsert: async () => ({}), update: async () => ({}) } };
+    const route = loadServerModule<{ GET: typeof GET }>('src/app/api/cron/calendar-sync/route.ts', {
+      '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => true },
+      '@/app/lib/prisma': db,
+      '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => { order.push('sync'); return options.feeds ?? []; } },
+      '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => { order.push('late'); return { enabled: true, cancelled: 0, skipped: 0, failed: 0 }; } },
+      '@/app/services/google-calendar-job': {
+        runGoogleCalendarJob: async (run: unknown, input: { db: unknown; deadline: unknown; renew?: unknown }) => {
+          order.push('google');
+          googleCalls.push({ run, db: input.db, deadline: input.deadline, renew: input.renew });
+          return options.google ? options.google() : { ok: true, push: { written: 1, deleted: 0, unchanged: 0, failed: 0 }, pull: 'deferred' };
+        },
+      },
+    });
+    return { route, order, googleCalls, db };
+  });
+}
+
+test('the Google Calendar step runs after the late-arrival step, on the same database client, with the function\'s deadline', async () => {
+  const h = await googleHarness();
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
+    const before = Date.now();
+    const response = await h.route.GET(authedRequest());
+    const deadline = h.googleCalls[0].deadline as number;
+    assert.ok(deadline >= before + 180_000 && deadline <= Date.now() + 180_000, 'start of the run + maxDuration');
+    assert.equal(response.status, 200);
+    assert.deepEqual(h.order, ['sync', 'late', 'google']);
+    assert.deepEqual(h.googleCalls.map((call) => call.run), ['calendar-sync']);
+    assert.notEqual(h.googleCalls[0].renew, true, 'never replaces the watch channel');
+    assert.equal(h.googleCalls[0].db, h.db, 'no second client: the database is already awake');
+    assert.deepEqual((await response.json()).googleCalendar, { ok: true, push: { written: 1, deleted: 0, unchanged: 0, failed: 0 }, pull: 'deferred' });
+  });
+});
+
+test('the Google Calendar step never changes the sync\'s status code', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const failing = [
+    async () => ({ ok: false, push: 'failed', pull: 'failed' }),
+    async () => ({ ok: false, error: true }),
+    async () => { throw new Error('module failed to load'); },
+  ];
+  for (const google of failing) {
+    for (const [feeds, status] of [[[], 200], [[{ ok: false }], 502]] as const) {
+      const h = await googleHarness({ feeds: [...feeds], google });
+      await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
+        const response = await h.route.GET(authedRequest());
+        assert.equal(response.status, status);
+        assert.equal((await response.json()).ok, status === 200);
+      });
+    }
+  }
+  const thrown = await googleHarness({ google: async () => { throw new Error('module failed to load'); } });
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
+    assert.deepEqual((await (await thrown.route.GET(authedRequest())).json()).googleCalendar, { error: true });
+  });
+});
+
+// End to end through the real job module (services/google-calendar-job.ts),
+// with only its I/O replaced.
+async function routeWithRealJob(options: { enabled: boolean; pushThrows?: boolean }) {
+  const { loadServerModule } = await import('../../../../test/load-server-module');
+  const order: string[] = [];
+  const jobRows: string[] = [];
+  const counts = { googleImports: 0 };
+  const db = {
+    backgroundJobState: {
+      upsert: async ({ where }: { where: { name: string } }) => { jobRows.push(`start:${where.name}`); return {}; },
+      update: async ({ where, data }: { where: { name: string }; data: { lastError?: string | null } }) => { jobRows.push(`end:${where.name}:${data.lastError ?? 'ok'}`); return {}; },
+    },
+    // A live channel and a check of Google that just succeeded: the health check passes.
+    googleCalendarSyncState: {
+      findUnique: async () => {
+        order.push('health');
+        return { channelId: 'channel-1', channelExpiresAt: new Date(Date.now() + 86_400_000), lastPullAt: new Date(), lastPullSuccessAt: new Date() };
+      },
+    },
+  };
+  const counted = <T extends object>(module: T): T => new Proxy(module, { get(target, key) { counts.googleImports++; return target[key as keyof T]; } });
+  const job = loadServerModule('src/app/services/google-calendar-job.ts', {
+    '@/app/lib/google-calendar-config': { googleCalendarConfig: () => (options.enabled ? { calendarId: 'c', clientEmail: 'e', privateKey: 'k', webhookSecret: 's' } : null) },
+    '@/app/lib/prisma': counted({ __esModule: true, default: db }),
+    './google-calendar-channel': counted({
+      ensureGoogleWatchChannel: async () => { order.push('channel'); return 'current'; },
+      runPullSingleFlight: async (pull: () => Promise<unknown>) => { order.push('single-flight'); await pull(); },
+    }),
+    './google-calendar-push': counted({ pushGoogleCalendar: async (input: { mode: string }) => {
+      order.push(`push:${input.mode}`);
+      if (options.pushThrows) throw new Error('database unavailable');
+      return { written: 0, deleted: 0, unchanged: 0, failed: 0 };
+    } }),
+    './google-calendar-pull': counted({ pullGoogleCalendar: async () => { order.push('pull'); return { reverted: 0, blocks: 0, changed: false }; } }),
+  });
+  const route = loadServerModule<{ GET: typeof GET }>('src/app/api/cron/calendar-sync/route.ts', {
+    '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => true },
+    '@/app/lib/prisma': db,
+    '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => { order.push('sync'); return []; } },
+    '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => { order.push('late'); return { enabled: true, cancelled: 0, skipped: 0, failed: 0 }; } },
+    '@/app/services/google-calendar-job': job,
+  });
+  return { route, order, jobRows, counts };
+}
+
+test('with the Google sync off the run makes no Google call and no extra query', async () => {
+  const h = await routeWithRealJob({ enabled: false });
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
+    const response = await h.route.GET(authedRequest());
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).googleCalendar, { skipped: 'disabled' });
+  });
+  assert.deepEqual(h.order, ['sync', 'late']);
+  assert.deepEqual(h.jobRows, ['start:calendar-sync', 'end:calendar-sync:ok', 'start:late-arrival-cancel', 'end:late-arrival-cancel:ok'], 'only the existing job rows');
+  assert.equal(h.counts.googleImports, 0);
+});
+
+test('with the Google sync on: push the recent changes, then the single-flight pull, recorded in its own job row', async () => {
+  const h = await routeWithRealJob({ enabled: true });
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
+    assert.equal((await h.route.GET(authedRequest())).status, 200);
+  });
+  assert.deepEqual(h.order, ['sync', 'late', 'push:recent', 'single-flight', 'pull', 'health'], 'no watch-channel work every half hour');
+  assert.deepEqual(h.jobRows.slice(-2), ['start:google-calendar', 'end:google-calendar:ok']);
+});
+
+test('a Google push that throws is recorded in the google-calendar row and the sync stays 200', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const h = await routeWithRealJob({ enabled: true, pushThrows: true });
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
+    assert.equal((await h.route.GET(authedRequest())).status, 200);
+  });
+  assert.deepEqual(h.order, ['sync', 'late', 'push:recent', 'single-flight', 'pull', 'health'], 'the pull still runs');
+  assert.deepEqual(h.jobRows.slice(-1), [`end:google-calendar:${OPERATIONS_MESSAGES.GOOGLE_SYNC_FAILED}`]);
+});
+
+test('the function has room for the feed import plus the Google push and pull', async () => {
+  const route = await import('./route');
+  assert.ok(route.maxDuration >= 180);
+});
+

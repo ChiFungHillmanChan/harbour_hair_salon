@@ -297,7 +297,7 @@ export function depositFixture(options: DepositFixtureOptions = {}) {
     '@/app/services/booking-service': bookingService,
     '@/app/services/notification-outbox-service': queue,
     '@/app/services/deposit-lifecycle': deposits,
-    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { counts.invalidations++; } },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { counts.invalidations++; }, scheduleGoogleCalendarPush: () => undefined },
     '@/i18n/request': { getActionLocale: async () => options.locale ?? 'en-GB' },
     'next/cache': { revalidatePath: () => undefined, updateTag: () => undefined },
     'next/server': { after: (callback: () => unknown) => callback() },

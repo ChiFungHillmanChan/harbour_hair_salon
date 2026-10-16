@@ -39,6 +39,7 @@ within the first month). No fee. ICO guidance:
 | MFA secrets / recovery codes | Cleared (customers do not normally have them) |
 | Notes and email language on their appointments | Cleared |
 | Queued and sent email copies (notification outbox) | Unsent mail is cancelled (`SKIPPED`); every stored copy is emptied (`{}`) |
+| Google Calendar copies of their bookings | Marked for re-rendering in the same transaction and rewritten with the anonymised name, without phone or notes; the calendar-sync cron retries any that Google could not take (when the sync is on, `docs/google-calendar-setup.md`) |
 | Resend marketing audience | Contact removed, if `RESEND_AUDIENCE_ID` is configured |
 | Audit trail | `USER.ERASED` event: who, when, which account id, and counts only |
 
@@ -68,6 +69,10 @@ someone.)
 
 ## Outside this tool (do these by hand)
 
+- **Google Calendar**: the re-rendered copies carry no personal data once the cron has run;
+  check Admin → Integrations → Google Calendar shows no "Bookings Google would not take".
+  Copies of appointments over 12 months old are deleted by housekeeping anyway. Google
+  keeps deleted events in its own trash for a short while.
 - **Preview database** (Neon project `harbour-hair-preview-lhr`): it is a copy of
   production taken 2026-09-30 **with real customer data**. Run the same erasure
   on the preview deployment, or refresh the preview copy from production after

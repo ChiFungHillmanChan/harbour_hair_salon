@@ -234,6 +234,33 @@ const emails: Localized<Messages['emails']> = {
     expiry: '此連結會於 {minutes} 分鐘後失效，並只可使用一次。',
     ignore: '如非你本人提出，請忽略此電郵，你的密碼不會改變。',
   },
+  /** Salon-facing text of the Google Calendar copy of a booking (services/google-calendar-event.ts). Names, phones and notes are inserted raw. */
+  googleCalendar: {
+    request: '[待確認]',
+    phone: '電話：{phone}',
+    notes: '備註：{notes}',
+    status: {
+      label: '狀態：{status}',
+      PENDING: '預約申請，尚未確認',
+      CONFIRMED: '已確認',
+      COMPLETED: '已完成',
+    },
+    rescheduleRequest: '客人要求改期至 {when}',
+    deposit: {
+      label: '訂金：{state}',
+      HELD: '{amount} 已在信用卡預授權，尚未收取',
+      PROCESSING: '{amount} 收取中',
+      PAID: '{amount} 已收取',
+      REFUND_PENDING: '{amount} 退款中',
+      REFUNDED: '{amount} 已退款',
+      REFUND_FAILED: '{amount} 退款失敗，需要跟進',
+      RELEASED: '{amount} 預授權已釋放，沒有收取',
+      KEPT: '{amount} 已保留',
+    },
+    adminLink: '在後台開啟：{url}',
+    editWarning: '請在後台修改此預約。在此處所作的更改會被還原。',
+    nameNotGiven: '未提供姓名',
+  },
   marketingUnsubscribe: {
     subject: '確認取消訂閱 — Harbour Hair Salon',
     preview: '按一下即可停止接收 Harbour Hair Salon 推廣電郵',

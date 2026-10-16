@@ -156,6 +156,12 @@ Square and payment records.
 - [ ] **3.3 Fresha.** Give Lox an import link; ask Fresha support why Lox's blocked times are not
       exported; Shania shows "Calendar bookings: Off" in Fresha. Then tick Lox's and Shania's
       outbound confirmations in Admin → Integrations.
+- [ ] **3.3b Google Calendar (optional, independent of booking; ships OFF).** Follow
+      `docs/google-calendar-setup.md`: Google Cloud service account, the "Harbour website bookings"
+      calendar shared with it, the five `GOOGLE_CALENDAR_*` variables on Vercel **Production only**,
+      redeploy, Admin → Integrations → Sync now, then the §4 test (a booking appears; `Ivan: test`,
+      with the name exactly as in Admin → Stylists, blocks Ivan only). After the merge apply the preview-database migration
+      `20261016150000_google_calendar_sync` by hand (`pnpm db:vercel:deploy` with the preview env).
 - [ ] **3.4 Second admin account** (Admin → Users).
 - [ ] **3.5 Environment, then redeploy** (env changes only reach the runtime after a deploy):
       leave `HOUSEKEEPING_ENABLED` unset (on), then `NOTIFICATIONS_ENABLED=true` (sends real email);

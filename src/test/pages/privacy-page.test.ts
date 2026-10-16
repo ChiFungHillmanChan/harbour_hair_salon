@@ -12,6 +12,7 @@ import { RESET_TOKEN_TTL_MS } from '../../app/lib/password-reset';
 import { UNSUBSCRIBE_TOKEN_TTL_DAYS } from '../../app/lib/unsubscribe-token';
 import { EMAIL_SEND_DAILY_POLICY } from '../../app/lib/rate-limit';
 import { LATE_ARRIVAL_CANCEL_MINUTES } from '../../app/lib/booking-constants';
+import { GOOGLE_RETENTION_MONTHS } from '../../app/services/google-calendar-push';
 
 type Element = { type: unknown; props: Record<string, unknown> };
 
@@ -144,4 +145,24 @@ test('the periods the notice states are the ones the code enforces', async () =>
   assert.ok(zh.includes(`取消訂閱連結為 ${UNSUBSCRIBE_TOKEN_TTL_DAYS} 日`));
   assert.ok(zh.includes(`最長 ${CUSTOMER_SESSION_SECONDS / 86_400} 日（員工為 ${ADMIN_SESSION_SECONDS / 3_600} 小時）`));
   assert.ok(zh.includes(`於 ${(EMAIL_SEND_DAILY_POLICY.windowSeconds * 2) / 86_400} 日內自動刪除`));
+});
+
+// Google Calendar two-way sync: the salon's diary is a Google-hosted copy of customer details.
+test('the notice names Google Calendar as the appointment diary and says how long its copies live', async () => {
+  const en = (await privacyPage('en-GB')).text;
+  assert.ok(en.includes('Google Calendar as the salon’s appointment diary'));
+  assert.ok(en.includes('it holds your name, phone number, booking details and the notes our staff add to your booking'));
+  assert.ok(en.includes('can also stop those times being offered for online booking'));
+  // The period is the one the push enforces (services/google-calendar-push.ts deletes the copies).
+  assert.ok(en.includes(`Copies in the salon’s Google Calendar: up to ${GOOGLE_RETENTION_MONTHS} months after the appointment, then deleted.`));
+  const zh = (await privacyPage('zh-HK')).text;
+  assert.ok(zh.includes('本店亦使用由 Google 代為託管的 Google 日曆（Google Calendar）作為預約記事簿'));
+  assert.ok(zh.includes(`預約日期後最多保存 ${GOOGLE_RETENTION_MONTHS} 個月，其後刪除`));
+  // Google keeps a deleted event in its bin for about 30 days: the notice must not promise less.
+  assert.ok(en.includes('A deleted copy can stay in Google Calendar’s bin for up to about 30 days before Google removes it.'));
+  assert.ok(zh.includes('已刪除的副本可能會在 Google 日曆的垃圾桶內保留約 30 日，之後才由 Google 移除。'));
+  for (const body of [en, zh]) {
+    const stated = [...body.matchAll(/(\d+) (?:months after the appointment|個月，其後刪除)/g)].map((match) => Number(match[1]));
+    assert.deepEqual(stated, [GOOGLE_RETENTION_MONTHS], 'one Google retention period, the enforced one');
+  }
 });

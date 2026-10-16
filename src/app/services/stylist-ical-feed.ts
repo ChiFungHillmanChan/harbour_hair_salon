@@ -56,11 +56,19 @@ export async function loadStylistToken(stylistId: string, db?: PrismaClient): Pr
 }
 
 /**
- * Appointments that may still occupy the chair, oldest first: every booking
- * except a cancelled one, exactly the rule the website's own availability uses
- * (booking-service.ts). A COMPLETED booking counts until its end has passed —
- * staff can mark a visit completed while it is still running, and dropping it
- * here would let a marketplace resell the rest of that time.
+ * Everything that may still occupy the chair, earliest first.
+ *
+ * Appointments: every booking except a cancelled one, exactly the rule the
+ * website's own availability uses (booking-service.ts). A COMPLETED booking
+ * counts until its end has passed — staff can mark a visit completed while it
+ * is still running, and dropping it here would let a marketplace resell the
+ * rest of that time.
+ *
+ * Google-only time: events the salon put in its Google calendar by hand
+ * (`ExternalBusyBlock.source = 'GOOGLE'`) are exported too, so Fresha stops
+ * selling that time. FRESHA and TREATWELL blocks are NEVER exported: Fresha
+ * does not re-export what it imported (verified 2026-09-29), but sending its
+ * own time back to it would still loop. The `source` filter below is that rule.
  */
 export async function loadBusyEvents(stylistId: string, now: Date, db?: PrismaClient): Promise<BusyEvent[]> {
   const client = await resolveDb(db);
@@ -73,11 +81,24 @@ export async function loadBusyEvents(stylistId: string, now: Date, db?: PrismaCl
     select: { id: true, date: true, durationAtBooking: true, service: { select: { duration: true } } },
     orderBy: { date: 'asc' },
   });
-  return appointments.map((appt) => ({
-    id: appt.id,
-    startMs: new Date(appt.date).getTime(),
-    minutes: appt.durationAtBooking ?? appt.service.duration,
-  }));
+  const googleBlocks = await client.externalBusyBlock.findMany({
+    where: { stylistId, source: 'GOOGLE', end: { gt: now } },
+    select: { externalUid: true, start: true, end: true },
+  });
+  const events: BusyEvent[] = [
+    ...appointments.map((appt) => ({
+      id: appt.id,
+      startMs: new Date(appt.date).getTime(),
+      minutes: appt.durationAtBooking ?? appt.service.duration,
+    })),
+    // `externalUid` is a hash of the Google event, so the UID is stable across pulls.
+    ...googleBlocks.map((block) => ({
+      id: `g-${block.externalUid}`,
+      startMs: new Date(block.start).getTime(),
+      minutes: (new Date(block.end).getTime() - new Date(block.start).getTime()) / 60_000,
+    })),
+  ];
+  return events.sort((a, b) => a.startMs - b.startMs);
 }
 
 /**

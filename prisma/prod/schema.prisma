@@ -211,6 +211,9 @@ model Appointment {
   /// The deposit taken for this booking request, if any (one card attempt).
   paymentAttempt PaymentAttempt?
 
+  /// Its Google Calendar copy (services/google-calendar-*), if one was written.
+  googleCalendarEvent GoogleCalendarEvent?
+
   @@index([stylistId, date])
   @@index([userId, status])
   @@index([userId, date, id])
@@ -237,6 +240,35 @@ model ExternalBusyBlock {
   @@unique([source, stylistId, externalUid])
   @@index([stylistId, start])
   @@index([end])
+}
+
+/// The Google event mirroring one appointment (calendar sync).
+model GoogleCalendarEvent {
+  appointmentId String      @id
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  /// Deterministic: "hh" + hex(sha256(appointmentId))[0..40] — valid base32hex.
+  eventId       String      @unique
+  /// Hash of the event body last written; differs → the event needs writing.
+  syncedHash    String?
+  syncedAt      DateTime?
+  /// True once the event was deleted because the booking closed.
+  removed       Boolean     @default(false)
+  attempts      Int         @default(0)
+  lastError     String?     @db.NVarChar(Max)
+  updatedAt     DateTime    @updatedAt
+}
+
+/// Singleton: the push channel and the last inbound pull.
+model GoogleCalendarSyncState {
+  id                String    @id @default("singleton")
+  channelId         String?
+  resourceId        String?
+  channelExpiresAt  DateTime?
+  lastPullAt        DateTime?
+  lastPullSuccessAt DateTime?
+  lastPullError     String?   @db.NVarChar(Max)
+  /// Hash of the GOOGLE busy blocks not yet ended when last stored (diagnosis only: the pull compares the stored rows).
+  busyHash          String?
 }
 
 model Review {

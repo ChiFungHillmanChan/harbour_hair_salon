@@ -1,5 +1,8 @@
 import 'server-only';
 import { revalidateTag, unstable_cache, updateTag } from 'next/cache';
+import { after } from 'next/server';
+import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
+import { describeFault } from '@/app/lib/fault';
 import {
   loadBusyEvents,
   loadStylistToken,
@@ -45,6 +48,16 @@ import {
  * the appointment entry — preserving the property (asserted in
  * stylist-ical-feed.test.ts) that a failed auth never scans the Appointment
  * table, at the cache layer as well as the database layer.
+ *
+ * The cached events are the stylist's non-cancelled appointments AND the
+ * Google-only busy time (`ExternalBusyBlock` source GOOGLE: events the staff
+ * add on the salon's Google Calendar), so Fresha stops selling an hour the
+ * salon has blocked there. That time reaches this entry by the Google pull
+ * (services/google-calendar-pull.ts), which has no Server Action around it and
+ * so drops the tag itself, with `invalidateStylistIcalFeedFromCron()`, only
+ * when the blocks it stored actually changed (an unchanged pull wakes no poller).
+ * The timed expiry below stays a day for the same reason as before: both
+ * kinds of change invalidate the tag.
  */
 const EVENTS_TAG = 'stylist-ical-feed';
 const TOKEN_TAG = 'stylist-ical-token';
@@ -89,7 +102,9 @@ export async function buildCachedStylistIcalFeed(
 /**
  * Drop the cached busy feeds. Call from a server action AFTER the transaction
  * that changed an appointment has committed, so the marketplaces see the new
- * busy period on their next poll instead of up to a day later.
+ * busy period on their next poll instead of up to a day later. Every booking
+ * mutation already calls this, so it also schedules the Google Calendar push
+ * (scheduleGoogleCalendarPush) for after the response.
  */
 export function invalidateStylistIcalFeed(): void {
   // `updateTag`, not `revalidateTag`: in Next 16 the latter takes a cacheLife
@@ -97,6 +112,7 @@ export function invalidateStylistIcalFeed(): void {
   // busy feed is exactly how a marketplace double-books the chair. Every caller
   // is a 'use server' action, which is where updateTag is valid.
   updateTag(EVENTS_TAG);
+  scheduleGoogleCalendarPush();
 }
 
 /**
@@ -104,9 +120,56 @@ export function invalidateStylistIcalFeed(): void {
  * run in a Route Handler, where `updateTag` throws ("can only be called from
  * within a Server Action"); `revalidateTag` with `{ expire: 0 }` never serves
  * the stale copy either, so the next marketplace poll reads the database.
+ *
+ * It never pushes to Google Calendar: the Google pull calls it after storing
+ * busy time, and a push from there would bring another Google notification,
+ * another pull and another push without end. Cron-side booking changes (lapses,
+ * late cancellations) reach Google with the next calendar-sync run's push,
+ * which looks back 45 minutes (longer than its half-hourly cadence) — when
+ * that run is open. calendar-sync skips its ticks outside staff hours, so a
+ * change made then waits for the next open tick (if it is still within those
+ * 45 minutes) or for housekeeping's daily 03:15 UTC run, which re-renders the
+ * whole window. No timing is guaranteed beyond that.
  */
 export function invalidateStylistIcalFeedFromCron(): void {
   revalidateTag(EVENTS_TAG, { expire: 0 });
+}
+
+/**
+ * Writes the website's bookings to the salon's Google Calendar after the
+ * response (services/google-calendar-push.ts; spec §5 "Real time"). Without
+ * ids: every booking changed in the last 45 minutes, never synced, failing (a
+ * booking before the 7-day window only for its first five attempts) or marked
+ * for re-rendering. With ids: exactly those bookings, even past the
+ * 7-day window (erasure re-renders the anonymised name). Call it after the
+ * commit, from a Server Action, for a change that alters only the event's
+ * text (a reschedule request, a deposit's state); a change of time or status
+ * calls invalidateStylistIcalFeed, which already schedules it.
+ *
+ * Nothing is scheduled or imported while the sync is off. A failure never
+ * reaches the action: the push records its own per-booking failures, the
+ * calendar-sync cron retries them, and housekeeping's daily reconcile
+ * re-renders the whole window.
+ */
+export function scheduleGoogleCalendarPush(appointmentIds?: string[]): void {
+  // The configuration check comes first: a disabled sync adds no work to the action.
+  if (!googleCalendarConfig()) return;
+  if (appointmentIds && appointmentIds.length === 0) return;
+  const input = appointmentIds ? { appointmentIds: [...appointmentIds] } : { mode: 'recent' as const };
+  try {
+    after(async () => {
+      try {
+        // Imported here, after the response: the action itself never loads the push.
+        const { pushGoogleCalendar } = await import('./google-calendar-push');
+        await pushGoogleCalendar(input);
+      } catch (error) {
+        console.error('Google Calendar push after a booking change failed', describeFault(error));
+      }
+    });
+  } catch (error) {
+    // Outside a request (a script) `after` throws: the next calendar-sync run pushes instead.
+    console.error('Google Calendar push could not be scheduled', describeFault(error));
+  }
 }
 
 /** Call when a stylist's outbound feed secret is regenerated or cleared. */

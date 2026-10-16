@@ -19,9 +19,11 @@ function load(options: { role?: string; locale?: Locale; result?: DepositRecheck
   const rechecked: string[] = [];
   const audits: Record<string, unknown>[] = [];
   const revalidated: string[] = [];
+  const googlePushes: (string[] | undefined)[] = [];
   const action = loadServerModule<typeof import('./admin-payments')>('src/app/actions/admin-payments.ts', {
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
     '@/i18n/request': { getActionLocale: async () => options.locale ?? 'en-GB' },
+    '@/app/services/stylist-ical-cache': { scheduleGoogleCalendarPush: (ids?: string[]) => { googlePushes.push(ids); } },
     '@/app/services/payment-reconciliation': {
       recheckAppointmentDeposit: async (id: string) => {
         rechecked.push(id);
@@ -37,13 +39,13 @@ function load(options: { role?: string; locale?: Locale; result?: DepositRecheck
     },
     'next/cache': { revalidatePath: (path: string) => { revalidated.push(path); } },
   });
-  return { action, rechecked, audits, revalidated };
+  return { action, rechecked, audits, revalidated, googlePushes };
 }
 
 test('only an administrator can re-check a payment; nothing is asked otherwise', async () => {
   const f = load({ role: 'USER' });
   assert.deepEqual(await f.action.recheckAppointmentPayment('appt-1'), { success: false, error: 'Not authorised' });
-  assert.deepEqual([f.rechecked, f.audits], [[], []]);
+  assert.deepEqual([f.rechecked, f.audits, f.googlePushes], [[], [], []]);
   const g = load();
   for (const id of ['', 'a b', 'x'.repeat(129), 42 as unknown as string]) {
     assert.equal((await g.action.recheckAppointmentPayment(id)).success, false);
@@ -61,6 +63,7 @@ test('a re-check is audited and answered in the admin\'s language', async () => 
     metadata: { result: 'PAID', reached: true, before: 'CAPTURED', after: 'CAPTURED', refundsBefore: 'UNKNOWN', refundsAfter: 'PENDING' },
   }]);
   assert.ok(f.revalidated.includes('/en-gb/admin') && f.revalidated.includes('/zh-hk/appointments'), 'the board and My Bookings follow');
+  assert.deepEqual(f.googlePushes, [['appt-1']], 'and the deposit line of its Google Calendar event');
 
   const zh = await load({ locale: 'zh-HK' }).action.recheckAppointmentPayment('appt-1');
   assert.deepEqual(zh, { success: true, lines: ['已收取 £20.00 訂金。', '£20.00 退款：Square 已接受，正退回給顧客'] });
@@ -71,6 +74,7 @@ test('a re-check that fails says so and records nothing; a failed audit write do
   const failing = load({ result: new Error('database unavailable') });
   assert.deepEqual(await failing.action.recheckAppointmentPayment('appt-1'), { success: false, error: 'The payment could not be re-checked just now. Nothing was changed; try again.' });
   assert.deepEqual(failing.audits, []);
+  assert.deepEqual(failing.googlePushes, []);
   const unaudited = load({ auditFails: true });
   assert.equal((await unaudited.action.recheckAppointmentPayment('appt-1')).success, true);
 });
@@ -116,13 +120,15 @@ function settleStore() {
 function loadSettle(options: { role?: string; locale?: Locale; store?: ReturnType<typeof paymentsDb>; db?: unknown } = {}) {
   const store = options.store ?? settleStore();
   const revalidated: string[] = [];
+  const googlePushes: (string[] | undefined)[] = [];
   const action = loadServerModule<typeof import('./admin-payments')>('src/app/actions/admin-payments.ts', {
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
     '@/i18n/request': { getActionLocale: async () => options.locale ?? 'en-GB' },
+    '@/app/services/stylist-ical-cache': { scheduleGoogleCalendarPush: (ids?: string[]) => { googlePushes.push(ids); } },
     '@/app/lib/prisma': { __esModule: true, default: options.db ?? store.db },
     'next/cache': { revalidatePath: (path: string) => { revalidated.push(path); } },
   });
-  return { action, store, revalidated };
+  return { action, store, revalidated, googlePushes };
 }
 
 test('only an administrator can mark a refund settled outside the website; malformed ids are refused before the database', async () => {
@@ -132,7 +138,7 @@ test('only an administrator can mark a refund settled outside the website; malfo
   for (const [appointmentId, refundId] of [['', 'r-unresolved'], ['appt-1', 'a b'], ['appt-1', 'x'.repeat(129)], ['appt-1', 42 as unknown as string]]) {
     assert.equal((await admin.action.markRefundSettledOutside(appointmentId, refundId)).success, false);
   }
-  assert.deepEqual([customer.store.calls, admin.store.calls], [[], []]);
+  assert.deepEqual([customer.store.calls, admin.store.calls, customer.googlePushes, admin.googlePushes], [[], [], [], []]);
   assert.equal(customer.store.tables.paymentRefund[0].status, 'UNRESOLVED');
 });
 
@@ -144,6 +150,7 @@ test('marking a refund settled outside the website is audited, refreshes the boa
   assert.equal(f.store.tables.paymentRefund[0].status, 'SETTLED_EXTERNALLY');
   assert.deepEqual(f.store.tables.audit.map((row) => [row.action, row.actorUserId, row.targetId, row.metadata.from]), [['PAYMENT.REFUND_SETTLED_OUTSIDE', 'admin-1', 'r-unresolved', 'UNRESOLVED']]);
   assert.ok(f.revalidated.includes('/en-gb/admin') && f.revalidated.includes('/zh-hk/appointments'));
+  assert.deepEqual(f.googlePushes, [['appt-1']], 'the deposit line of its Google Calendar event follows');
   const zh = await loadSettle({ locale: 'zh-HK' }).action.markRefundSettledOutside('appt-1', 'r-unresolved');
   assert.deepEqual(zh, { success: true, message: '這筆 £20.00 退款已記錄為已在網站以外處理。網站不會再就此向 Square 查詢。' });
 });
@@ -166,5 +173,5 @@ test('a refund Square has answered, one being sent, another booking\'s, or a fai
   assert.match((await loadSettle({ store: sending }).action.markRefundSettledOutside('appt-1', 'r-sending') as { error: string }).error, /being sent to Square right now/);
   const broken = loadSettle({ db: { $transaction: async () => { throw new Error('database unavailable'); } } });
   assert.deepEqual(await broken.action.markRefundSettledOutside('appt-1', 'r-unresolved'), { success: false, error: 'The refund could not be marked just now. Nothing was changed; try again.' });
-  assert.deepEqual([f.store.tables.paymentRefund.map((row) => row.status), f.store.tables.audit, f.revalidated], [['UNRESOLVED', 'PENDING'], [], []]);
+  assert.deepEqual([f.store.tables.paymentRefund.map((row) => row.status), f.store.tables.audit, f.revalidated, f.googlePushes], [['UNRESOLVED', 'PENDING'], [], [], []]);
 });

@@ -105,7 +105,7 @@ COMPLETED → present (history); CANCELLED → deleted from Google.
 **Real time:** every server action that changes an appointment's time or
 status already calls `invalidateStylistIcalFeed()` (no arguments: the feed tag is
 global) after its commit. That helper also schedules, through `after()`,
-`pushGoogleCalendar()`: render the appointments updated in the last 15 minutes
+`pushGoogleCalendar()`: render the appointments updated in the last 45 minutes
 (plus any never synced or failed) and write those whose hash differs. Mutations
 that change only event text (reschedule request/withdraw/decline, erasure) call
 `scheduleGoogleCalendarPush()` directly. Cron-side changes
@@ -134,20 +134,28 @@ covers changes during a pull).
 - **Website events** (`harbourAppointmentId` present): compare with the
   rendered booking. Moved, edited or deleted while the booking is open → write
   the rendered version back (D6). Equal → nothing. A cancelled event whose
-  booking is closed → nothing.
+  booking is closed → nothing. The private property is part of the comparison:
+  an event at the booking's own id whose property was stripped is written back.
 - **Echo guard:** booking availability reads every `ExternalBusyBlock` with
   no source filter, so a website event imported as a block would make every
-  booking clash with itself. An event carrying `harbourAppointmentId` is never
-  a block, whatever its state; a test pins this.
+  booking clash with itself. An event carrying `harbourAppointmentId`, or whose
+  id has the website's shape (`^hh[0-9a-f]{40}$`, should the property be
+  stripped), is never a block, whatever its state; tests pin both.
 - **Google-only events** (confirmed, `transparency` ≠ `transparent`):
   - Stylist: the title starts with an active stylist's name, case-insensitive,
     followed by end, space, `:`, `-`, `·` or `：` (longest name first) → that
     stylist; no match → every active stylist.
   - All-day events cover salon-local midnight to midnight (DST-correct).
-  - The set of blocks is hashed; equal to `busyHash` → no DB write. Otherwise one
+  - Only blocks that have not ended are compared, with the stored `GOOGLE`
+    rows that have not ended (read at the pull's own `now`). Equal → no DB
+    write and no feed refresh, so an event that ends or leaves the look-back
+    window never turns Fresha's next poll into a Neon wake. Otherwise one
     transaction replaces every `GOOGLE` block in the window (as the iCal sync
-    does), stores the hash, and the affected stylists' busy feeds are
-    invalidated (`…FromCron`: a route handler cannot `updateTag`).
+    does) and stores `busyHash` (diagnosis only). Then the affected stylists'
+    busy feeds are invalidated (`…FromCron`: a route handler cannot
+    `updateTag`). Comparing the rows, not the stored hash, also means blocks
+    deleted by "Clear Google busy time" (§7) are stored again by the next pull
+    while the sync is on.
 - `lastPullAt` / `lastPullSuccessAt` / `lastPullError` record the outcome.
 
 **Effect of a GOOGLE block:** booking availability, the admin board (labelled
@@ -167,20 +175,53 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
 - **calendar-sync cron** (`*/30`, staff hours, DB already awake): after the feed
   sync and late-arrival step, `pushGoogleCalendar()` for every dirty/failed
   appointment and a `pullGoogleCalendar()` safety net.
-- **housekeeping** (daily 03:15 UTC): renew the watch channel (new channel,
-  then `channels.stop` the old one), a full outbound reconciliation of the
+- **housekeeping** (daily 03:15 UTC): renew the watch channel within 48 hours
+  of its expiry (new channel, then `channels.stop` the old one), a full outbound reconciliation of the
   window (re-renders everything, so customer name/phone edits land within a
   day), and deletion of events for appointments that left the window per §9.
 - Admin → Integrations: Google Calendar status (enabled, calendar id, channel
   expiry, last pull, failed events) and a **Sync now** button (admin-only,
-  audited) that creates the channel if missing, pushes and pulls.
+  audited) that replaces the channel at once (so a rotated webhook secret takes
+  effect), pushes and pulls.
+- Admin → Integrations → **Clear Google busy time** (admin-only, audited
+  `INTEGRATION.GOOGLE_BUSY_CLEARED`, confirmed first, offered whether the sync
+  is on or off). It makes turning the sync off reversible: without it, GOOGLE
+  blocks already read keep blocking the website and Fresha (through the busy
+  feed) until they pass. In one transaction it deletes every `GOOGLE` block (no
+  other source), sets `busyHash` to null and writes the audit; then it drops the
+  busy feeds (`invalidateStylistIcalFeed`). While the sync is on, the next pull
+  stores the calendar's busy time again.
 
 ## 8. Failure and attention
 
 - Every fixed `lastError` sentence is catalogued in `operations-messages.ts`.
-- The daily ops alert and Admin → Operations list: events failing for over
-  2 hours, a watch channel expired or missing while enabled, no successful pull
-  for 24 hours.
+- Two job rows (`services/google-calendar-job.ts`): `google-calendar` for the
+  30-minute run and `google-calendar-daily` for housekeeping and Sync now. They
+  are separate so a 03:15 channel failure is not wiped by the next 30-minute
+  success. The daily ops alert and Admin → Operations list a row while it is
+  failing, with one sentence, most urgent first:
+  - a push or pull that could not complete (`GOOGLE_SYNC_FAILED`);
+  - no successful pull for 24 hours (`GOOGLE_PULL_STALE`);
+  - a watch channel that could not be made (`GOOGLE_CHANNEL_FAILED`, daily row);
+  - no live watch channel, or an expired one (`GOOGLE_CHANNEL_MISSING`);
+  - bookings Google would not take (`GOOGLE_EVENTS_FAILED`).
+- The health checks (`GOOGLE_PULL_STALE`, `GOOGLE_CHANNEL_MISSING`) run in the
+  30-minute run after its own pull (the database is already awake), only while
+  the sync is enabled.
+  - A pull attempted that never succeeded counts as stale.
+  - A fresh setup that has not pulled yet does not count: no column records
+    when the sync was first enabled, so "null after the first day" became "null
+    once a pull has been attempted".
+- Each booking's own error (`GOOGLE_PUSH_FAILED`, `GOOGLE_PUSH_REFUSED`,
+  `GOOGLE_EVENT_NOT_KEPT`) stays on its `GoogleCalendarEvent` row. Admin →
+  Integrations counts those rows, and the job row says `GOOGLE_EVENTS_FAILED`
+  when a run ends with any. (The earlier "events failing for over 2 hours"
+  became "failing at the end of a run": a failure lasts one run at least,
+  30 minutes in staff hours.)
+- The push stops at the first setup failure (Google refusing the website's
+  access, `auth`, or the sync switched off mid-run, `disabled`). It records that
+  booking's row and `GOOGLE_SYNC_FAILED` once on the job, never one refusal per
+  booking.
 - Online-booking readiness does NOT depend on Google (it is the salon's own
   diary, not a sales channel); a failing pull is an attention item.
 
@@ -193,7 +234,11 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
   Google copy is a working diary. Housekeeping deletes Google events for
   appointments that ended more than **12 months** ago, and the notice says so
   ("Copies in the salon's Google Calendar: up to 12 months after the
-  appointment"). Owner may change the period at spec review.
+  appointment"). Owner may change the period at spec review. A deleted event
+  stays in Google Calendar's bin for up to about 30 days before Google removes
+  it; the notice says that too.
+- Only staff write to the salon calendar: no app's Google sync (Fresha's
+  included) may point at it, or its events would block every stylist.
 
 ## 10. Testing
 
@@ -205,8 +250,12 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
   without DB, `sync` → no pull; JWT assertion fields; config parsing (incomplete
   → off).
 - Route/cron: Google steps run after the existing ones and never when gated.
-- Integration (real PostgreSQL, Google faked at the fetch seam): GOOGLE blocks
-  replace atomically and block a slot; the busy feed exports them.
+- Integration (real PostgreSQL, `scripts/verify-booking-lifecycle.ts`, run by
+  CI; Google faked at the gateway seam): the push's relation filters and its
+  retention pages ordered by the related appointment's date; GOOGLE blocks
+  replace atomically (a failure inside the transaction leaves the old blocks)
+  and block a slot in the real availability code; the busy feed exports them;
+  "Clear Google busy time" over a real transaction.
 
 ## 11. Rollout
 
@@ -214,6 +263,6 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
 2. Google Cloud: enable the Calendar API, create the service account and key.
 3. harbourhairuk@gmail.com: create "Harbour website bookings", share it with the
    service account ("Make changes to events"), copy its calendar ID.
-4. Vercel **Production** env (sensitive is fine: runtime only), redeploy.
+4. Vercel **Production** env (keep them Sensitive: runtime only), redeploy.
 5. Admin → Integrations → Sync now; check one booking appears, one Google test
    event blocks a slot, then delete the test event.

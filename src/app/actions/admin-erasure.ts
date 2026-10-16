@@ -8,13 +8,14 @@ import { ERASED_CUSTOMER_NAME, erasedEmailFor, erasureConfirmed, isErasedEmail }
 import { hashPassword } from '@/app/lib/password';
 import { verifySession } from '@/app/lib/session';
 import { runSerializableWithRetry } from '@/app/services/booking-service';
+import { scheduleGoogleCalendarPush } from '@/app/services/stylist-ical-cache';
 import { revalidateAllLocales } from '@/i18n/revalidate';
 import { getActionT } from '@/i18n/request';
 
 export type EraseCustomerResult = { success: true; message: string } | { success: false; error: string };
 
 type Refusal = 'NOT_FOUND' | 'ERASE_ADMIN' | 'ALREADY_ERASED' | 'CONFIRMATION_MISMATCH' | 'HAS_UPCOMING';
-type Outcome = { refused: Refusal; count?: number } | { erasedEmail: string };
+type Outcome = { refused: Refusal; count?: number } | { erasedEmail: string; appointmentIds: string[] };
 
 /** The account changed between the read and the anonymising write. */
 class ErasureRaced extends Error {}
@@ -33,6 +34,8 @@ class ErasureRaced extends Error {}
  * of them held in the notification outbox. Their reviews are deleted: the
  * privacy notice keeps a review only while the account is open, and its text
  * (with the visit's date, service and stylist) can identify the person.
+ * Their bookings' copies in the salon's Google Calendar are re-rendered with
+ * the anonymised name (marked in the transaction, pushed after it).
  *
  * Refused for administrators, for the acting admin, and while the customer has
  * an upcoming PENDING/CONFIRMED booking (staff cancel those first, so no
@@ -103,6 +106,10 @@ export async function eraseCustomerData(userId: string, confirmation: string): P
           data: { payloadJson: '{}' },
         });
         notifications = stopped.count + redacted.count;
+        // Their copies in the salon's Google Calendar carry the name and phone: mark each live one
+        // for re-rendering here, with the anonymisation. The push scheduled after the commit
+        // re-renders them; if it fails or never runs, the next calendar sync finds them owed.
+        await tx.googleCalendarEvent.updateMany({ where: { appointmentId: { in: appointmentIds }, removed: false }, data: { syncedHash: null } });
       }
       // Published reviews go with the account (privacy notice: kept while the account is open).
       const reviews = (await tx.review.deleteMany({ where: { userId } })).count;
@@ -111,7 +118,7 @@ export async function eraseCustomerData(userId: string, confirmation: string): P
         actorUserId: session.userId, action: 'USER.ERASED', targetType: 'User', targetId: userId,
         metadata: { appointments: appointmentIds.length, notifications, linkedAccounts: linkedAccounts.count, resetLinks: resetLinks.count, reviews },
       }, tx);
-      return { erasedEmail: user.email };
+      return { erasedEmail: user.email, appointmentIds };
     });
   } catch (error) {
     if (error instanceof ErasureRaced) return refuse('CHANGED');
@@ -125,6 +132,11 @@ export async function eraseCustomerData(userId: string, confirmation: string): P
   revalidateAllLocales(revalidatePath, '/admin/reviews');
   // The public reviews page names review authors.
   revalidateAllLocales(revalidatePath, '/reviews');
+  // The salon's Google Calendar holds a copy of each booking with the customer's
+  // name and phone: re-render them all now, by id so it reaches past the push's
+  // 7-day window (spec §9). Nothing while the sync is off; the rows marked above
+  // keep them owed until a push succeeds.
+  scheduleGoogleCalendarPush(outcome.appointmentIds);
 
   const marketing = await removeFromMarketingAudience(outcome.erasedEmail);
   return marketing === 'failed'

@@ -246,6 +246,33 @@ const emails = {
     expiry: 'This link expires in {minutes} minutes and can be used once.',
     ignore: 'If you did not ask for this, you can ignore this email — your password will not change.',
   },
+  /** Salon-facing text of the Google Calendar copy of a booking (services/google-calendar-event.ts). Names, phones and notes are inserted raw. */
+  googleCalendar: {
+    request: '[Request]',
+    phone: 'Phone: {phone}',
+    notes: 'Notes: {notes}',
+    status: {
+      label: 'Status: {status}',
+      PENDING: 'Request — not confirmed yet',
+      CONFIRMED: 'Confirmed',
+      COMPLETED: 'Completed',
+    },
+    rescheduleRequest: 'Customer asked to move to {when}',
+    deposit: {
+      label: 'Deposit: {state}',
+      HELD: '{amount} held on the card, not taken',
+      PROCESSING: '{amount} being taken',
+      PAID: '{amount} paid',
+      REFUND_PENDING: '{amount} being refunded',
+      REFUNDED: '{amount} refunded',
+      REFUND_FAILED: '{amount} refund failed, needs attention',
+      RELEASED: '{amount} hold released, nothing taken',
+      KEPT: '{amount} kept',
+    },
+    adminLink: 'Open in Admin: {url}',
+    editWarning: 'Change this booking in Admin. Changes made here are undone.',
+    nameNotGiven: 'Name not given',
+  },
   marketingUnsubscribe: {
     subject: 'Confirm you want to unsubscribe — Harbour Hair Salon',
     preview: 'One click to stop Harbour Hair Salon marketing emails',

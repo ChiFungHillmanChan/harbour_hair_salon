@@ -32,7 +32,7 @@ function load(account: { emailVerifiedAt: Date | null; oauthAccounts: { provider
     '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
     '@/app/lib/rate-limit': { cancelLimiter: allow, rescheduleLimiter: allow, appointmentRescheduleLimiter: allow },
-    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { writes.push('feed'); } },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { writes.push('feed'); }, scheduleGoogleCalendarPush: () => { writes.push('google'); } },
     'next/server': { after: () => {} },
     'next/cache': { revalidatePath: () => {} },
     '@/i18n/request': { getActionLocale: async () => 'en-GB' },
