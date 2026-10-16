@@ -60,6 +60,9 @@ Data model:
   e.g. `bg-[#7986cb]`), per that file's rule. Admin-only, as the rest of that palette; the
   public site stays monochrome.
 
+Colours in the real diary, 30 days back to 90 ahead on 2026-10-17: 1 ×64, 2 ×56, 5 ×82,
+8 ×90, 11 ×99, none ×6.
+
 Google's event palette (id → name → hex): 1 Lavender #7986cb, 2 Sage #33b679, 3 Grape #8e24aa,
 4 Flamingo #e67c73, 5 Banana #f6bf26, 6 Tangerine #f4511e, 7 Peacock #039be5, 8 Graphite
 #616161, 9 Blueberry #3f51b5, 10 Basil #0b8043, 11 Tomato #d50000. An event with no `colorId`
@@ -76,8 +79,11 @@ takes the calendar's colour: shown in a neutral grey, classified by D4/D5.
 5. Otherwise (leave colour, other colours, no colour) → names in the title:
    - matched stylists → **LEAVE** (those stylists; "遲返 (L)(F)" names two);
    - none → **NOTE**.
-6. `transparency: transparent` ("Show as available") keeps its kind for display but never
-   blocks (D5 applies to it whatever its colour).
+6. `transparency` ("Show as available") is **ignored**: it neither changes the kind nor stops
+   an event blocking. Verified 2026-10-17 against the real diary (397 events in the window):
+   all 41 transparent events are Graphite leave ("天off", "lox off", "LoxOff", "Day off lox"),
+   because Google makes all-day events "available" by default. #72's "available events never
+   block" rule is dropped; the runbook says so.
 
 **Name matching** (case-insensitive), per stylist over its name plus aliases:
 
@@ -134,7 +140,6 @@ New table `GoogleDiaryEntry` — the diary as Admin shows it:
 | `title` | the event's summary, trimmed, at most 200 characters |
 | `colorId` | Google colour id or null |
 | `start`, `end`, `allDay` | interval (all-day = salon-local days) |
-| `blocks` | false for transparent events |
 | `htmlLink` | Google's link to the event |
 | `lastSyncAt` | |
 
