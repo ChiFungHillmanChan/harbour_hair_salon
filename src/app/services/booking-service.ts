@@ -1,6 +1,7 @@
 import { assertOnlineBookingReady } from '@/app/lib/booking-maintenance';
 import { enqueueAppointmentNotification } from './notification-outbox-service';
 import prisma from '@/app/lib/prisma';
+import { retryOnSerializationFailure, SERIALIZABLE_MAX_ATTEMPTS } from '@/app/lib/serializable-retry';
 import { Prisma, type Appointment, type Service } from '@prisma/client';
 import {
   evaluatePatchTestEligibility,
@@ -20,33 +21,18 @@ import { ANY_STYLIST_ID, meetsMinimumNotice } from '@/app/lib/booking-constants'
 import { getTreatwellApiConfiguration, initialTreatwellSyncStatus } from './treatwell-api';
 
 /**
- * Run a Serializable transaction, retrying a few times on Postgres serialization
- * failures (Prisma P2034). Under Serializable isolation, two concurrent bookings
- * that read the same day-window can trip a write-conflict even when their slots
- * don't actually overlap — a transparent retry then succeeds instead of showing
- * the customer a spurious "Failed to create booking".
+ * Run a Serializable transaction, retrying on Postgres serialization failures
+ * (Prisma P2034) after a short jittered back-off (`lib/serializable-retry.ts`).
+ * Under Serializable isolation, two concurrent bookings that read the same
+ * day-window can trip a write-conflict even when their slots don't actually
+ * overlap — a transparent retry then succeeds instead of showing the customer a
+ * spurious "Failed to create booking".
  */
 export async function runSerializableWithRetry<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
-  maxAttempts = 3,
+  maxAttempts = SERIALIZABLE_MAX_ATTEMPTS,
 ): Promise<T> {
-  let lastErr: unknown;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await prisma.$transaction(fn, { isolationLevel: 'Serializable' });
-    } catch (err) {
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2034' &&
-        attempt < maxAttempts
-      ) {
-        lastErr = err;
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw lastErr;
+  return retryOnSerializationFailure(() => prisma.$transaction(fn, { isolationLevel: 'Serializable' }), { maxAttempts });
 }
 
 export type { TimeSlot } from './scheduling';
