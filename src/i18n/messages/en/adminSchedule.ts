@@ -220,6 +220,17 @@ const adminSchedule = {
     goBack: 'Go back',
     cancel: 'Cancel',
   },
+  moveConfirm: {
+    title: 'Move this booking?',
+    from: 'From',
+    to: 'To',
+    time: 'Time',
+    stylist: 'Stylist',
+    length: 'Length',
+    minutes: '{from} → {to} min',
+    move: 'Move',
+    cancel: 'Cancel',
+  },
   grid: {
     off: 'Off',
     noStylists: 'No stylists are scheduled for this day.',

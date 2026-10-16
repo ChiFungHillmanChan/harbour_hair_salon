@@ -18,6 +18,8 @@ import type { MoveClash } from '@/app/services/admin-move-clashes';
 import { describeClash } from '@/app/lib/describe-clash';
 import { calendarBusyForDay, calendarBusyLabel, isWholeDayBlock, salonWorkingWindow, type CalendarBusyBlock } from '@/app/lib/calendar-busy-display';
 import { useT } from '@/i18n/client';
+import { formatCalendarDay } from '@/i18n/dates';
+import { MoveConfirmDialog, type MoveChange } from './MoveConfirmDialog';
 
 /** 15 minutes = 18px. Tall enough to grab an edge, short enough to fit a day. */
 const PX_PER_MINUTE = 1.2;
@@ -97,6 +99,14 @@ type PendingConfirm = {
   retry: () => Promise<void>;
 };
 
+/** A drop or resize waiting for "Move" — nothing has been sent yet. */
+type PendingMove = {
+  customer: string;
+  service: string;
+  changes: MoveChange[];
+  confirm: () => Promise<void>;
+};
+
 const minutesOf = (iso: string) => salonMinutesOfDay(new Date(iso));
 
 /** A pointer that never really travelled is a click, not a drag. */
@@ -122,6 +132,7 @@ export function ScheduleDayGrid({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<PendingConfirm | null>(null);
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const t = useT('adminSchedule');
   const gridRef = useRef<HTMLDivElement>(null);
   const columnRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -209,7 +220,7 @@ export function ScheduleDayGrid({
   };
 
   const beginDrag = (appt: GridAppointment, mode: DragMode) => (event: React.PointerEvent) => {
-    if (saving || appt.status === 'CANCELLED') return;
+    if (saving || pendingMove || appt.status === 'CANCELLED') return;
     event.preventDefault();
     event.stopPropagation();
     (event.target as HTMLElement).setPointerCapture(event.pointerId);
@@ -297,7 +308,33 @@ export function ScheduleDayGrid({
       }
     };
 
-    await send(false);
+    // Ask first. The block is already back at its stored position (endDrag
+    // cleared the drag), so Cancel has nothing to undo.
+    const dayLabel = (key: string) => formatCalendarDay(t.locale, key, { weekday: 'short', day: 'numeric', month: 'short' });
+    const changes: MoveChange[] = [];
+    if (state.currentStartMin !== state.startMin) {
+      changes.push({
+        kind: 'time',
+        from: `${dayLabel(dayKey)} ${timeLabel(state.startMin)}`,
+        to: `${dayLabel(dayKey)} ${timeLabel(state.currentStartMin)}`,
+      });
+    }
+    if (state.currentStylistId !== state.originStylistId) {
+      changes.push({
+        kind: 'stylist',
+        from: stylists.find((stylist) => stylist.id === state.originStylistId)?.name ?? '',
+        to: stylists.find((stylist) => stylist.id === state.currentStylistId)?.name ?? '',
+      });
+    }
+    if (state.currentDurationMin !== state.durationMin) {
+      changes.push({ kind: 'length', from: String(state.durationMin), to: String(state.currentDurationMin) });
+    }
+    setPendingMove({
+      customer: appt.customerName ?? t('appointment.customerFallback'),
+      service: appt.serviceName,
+      changes,
+      confirm: () => send(false),
+    });
   };
 
   const endDrag = async () => {
@@ -309,7 +346,7 @@ export function ScheduleDayGrid({
 
   /** Click a gap in a stylist's column to start a booking with them, then. */
   const createAt = (stylistId: string) => (event: React.MouseEvent<HTMLDivElement>) => {
-    if (drag || saving) return;
+    if (drag || saving || pendingMove) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const minutes = bounds.startMin + (event.clientY - rect.top) / PX_PER_MINUTE;
     const snapped = Math.max(
@@ -327,6 +364,20 @@ export function ScheduleDayGrid({
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden">
       {error && (
         <div role="alert" className="px-4 py-2 bg-red-50 text-sm text-red-700 border-b border-red-200">{error}</div>
+      )}
+
+      {pendingMove && (
+        <MoveConfirmDialog
+          customer={pendingMove.customer}
+          service={pendingMove.service}
+          changes={pendingMove.changes}
+          onCancel={() => setPendingMove(null)}
+          onMove={() => {
+            const { confirm } = pendingMove;
+            setPendingMove(null);
+            void confirm();
+          }}
+        />
       )}
 
       {confirmState && (

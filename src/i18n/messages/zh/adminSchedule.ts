@@ -204,6 +204,17 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     goBack: '返回',
     cancel: '取消',
   },
+  moveConfirm: {
+    title: '確定移動此預約？',
+    from: '由',
+    to: '至',
+    time: '時間',
+    stylist: '髮型師',
+    length: '長度',
+    minutes: '{from} → {to} 分鐘',
+    move: '移動',
+    cancel: '取消',
+  },
   grid: {
     off: '休息',
     noStylists: '這天沒有髮型師當值。',
