@@ -7,6 +7,7 @@ import { SITE_URL } from '@/app/lib/site-url';
 import { formatGBP, toPence } from './pricing/money';
 import type { PriceNature, PriceType, VatDisplay } from './pricing/policy';
 import { salonRelativeDay } from './salon-time';
+import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { appointmentCalendarEvent } from './appointment-calendar';
 import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod, type IcsOrganizer } from '@/app/lib/calendar-links';
 
@@ -62,7 +63,8 @@ export function toEmailAppointment(input: LegacyEmailAppointment | EmailAppointm
 }
 
 export type AppointmentEmailKind = 'REQUEST_RECEIVED' | 'SALON_ALERT' | 'CONFIRMATION' | 'CANCELLATION' | 'RESCHEDULE' | 'REMINDER' | 'REVIEW_REQUEST'
-  | 'RESCHEDULE_REQUEST_RECEIVED' | 'SALON_RESCHEDULE_ALERT' | 'RESCHEDULE_DECLINED' | 'RESCHEDULE_LAPSED' | 'REQUEST_LAPSED';
+  | 'RESCHEDULE_REQUEST_RECEIVED' | 'SALON_RESCHEDULE_ALERT' | 'RESCHEDULE_DECLINED' | 'RESCHEDULE_LAPSED' | 'REQUEST_LAPSED'
+  | 'LATE_CANCELLED';
 
 /** Kinds addressed to the salon (its address and language), never the customer. */
 export function isSalonEmailKind(kind: AppointmentEmailKind): boolean {
@@ -203,6 +205,9 @@ export function calendarMethodFor(kind: AppointmentEmailKind, options: Pick<Appo
       return 'PUBLISH';
     case 'CANCELLATION':
       return options.wasConfirmed === false ? null : 'CANCEL';
+    // Only a confirmed booking is ever cancelled by the late-arrival rule.
+    case 'LATE_CANCELLED':
+      return 'CANCEL';
     default:
       return null;
   }
@@ -327,6 +332,22 @@ export function appointmentEmailContent(
         // A Google link can only add; the attached CANCEL file removes the entry
         // elsewhere. A request never confirmed is in no calendar: nothing to remove.
         footnotes: [...(deposit ? [deposit.sentence] : []), ...(calendarMethodFor(kind, options) ? [t('calendar.cancelled')] : []), t('cancellation.footnote')],
+      };
+    }
+    case 'LATE_CANCELLED': {
+      // The late-arrival rule cancelled a confirmed booking whose customer had
+      // not arrived 15 minutes after the start (services/late-arrival-cancel.ts).
+      const deposit = depositClosingNote(appointment, locale, options.depositOutcome);
+      return {
+        ...base,
+        subject: t('lateCancelled.subject'),
+        preview: t('lateCancelled.preview', { service, date }),
+        eyebrow: t('lateCancelled.eyebrow'), title: t('lateCancelled.title'),
+        intro: t('lateCancelled.intro', { date, time, minutes: LATE_ARRIVAL_CANCEL_MINUTES }),
+        details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), ...(deposit ? [deposit.row] : [])],
+        callout: options.salonPhone ? { title: t('lateCancelled.calloutTitle'), body: t('lateCancelled.calloutBody', { phone: options.salonPhone }) } : undefined,
+        cta: { label: t('lateCancelled.cta'), href: url(locale, '/book') },
+        footnotes: [...(deposit ? [deposit.sentence] : []), t('calendar.cancelled'), t('lateCancelled.footnote')],
       };
     }
     case 'RESCHEDULE': {

@@ -458,3 +458,76 @@ test('request emails are keyed by the request, so a replacement queues new event
   ]);
   await assert.rejects(service.enqueueAppointmentNotification(db as never, 'RESCHEDULE_DECLINED', appointment, { requestedDate }), /requestedAt/);
 });
+
+test('LATE_CANCELLED is held until notBefore, kept only while the late cancellation stands and is not stale', async () => {
+  const appointmentDate = new Date('2026-09-12T12:00:00Z');
+  const queued: { eventKey: string; kind: string; nextAttemptAt?: Date; payloadJson: string }[] = [];
+  const enqueueDb = {
+    notificationDelivery: {
+      findUnique: async () => null,
+      upsert: async ({ create }: { create: (typeof queued)[number] }) => { queued.push(create); return { id: 'queued' }; },
+    },
+  };
+  const appointment = {
+    id: 'a', date: appointmentDate, notificationVersion: 1, priceAtBooking: 100, durationAtBooking: 60, notes: null,
+    user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', duration: 60 },
+    paymentAttempt: { status: 'CAPTURED', amountPence: 2000 },
+  };
+  const notBefore = new Date('2026-09-12T12:45:00Z');
+  const enqueueService = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', { '@/app/lib/prisma': enqueueDb, './email-service': {} });
+  await enqueueService.enqueueAppointmentNotification(enqueueDb as never, 'LATE_CANCELLED', appointment as never, { salonPhone: '07831 830898', depositOutcome: 'KEPT', notBefore });
+  await enqueueService.enqueueAppointmentNotification(enqueueDb as never, 'CANCELLATION', { ...appointment, id: 'b' } as never, { wasConfirmed: true });
+  assert.equal(queued[0].kind, 'LATE_CANCELLED');
+  assert.equal(queued[0].nextAttemptAt?.toISOString(), notBefore.toISOString(), 'created with the delayed attempt time');
+  assert.deepEqual({ ...JSON.parse(queued[0].payloadJson).options }, { salonPhone: '07831 830898', depositOutcome: 'KEPT' });
+  assert.equal('nextAttemptAt' in queued[1], false, 'other mail keeps the default (immediate) attempt time');
+
+  // Dispatch 31 minutes after the cancellation was queued, per the current state of the booking.
+  const dispatchAt = async (current: { status: string; lateCancelledAt: Date | null; notificationVersion: number }, now: Date) => {
+    const row = { id: 'job', eventKey: 'appointment/a/1/LATE_CANCELLED', kind: 'LATE_CANCELLED', appointmentId: 'a', status: 'PENDING', attempts: 0, firstAttemptAt: null as Date | null, nextAttemptAt: notBefore, createdAt: appointmentDate, lockedAt: null as Date | null, lockToken: null as string | null, payloadJson: queued[0].payloadJson };
+    let sends = 0;
+    const db = {
+      notificationDelivery: {
+        findMany: async ({ where }: { where: { OR: { status: string; nextAttemptAt?: { lte: Date } }[] } }) => (where.OR[0].nextAttemptAt!.lte >= row.nextAttemptAt && row.status === 'PENDING' ? [row] : []),
+        findUnique: async () => ({ ...row }),
+        updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          if (where.lockToken && where.lockToken !== row.lockToken) return { count: 0 };
+          const increment = data.attempts as { increment?: number } | undefined;
+          Object.assign(row, data, { attempts: row.attempts + (increment?.increment ?? 0) });
+          return { count: 1 };
+        },
+      },
+      appointment: { findUnique: async () => ({ id: 'a', date: appointmentDate, review: null, rescheduleRequestedAt: null, ...current }), updateMany: async () => ({ count: 1 }) },
+      $transaction: async (fn: (tx: unknown) => unknown) => fn(db),
+    };
+    const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
+      '@/app/lib/prisma': db,
+      './email-service': {
+        prepareAppointmentEmail: async () => ({ from: 'Salon <booking@example.com>', to: 'customer@example.com', subject: 'Cancelled', html: '<p>Cancelled</p>' }),
+        sendPreparedEmail: async () => { sends++; },
+      },
+    });
+    const result = await service.dispatchPendingNotifications({ db: db as never, now });
+    return { result, sends, row };
+  };
+  const afterDelay = new Date(notBefore.getTime() + 60_000);
+  const cancelled = { status: 'CANCELLED', lateCancelledAt: new Date('2026-09-12T12:15:00Z'), notificationVersion: 1 };
+
+  const early = await dispatchAt(cancelled, new Date(notBefore.getTime() - 60_000));
+  assert.deepEqual(early.result, { sent: 0, failed: 0, skipped: 0, deferred: 0 }, 'not due before notBefore');
+
+  const sent = await dispatchAt(cancelled, afterDelay);
+  assert.equal(sent.result.sent, 1);
+  assert.equal(sent.sends, 1);
+
+  const restored = await dispatchAt({ status: 'CONFIRMED', lateCancelledAt: null, notificationVersion: 2 }, afterDelay);
+  assert.equal(restored.result.skipped, 1, 'a restored booking sends nothing');
+  assert.equal(restored.sends, 0);
+
+  const cancelledByOther = await dispatchAt({ ...cancelled, lateCancelledAt: null }, afterDelay);
+  assert.equal(cancelledByOther.result.skipped, 1, 'a cancellation that is not the late rule\'s sends nothing');
+
+  const stale = await dispatchAt(cancelled, new Date(appointmentDate.getTime() + 24 * 3_600_000 + 60_000));
+  assert.equal(stale.result.skipped, 1, 'held-back mail a day after the appointment is dropped');
+  assert.equal(stale.sends, 0);
+});

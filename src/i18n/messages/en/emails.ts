@@ -106,6 +106,18 @@ const emails = {
     cta: 'Book again',
     footnote: 'We hope to see you again soon.',
   },
+  /** The late-arrival rule cancelled a confirmed booking. {minutes}: LATE_ARRIVAL_CANCEL_MINUTES. */
+  lateCancelled: {
+    subject: 'Your appointment was cancelled — Harbour Hair Salon',
+    preview: 'Your appointment for {service} on {date} was cancelled',
+    eyebrow: 'Appointment cancelled',
+    title: 'We had to cancel your appointment.',
+    intro: 'You hadn’t arrived {minutes} minutes after your appointment on {date} at {time}, so we cancelled it and gave the time to another client, as our booking terms say.',
+    calloutTitle: 'Want to book again?',
+    calloutBody: 'Call us on {phone} and we’ll find you another time.',
+    cta: 'Book another time',
+    footnote: 'If you think this is a mistake, please call the salon.',
+  },
   reschedule: {
     subject: 'Your booking has been rescheduled — Harbour Hair Salon',
     preview: 'Your booking has been rescheduled — new date: {date}',

@@ -250,6 +250,7 @@ const adminOps = {
       kind: {
         REQUEST_RECEIVED: 'Booking request received',
         REQUEST_LAPSED: 'Booking request lapsed',
+        LATE_CANCELLED: 'Late arrival — cancelled',
         SALON_ALERT: 'Salon alert',
         CONFIRMATION: 'Confirmation',
         CANCELLATION: 'Cancellation',

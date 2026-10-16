@@ -246,6 +246,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       kind: {
         REQUEST_RECEIVED: '已收到預約申請',
         REQUEST_LAPSED: '預約申請已失效',
+        LATE_CANCELLED: '遲到取消',
         SALON_ALERT: '店方通知',
         CONFIRMATION: '預約確認',
         CANCELLATION: '取消預約',

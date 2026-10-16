@@ -112,7 +112,7 @@ export async function enqueueAppointmentNotification(
   db: QueueDb,
   kind: AppointmentEmailKind,
   appointment: NotificationAppointment,
-  options: AppointmentEmailOptions & { requestedAt?: Date } = {},
+  options: AppointmentEmailOptions & { requestedAt?: Date; notBefore?: Date } = {},
 ) {
   // Phone bookings have an unroutable identity, but may still alert the salon.
   if (!isSalonEmailKind(kind) && isPlaceholderEmail(appointment.user.email)) return null;
@@ -149,7 +149,7 @@ export async function enqueueAppointmentNotification(
   };
   return db.notificationDelivery.upsert({
     where: { eventKey },
-    create: { eventKey, appointmentId: appointment.id, kind, payloadJson: JSON.stringify(payload) },
+    create: { eventKey, appointmentId: appointment.id, kind, payloadJson: JSON.stringify(payload), ...(options.notBefore ? { nextAttemptAt: options.notBefore } : {}) },
     update: {},
     select: { id: true },
   });
@@ -157,7 +157,7 @@ export async function enqueueAppointmentNotification(
 
 async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string, payload: NotificationPayload, now: Date) {
   if (!appointmentId) return false;
-  const current = await db.appointment.findUnique({ where: { id: appointmentId }, select: { date: true, status: true, notificationVersion: true, rescheduleRequestedAt: true, review: { select: { id: true } } } });
+  const current = await db.appointment.findUnique({ where: { id: appointmentId }, select: { date: true, status: true, notificationVersion: true, rescheduleRequestedAt: true, lateCancelledAt: true, review: { select: { id: true } } } });
   if (!current || current.notificationVersion !== payload.version || current.date.toISOString() !== payload.date) return false;
   const thisRequestOpen = Boolean(payload.options?.requestedAt) && current.rescheduleRequestedAt?.toISOString() === payload.options?.requestedAt;
   switch (kind) {
@@ -166,6 +166,10 @@ async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string
     // version/date match above drops it if anything changed since, and mail
     // held back (sending switched off) is dropped once it would arrive too late.
     case 'REQUEST_LAPSED': return current.status === 'CANCELLED' && isRequestLapseNoticeTimely(current.date, now);
+    // Cancelled by the late-arrival rule and not restored; mail held back while
+    // sending was switched off is dropped once it would arrive a day late.
+    case 'LATE_CANCELLED': return current.status === 'CANCELLED' && current.lateCancelledAt !== null
+      && now.getTime() - current.date.getTime() <= 24 * 3_600_000;
     case 'REQUEST_RECEIVED':
     case 'SALON_ALERT': return current.status === 'PENDING' && current.date > now;
     case 'CONFIRMATION':

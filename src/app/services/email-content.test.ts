@@ -257,7 +257,7 @@ test('a confirmed booking’s cancellation, or one queued before the flag existe
 
 test('the attached file names the organizer it is given, and none otherwise', () => {
   const organizer = { name: 'Harbour Hair Salon', email: 'hello@harbourhair.co.uk' };
-  for (const kind of ['CONFIRMATION', 'RESCHEDULE', 'REMINDER', 'CANCELLATION'] as const) {
+  for (const kind of ['CONFIRMATION', 'RESCHEDULE', 'REMINDER', 'CANCELLATION', 'LATE_CANCELLED'] as const) {
     const file = appointmentCalendarFile(kind, requestAppointment, 'en-GB', { oldDate: requestedDate, sequence: 2 }, organizer)!;
     assert.match(file.ics.replace(/\r\n /g, ''), /\r\nORGANIZER;CN="Harbour Hair Salon":mailto:hello@harbourhair\.co\.uk\r\n/, kind);
     assert.doesNotMatch(appointmentCalendarFile(kind, requestAppointment, 'en-GB', { oldDate: requestedDate, sequence: 2 })!.ics, /ORGANIZER/, kind);
@@ -433,4 +433,22 @@ test('mail queued before deposit outcomes existed renders exactly as it always d
     assert.deepEqual(appointmentEmailContent(kind, priced, 'en-GB', { depositOutcome: 'REFUNDING' }), appointmentEmailContent(kind, priced, 'en-GB'), kind);
   }
   assert.deepEqual(appointmentEmailContent('CONFIRMATION', { ...priced, deposit: null }, 'zh-HK'), appointmentEmailContent('CONFIRMATION', priced, 'zh-HK'));
+});
+
+test('LATE_CANCELLED says why, keeps the deposit wording, and removes the calendar entry', () => {
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const words = s3Wording[locale];
+    const content = appointmentEmailContent('LATE_CANCELLED', taken, locale, { depositOutcome: 'KEPT', salonPhone: '07831 830898' });
+    assert.ok(content.intro.includes('15'), `names the 15 minutes (${locale})`);
+    assert.equal(content.details.at(-1)?.value, words.kept[0], 'deposit row');
+    assert.ok(content.footnotes.includes(words.kept[1]), 'deposit kept sentence');
+    assert.ok(content.footnotes.includes(calendarText[locale].cancelled), 'calendar entry removed');
+    assert.ok(content.callout?.body.includes('07831 830898'), 'salon phone');
+    assert.equal(calendarMethodFor('LATE_CANCELLED'), 'CANCEL');
+    assert.equal(appointmentCalendarFile('LATE_CANCELLED', taken, locale, { sequence: 3 })?.method, 'CANCEL');
+    // Without a queued outcome (or a phone) nothing is claimed about the deposit.
+    const plain = appointmentEmailContent('LATE_CANCELLED', taken, locale);
+    assert.equal(plain.callout, undefined);
+    assert.ok(!plain.footnotes.includes(words.kept[1]));
+  }
 });
