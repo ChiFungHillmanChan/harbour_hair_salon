@@ -24,6 +24,7 @@ function load(options: { role?: string; enabled?: boolean; job?: unknown; auditF
     'server-only': {},
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => { log.push('config'); return options.enabled === false ? null : CONFIG; } },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { log.push('invalidate'); } },
     '@/app/services/google-calendar-job': {
       runGoogleCalendarJob: async (run: string, input?: { deadline?: number; renew?: boolean }) => {
         log.push(`job:${run}`);
@@ -103,4 +104,120 @@ test('a step that failed, bookings Google refused, or a job that threw all redir
 test('an audit that cannot be saved does not hide the result of the sync', async () => {
   const f = load({ auditFails: true });
   assert.equal(await f.run(), '/zh-hk/admin/integrations?gcal=done');
+});
+
+// Admin → Integrations → "Clear Google busy time" (final review I2): makes
+// turning the sync off reversible. Administrators only, audited, on or off.
+
+type Block = { id: string; source: string; stylistId: string };
+
+function loadClear(options: { role?: string; enabled?: boolean; failDelete?: boolean } = {}) {
+  const log: string[] = [];
+  const store = {
+    blocks: [
+      { id: 'b1', source: 'GOOGLE', stylistId: 's1' }, { id: 'b2', source: 'GOOGLE', stylistId: 's2' },
+      { id: 'b3', source: 'FRESHA', stylistId: 's1' }, { id: 'b4', source: 'TREATWELL', stylistId: 's2' },
+    ] as Block[],
+    state: { id: 'singleton', busyHash: 'hash-of-the-last-blocks' as string | null },
+    audits: [] as Record<string, unknown>[],
+    auditClient: [] as unknown[],
+    deleteWhere: [] as unknown[],
+  };
+  let inTransaction = false;
+  const tx = {
+    externalBusyBlock: {
+      deleteMany: async ({ where }: { where: { source: string } }) => {
+        log.push(`delete:${inTransaction ? 'tx' : 'outside'}`);
+        store.deleteWhere.push(where);
+        if (options.failDelete) throw new Error('connect ECONNREFUSED db.internal:5432');
+        const before = store.blocks.length;
+        store.blocks = store.blocks.filter((block) => block.source !== where.source);
+        return { count: before - store.blocks.length };
+      },
+    },
+    googleCalendarSyncState: {
+      updateMany: async ({ where, data }: { where: { id: string }; data: { busyHash: null } }) => {
+        log.push(`state:${inTransaction ? 'tx' : 'outside'}`);
+        if (where.id === store.state.id) Object.assign(store.state, data);
+        return { count: 1 };
+      },
+    },
+  };
+  const prisma = {
+    $transaction: async (fn: (client: typeof tx) => Promise<unknown>) => {
+      // All or nothing, like the real one.
+      const saved = { blocks: [...store.blocks], state: { ...store.state }, audits: [...store.audits] };
+      inTransaction = true;
+      try {
+        return await fn(tx);
+      } catch (error) {
+        Object.assign(store, saved);
+        throw error;
+      } finally {
+        inTransaction = false;
+        log.push('commit');
+      }
+    },
+  };
+  let redirected = '';
+  const revalidated: string[] = [];
+  const action = loadServerModule<typeof import('./admin-google-calendar')>('src/app/actions/admin-google-calendar.ts', {
+    'server-only': {},
+    '@/app/lib/prisma': { __esModule: true, default: prisma },
+    '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
+    '@/app/lib/google-calendar-config': { googleCalendarConfig: () => (options.enabled === false ? null : CONFIG) },
+    '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => { throw new Error('not part of clearing'); } },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { log.push(`invalidate:${inTransaction ? 'tx' : 'after-commit'}`); } },
+    '@/app/lib/audit': {
+      appendAuditEvent: async (input: Record<string, unknown>, client?: unknown) => {
+        log.push(`audit:${inTransaction ? 'tx' : 'outside'}`);
+        store.audits.push(input);
+        store.auditClient.push(client);
+      },
+    },
+    '@/i18n/request': { localizedPath: async (path: string) => `/zh-hk${path}` },
+    '@/i18n/revalidate': { revalidateAllLocales: (_fn: unknown, path: string) => { revalidated.push(path); } },
+    'next/cache': { revalidatePath: () => {} },
+    'next/navigation': { redirect: (to: string) => { redirected = to; throw new Error('NEXT_REDIRECT'); } },
+  });
+  const run = async () => { await assert.rejects(action.clearGoogleBusyTime(), /NEXT_REDIRECT/); return redirected; };
+  return { action, run, log, store, revalidated, tx };
+}
+
+test('clear Google busy time: a non-administrator is refused before anything is read or deleted', async () => {
+  const f = loadClear({ role: 'USER' });
+  await assert.rejects(f.action.clearGoogleBusyTime(), /Unauthorized/);
+  assert.deepEqual(f.log, []);
+  assert.equal(f.store.blocks.length, 4);
+});
+
+test('clear Google busy time deletes only GOOGLE blocks, forgets the busy hash and is audited, in one transaction; then drops the busy feeds', async () => {
+  const f = loadClear();
+  assert.equal(await f.run(), '/zh-hk/admin/integrations?gcal=cleared');
+  assert.deepEqual(f.store.deleteWhere, [{ source: 'GOOGLE' }]);
+  assert.deepEqual(f.store.blocks.map((block) => block.source).sort(), ['FRESHA', 'TREATWELL'], 'Fresha and Treatwell busy time stays');
+  assert.equal(f.store.state.busyHash, null, 'the next pull compares against nothing and stores afresh');
+  assert.deepEqual(f.store.audits, [{ actorUserId: 'admin-1', action: 'INTEGRATION.GOOGLE_BUSY_CLEARED', targetType: 'Integration', targetId: 'google-calendar', metadata: { removed: 2 } }]);
+  assert.equal(f.store.auditClient[0], f.tx, 'the audit is written in the same transaction');
+  assert.deepEqual(f.log, ['delete:tx', 'state:tx', 'audit:tx', 'commit', 'invalidate:after-commit']);
+  for (const path of ['/admin/integrations', '/admin', '/book']) assert.ok(f.revalidated.includes(path), path);
+});
+
+test('clear Google busy time works with the sync off too (that is what it is for)', async () => {
+  const f = loadClear({ enabled: false });
+  assert.equal(await f.run(), '/zh-hk/admin/integrations?gcal=cleared');
+  assert.deepEqual(f.store.blocks.map((block) => block.source).sort(), ['FRESHA', 'TREATWELL']);
+  assert.ok(f.log.includes('invalidate:after-commit'));
+});
+
+test('clear Google busy time that cannot be saved changes nothing and says so', async (t) => {
+  const logged: unknown[][] = [];
+  t.mock.method(console, 'error', (...args: unknown[]) => { logged.push(args); });
+  const f = loadClear({ failDelete: true });
+  assert.equal(await f.run(), '/zh-hk/admin/integrations?gcal=clearError');
+  assert.equal(f.store.blocks.length, 4);
+  assert.equal(f.store.state.busyHash, 'hash-of-the-last-blocks');
+  assert.deepEqual(f.store.audits, []);
+  assert.ok(!f.log.some((step) => step.startsWith('invalidate')), 'nothing changed: the busy feeds stay cached');
+  assert.doesNotMatch(JSON.stringify(logged), /db\.internal/);
 });

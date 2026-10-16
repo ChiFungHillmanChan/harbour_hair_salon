@@ -3,9 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { appendAuditEvent } from '@/app/lib/audit';
+import { describeFault } from '@/app/lib/fault';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
 import { verifySession } from '@/app/lib/session';
 import { runGoogleCalendarJob } from '@/app/services/google-calendar-job';
+import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import { revalidateAllLocales } from '@/i18n/revalidate';
 import { localizedPath } from '@/i18n/request';
 
@@ -43,4 +45,41 @@ export async function syncGoogleCalendarNow(): Promise<void> {
   }
   revalidateAllLocales(revalidatePath, '/admin/integrations');
   redirect(await localizedPath(`/admin/integrations?gcal=${outcome}`));
+}
+
+/**
+ * Admin → Integrations → "Clear Google busy time": makes turning the sync off
+ * reversible. Busy time already read from Google (`ExternalBusyBlock` source
+ * GOOGLE) otherwise stays on the website, and in the busy feed Fresha imports,
+ * until its time has passed, because nothing reads Google any more. This
+ * deletes every GOOGLE block (no other source), forgets the hash of the blocks
+ * last stored and records who did it, in one transaction; then the busy feeds
+ * are dropped, so Fresha's next poll sees the time free. It works whether the
+ * sync is on or off: while it is on, the next check of Google reads the
+ * calendar's busy time again. Administrators only; the page asks to confirm.
+ */
+export async function clearGoogleBusyTime(): Promise<void> {
+  const session = await verifySession();
+  if (session.role !== 'ADMIN') throw new Error('Unauthorized');
+  const prisma = (await import('@/app/lib/prisma')).default;
+  try {
+    await prisma.$transaction(async (tx) => {
+      const { count } = await tx.externalBusyBlock.deleteMany({ where: { source: 'GOOGLE' } });
+      await tx.googleCalendarSyncState.updateMany({ where: { id: 'singleton' }, data: { busyHash: null } });
+      await appendAuditEvent({
+        actorUserId: session.userId,
+        action: 'INTEGRATION.GOOGLE_BUSY_CLEARED',
+        targetType: 'Integration',
+        targetId: 'google-calendar',
+        metadata: { removed: count },
+      }, tx);
+    });
+  } catch (error) {
+    console.error('Clearing the Google busy time failed:', describeFault(error));
+    redirect(await localizedPath('/admin/integrations?gcal=clearError'));
+  }
+  // After the commit. (With the sync on it also schedules a push; harmless.)
+  invalidateStylistIcalFeed();
+  for (const path of ['/admin/integrations', '/admin', '/book']) revalidateAllLocales(revalidatePath, path);
+  redirect(await localizedPath('/admin/integrations?gcal=cleared'));
 }

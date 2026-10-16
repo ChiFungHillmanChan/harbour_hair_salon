@@ -175,6 +175,14 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
   expiry, last pull, failed events) and a **Sync now** button (admin-only,
   audited) that replaces the channel at once (so a rotated webhook secret takes
   effect), pushes and pulls.
+- Admin → Integrations → **Clear Google busy time** (admin-only, audited
+  `INTEGRATION.GOOGLE_BUSY_CLEARED`, confirmed first, offered whether the sync
+  is on or off). It makes turning the sync off reversible: without it, GOOGLE
+  blocks already read keep blocking the website and Fresha (through the busy
+  feed) until they pass. In one transaction it deletes every `GOOGLE` block (no
+  other source), sets `busyHash` to null and writes the audit; then it drops the
+  busy feeds (`invalidateStylistIcalFeed`). While the sync is on, the next pull
+  stores the calendar's busy time again.
 
 ## 8. Failure and attention
 

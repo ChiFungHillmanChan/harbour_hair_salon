@@ -39,7 +39,7 @@ How the website shares the salon's appointment diary with Google Calendar, how t
   missed, the 30-minute calendar-sync run (staff hours, §3) pulls anyway.
 
 Google is **not** a calendar connection in Admin → Integrations (no per-stylist links); that
-page only shows its status and a "Sync now" button.
+page only shows its status, a "Sync now" button and "Clear Google busy time" (§6).
 
 ---
 
@@ -162,14 +162,26 @@ Cloud.
    **404** before any database access, so it costs no Neon wake.
    **Turning it back on** needs a redeploy with the variable set to `true`, then **Sync now**
    (it makes a new channel at once and catches up the whole window).
-2. There is no "stop channel" button. If you want the channel stopped cleanly rather than
+2. **Clear the busy time read from Google.** Turning the sync off stops reading Google, but
+   the busy time already read from it stays. It keeps blocking those hours on `/book` and in
+   Admin → Schedule. It also stays in each stylist's busy feed, **so Fresha keeps those hours
+   blocked too**, until each period has passed. To undo that at once, press **Admin →
+   Integrations → Google Calendar → Clear Google busy time**.
+   - Administrators only. It asks to confirm, and the audit log records it as
+     `INTEGRATION.GOOGLE_BUSY_CLEARED`, with the number of periods removed.
+   - It deletes every busy period read from Google. Fresha and Treatwell busy time is untouched.
+   - It refreshes the busy feeds, so Fresha frees the hours on its next import.
+   - Bookings are not affected.
+
+   The button also works while the sync is on. Then, though, the next check of Google (a
+   change in Google, or the 30-minute run) reads the calendar's busy time again.
+3. There is no "stop channel" button. If you want the channel stopped cleanly rather than
    left to run out, ask a developer to stop it while the variables are still set.
-3. Events already in Google stay there, with their customer details, and nothing deletes them
+4. Events already in Google stay there, with their customer details, and nothing deletes them
    any more once the sync is off. **When the sync is turned off for good, delete the "Harbour
    website bookings" calendar** (signed in as the salon's account): otherwise the copies
    outlive the 12 months the privacy notice promises. Removing the service account's access
-   alone does not remove them. Google busy blocks already read stay on the website until
-   their time has passed.
+   alone does not remove them.
 
 ---
 

@@ -61,8 +61,8 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
               ? t('integrations.status.outboundConfirmed')
               : t('integrations.status.saved')}
     </div>}
-    {(query.gcal === 'done' || query.gcal === 'disabled') && <div role="status" className="rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">{t(`integrations.google.status.${query.gcal}`)}</div>}
-    {query.gcal === 'error' && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{t('integrations.google.status.error')}</div>}
+    {(query.gcal === 'done' || query.gcal === 'disabled' || query.gcal === 'cleared') && <div role="status" className="rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">{t(`integrations.google.status.${query.gcal}`)}</div>}
+    {(query.gcal === 'error' || query.gcal === 'clearError') && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{t(`integrations.google.status.${query.gcal}`)}</div>}
     <section className={`rounded-lg border p-5 ${treatwell.syncCoverage.safeToEnableOnlineBooking ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
       <h2 className="font-semibold">{treatwell.syncCoverage.safeToEnableOnlineBooking ? t('integrations.coverage.pass') : t('integrations.coverage.attention')}</h2>
       {setupChecks.length > 0 && <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">{setupChecks.map((check) => <li key={check.key} lang={check.lang}>{check.text}</li>)}</ul>}

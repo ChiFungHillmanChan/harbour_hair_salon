@@ -15,13 +15,17 @@ const ON: Status = {
   lastPullError: OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED, failedEvents: 2,
 };
 
-type Node = { type?: unknown; props?: { children?: unknown; disabled?: boolean; label?: string; busy?: string } };
+type Node = { type?: unknown; props?: { children?: unknown; disabled?: boolean; label?: string; busy?: string; confirm?: string; action?: unknown; onClick?: (event: unknown) => void } };
 const SyncButton = () => null;
+const ClearButton = () => null;
+const syncAction = async () => {};
+const clearAction = async () => {};
 
 async function render(locale: Locale, status: Status) {
   const component = loadServerModule<typeof import('../../components/admin/GoogleCalendarStatus')>('src/components/admin/GoogleCalendarStatus.tsx', {
     '@/components/admin/GoogleSyncButton': { GoogleSyncButton: SyncButton },
-    '@/app/actions/admin-google-calendar': { syncGoogleCalendarNow: async () => {} },
+    '@/components/admin/GoogleClearBusyButton': { GoogleClearBusyButton: ClearButton },
+    '@/app/actions/admin-google-calendar': { syncGoogleCalendarNow: syncAction, clearGoogleBusyTime: clearAction },
     '@/i18n/server': { getLocale: async () => locale, getT: async (namespace: Namespace) => translator(locale, namespace) },
   });
   const tree = await component.GoogleCalendarStatus({ status });
@@ -32,14 +36,18 @@ async function render(locale: Locale, status: Status) {
     return text((node as Node).props?.children);
   };
   const buttons: Node[] = [];
+  const clearButtons: Node[] = [];
+  const forms: Node[] = [];
   const find = (node: unknown) => {
     if (Array.isArray(node)) return node.forEach(find);
     if (!node || typeof node !== 'object' || !('props' in node)) return;
     if ((node as Node).type === SyncButton) buttons.push(node as Node);
+    if ((node as Node).type === ClearButton) clearButtons.push(node as Node);
+    if ((node as Node).type === 'form') forms.push(node as Node);
     find((node as Node).props?.children);
   };
   find(tree);
-  return { text: text(tree), buttons };
+  return { text: text(tree), buttons, clearButtons, forms };
 }
 
 test('on: shows the masked calendar, check times, translated problem, failed count and an enabled Sync now', async () => {
@@ -94,4 +102,47 @@ test('Sync now button: idle is enabled, pending is disabled and says it is synci
 test('the pending wording exists in both languages', async () => {
   assert.equal(translator('en-GB', 'adminOps')('integrations.google.syncing'), 'Syncing…');
   assert.equal(translator('zh-HK', 'adminOps')('integrations.google.syncing'), '同步中…');
+});
+
+// "Clear Google busy time" (final review I2): offered whether the sync is on
+// or off, in the admin's language, and confirmed before it runs.
+test('Clear Google busy time is offered on and off, posts to its own action, in both languages', async () => {
+  for (const status of [ON, { enabled: false } as Status]) {
+    const en = await render('en-GB', status);
+    assert.equal(en.clearButtons.length, 1, `enabled: ${status.enabled}`);
+    assert.deepEqual([en.clearButtons[0].props?.label, en.clearButtons[0].props?.busy], ['Clear Google busy time', 'Clearing…']);
+    assert.match(en.clearButtons[0].props?.confirm ?? '', /^Remove every busy period read from Google Calendar\?/);
+    assert.ok(en.forms.some((form) => form.props?.action === clearAction));
+    assert.ok(en.text.includes(status.enabled ? 'While the sync is on, the next check of Google reads them again' : 'The sync is off, so nothing reads Google any more'));
+    const zh = await render('zh-HK', status);
+    assert.deepEqual([zh.clearButtons[0].props?.label, zh.clearButtons[0].props?.busy], ['清除 Google 忙碌時段', '清除中…']);
+    assert.match(zh.clearButtons[0].props?.confirm ?? '', /^要刪除所有從 Google 日曆讀取的忙碌時段嗎？/);
+  }
+});
+
+function clearButton(pending: boolean, confirmed: boolean) {
+  const asked: string[] = [];
+  const previous = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = { confirm: (message: string) => { asked.push(message); return confirmed; } };
+  const { GoogleClearBusyButton } = loadServerModule<typeof import('../../components/admin/GoogleClearBusyButton')>('src/components/admin/GoogleClearBusyButton.tsx', {
+    'react-dom': { useFormStatus: () => ({ pending }) },
+  });
+  const node = GoogleClearBusyButton({ label: 'Clear', busy: 'Clearing…', confirm: 'Sure?' }) as unknown as Node;
+  let prevented = false;
+  node.props?.onClick?.({ preventDefault: () => { prevented = true; } });
+  (globalThis as { window?: unknown }).window = previous;
+  return { node, asked, prevented };
+}
+
+test('Clear Google busy time asks first: cancelling stops the submission; pending is disabled', () => {
+  const cancelled = clearButton(false, false);
+  assert.deepEqual(cancelled.asked, ['Sure?']);
+  assert.equal(cancelled.prevented, true);
+  const confirmed = clearButton(false, true);
+  assert.equal(confirmed.prevented, false);
+  assert.equal(confirmed.node.props?.disabled, false);
+  assert.equal(confirmed.node.props?.children, 'Clear');
+  const pending = clearButton(true, true);
+  assert.equal(pending.node.props?.disabled, true);
+  assert.equal(pending.node.props?.children, 'Clearing…');
 });

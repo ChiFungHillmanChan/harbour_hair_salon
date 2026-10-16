@@ -1,11 +1,16 @@
-import { syncGoogleCalendarNow } from '@/app/actions/admin-google-calendar';
+import { clearGoogleBusyTime, syncGoogleCalendarNow } from '@/app/actions/admin-google-calendar';
 import { operationsMessageKey } from '@/app/services/operations-messages';
 import type { GoogleCalendarStatus as Status } from '@/app/services/google-calendar-status';
+import { GoogleClearBusyButton } from '@/components/admin/GoogleClearBusyButton';
 import { GoogleSyncButton } from '@/components/admin/GoogleSyncButton';
 import { formatSalonDateTime } from '@/i18n/dates';
 import { getLocale, getT } from '@/i18n/server';
 
-/** Admin → Integrations: whether the Google Calendar sync is on and healthy, and "Sync now". */
+/**
+ * Admin → Integrations: whether the Google Calendar sync is on and healthy,
+ * "Sync now", and "Clear Google busy time" (offered on or off: it is how the
+ * busy time read from Google is removed after the sync is turned off).
+ */
 export async function GoogleCalendarStatus({ status }: { status: Status }) {
   const [locale, t] = await Promise.all([getLocale(), getT('adminOps')]);
   const never = t('integrations.connections.never');
@@ -31,6 +36,11 @@ export async function GoogleCalendarStatus({ status }: { status: Status }) {
     <form action={syncGoogleCalendarNow} className="mt-4">
       <GoogleSyncButton label={t('integrations.google.syncNow')} busy={t('integrations.google.syncing')} disabled={!status.enabled} />
       <p className="mt-2 text-xs leading-5 text-zinc-500">{status.enabled ? t('integrations.google.syncNowHelp') : t('integrations.google.syncNowOff')}</p>
+    </form>
+    <form action={clearGoogleBusyTime} className="mt-5 border-t border-zinc-100 pt-4">
+      <h3 className="text-sm font-semibold">{t('integrations.google.clear.title')}</h3>
+      <p className="mb-3 mt-1 text-xs leading-5 text-zinc-500">{status.enabled ? t('integrations.google.clear.helpOn') : t('integrations.google.clear.helpOff')}</p>
+      <GoogleClearBusyButton label={t('integrations.google.clear.button')} busy={t('integrations.google.clear.clearing')} confirm={t('integrations.google.clear.confirm')} />
     </form>
   </section>;
 }
