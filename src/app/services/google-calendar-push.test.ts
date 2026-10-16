@@ -501,6 +501,47 @@ test('an erasure push that failed or never ran is repaired by the next run, back
   assert.deepEqual(await run(db, fakeGateway().gateway, { now: at(60) }), { written: 0, deleted: 0, unchanged: 0, failed: 0 });
 });
 
+test('before the window a failing row is retried only while attempts < 5; an erasure-dirty row stays owed', async () => {
+  const refused = OPERATIONS_MESSAGES.GOOGLE_PUSH_REFUSED;
+  const erased = { name: ERASED_CUSTOMER_NAME, phone: null, email: erasedEmailFor('u1') };
+  const old = { date: at(-10 * DAY), updatedAt: at(-10 * DAY) };
+  const fixture = () => fakeDb([
+    appt('fourAttempts', old),
+    appt('fiveAttempts', old),
+    appt('neverWrittenFive', old),
+    appt('cancelledFive', { ...old, status: 'CANCELLED' }),
+    appt('erasedRefused', { ...old, user: erased }),
+    appt('inWindowFive', { updatedAt: at(-60) }),
+  ], [
+    eventRow('fourAttempts', { attempts: 4, lastError: refused }),
+    eventRow('fiveAttempts', { attempts: 5, lastError: refused }),
+    // Created by a failed first write: no hash yet, never synced. Not an erasure.
+    eventRow('neverWrittenFive', { syncedHash: null, syncedAt: null, attempts: 5, lastError: refused }),
+    eventRow('cancelledFive', { attempts: 5, lastError: refused }),
+    // Erasure cleared the hash of an event that was written: owed until the 12-month limit, however often it failed.
+    eventRow('erasedRefused', { syncedHash: null, attempts: 9, lastError: refused }),
+    // Inside the window the daily run re-renders everything anyway, and the 30-minute run keeps retrying it.
+    eventRow('inWindowFive', { attempts: 5, lastError: refused }),
+  ]);
+  for (const mode of ['recent', 'all'] as const) {
+    const { db } = fixture();
+    const google = fakeGateway();
+    await run(db, google.gateway, { mode });
+    assert.deepEqual(google.calls.map((call) => call.id).sort(), ['fourAttempts', 'erasedRefused', 'inWindowFive'].map(googleEventIdFor).sort(), mode);
+  }
+
+  // The fifth refusal is the last: the next run leaves the row alone (it stays listed as failing).
+  const { db, rows } = fakeDb([appt('old', old)], [eventRow('old', { attempts: 4, lastError: refused })]);
+  const refusing = fakeGateway(() => new GoogleCalendarError('refused', 400));
+  assert.deepEqual(await run(db, refusing.gateway), { written: 0, deleted: 0, unchanged: 0, failed: 1 });
+  assert.equal(rows.get('old')!.attempts, 5);
+  const later = fakeGateway();
+  assert.deepEqual(await run(db, later.gateway, { now: at(60) }), { written: 0, deleted: 0, unchanged: 0, failed: 0 });
+  assert.deepEqual(await run(db, later.gateway, { now: at(60), mode: 'all' }), { written: 0, deleted: 0, unchanged: 0, failed: 0 });
+  assert.equal(later.calls.length, 0);
+  assert.equal(rows.get('old')!.lastError, refused);
+});
+
 test('the daily reconcile also repairs rows owed from before the window', async () => {
   const { db } = fakeDb([appt('old', { date: at(-20 * DAY), updatedAt: at(-20 * DAY) })], [eventRow('old', { syncedHash: null })]);
   const google = fakeGateway();

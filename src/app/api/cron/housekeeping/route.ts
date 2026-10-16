@@ -52,13 +52,15 @@ export async function GET(request: NextRequest) {
       console.error('Payment reconciliation in housekeeping failed', describeFault(error));
       payments = { failed: 1 };
     }
-    // The salon's Google Calendar (spec §7): renew the watch channel, write
-    // the whole window again (and delete copies past 12 months), then pull.
+    // The salon's Google Calendar (spec §7): keep the watch channel alive
+    // (renewed only within 48 hours of its expiry; Sync now replaces it at
+    // once), write the whole window again (and delete copies past 12 months),
+    // then pull.
     // Last, so the lapses above reach Google too. Its own job row; never
     // fails the retention run; with the Google sync off it does nothing at all.
     let googleCalendar: Awaited<ReturnType<typeof runGoogleCalendarJob>> | { error: true };
     try {
-      googleCalendar = await runGoogleCalendarJob('daily', { deadline });
+      googleCalendar = await runGoogleCalendarJob('daily', { deadline, renew: false });
     } catch (error) {
       console.error('Google Calendar in housekeeping failed', describeFault(error));
       googleCalendar = { error: true };

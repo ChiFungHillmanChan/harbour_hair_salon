@@ -125,6 +125,11 @@ function fakeDb(
           rows.set(args.where.appointmentId, { syncedHash: null, syncedAt: null, removed: false, attempts: 0, lastError: null, ...args.create } as unknown as EventRow);
         }
       },
+      async updateMany(args: { where: Record<string, unknown>; data: Record<string, unknown> }) {
+        const hits = [...rows.values()].filter((row) => matches(row, args.where));
+        for (const row of hits) applyData(row as unknown as Record<string, unknown>, args.data);
+        return { count: hits.length };
+      },
     },
     siteSettings: { async findUnique() { return { salonNotificationLocale: 'en-GB' }; } },
     stylist: {
@@ -521,6 +526,30 @@ test('loop breaker: a listing that still differs just after the website wrote th
   assert.deepEqual(await run(pull, store.db, google.gateway, at(1)), { reverted: 0, blocks: 0, changed: false });
   assert.equal(google.calls.length, 1);
   assert.equal(store.rows.get('a1')!.lastError, OPERATIONS_MESSAGES.GOOGLE_EVENT_NOT_KEPT);
+});
+
+test('a "not kept" note clears once Google holds the website\'s own rendering again; other errors stay', async () => {
+  const booking = appt('a1');
+  const expected = rendered(booking);
+  const notKept = OPERATIONS_MESSAGES.GOOGLE_EVENT_NOT_KEPT;
+  const store = fakeDb([booking, appt('a2'), appt('a3')], {
+    events: [
+      syncedRow(booking, { syncedAt: at(-30), lastError: notKept }),
+      // A failed push is the push's to clear: it may not have landed.
+      syncedRow(appt('a2'), { syncedAt: at(-30), attempts: 1, lastError: OPERATIONS_MESSAGES.GOOGLE_PUSH_FAILED }),
+      // The note belongs to an older rendering: the push writes this one and clears it then.
+      syncedRow(appt('a3'), { syncedHash: 'older-rendering', syncedAt: at(-30), lastError: notKept }),
+    ],
+    state: { busyHash: EMPTY_HASH },
+  });
+  const google = fakeGoogle([expected.event, rendered(appt('a2')).event, rendered(appt('a3')).event]);
+  const { pull } = load();
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false });
+  assert.equal(google.calls.length, 0, 'nothing is written: Google already holds it');
+  assert.deepEqual(
+    [...store.rows.values()].map((row) => [row.appointmentId, row.lastError, row.attempts]),
+    [['a1', null, 0], ['a2', OPERATIONS_MESSAGES.GOOGLE_PUSH_FAILED, 1], ['a3', notKept, 0]],
+  );
 });
 
 test('loop breaker never holds back a real booking change: a new rendering is written at once', async () => {

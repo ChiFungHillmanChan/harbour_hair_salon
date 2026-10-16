@@ -187,7 +187,7 @@ const adminOps = {
       failedEvents: 'Bookings Google would not take',
       syncNow: 'Sync now',
       syncing: 'Syncing…',
-      syncNowHelp: 'Writes every booking in the sync window to Google and reads Google again. It can take up to a minute.',
+      syncNowHelp: 'Replaces the channel Google uses to notify the website, writes every booking in the sync window to Google and reads Google again. It can take up to a minute.',
       syncNowOff: 'Sync now is unavailable while the sync is off.',
       status: {
         done: 'Google Calendar sync finished.',

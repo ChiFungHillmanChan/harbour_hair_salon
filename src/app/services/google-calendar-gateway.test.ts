@@ -149,6 +149,42 @@ test('an unreadable private key is an auth (setup) problem and sends nothing', a
   assert.equal(calls.length, 0);
 });
 
+test('no fragment of the private key ever appears in an error: bad keys and failed token requests', async () => {
+  const body = privateKey.split('\n').filter((line) => line && !line.startsWith('-----'));
+  const fragments = ['BEGIN PRIVATE KEY', 'PRIVATE KEY-----', 'BEGIN RSA PRIVATE KEY', body[0].slice(0, 24), body[1].slice(8, 32), body.at(-1)!.slice(0, 16), 'nope'];
+  const leaks = (error: unknown) => {
+    const seen = error instanceof Error ? [error.message, String(error), error.stack ?? '', String(error.cause ?? '')] : [String(error)];
+    return fragments.filter((fragment) => seen.some((text) => text.includes(fragment)));
+  };
+  const badKeys = [
+    '-----BEGIN PRIVATE KEY-----\nnope\n-----END PRIVATE KEY-----',
+    // A real key cut short, and the same key in the wrong (PKCS#1) wrapper.
+    `${privateKey.slice(0, 300)}\n-----END PRIVATE KEY-----`,
+    privateKey.replace(/BEGIN PRIVATE KEY/, 'BEGIN RSA PRIVATE KEY').replace(/END PRIVATE KEY/, 'END RSA PRIVATE KEY'),
+    body.join(''),
+  ];
+  for (const key of badKeys) {
+    resetGoogleTokenCacheForTests();
+    const { gateway } = harness({ settings: { ...config, privateKey: key } });
+    const error = await gateway.putEvent(event).then(() => null, (thrown: unknown) => thrown);
+    assert.ok(isKind('auth')(error), key.slice(0, 40));
+    assert.deepEqual(leaks(error), [], 'bad key');
+  }
+  for (const reply of [
+    status(400, { error: 'invalid_grant', error_description: `Invalid JWT Signature. ${body[0]}` }),
+    status(401),
+    status(503),
+    new TypeError(`network down ${body[1]}`),
+    () => new Response(`not json ${privateKey}`, { status: 200 }),
+  ]) {
+    resetGoogleTokenCacheForTests();
+    const { gateway } = harness({ token: () => reply });
+    const error = await gateway.putEvent(event).then(() => null, (thrown: unknown) => thrown);
+    assert.ok(error instanceof GoogleCalendarError);
+    assert.deepEqual(leaks(error), [], 'failed token request');
+  }
+});
+
 test('putEvent PUTs the whole event to its id with the bearer token', async () => {
   const { gateway, apiCalls } = harness({ api: () => Response.json({ ...event, etag: '"1"', htmlLink: 'https://calendar.google.com/x' }) });
   const result = await gateway.putEvent(event);

@@ -113,6 +113,20 @@ test('daily: keeps the watch channel alive, reconciles the whole window, then pu
   assert.ok(h.finalRow()!.lastSucceededAt instanceof Date);
 });
 
+test('renew: true (Sync now) replaces the watch channel at once; the crons never ask for it', async () => {
+  const renewed = harness({ channel: 'renewed' });
+  await renewed.job.runGoogleCalendarJob('daily', { renew: true });
+  assert.deepEqual(renewed.order, ['job:start', 'channel:{"renew":true}', 'push:all', 'single-flight', 'pull', 'job:end']);
+  // Housekeeping passes no renew: the nightly run must not replace the channel every night.
+  const nightly = harness();
+  await nightly.job.runGoogleCalendarJob('daily', { renew: false });
+  assert.ok(nightly.order.includes('channel:{"renew":false}'));
+  // The 30-minute run never touches the channel, whatever it is asked.
+  const cron = harness();
+  await cron.job.runGoogleCalendarJob('calendar-sync', { renew: true });
+  assert.ok(!cron.order.some((step) => step.startsWith('channel:')));
+});
+
 test('a pull already running elsewhere covers this one: recorded as deferred, not as a failure', async () => {
   const h = harness({ deferred: true });
   const result = await h.job.runGoogleCalendarJob('calendar-sync');

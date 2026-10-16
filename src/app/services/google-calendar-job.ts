@@ -9,7 +9,10 @@ import 'server-only';
 //   - 'daily' (housekeeping, 03:15 UTC): make sure the watch channel lives
 //     (renewed within 48 hours of expiry), push the whole window (re-renders
 //     every booking, deletes copies past the 12-month limit), then pull.
-// Admin → Integrations → "Sync now" runs 'daily' as well. Both pulls go
+// Admin → Integrations → "Sync now" runs 'daily' as well, with `renew`: it
+// replaces the watch channel at once, so a rotated GOOGLE_CALENDAR_WEBHOOK_SECRET
+// takes effect without waiting for the old channel to run out (housekeeping
+// never asks, or it would replace the channel every night). Both pulls go
 // through the single-flight lock: the push's own writes bring Google
 // notifications whose pulls would otherwise race this one replacing the busy
 // blocks. Each part is isolated (one failing never stops the next), nothing is
@@ -60,7 +63,7 @@ function logStep(step: string) {
   };
 }
 
-async function runSteps(run: GoogleCalendarRun, deadline: number | undefined): Promise<GoogleCalendarSteps> {
+async function runSteps(run: GoogleCalendarRun, deadline: number | undefined, renew: boolean): Promise<GoogleCalendarSteps> {
   const [{ ensureGoogleWatchChannel, runPullSingleFlight }, { pushGoogleCalendar }, { pullGoogleCalendar }] = await Promise.all([
     import('./google-calendar-channel'),
     import('./google-calendar-push'),
@@ -70,7 +73,7 @@ async function runSteps(run: GoogleCalendarRun, deadline: number | undefined): P
   let channel: GoogleCalendarSteps['channel'];
   if (run === 'daily') {
     try {
-      channel = await ensureGoogleWatchChannel({ renew: false });
+      channel = await ensureGoogleWatchChannel({ renew });
     } catch (error) {
       // It throws and records nothing: this job row is where its failure is kept.
       logStep('watch channel')(error);
@@ -121,11 +124,13 @@ function failureOf(steps: Omit<GoogleCalendarSteps, 'ok'>): string | null {
  * Runs the Google Calendar part of a cron (or Sync now). Never throws, and
  * with the sync off returns before importing the sync or touching the
  * database. `deadline` (epoch ms) is when the caller's function is cut off:
- * its start plus its maxDuration.
+ * its start plus its maxDuration. `renew` (daily run only; Sync now passes
+ * true, housekeeping false) replaces the watch channel even when it is not
+ * near its expiry.
  */
 export async function runGoogleCalendarJob(
   run: GoogleCalendarRun,
-  options: { db?: JobDb; deadline?: number } = {},
+  options: { db?: JobDb; deadline?: number; renew?: boolean } = {},
 ): Promise<GoogleCalendarJobResult> {
   // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
   if (!googleCalendarConfig()) return { skipped: 'disabled' };
@@ -134,7 +139,7 @@ export async function runGoogleCalendarJob(
   try {
     db ??= (await import('@/app/lib/prisma')).default;
     await db.backgroundJobState.upsert({ where: { name }, create: { name, lastStartedAt: new Date() }, update: { lastStartedAt: new Date() } });
-    const steps = await runSteps(run, options.deadline);
+    const steps = await runSteps(run, options.deadline, options.renew === true);
     const lastError = failureOf(steps);
     await db.backgroundJobState.update({ where: { name }, data: {
       ...(lastError ? { lastFailedAt: new Date(), lastError } : { lastSucceededAt: new Date(), lastError: null }),

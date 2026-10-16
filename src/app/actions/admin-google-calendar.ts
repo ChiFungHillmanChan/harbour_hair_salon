@@ -14,8 +14,10 @@ const PAGE_MAX_DURATION_MS = 300_000;
 
 /**
  * Admin → Integrations → "Sync now". It is the daily run of the calendar-sync
- * job (watch channel kept without renewing, the whole window pushed, one
- * single-flight pull), so the button and the crons cannot drift apart. With
+ * job (the whole window pushed, one single-flight pull), so the button and the
+ * crons cannot drift apart, except that it also replaces the watch channel at
+ * once (`renew`): after GOOGLE_CALENDAR_WEBHOOK_SECRET is rotated and
+ * redeployed, Sync now is what makes Google's notifications pass again. With
  * the sync off it only redirects: no database, no Google.
  */
 export async function syncGoogleCalendarNow(): Promise<void> {
@@ -25,7 +27,7 @@ export async function syncGoogleCalendarNow(): Promise<void> {
   if (session.role !== 'ADMIN') throw new Error('Unauthorized');
   if (!googleCalendarConfig()) redirect(await localizedPath('/admin/integrations?gcal=disabled'));
 
-  const result = await runGoogleCalendarJob('daily', { deadline });
+  const result = await runGoogleCalendarJob('daily', { deadline, renew: true });
   const outcome = 'ok' in result && result.ok ? 'done' : 'error';
   try {
     await appendAuditEvent({

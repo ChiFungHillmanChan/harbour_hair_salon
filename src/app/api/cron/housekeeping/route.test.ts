@@ -15,14 +15,16 @@ test('housekeeping runs by default, needs authentication, and stops only when ex
   const order: string[] = [];
   const reconciled = { skipped: false, checked: 3, lateCaptureRefunds: 0, unresolved: 1, failed: 0, outOfTime: false };
   const deadlines: number[] = [];
+  const renews: (boolean | undefined)[] = [];
   try {
     const route = loadServerModule<{ GET(request: NextRequest): Promise<Response> }>('src/app/api/cron/housekeeping/route.ts', {
       '@/app/services/housekeeping-service': { runHousekeeping: async () => { runs++; order.push('retention'); return { scrubbed: 1 }; } },
       '@/app/services/pending-request-lapse': { lapseStartedPendingRequests: async (_at: Date, options: unknown) => { lapses++; lapseOptions.push(options); order.push('lapse'); return { lapsed: 2, failed: 0 }; } },
       '@/app/services/payment-reconciliation': { reconcilePayments: async () => { order.push('payments'); return reconciled; } },
-      '@/app/services/google-calendar-job': { runGoogleCalendarJob: async (run: string, input: { deadline: number }) => {
+      '@/app/services/google-calendar-job': { runGoogleCalendarJob: async (run: string, input: { deadline: number; renew?: boolean }) => {
         order.push(`google:${run}`);
         deadlines.push(input.deadline);
+        renews.push(input.renew);
         return { skipped: 'disabled' };
       } },
     });
@@ -45,6 +47,8 @@ test('housekeeping runs by default, needs authentication, and stops only when ex
     assert.deepEqual(await response.json(), { scrubbed: 1, requestsLapsed: 2, requestLapseFailed: 0, payments: reconciled, googleCalendar: { skipped: 'disabled' } });
     // The Google Calendar run comes last, so the lapses above reach Google in the same wake.
     assert.deepEqual(order, ['retention', 'lapse', 'payments', 'google:daily']);
+    // The watch channel is only renewed near its expiry: replacing it every night is Sync now's job, not this one's.
+    assert.deepEqual(renews, [false]);
     assert.equal(runs, 1);
     assert.equal(lapses, 1);
     // Review I-E: only this daily run lapses requests whose deposit was taken

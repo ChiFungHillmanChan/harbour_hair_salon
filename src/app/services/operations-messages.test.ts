@@ -61,6 +61,8 @@ const STATE_KEY_SENTENCES: Partial<Record<OperationsMessageKey, string>> = {
   PAYMENT_LATE_CAPTURE_REFUNDED: 'Square took this deposit although its booking had closed or was never made, so it is being refunded in full.',
   // where (not): payment-attention.ts; ===: payment-reconciliation.ts cancelByKey.
   PAYMENT_UNKNOWN_CANCELLING: 'Square never confirmed this deposit authorization. It is cancelled by its idempotency key again every day until any hold would have run out (7 days). Nothing was booked.',
+  // where + ===: google-calendar-pull.ts revertWebsiteEvents (cleared once Google holds the rendering again).
+  GOOGLE_EVENT_NOT_KEPT: 'Google Calendar did not keep the event for this booking as the website wrote it: either Google changed the event itself, or someone edited it in Google straight after the website wrote it. The website does not write it back again within 10 minutes of its own write, so the two cannot undo each other in a loop; the next calendar sync writes it again. If this keeps appearing, Google is changing the event: the booking is still correct on the website.',
 };
 
 test('every sentence used as a state key keeps its exact text (change one and existing rows drop out — add a key and a migration instead)', () => {

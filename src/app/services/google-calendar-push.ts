@@ -4,9 +4,10 @@ import 'server-only';
 // writes each booking in the window to the salon's Google Calendar and deletes
 // the event once the booking is cancelled, or (mode 'all') 12 months after the
 // appointment ended. Explicit ids (erasure, an old cancellation) and rows the
-// website still owes Google (a failed write, or one erasure marked for
-// re-rendering) reach past the window up to that 12-month limit, but only to
-// update or delete an event that is still live. Google is never called inside
+// website still owes Google (a failed write, for its first five attempts, or
+// one erasure marked for re-rendering, until it lands) reach past the window
+// up to that 12-month limit, but only to update or delete an event that is
+// still live. Google is never called inside
 // a database transaction, and one booking's failure is recorded on its row,
 // never thrown.
 
@@ -38,8 +39,18 @@ const RECENT_MS = 45 * 60_000;
 const RETENTION_QUERY_MARGIN_MS = 24 * 60 * 60_000;
 /** Outbound window: from salon-local midnight this many days back. */
 const WINDOW_DAYS = 7;
-/** The Google copy is a working diary: deleted 12 months after the appointment ended (owner decision). */
-const RETENTION_YEARS = 1;
+/**
+ * The Google copy is a working diary: deleted this many months after the
+ * appointment ended (owner decision). The privacy notice states it
+ * (messages/{en,zh}/legal.ts, retention.googleCalendar; a page test pins it).
+ */
+export const GOOGLE_RETENTION_MONTHS = 12;
+/**
+ * Before the window a failed write is retried by the runs only this many
+ * times (it stays counted as failing on Admin → Integrations); inside the
+ * window, or once erasure marks it, it is retried until it lands.
+ */
+const OWED_RETRY_ATTEMPTS = 5;
 
 /** Only what the push needs; the full gateway satisfies it. */
 export type GoogleGateway = Pick<ReturnType<typeof createGoogleCalendarGateway>, 'putEvent' | 'insertEvent' | 'deleteEvent'>;
@@ -71,7 +82,7 @@ export function windowStart(now: Date): Date {
 
 function retentionCutoff(now: Date): Date {
   const cutoff = new Date(now);
-  cutoff.setUTCFullYear(cutoff.getUTCFullYear() - RETENTION_YEARS);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - GOOGLE_RETENTION_MONTHS);
   return cutoff;
 }
 
@@ -86,12 +97,20 @@ function selection(now: Date, mode: 'recent' | 'all', appointmentIds?: string[])
   // Explicit ids reach past the window (erasure re-renders, old cancellations delete).
   if (appointmentIds) return { id: { in: appointmentIds }, ...retained };
   const inWindow: Prisma.AppointmentWhereInput = { date: { gte: windowStart(now) } };
-  // What the website still owes Google, back to the retention limit rather than the window: a
-  // failed write, or a row marked for re-rendering (erasure clears syncedHash in its own
-  // transaction, so a push that failed or never ran is repaired by the next run).
+  // What the website still owes Google, back to the retention limit rather than the window:
+  //   - a row marked for re-rendering: erasure clears syncedHash of a written event (syncedAt
+  //     set) in its own transaction, so a push that failed or never ran is repaired by the next
+  //     run, however often Google refused it, until the 12-month limit deletes the copy;
+  //   - a failed write: in the window until it lands, before it for OWED_RETRY_ATTEMPTS only, so
+  //     a booking Google keeps refusing is not sent every half hour for a year. A row a failed
+  //     first write created (no hash, never synced) is such a failure, not an erasure.
   const owed: Prisma.AppointmentWhereInput = {
     ...retained,
-    googleCalendarEvent: { is: { OR: [{ lastError: { not: null } }, { syncedHash: null, removed: false }] } },
+    OR: [
+      { googleCalendarEvent: { is: { syncedHash: null, syncedAt: { not: null }, removed: false } } },
+      { googleCalendarEvent: { is: { lastError: { not: null }, attempts: { lt: OWED_RETRY_ATTEMPTS } } } },
+      { ...inWindow, googleCalendarEvent: { is: { lastError: { not: null } } } },
+    ],
   };
   if (mode === 'all') return { OR: [inWindow, owed] };
   return {

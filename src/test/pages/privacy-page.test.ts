@@ -12,6 +12,7 @@ import { RESET_TOKEN_TTL_MS } from '../../app/lib/password-reset';
 import { UNSUBSCRIBE_TOKEN_TTL_DAYS } from '../../app/lib/unsubscribe-token';
 import { EMAIL_SEND_DAILY_POLICY } from '../../app/lib/rate-limit';
 import { LATE_ARRIVAL_CANCEL_MINUTES } from '../../app/lib/booking-constants';
+import { GOOGLE_RETENTION_MONTHS } from '../../app/services/google-calendar-push';
 
 type Element = { type: unknown; props: Record<string, unknown> };
 
@@ -152,9 +153,13 @@ test('the notice names Google Calendar as the appointment diary and says how lon
   assert.ok(en.includes('Google Calendar as the salon’s appointment diary'));
   assert.ok(en.includes('it holds your name, phone number, booking details and the notes our staff add to your booking'));
   assert.ok(en.includes('can also stop those times being offered for online booking'));
-  assert.ok(en.includes('Copies in the salon’s Google Calendar: up to 12 months after the appointment, then deleted.'));
+  // The period is the one the push enforces (services/google-calendar-push.ts deletes the copies).
+  assert.ok(en.includes(`Copies in the salon’s Google Calendar: up to ${GOOGLE_RETENTION_MONTHS} months after the appointment, then deleted.`));
   const zh = (await privacyPage('zh-HK')).text;
   assert.ok(zh.includes('Google 日曆（Google Calendar）'));
-  assert.ok(zh.includes('預約日期後最多保存 12 個月，其後刪除'));
-  for (const body of [en, zh]) assert.ok(body.includes('Google'));
+  assert.ok(zh.includes(`預約日期後最多保存 ${GOOGLE_RETENTION_MONTHS} 個月，其後刪除`));
+  for (const body of [en, zh]) {
+    const stated = [...body.matchAll(/(\d+) (?:months after the appointment|個月，其後刪除)/g)].map((match) => Number(match[1]));
+    assert.deepEqual(stated, [GOOGLE_RETENTION_MONTHS], 'one Google retention period, the enforced one');
+  }
 });

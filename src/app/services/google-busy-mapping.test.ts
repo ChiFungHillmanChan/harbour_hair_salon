@@ -73,6 +73,18 @@ test('an all-day event without an end covers one day; invalid times are skipped'
   assert.deepEqual(googleBusyBlocks([ev('Ivan', { start: { dateTime: 'nonsense' } })], [ivan]), []);
 });
 
+test('a malformed all-day start without an end is skipped, never thrown; the other events still map', () => {
+  for (const date of ['garbage', '2026-13-45', '2026-02-30x', '']) {
+    const events = [ev('Ivan', { id: 'bad', start: { date }, end: undefined }), ev('Lox', { id: 'good' })];
+    assert.deepEqual(googleBusyBlocks(events, stylists).map((b) => b.stylistId), ['st-lox'], JSON.stringify(date));
+  }
+});
+
+test('a tentative Google-only event still blocks (only cancelled or transparent ones do not)', () => {
+  assert.deepEqual(ids([ev('Ivan: maybe dentist', { status: 'tentative' })]), ['st-ivan']);
+  assert.deepEqual(ids([ev('Stock take', { status: 'tentative' })]), ['st-ivan', 'st-lox']);
+});
+
 test('externalUid is sha256(eventId::stylistId)', () => {
   const [block] = googleBusyBlocks([ev('Ivan')], stylists);
   assert.equal(block.externalUid, createHash('sha256').update('evt1::st-ivan').digest('hex'));

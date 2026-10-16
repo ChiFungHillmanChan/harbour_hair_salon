@@ -254,7 +254,7 @@ model GoogleCalendarEvent {
   /// True once the event was deleted because the booking closed.
   removed       Boolean     @default(false)
   attempts      Int         @default(0)
-  lastError     String?
+  lastError     String?     @db.NVarChar(Max)
   updatedAt     DateTime    @updatedAt
 }
 
@@ -266,7 +266,7 @@ model GoogleCalendarSyncState {
   channelExpiresAt  DateTime?
   lastPullAt        DateTime?
   lastPullSuccessAt DateTime?
-  lastPullError     String?
+  lastPullError     String?   @db.NVarChar(Max)
   /// Hash of the GOOGLE busy blocks last stored; equal → no DB write.
   busyHash          String?
 }

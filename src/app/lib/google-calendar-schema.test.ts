@@ -46,3 +46,13 @@ for (const provider of PROVIDERS) {
     assert.match(sql, /ON DELETE CASCADE/);
   });
 }
+
+// SQL Server parity: an error sentence can be longer than NVARCHAR(1000), like every other lastError there.
+test('prod (SQL Server) stores the Google error sentences as NVARCHAR(MAX), in the schema and its migration', () => {
+  const schema = readFileSync('prisma/prod/schema.prisma', 'utf8');
+  assert.match(block(schema, 'GoogleCalendarEvent'), /\n\s+lastError\s+String\?\s+@db\.NVarChar\(Max\)/);
+  assert.match(block(schema, 'GoogleCalendarSyncState'), /\n\s+lastPullError\s+String\?\s+@db\.NVarChar\(Max\)/);
+  const sql = readFileSync(`prisma/prod/migrations/${MIGRATION}/migration.sql`, 'utf8');
+  assert.match(sql, /\[lastError\] NVARCHAR\(MAX\),/);
+  assert.match(sql, /\[lastPullError\] NVARCHAR\(MAX\),/);
+});

@@ -6,8 +6,9 @@ import { loadServerModule } from '../../test/load-server-module';
 
 // Admin → Integrations → "Sync now" (task G9, spec §7): administrators only,
 // audited, and a no-op redirect while the sync is off. The work is the
-// calendar-sync job's own daily run (watch channel without renewal, the whole
-// window pushed, one single-flight pull), so the buttons and the cron cannot drift.
+// calendar-sync job's own daily run (the whole window pushed, one single-flight
+// pull), so the buttons and the cron cannot drift, except that it also replaces
+// the watch channel at once: a rotated webhook secret takes effect on Sync now.
 
 const CONFIG = { calendarId: 'c', clientEmail: 'e', privateKey: 'k', webhookSecret: 's' };
 const STEPS = { ok: true, channel: 'current', push: { written: 1, deleted: 0, unchanged: 4, failed: 0 }, pull: { reverted: 0, blocks: 0, changed: false } };
@@ -17,13 +18,19 @@ function load(options: { role?: string; enabled?: boolean; job?: unknown; auditF
   const audits: Record<string, unknown>[] = [];
   const revalidated: string[] = [];
   const deadlines: (number | undefined)[] = [];
+  const renews: (boolean | undefined)[] = [];
   let redirected = '';
   const action = loadServerModule<typeof import('./admin-google-calendar')>('src/app/actions/admin-google-calendar.ts', {
     'server-only': {},
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => { log.push('config'); return options.enabled === false ? null : CONFIG; } },
     '@/app/services/google-calendar-job': {
-      runGoogleCalendarJob: async (run: string, input?: { deadline?: number }) => { log.push(`job:${run}`); deadlines.push(input?.deadline); return options.job ?? STEPS; },
+      runGoogleCalendarJob: async (run: string, input?: { deadline?: number; renew?: boolean }) => {
+        log.push(`job:${run}`);
+        deadlines.push(input?.deadline);
+        renews.push(input?.renew);
+        return options.job ?? STEPS;
+      },
     },
     '@/app/lib/audit': {
       appendAuditEvent: async (input: Record<string, unknown>) => {
@@ -38,7 +45,7 @@ function load(options: { role?: string; enabled?: boolean; job?: unknown; auditF
     'next/navigation': { redirect: (to: string) => { redirected = to; throw new Error('NEXT_REDIRECT'); } },
   });
   const run = async () => { await assert.rejects(action.syncGoogleCalendarNow(), /NEXT_REDIRECT/); return redirected; };
-  return { action, run, log, audits, revalidated, deadlines };
+  return { action, run, log, audits, revalidated, deadlines, renews };
 }
 
 test('a non-administrator is refused before anything else happens', async () => {
@@ -60,6 +67,12 @@ test('with the sync on it runs the daily job, audits it and redirects done', asy
   assert.deepEqual(f.log, ['config', 'job:daily', 'audit']);
   assert.deepEqual(f.audits, [{ actorUserId: 'admin-1', action: 'INTEGRATION.GOOGLE_CALENDAR_SYNC', targetType: 'Integration', targetId: 'google-calendar', metadata: { outcome: 'done' } }]);
   assert.ok(f.revalidated.includes('/admin/integrations'));
+});
+
+test('Sync now replaces the watch channel at once (renew), so a rotated webhook secret takes effect', async () => {
+  const f = load();
+  await f.run();
+  assert.deepEqual(f.renews, [true]);
 });
 
 test('the job is told when the page\'s function is cut off, so it skips a pull it could not finish', async () => {

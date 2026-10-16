@@ -165,9 +165,19 @@ async function revertWebsiteEvents(
       await recordFailure(db, appointment.id, eventId, error);
       continue;
     }
-    // Missing or deleted in Google counts as changed (sameRenderedEvent compares the deleted state).
-    if (event && sameRenderedEvent(event, expected.event)) continue;
     const row = appointment.googleCalendarEvent;
+    // Missing or deleted in Google counts as changed (sameRenderedEvent compares the deleted state).
+    if (event && sameRenderedEvent(event, expected.event)) {
+      // Google holds the website's own rendering again: a "not kept" note from an earlier pull is
+      // out of date. Conditional, so a push failure recorded meanwhile stays for the push to retry.
+      if (row && row.syncedHash === expected.hash && row.lastError === OPERATIONS_MESSAGES.GOOGLE_EVENT_NOT_KEPT) {
+        await db.googleCalendarEvent.updateMany({
+          where: { appointmentId: appointment.id, syncedHash: expected.hash, lastError: OPERATIONS_MESSAGES.GOOGLE_EVENT_NOT_KEPT },
+          data: { lastError: null },
+        }).catch(logRowFailure(appointment.id));
+      }
+      continue;
+    }
     // Keyed on the hash: a real booking change since that write is never held back.
     if (row && !row.removed && row.syncedHash === expected.hash && row.syncedAt && now.getTime() - row.syncedAt.getTime() < REWRITE_HOLD_MS) {
       const notKept = { lastError: OPERATIONS_MESSAGES.GOOGLE_EVENT_NOT_KEPT };

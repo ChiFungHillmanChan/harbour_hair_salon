@@ -193,7 +193,7 @@ type JobDb = { backgroundJobState: { upsert(args: unknown): Promise<unknown>; up
 function googleHarness(options: { feeds?: { ok: boolean }[]; google?: () => Promise<unknown> } = {}) {
   return import('../../../../test/load-server-module').then(({ loadServerModule }) => {
     const order: string[] = [];
-    const googleCalls: { run: unknown; db: unknown; deadline: unknown }[] = [];
+    const googleCalls: { run: unknown; db: unknown; deadline: unknown; renew: unknown }[] = [];
     const db: JobDb = { backgroundJobState: { upsert: async () => ({}), update: async () => ({}) } };
     const route = loadServerModule<{ GET: typeof GET }>('src/app/api/cron/calendar-sync/route.ts', {
       '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => true },
@@ -201,9 +201,9 @@ function googleHarness(options: { feeds?: { ok: boolean }[]; google?: () => Prom
       '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => { order.push('sync'); return options.feeds ?? []; } },
       '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => { order.push('late'); return { enabled: true, cancelled: 0, skipped: 0, failed: 0 }; } },
       '@/app/services/google-calendar-job': {
-        runGoogleCalendarJob: async (run: unknown, input: { db: unknown; deadline: unknown }) => {
+        runGoogleCalendarJob: async (run: unknown, input: { db: unknown; deadline: unknown; renew?: unknown }) => {
           order.push('google');
-          googleCalls.push({ run, db: input.db, deadline: input.deadline });
+          googleCalls.push({ run, db: input.db, deadline: input.deadline, renew: input.renew });
           return options.google ? options.google() : { ok: true, push: { written: 1, deleted: 0, unchanged: 0, failed: 0 }, pull: 'deferred' };
         },
       },
@@ -222,6 +222,7 @@ test('the Google Calendar step runs after the late-arrival step, on the same dat
     assert.equal(response.status, 200);
     assert.deepEqual(h.order, ['sync', 'late', 'google']);
     assert.deepEqual(h.googleCalls.map((call) => call.run), ['calendar-sync']);
+    assert.notEqual(h.googleCalls[0].renew, true, 'never replaces the watch channel');
     assert.equal(h.googleCalls[0].db, h.db, 'no second client: the database is already awake');
     assert.deepEqual((await response.json()).googleCalendar, { ok: true, push: { written: 1, deleted: 0, unchanged: 0, failed: 0 }, pull: 'deferred' });
   });

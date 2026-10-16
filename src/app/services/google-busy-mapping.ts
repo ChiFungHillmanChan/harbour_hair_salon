@@ -15,8 +15,11 @@ function escapeRegExp(text: string): string {
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function nextDay(day: string): string {
+/** The following calendar day, or null for a malformed date (one bad event must never stop the pull). */
+function nextDay(day: string): string | null {
+  if (!DAY_RE.test(day)) return null;
   const d = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
   d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
@@ -36,7 +39,8 @@ function eventInterval(event: GoogleEvent): { start: Date; end: Date } | null {
     end = event.end?.dateTime ? new Date(event.end.dateTime) : null;
   } else if (event.start?.date) {
     start = salonMidnight(event.start.date);
-    end = salonMidnight(event.end?.date ?? nextDay(event.start.date));
+    const endDay = event.end?.date ?? nextDay(event.start.date);
+    end = endDay ? salonMidnight(endDay) : null;
   } else {
     return null;
   }

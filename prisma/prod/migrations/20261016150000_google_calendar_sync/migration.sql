@@ -10,7 +10,7 @@ CREATE TABLE [dbo].[GoogleCalendarEvent] (
     [syncedAt] DATETIME2,
     [removed] BIT NOT NULL CONSTRAINT [GoogleCalendarEvent_removed_df] DEFAULT 0,
     [attempts] INT NOT NULL CONSTRAINT [GoogleCalendarEvent_attempts_df] DEFAULT 0,
-    [lastError] NVARCHAR(1000),
+    [lastError] NVARCHAR(MAX),
     [updatedAt] DATETIME2 NOT NULL,
     CONSTRAINT [GoogleCalendarEvent_pkey] PRIMARY KEY CLUSTERED ([appointmentId]),
     CONSTRAINT [GoogleCalendarEvent_eventId_key] UNIQUE NONCLUSTERED ([eventId])
@@ -24,7 +24,7 @@ CREATE TABLE [dbo].[GoogleCalendarSyncState] (
     [channelExpiresAt] DATETIME2,
     [lastPullAt] DATETIME2,
     [lastPullSuccessAt] DATETIME2,
-    [lastPullError] NVARCHAR(1000),
+    [lastPullError] NVARCHAR(MAX),
     [busyHash] NVARCHAR(1000),
     CONSTRAINT [GoogleCalendarSyncState_pkey] PRIMARY KEY CLUSTERED ([id])
 );
