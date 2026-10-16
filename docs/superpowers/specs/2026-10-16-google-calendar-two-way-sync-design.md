@@ -179,9 +179,33 @@ as today. If the owner prefers the chat design, drop this paragraph's export.
 ## 8. Failure and attention
 
 - Every fixed `lastError` sentence is catalogued in `operations-messages.ts`.
-- The daily ops alert and Admin → Operations list: events failing for over
-  2 hours, a watch channel expired or missing while enabled, no successful pull
-  for 24 hours.
+- Two job rows (`services/google-calendar-job.ts`): `google-calendar` for the
+  30-minute run and `google-calendar-daily` for housekeeping and Sync now. They
+  are separate so a 03:15 channel failure is not wiped by the next 30-minute
+  success. The daily ops alert and Admin → Operations list a row while it is
+  failing, with one sentence, most urgent first:
+  - a push or pull that could not complete (`GOOGLE_SYNC_FAILED`);
+  - no successful pull for 24 hours (`GOOGLE_PULL_STALE`);
+  - a watch channel that could not be made (`GOOGLE_CHANNEL_FAILED`, daily row);
+  - no live watch channel, or an expired one (`GOOGLE_CHANNEL_MISSING`);
+  - bookings Google would not take (`GOOGLE_EVENTS_FAILED`).
+- The health checks (`GOOGLE_PULL_STALE`, `GOOGLE_CHANNEL_MISSING`) run in the
+  30-minute run after its own pull (the database is already awake), only while
+  the sync is enabled.
+  - A pull attempted that never succeeded counts as stale.
+  - A fresh setup that has not pulled yet does not count: no column records
+    when the sync was first enabled, so "null after the first day" became "null
+    once a pull has been attempted".
+- Each booking's own error (`GOOGLE_PUSH_FAILED`, `GOOGLE_PUSH_REFUSED`,
+  `GOOGLE_EVENT_NOT_KEPT`) stays on its `GoogleCalendarEvent` row. Admin →
+  Integrations counts those rows, and the job row says `GOOGLE_EVENTS_FAILED`
+  when a run ends with any. (The earlier "events failing for over 2 hours"
+  became "failing at the end of a run": a failure lasts one run at least,
+  30 minutes in staff hours.)
+- The push stops at the first setup failure (Google refusing the website's
+  access, `auth`, or the sync switched off mid-run, `disabled`). It records that
+  booking's row and `GOOGLE_SYNC_FAILED` once on the job, never one refusal per
+  booking.
 - Online-booking readiness does NOT depend on Google (it is the salon's own
   diary, not a sales channel); a failing pull is an attention item.
 

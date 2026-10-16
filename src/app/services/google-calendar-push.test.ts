@@ -314,7 +314,7 @@ test('Google failures are recorded per row, never thrown, and retried by the nex
   const failures: Record<string, Error> = {
     [googleEventIdFor('a1')]: new GoogleCalendarError('retryable', 503),
     [googleEventIdFor('a3')]: new GoogleCalendarError('refused', 400),
-    [googleEventIdFor('a4')]: new GoogleCalendarError('auth', 401),
+    [googleEventIdFor('a4')]: new GoogleCalendarError('invalid_response'),
     [googleEventIdFor('a5')]: new GoogleCalendarError('retryable'),
   };
   const failing = fakeGateway((call) => failures[call.id]);
@@ -340,6 +340,30 @@ test('Google failures are recorded per row, never thrown, and retried by the nex
     assert.equal(rows.get(id)!.attempts, 0, id);
     assert.equal(rows.get(id)!.lastError, null, id);
   }
+});
+
+test('a setup failure (Google refusing the website, or the sync switched off) stops the run: one row recorded, reported once', async (t) => {
+  const logged: unknown[][] = [];
+  t.mock.method(console, 'error', (...args: unknown[]) => { logged.push(args); });
+  for (const error of [new GoogleCalendarError('auth', 403), new GoogleCalendarError('disabled')]) {
+    const { db, rows } = fakeDb([appt('a1'), appt('a2'), appt('a3'), appt('a4', { status: 'CANCELLED' })], [eventRow('a4')]);
+    const refusing = fakeGateway(() => error);
+    assert.deepEqual(await run(db, refusing.gateway), { written: 0, deleted: 0, unchanged: 0, failed: 1, stopped: 'setup' }, error.kind);
+    assert.deepEqual(refusing.calls.map((call) => call.id), [googleEventIdFor('a1')], 'no other booking is tried');
+    assert.deepEqual({ attempts: rows.get('a1')!.attempts, lastError: rows.get('a1')!.lastError }, { attempts: 1, lastError: OPERATIONS_MESSAGES.GOOGLE_PUSH_FAILED });
+    assert.equal(rows.has('a2'), false, 'untried bookings get no row of their own');
+    assert.equal(rows.get('a4')!.attempts, 0, 'nor does a cancellation waiting to be deleted');
+  }
+  // The whole window (and the retention pass) stops the same way.
+  const { db } = fakeDb([appt('b1'), appt('b2'), appt('old', { date: at(-400 * DAY) })], [eventRow('old')]);
+  const refusing = fakeGateway(() => new GoogleCalendarError('auth', 401));
+  assert.deepEqual(await run(db, refusing.gateway, { mode: 'all' }), { written: 0, deleted: 0, unchanged: 0, failed: 1, stopped: 'setup' });
+  assert.equal(refusing.calls.length, 1);
+  assert.equal(logged.length, 3, 'said once per run');
+  // Any other failure is the booking's own: the run goes on.
+  const { db: other } = fakeDb([appt('c1'), appt('c2')]);
+  const flaky = fakeGateway((call) => (call.id === googleEventIdFor('c1') ? new GoogleCalendarError('retryable', 503) : undefined));
+  assert.deepEqual(await run(other, flaky.gateway), { written: 1, deleted: 0, unchanged: 0, failed: 1 });
 });
 
 test('after a failure an equal hash proves nothing (a timed-out PUT may have landed): the event is written again', async () => {

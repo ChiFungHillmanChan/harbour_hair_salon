@@ -156,20 +156,20 @@ test('daily Google run after payments: watch channel, the whole window, then the
     const response = await h.get();
     assert.equal(response.status, 200);
     assert.deepEqual(h.order, ['retention', 'lapse', 'payments', 'channel:{"renew":false}', 'push:all', 'single-flight', 'pull']);
-    assert.deepEqual(h.jobRows, ['start:google-calendar', 'end:google-calendar:ok']);
+    assert.deepEqual(h.jobRows, ['start:google-calendar-daily', 'end:google-calendar-daily:ok'], 'the daily run has its own row');
     assert.deepEqual((await response.json()).googleCalendar, {
       ok: true, channel: 'renewed', push: { written: 0, deleted: 1, unchanged: 9, failed: 0 }, pull: { reverted: 0, blocks: 0, changed: false },
     });
   });
 });
 
-test('a watch channel that cannot be made is recorded in the google-calendar row; the run still pushes, pulls and answers 200', async (t) => {
+test('a watch channel that cannot be made is recorded in the google-calendar-daily row; the run still pushes, pulls and answers 200', async (t) => {
   t.mock.method(console, 'error', () => {});
   await withHousekeepingEnv(async () => {
     const h = housekeepingWithRealJob({ enabled: true, channelThrows: true });
     assert.equal((await h.get()).status, 200);
     assert.deepEqual(h.order, ['retention', 'lapse', 'payments', 'channel:{"renew":false}', 'push:all', 'single-flight', 'pull']);
-    assert.deepEqual(h.jobRows, ['start:google-calendar', `end:google-calendar:${OPERATIONS_MESSAGES.GOOGLE_CHANNEL_FAILED}`]);
+    assert.deepEqual(h.jobRows, ['start:google-calendar-daily', `end:google-calendar-daily:${OPERATIONS_MESSAGES.GOOGLE_CHANNEL_FAILED}`]);
   });
 });
 

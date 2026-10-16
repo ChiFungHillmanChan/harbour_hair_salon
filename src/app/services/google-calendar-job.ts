@@ -16,12 +16,17 @@ import 'server-only';
 // through the single-flight lock: the push's own writes bring Google
 // notifications whose pulls would otherwise race this one replacing the busy
 // blocks. Each part is isolated (one failing never stops the next), nothing is
-// thrown to the caller, and the outcome is stored in the job row
-// `google-calendar`, which the daily ops alert lists while it is failing: a
-// failed push or pull (the pull also records lastPullError on
-// GoogleCalendarSyncState), a watch channel that could not be made, or
-// bookings Google would not take. Given the caller's deadline, the pull is
-// skipped (and said so, not failed) when too little time is left for it.
+// thrown to the caller, and the outcome is stored in a job row the daily ops
+// alert lists while it is failing: `google-calendar` for the 30-minute run,
+// `google-calendar-daily` for housekeeping and Sync now (their own row, so a
+// 03:15 channel failure is not wiped by the next 30-minute success). A row
+// fails for a push or pull that could not complete (the pull also records
+// lastPullError on GoogleCalendarSyncState), a watch channel that could not be
+// made, or bookings Google would not take. The 30-minute run also checks the
+// sync's health (spec §8; the database is already awake): no live watch
+// channel, or no successful check of Google for 24 hours. Given the caller's
+// deadline, the pull is skipped (and said so, not failed) when too little time
+// is left for it.
 
 import type { PrismaClient } from '@prisma/client';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
@@ -30,9 +35,21 @@ import { OPERATIONS_MESSAGES } from './operations-messages';
 import type { GooglePushResult } from './google-calendar-push';
 import type { GooglePullResult } from './google-calendar-pull';
 
+/** The 30-minute run's job row (calendar-sync cron). */
 export const GOOGLE_CALENDAR_JOB = 'google-calendar';
+/** The daily run's own job row (housekeeping, Sync now): its channel failure outlives the next 30-minute success. */
+export const GOOGLE_CALENDAR_DAILY_JOB = 'google-calendar-daily';
+/** No successful check of Google for this long is a problem in itself (spec §8). */
+export const PULL_STALE_MS = 24 * 60 * 60_000;
 
 export type GoogleCalendarRun = 'calendar-sync' | 'daily';
+
+/**
+ * What the 30-minute run finds in GoogleCalendarSyncState. `pull: 'none-yet'`:
+ * no check of Google has been attempted yet (a fresh setup), which is not a
+ * problem; once one has been attempted, never succeeding counts as stale.
+ */
+export type GoogleCalendarHealth = { channel: 'ok' | 'missing' | 'expired'; pull: 'ok' | 'stale' | 'none-yet' };
 
 type ChannelOutcome = 'created' | 'renewed' | 'current' | 'disabled';
 
@@ -50,11 +67,13 @@ export type GoogleCalendarSteps = {
    * PULL_SKIPPED_NO_TIME: too little of the caller's time was left; the next run pulls.
    */
   pull: GooglePullResult | 'deferred' | 'failed' | typeof PULL_SKIPPED_NO_TIME;
+  /** The 30-minute run only, read after its own pull. */
+  health?: GoogleCalendarHealth;
 };
 
 export type GoogleCalendarJobResult = { skipped: 'disabled' } | GoogleCalendarSteps | { ok: false; error: true };
 
-type JobDb = Pick<PrismaClient, 'backgroundJobState'>;
+type JobDb = Pick<PrismaClient, 'backgroundJobState' | 'googleCalendarSyncState'>;
 
 function logStep(step: string) {
   return (error: unknown) => {
@@ -63,7 +82,22 @@ function logStep(step: string) {
   };
 }
 
-async function runSteps(run: GoogleCalendarRun, deadline: number | undefined, renew: boolean): Promise<GoogleCalendarSteps> {
+/** Read after the run's own pull, so a pull that just succeeded counts. */
+async function checkHealth(db: JobDb, now: Date): Promise<GoogleCalendarHealth> {
+  const state = await db.googleCalendarSyncState.findUnique({
+    where: { id: 'singleton' },
+    select: { channelId: true, channelExpiresAt: true, lastPullAt: true, lastPullSuccessAt: true },
+  });
+  const channel = !state?.channelId || !state.channelExpiresAt
+    ? 'missing'
+    : state.channelExpiresAt.getTime() <= now.getTime() ? 'expired' : 'ok';
+  const pull = state?.lastPullSuccessAt
+    ? (now.getTime() - state.lastPullSuccessAt.getTime() > PULL_STALE_MS ? 'stale' : 'ok')
+    : state?.lastPullAt ? 'stale' : 'none-yet';
+  return { channel, pull };
+}
+
+async function runSteps(db: JobDb, run: GoogleCalendarRun, deadline: number | undefined, renew: boolean): Promise<GoogleCalendarSteps> {
   const [{ ensureGoogleWatchChannel, runPullSingleFlight }, { pushGoogleCalendar }, { pullGoogleCalendar }] = await Promise.all([
     import('./google-calendar-channel'),
     import('./google-calendar-push'),
@@ -104,7 +138,8 @@ async function runSteps(run: GoogleCalendarRun, deadline: number | undefined, re
     }
   }
 
-  const steps = { ...(channel === undefined ? {} : { channel }), push, pull };
+  const health = run === 'calendar-sync' ? await checkHealth(db, new Date()) : undefined;
+  const steps = { ...(channel === undefined ? {} : { channel }), push, pull, ...(health ? { health } : {}) };
   return { ok: failureOf(steps) === null, ...steps };
 }
 
@@ -112,10 +147,17 @@ function pullFailed(pull: GoogleCalendarSteps['pull']): boolean {
   return pull === 'failed' || (typeof pull === 'object' && pull.failed === true);
 }
 
-/** The job row's sentence: a step that could not complete, then the channel, then bookings Google would not take. */
+/**
+ * The job row's sentence, most urgent first: a step that could not complete,
+ * no successful check of Google for 24 hours, the watch channel (not made, or
+ * none live), then bookings Google would not take.
+ */
 function failureOf(steps: Omit<GoogleCalendarSteps, 'ok'>): string | null {
-  if (steps.push === 'failed' || pullFailed(steps.pull)) return OPERATIONS_MESSAGES.GOOGLE_SYNC_FAILED;
+  // A push stopped by a setup failure is said once here, not once per booking.
+  if (steps.push === 'failed' || steps.push.stopped === 'setup' || pullFailed(steps.pull)) return OPERATIONS_MESSAGES.GOOGLE_SYNC_FAILED;
+  if (steps.health?.pull === 'stale') return OPERATIONS_MESSAGES.GOOGLE_PULL_STALE;
   if (steps.channel === 'failed') return OPERATIONS_MESSAGES.GOOGLE_CHANNEL_FAILED;
+  if (steps.health && steps.health.channel !== 'ok') return OPERATIONS_MESSAGES.GOOGLE_CHANNEL_MISSING;
   if (steps.push.failed > 0) return OPERATIONS_MESSAGES.GOOGLE_EVENTS_FAILED;
   return null;
 }
@@ -134,12 +176,12 @@ export async function runGoogleCalendarJob(
 ): Promise<GoogleCalendarJobResult> {
   // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
   if (!googleCalendarConfig()) return { skipped: 'disabled' };
-  const name = GOOGLE_CALENDAR_JOB;
+  const name = run === 'daily' ? GOOGLE_CALENDAR_DAILY_JOB : GOOGLE_CALENDAR_JOB;
   let db: JobDb | undefined = options.db;
   try {
     db ??= (await import('@/app/lib/prisma')).default;
     await db.backgroundJobState.upsert({ where: { name }, create: { name, lastStartedAt: new Date() }, update: { lastStartedAt: new Date() } });
-    const steps = await runSteps(run, options.deadline, options.renew === true);
+    const steps = await runSteps(db, run, options.deadline, options.renew === true);
     const lastError = failureOf(steps);
     await db.backgroundJobState.update({ where: { name }, data: {
       ...(lastError ? { lastFailedAt: new Date(), lastError } : { lastSucceededAt: new Date(), lastError: null }),

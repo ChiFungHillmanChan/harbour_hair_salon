@@ -56,7 +56,8 @@ export async function GET(request: NextRequest) {
     // (renewed only within 48 hours of its expiry; Sync now replaces it at
     // once), write the whole window again (and delete copies past 12 months),
     // then pull.
-    // Last, so the lapses above reach Google too. Its own job row; never
+    // Last, so the lapses above reach Google too. Its own job row
+    // (`google-calendar-daily`, shared with Sync now); never
     // fails the retention run; with the Google sync off it does nothing at all.
     let googleCalendar: Awaited<ReturnType<typeof runGoogleCalendarJob>> | { error: true };
     try {

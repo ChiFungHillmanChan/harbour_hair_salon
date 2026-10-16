@@ -9,7 +9,10 @@ import 'server-only';
 // up to that 12-month limit, but only to update or delete an event that is
 // still live. Google is never called inside
 // a database transaction, and one booking's failure is recorded on its row,
-// never thrown.
+// never thrown. A setup failure (Google refusing the website's own access, or
+// the sync switched off mid-run) stops the run instead: every other booking
+// would fail the same way, so it is recorded on that one row and reported once
+// (`stopped: 'setup'`) for the job row.
 
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
@@ -55,7 +58,8 @@ const OWED_RETRY_ATTEMPTS = 5;
 /** Only what the push needs; the full gateway satisfies it. */
 export type GoogleGateway = Pick<ReturnType<typeof createGoogleCalendarGateway>, 'putEvent' | 'insertEvent' | 'deleteEvent'>;
 
-export type GooglePushResult = { written: number; deleted: number; unchanged: number; failed: number; skipped?: 'disabled' };
+/** `stopped: 'setup'`: Google refused the website's access (or the sync was switched off), so the run stopped early. */
+export type GooglePushResult = { written: number; deleted: number; unchanged: number; failed: number; skipped?: 'disabled'; stopped?: 'setup' };
 
 type Outcome = 'written' | 'deleted' | 'unchanged' | 'failed' | 'skipped';
 
@@ -160,6 +164,12 @@ function errorKind(error: unknown): GoogleCalendarError['kind'] | null {
   return error instanceof GoogleCalendarError ? error.kind : null;
 }
 
+/** The website's own setup, not this booking: every other write would fail the same way. */
+function isSetupFailure(error: unknown): boolean {
+  const kind = errorKind(error);
+  return kind === 'auth' || kind === 'disabled';
+}
+
 /** PUT at the event's own id; 404 → insert with that id; 409 (the id exists, deleted) → PUT again. */
 export async function writeEvent(gateway: GoogleGateway, event: GoogleEvent): Promise<void> {
   try {
@@ -211,17 +221,28 @@ export async function pushGoogleCalendar(options: {
   const from = windowStart(now);
   const cutoff = retentionCutoff(now).getTime();
   const startedAt = Date.now();
-  const withinBudget = () => Date.now() - startedAt < TIME_BUDGET_MS;
+  let stopped = false;
+  /** Within the time budget, and no setup failure yet. */
+  const going = () => !stopped && Date.now() - startedAt < TIME_BUDGET_MS;
   const count = (outcome: Outcome) => {
     if (outcome !== 'skipped') result[outcome] += 1;
   };
+  const finish = (): GooglePushResult => (stopped ? { ...result, stopped: 'setup' } : result);
+  /** Records the booking's failure; a setup failure also stops the run. */
+  const fail = (appointmentId: string, eventId: string, error: unknown): Promise<Outcome> => {
+    if (isSetupFailure(error) && !stopped) {
+      stopped = true;
+      console.error('Google Calendar push stopped: Google refused the website\'s access', { kind: errorKind(error), status: (error as GoogleCalendarError).status });
+    }
+    return recordFailure(db, appointmentId, eventId, error);
+  };
 
   const removeEvent = async (appointmentId: string, eventId: string): Promise<Outcome> => {
-    if (!withinBudget()) return 'skipped';
+    if (!going()) return 'skipped';
     try {
       await gateway.deleteEvent(eventId);
     } catch (error) {
-      return recordFailure(db, appointmentId, eventId, error);
+      return fail(appointmentId, eventId, error);
     }
     try {
       await db.googleCalendarEvent.update({
@@ -240,6 +261,7 @@ export async function pushGoogleCalendar(options: {
     if (appointments.length === 0) return;
     const context = await loadRenderContext(db, appointments);
     for (const appointment of appointments) {
+      if (stopped) return;
       const row = appointment.googleCalendarEvent;
       if (appointment.status === 'CANCELLED') {
         // Delete while live; also once more after a failed write (a timed-out PUT may have landed).
@@ -266,11 +288,11 @@ export async function pushGoogleCalendar(options: {
         count('unchanged');
         continue;
       }
-      if (!withinBudget()) continue;
+      if (!going()) continue;
       try {
         await writeEvent(gateway, event);
       } catch (error) {
-        count(await recordFailure(db, appointment.id, event.id, error));
+        count(await fail(appointment.id, event.id, error));
         continue;
       }
       const synced = { eventId: event.id, syncedHash: hash, syncedAt: now, removed: false, attempts: 0, lastError: null };
@@ -292,13 +314,13 @@ export async function pushGoogleCalendar(options: {
       take: MAX_PER_RUN,
     });
     await pushBatch(appointments);
-    return result;
+    return finish();
   }
 
   // 'all': retention first. Then, for 'all' and explicit ids alike, every selected booking in
   // (date, id) keyset batches until done or out of time: an erasure never stops at 100.
   let after: { date: Date; id: string } | null = null;
-  while (reconcile && withinBudget()) {
+  while (reconcile && going()) {
     const page: { appointmentId: string; eventId: string; appointment: { date: Date; durationAtBooking: number | null; service: { duration: number } } }[] =
       await db.googleCalendarEvent.findMany({
         where: {
@@ -320,7 +342,7 @@ export async function pushGoogleCalendar(options: {
 
   after = null;
   const selected = selection(now, mode, options.appointmentIds);
-  while (withinBudget()) {
+  while (going()) {
     const page: PushAppointment[] = await db.appointment.findMany({
       where: after ? { AND: [selected, { OR: [{ date: { gt: after.date } }, { date: after.date, id: { gt: after.id } }] }] } : selected,
       select: appointmentSelect,
@@ -332,5 +354,5 @@ export async function pushGoogleCalendar(options: {
     const last = page[page.length - 1];
     after = { date: last.date, id: last.id };
   }
-  return result;
+  return finish();
 }

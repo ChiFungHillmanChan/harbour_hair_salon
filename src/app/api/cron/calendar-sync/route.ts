@@ -81,10 +81,12 @@ async function runLateArrivals(db: Pick<PrismaClient, 'backgroundJobState'>) {
  * Rides this cron too (no extra Neon wake): writes the recently changed,
  * never-synced and failing bookings to the salon's Google Calendar (the
  * late-arrival cancellations just made included), then pulls Google as the
- * safety net for a missed notification. Its own job row (`google-calendar`);
- * never fails the sync, and with the Google sync off it makes no query and no call.
+ * safety net for a missed notification, and checks the sync's health (a live
+ * watch channel, a successful check of Google within 24 hours). Its own job
+ * row (`google-calendar`); never fails the sync, and with the Google sync off
+ * it makes no query and no call.
  */
-async function runGoogleCalendar(db: Pick<PrismaClient, 'backgroundJobState'>, deadline: number) {
+async function runGoogleCalendar(db: Pick<PrismaClient, 'backgroundJobState' | 'googleCalendarSyncState'>, deadline: number) {
   try {
     return await runGoogleCalendarJob('calendar-sync', { db, deadline });
   } catch (error) {

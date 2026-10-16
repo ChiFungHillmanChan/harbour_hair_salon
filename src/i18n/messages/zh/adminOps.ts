@@ -240,6 +240,8 @@ const adminOps: Localized<Messages['adminOps']> = {
       GOOGLE_SYNC_FAILED: 'Google 日曆同步未能完成：預約未能全部寫入 Google，或未能讀取在 Google 上的更改。網站上的預約及上次從 Google 讀取的忙碌時段已保留；下次日曆同步會再執行。如持續失敗，請檢查 Vercel 上的 Google 日曆設定，以及日曆是否已共用給服務帳戶。',
       GOOGLE_CHANNEL_FAILED: '未能設定或續期 Google 日曆的更改通知，因此在 Google 上的更改要等到下次日曆同步（員工工作時間內每 30 分鐘一次）才會傳到網站，而不是一分鐘內。資料清理程序明天會再嘗試。如持續失敗，請檢查 Vercel 上的 Google 日曆設定，以及日曆是否已共用給服務帳戶。',
       GOOGLE_EVENTS_FAILED: '部分預約未能寫入 Google 日曆。下次日曆同步會逐一再嘗試；網站上的預約仍然正確。如持續出現，請檢查 Vercel 上的 Google 日曆設定，以及日曆是否已共用給服務帳戶。',
+      GOOGLE_CHANNEL_MISSING: 'Google 日曆的更改通知尚未設定或已經到期，因此在 Google 上的更改要等到下次日曆同步（員工工作時間內每 30 分鐘一次）才會傳到網站，而不是一分鐘內。請在「整合設定」頁按「立即同步」重新設定；資料清理程序每晚亦會嘗試。如情況持續，google-calendar-daily 工作會顯示原因。',
+      GOOGLE_PULL_STALE: '已超過 24 小時未能成功檢查 Google 日曆，因此在 Google 新增的忙碌時段，以及在 Google 上被更改的網站活動，可能尚未傳到網站。系統會保留上次從 Google 讀取的忙碌時段。請查看「整合設定」頁上的最近問題、Vercel 上的 Google 日曆設定，以及日曆是否已共用給服務帳戶。',
     },
     report: {
       title: '最新就緒報告',

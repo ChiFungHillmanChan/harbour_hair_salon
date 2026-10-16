@@ -258,10 +258,19 @@ async function routeWithRealJob(options: { enabled: boolean; pushThrows?: boolea
   const order: string[] = [];
   const jobRows: string[] = [];
   const counts = { googleImports: 0 };
-  const db = { backgroundJobState: {
-    upsert: async ({ where }: { where: { name: string } }) => { jobRows.push(`start:${where.name}`); return {}; },
-    update: async ({ where, data }: { where: { name: string }; data: { lastError?: string | null } }) => { jobRows.push(`end:${where.name}:${data.lastError ?? 'ok'}`); return {}; },
-  } };
+  const db = {
+    backgroundJobState: {
+      upsert: async ({ where }: { where: { name: string } }) => { jobRows.push(`start:${where.name}`); return {}; },
+      update: async ({ where, data }: { where: { name: string }; data: { lastError?: string | null } }) => { jobRows.push(`end:${where.name}:${data.lastError ?? 'ok'}`); return {}; },
+    },
+    // A live channel and a check of Google that just succeeded: the health check passes.
+    googleCalendarSyncState: {
+      findUnique: async () => {
+        order.push('health');
+        return { channelId: 'channel-1', channelExpiresAt: new Date(Date.now() + 86_400_000), lastPullAt: new Date(), lastPullSuccessAt: new Date() };
+      },
+    },
+  };
   const counted = <T extends object>(module: T): T => new Proxy(module, { get(target, key) { counts.googleImports++; return target[key as keyof T]; } });
   const job = loadServerModule('src/app/services/google-calendar-job.ts', {
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => (options.enabled ? { calendarId: 'c', clientEmail: 'e', privateKey: 'k', webhookSecret: 's' } : null) },
@@ -304,7 +313,7 @@ test('with the Google sync on: push the recent changes, then the single-flight p
   await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
     assert.equal((await h.route.GET(authedRequest())).status, 200);
   });
-  assert.deepEqual(h.order, ['sync', 'late', 'push:recent', 'single-flight', 'pull'], 'no watch-channel work every half hour');
+  assert.deepEqual(h.order, ['sync', 'late', 'push:recent', 'single-flight', 'pull', 'health'], 'no watch-channel work every half hour');
   assert.deepEqual(h.jobRows.slice(-2), ['start:google-calendar', 'end:google-calendar:ok']);
 });
 
@@ -314,7 +323,7 @@ test('a Google push that throws is recorded in the google-calendar row and the s
   await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
     assert.equal((await h.route.GET(authedRequest())).status, 200);
   });
-  assert.deepEqual(h.order, ['sync', 'late', 'push:recent', 'single-flight', 'pull'], 'the pull still runs');
+  assert.deepEqual(h.order, ['sync', 'late', 'push:recent', 'single-flight', 'pull', 'health'], 'the pull still runs');
   assert.deepEqual(h.jobRows.slice(-1), [`end:google-calendar:${OPERATIONS_MESSAGES.GOOGLE_SYNC_FAILED}`]);
 });
 
