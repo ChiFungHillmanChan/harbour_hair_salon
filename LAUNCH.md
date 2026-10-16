@@ -188,6 +188,18 @@ Square and payment records.
       emailed 30 minutes later; Restore (within 24 hours) undoes it. Only bookings made and starting
       after the switch is turned on are affected, and never one with an open reschedule request. Apply the
       `20261016120000_late_arrival_auto_cancel` migration to the preview database by hand as well.
+- **Consultation credit, "From £X" prices and Styling (2026-10-16, owner):**
+  - [x] Styling (the 7 blow-dry services) is booked directly, without a consultation: a production
+        data change on 2026-10-16 (`requiresConsultation=false`, audited `SERVICE.UPDATE`). The repo's
+        price catalog, consultation backfill and seed match it. Colouring and Perms keep the consultation.
+  - [ ] **Brief the staff — the till note:** a paid consultation's fee (£15) comes off the treatment it
+        was for if that is booked within 6 months, once. The website applies it **automatically only for
+        treatments staff book in Admin → Schedule** (the booking dialog offers it, ticked). For a
+        treatment booked through Fresha, Treatwell or by phone without going through Admin, the website
+        cannot see it: **deduct the consultation fee at the till**.
+  - [ ] After merging, apply the `20261016140000_consultation_credit` migration to the **preview
+        database** by hand (as for every migration: previews never migrate), or every PR's "Deploy
+        Preview" fails.
 - [ ] Staff approval time (holds expire after 7 days; aim for same-day replies).
 - [ ] Legal entity name and retention periods for the privacy notice (payment records: 6 years)
       and the booking terms.
