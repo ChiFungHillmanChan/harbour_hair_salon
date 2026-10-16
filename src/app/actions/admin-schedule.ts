@@ -221,6 +221,8 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
           at: newDate,
           treatmentPricePence: newQuote ? newQuote.amountPence : recorded.known ? recorded.amountPence : null,
           excludeAppointmentId: appointmentId,
+          // Keep the consultation it already records while that still qualifies.
+          preferAppointmentId: current.consultationCreditFromId ?? undefined,
         });
       } else if (applyConsultationCredit !== undefined || serviceChanged) {
         credit = NO_CONSULTATION_CREDIT;

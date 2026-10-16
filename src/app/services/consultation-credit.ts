@@ -56,14 +56,17 @@ function isUsed(row: ConsultationCreditCandidate, excludeAppointmentId: string |
 /**
  * The most recent unused credit among `rows` (spec §2.2) for a treatment
  * starting at `at`, judged at `now`. Every rule is applied here, whatever the
- * query already narrowed.
+ * query already narrowed. `preferAppointmentId` (the consultation a booking
+ * already records) wins over a newer one for as long as it still qualifies, so
+ * re-checking a booking's credit never swaps its consultation.
  */
 export function pickConsultationCredit(
   rows: readonly ConsultationCreditCandidate[],
-  options: { at: Date; now: Date; excludeAppointmentId?: string },
+  options: { at: Date; now: Date; excludeAppointmentId?: string; preferAppointmentId?: string },
 ): ConsultationCredit | null {
   const earliest = consultationCreditWindowStart(options.at).getTime();
   const latest = options.at.getTime();
+  let newest: ConsultationCredit | null = null;
   const newestFirst = [...rows].sort((a, b) => b.date.getTime() - a.date.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
   for (const row of newestFirst) {
     if (!row.service.isConsultation && !row.service.isPatchTest) continue;
@@ -73,15 +76,17 @@ export function pickConsultationCredit(
     const amountPence = toPence(row.priceAtBooking);
     if (amountPence <= 0) continue;
     if (isUsed(row, options.excludeAppointmentId)) continue;
-    return { fromAppointmentId: row.id, amountPence, consultationDate: row.date };
+    const credit = { fromAppointmentId: row.id, amountPence, consultationDate: row.date };
+    if (!options.preferAppointmentId || row.id === options.preferAppointmentId) return credit;
+    newest ??= credit;
   }
-  return null;
+  return newest;
 }
 
 /** The most recent unused consultation credit this customer can put towards a consultation-required booking starting at `at`. */
 export async function findConsultationCredit(
   db: Pick<PrismaClient, 'appointment'> | Prisma.TransactionClient,
-  input: { userId: string; at: Date; excludeAppointmentId?: string },
+  input: { userId: string; at: Date; excludeAppointmentId?: string; preferAppointmentId?: string },
 ): Promise<ConsultationCredit | null> {
   const now = new Date();
   const rows = await db.appointment.findMany({
@@ -102,7 +107,7 @@ export async function findConsultationCredit(
     },
     orderBy: [{ date: 'desc' }, { id: 'desc' }],
   });
-  return pickConsultationCredit(rows, { at: input.at, now, excludeAppointmentId: input.excludeAppointmentId });
+  return pickConsultationCredit(rows, { at: input.at, now, excludeAppointmentId: input.excludeAppointmentId, preferAppointmentId: input.preferAppointmentId });
 }
 
 /** The credit to deduct from a treatment priced `treatmentPricePence`: the credit capped at the price, 0 without one. */
@@ -120,7 +125,7 @@ export function creditFor(credit: ConsultationCredit | null, treatmentPricePence
  */
 export async function findApplicableConsultationCredit(
   db: Pick<PrismaClient, 'appointment'> | Prisma.TransactionClient,
-  input: { userId: string; at: Date; treatmentPricePence: number | null; excludeAppointmentId?: string },
+  input: { userId: string; at: Date; treatmentPricePence: number | null; excludeAppointmentId?: string; preferAppointmentId?: string },
 ): Promise<ConsultationCredit | null> {
   if (input.treatmentPricePence === null || input.treatmentPricePence <= 0) return null;
   const credit = await findConsultationCredit(db, input);

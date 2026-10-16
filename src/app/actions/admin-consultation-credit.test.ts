@@ -36,11 +36,18 @@ const SERVICES: Record<string, Row> = {
 const MEI = { id: 'user-9', email: 'mei@example.test', name: 'Mei', role: 'USER', phone: null, preferredLocale: 'en-GB' };
 const ADA = { id: 'user-10', email: 'ada@example.test', name: 'Ada', role: 'USER', phone: null, preferredLocale: 'en-GB' };
 
-function fixture(options: { role?: string; treatment?: Row | null } = {}) {
+/** A second, newer paid consultation of Mei's, nobody's credit yet. */
+const NEWER_CONSULTATION: Row = {
+  id: 'consult-2', userId: MEI.id, serviceId: 'consult', date: new Date('2099-10-08T09:00:00Z'), status: 'COMPLETED',
+  lateCancelledAt: null, priceAtBooking: '15.00', consultationCreditFromId: null,
+};
+
+function fixture(options: { role?: string; treatment?: Row | null; extraRows?: Row[]; databaseDown?: boolean } = {}) {
   const rows: Row[] = [
     // Mei's paid colour consultation, two weeks before the treatment.
     { id: 'consult-1', userId: MEI.id, serviceId: 'consult', date: CONSULTATION_DATE, status: 'COMPLETED', lateCancelledAt: null, priceAtBooking: '15.00', consultationCreditFromId: null },
   ];
+  rows.push(...(options.extraRows ?? []).map((row) => ({ ...row })));
   if (options.treatment !== null) {
     rows.push({
       id: 'appt-1', userId: MEI.id, stylistId: 'stylist-1', serviceId: 'colour', date: TREATMENT_START, status: 'CONFIRMED',
@@ -79,6 +86,7 @@ function fixture(options: { role?: string; treatment?: Row | null } = {}) {
         findMany: async ({ where }: { where: Row }) => {
           const service = where?.service as Row | undefined;
           if (service && 'OR' in service) {
+            if (options.databaseDown) throw new Error('Can\'t reach database server');
             creditLookups.push({ client: label, inTransaction: transactionActive });
             return structuredClone(creditCandidates(where));
           }
@@ -303,6 +311,28 @@ test('an edit with the box ticked records a credit that became available after b
   assert.deepEqual(creditOf(updates[0]), { from: 'consult-1', pence: 1500 });
 });
 
+test('an edit without the box (notes only) keeps the recorded credit', async () => {
+  const { schedule, rows, updates, creditLookups } = fixture();
+
+  assert.deepEqual(await schedule.editAppointmentByAdmin(editColour({ notes: 'Allergic to ammonia' })), { success: true });
+
+  assert.equal('consultationCreditFromId' in updates[0], false);
+  assert.deepEqual(creditOf(rows.find((row) => row.id === 'appt-1')!), { from: 'consult-1', pence: 1500 });
+  assert.deepEqual(creditLookups, []);
+});
+
+test('re-checking a recorded credit keeps its consultation while it still qualifies, even with a newer one on file', async () => {
+  const { schedule, updates } = fixture({ extraRows: [NEWER_CONSULTATION] });
+
+  await schedule.editAppointmentByAdmin(editColour({ applyConsultationCredit: true }));
+  assert.deepEqual(creditOf(updates[0]), { from: 'consult-1', pence: 1500 });
+
+  // A booking with no credit yet gets the most recent one.
+  const fresh = fixture({ extraRows: [NEWER_CONSULTATION], treatment: { consultationCreditFromId: null, consultationCreditPence: null } });
+  await fresh.schedule.editAppointmentByAdmin(editColour({ applyConsultationCredit: true }));
+  assert.deepEqual(creditOf(fresh.updates[0]), { from: 'consult-2', pence: 1500 });
+});
+
 test('unticking the box clears the recorded credit', async () => {
   const { schedule, updates, creditLookups } = fixture();
 
@@ -390,6 +420,26 @@ test('the preview for a booking being edited does not count the booking itself a
   assert.deepEqual(await preview.previewConsultationCredit(previewFor({ appointmentId: 'appt-1', serviceId: 'toner' })), {
     available: true, amountPence: 1000, consultationDate: CONSULTATION_DATE.toISOString(),
   });
+});
+
+test('the preview for a booking being edited names the consultation it already records', async () => {
+  const { preview } = fixture({ extraRows: [NEWER_CONSULTATION] });
+
+  assert.deepEqual(await preview.previewConsultationCredit(previewFor({ appointmentId: 'appt-1' })), {
+    available: true, amountPence: 1500, consultationDate: CONSULTATION_DATE.toISOString(),
+  });
+});
+
+test('a preview the database could not answer fails, rather than saying no credit applies', async () => {
+  // "No credit" would tell the dialog a recorded credit is gone and have saving remove it.
+  const { preview } = fixture({ databaseDown: true });
+  const quiet = console.error;
+  console.error = () => undefined;
+  try {
+    await assert.rejects(preview.previewConsultationCredit(previewFor({ appointmentId: 'appt-1' })));
+  } finally {
+    console.error = quiet;
+  }
 });
 
 test('the preview is for administrators only', async () => {

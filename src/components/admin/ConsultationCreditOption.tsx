@@ -13,44 +13,40 @@ export type RecordedConsultationCredit = { amountPence: number; consultationDate
 /** Who, what and when the dialog asks about: a picked customer, a typed email, or the booking being edited. */
 export type ConsultationCreditLookup = Parameters<typeof previewConsultationCredit>[0];
 
-/**
- * "Consultation credit available: £15 (consultation on 12 Oct) — deduct from
- * this booking" (spec §2.3), for a consultation-required service. Shows what
- * the server says is available; saving looks it up again, so the box only
- * says whether to apply it.
- */
-export function ConsultationCreditOption({
-  lookup,
-  apply,
-  onApplyChange,
-  recorded,
-}: {
-  /** Null while no customer is known: a walk-in with no account has had no consultation. */
-  lookup: ConsultationCreditLookup | null;
-  apply: boolean;
-  onApplyChange: (apply: boolean) => void;
-  /** The credit this booking already records, when editing one. */
-  recorded: RecordedConsultationCredit | null;
-}) {
-  const t = useT('adminSchedule');
-  const locale = useLocale();
-  const key = lookup ? JSON.stringify(lookup) : '';
-  // Answers carry the question they answered, so a slow reply about a previous
-  // customer, service or time is never shown under the current one.
-  const [preview, setPreview] = useState<{ key: string; result: ConsultationCreditPreview } | null>(null);
+/** The server's answer for the CURRENT customer, service and time only. */
+export type ConsultationCreditPreviewState =
+  /** Nothing to ask: no customer is known yet. */
+  | { state: 'idle' }
+  /** Asked (or about to be); no answer for this exact question yet. */
+  | { state: 'checking' }
+  /** The question could not be answered: offer nothing and change nothing. */
+  | { state: 'failed' }
+  | { state: 'answered'; preview: ConsultationCreditPreview };
 
-  // Debounced like the customer search: a typed email or time costs one read.
+const IDLE: ConsultationCreditPreviewState = { state: 'idle' };
+const CHECKING: ConsultationCreditPreviewState = { state: 'checking' };
+
+/**
+ * Asks the server which consultation credit (spec §2.3) a booking for this
+ * customer, service and start would record. Debounced like the customer
+ * search, so a typed email or time costs one read; an answer is only ever
+ * returned for the question it answered.
+ */
+export function useConsultationCreditPreview(lookup: ConsultationCreditLookup | null): ConsultationCreditPreviewState {
+  const key = lookup ? JSON.stringify(lookup) : '';
+  const [answer, setAnswer] = useState<{ key: string; state: ConsultationCreditPreviewState } | null>(null);
+
   useEffect(() => {
     if (!key) return;
     let live = true;
     const id = setTimeout(async () => {
-      let result: ConsultationCreditPreview;
+      let state: ConsultationCreditPreviewState;
       try {
-        result = await previewConsultationCredit(JSON.parse(key) as ConsultationCreditLookup);
+        state = { state: 'answered', preview: await previewConsultationCredit(JSON.parse(key) as ConsultationCreditLookup) };
       } catch {
-        result = { available: false };
+        state = { state: 'failed' };
       }
-      if (live) setPreview({ key, result });
+      if (live) setAnswer({ key, state });
     }, 300);
     return () => {
       live = false;
@@ -58,8 +54,31 @@ export function ConsultationCreditOption({
     };
   }, [key]);
 
-  const result = key && preview?.key === key ? preview.result : null;
-  if (!recorded && !result?.available) return null;
+  if (!key) return IDLE;
+  return answer?.key === key ? answer.state : CHECKING;
+}
+
+/**
+ * "Consultation credit available: £15 (consultation on 12 Oct) — deduct from
+ * this booking", for a consultation-required service. Saving looks the credit
+ * up again, so the box only says whether to apply it.
+ */
+export function ConsultationCreditOption({
+  preview,
+  apply,
+  onApplyChange,
+  recorded,
+}: {
+  preview: ConsultationCreditPreviewState;
+  apply: boolean;
+  onApplyChange: (apply: boolean) => void;
+  /** The credit this booking already records, when editing one. */
+  recorded: RecordedConsultationCredit | null;
+}) {
+  const t = useT('adminSchedule');
+  const locale = useLocale();
+  const answered = preview.state === 'answered' ? preview.preview : null;
+  if (!recorded && !answered?.available) return null;
 
   const amount = (pence: number) => formatGBP(pence, HTML_LANG[locale]);
   const day = (iso: string) => formatSalonMediumDate(locale, new Date(iso));
@@ -71,16 +90,16 @@ export function ConsultationCreditOption({
           {t('credit.recorded', { amount: amount(recorded.amountPence), date: day(recorded.consultationDate) })}
         </p>
       )}
-      {result?.available && (
+      {answered?.available && (
         <>
           <label className="flex items-start gap-2 text-sm text-zinc-800">
             <input type="checkbox" className="mt-0.5" checked={apply} onChange={(event) => onApplyChange(event.target.checked)} />
-            <span>{t('credit.available', { amount: amount(result.amountPence), date: day(result.consultationDate) })}</span>
+            <span>{t('credit.available', { amount: amount(answered.amountPence), date: day(answered.consultationDate) })}</span>
           </label>
           <p className="text-xs text-zinc-500">{t('credit.help')}</p>
         </>
       )}
-      {recorded && result && !result.available && <p className="text-xs text-zinc-500">{t('credit.noLongerAvailable')}</p>}
+      {recorded && answered && !answered.available && <p className="text-xs text-zinc-500">{t('credit.noLongerAvailable')}</p>}
     </div>
   );
 }

@@ -59,13 +59,15 @@ export async function previewConsultationCredit(input: {
     // recorded), otherwise the listed price of a new booking or service change.
     let userId: string | null = null;
     let recordedPence: number | null | undefined;
+    let preferAppointmentId: string | undefined;
     if (appointmentId) {
       const booking = await prisma.appointment.findUnique({
         where: { id: appointmentId },
-        select: { userId: true, serviceId: true, priceAtBooking: true, quoteJson: true },
+        select: { userId: true, serviceId: true, priceAtBooking: true, quoteJson: true, consultationCreditFromId: true },
       });
       if (!booking) return NONE;
       userId = booking.userId;
+      preferAppointmentId = booking.consultationCreditFromId ?? undefined;
       if (booking.serviceId === serviceId) {
         const recorded = recordedPrice(booking);
         recordedPence = recorded.known ? recorded.amountPence : null;
@@ -80,11 +82,14 @@ export async function previewConsultationCredit(input: {
       ? recordedPence
       : (await quoteForNewBooking(prisma, serviceId, 'ADMIN')).quote.amountPence;
 
-    const credit = await findApplicableConsultationCredit(prisma, { userId, at, treatmentPricePence, excludeAppointmentId: appointmentId });
+    const credit = await findApplicableConsultationCredit(prisma, { userId, at, treatmentPricePence, excludeAppointmentId: appointmentId, preferAppointmentId });
     return credit ? { available: true, amountPence: credit.amountPence, consultationDate: credit.consultationDate.toISOString() } : NONE;
   } catch (error) {
     // A service that cannot be booked or priced offers no credit; saving reports the real problem.
-    if (!(error instanceof BookingError)) console.error('previewConsultationCredit failed', error);
-    return NONE;
+    if (error instanceof BookingError) return NONE;
+    // Anything else is NOT "no credit": that would tell the dialog a recorded
+    // credit is gone. The dialog treats a rejected preview as unanswered.
+    console.error('previewConsultationCredit failed', error);
+    throw error;
   }
 }

@@ -11,7 +11,12 @@ import { RescheduleRequestActions } from './RescheduleRequestActions';
 import { DepositChip } from './DepositChip';
 import { DepositRecheckButton } from './DepositRecheckButton';
 import { DepositSettleRefundButton } from './DepositSettleRefundButton';
-import { ConsultationCreditOption, type ConsultationCreditLookup, type RecordedConsultationCredit } from './ConsultationCreditOption';
+import {
+  ConsultationCreditOption,
+  useConsultationCreditPreview,
+  type ConsultationCreditLookup,
+  type RecordedConsultationCredit,
+} from './ConsultationCreditOption';
 import type { DepositView } from '@/app/lib/deposit-display';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { isArrivalWindowOpen, lateCancelDueAt } from '@/app/lib/late-arrival';
@@ -96,8 +101,12 @@ type DialogForm = {
   priceChange: AdminQuote | null;
   /** Cancelling a confirmed booking whose deposit was taken: refund it (ticked by default; unticked for a no-show) or keep it. */
   refundDeposit: boolean;
-  /** "Consultation credit — deduct from this booking", ticked by default; sent only for a consultation-required service. */
-  applyConsultationCredit: boolean;
+  /**
+   * The admin's own tick or untick of "Consultation credit — deduct from this
+   * booking", with the question (customer, service, time) it was made on.
+   * Null until they touch the box.
+   */
+  creditChoice: { key: string; apply: boolean } | null;
 };
 
 const inputClass =
@@ -157,13 +166,12 @@ export function AppointmentDialog({
     // A no-show keeps its deposit (salon policy, /booking-terms): once a
     // confirmed visit's time has passed, cancelling starts at "keep".
     refundDeposit: !(isEdit && target.status === 'CONFIRMED' && new Date(target.date).getTime() <= Date.now()),
-    applyConsultationCredit: true,
+    creditChoice: null,
   }));
   const update = (patch: Partial<DialogForm>) => setForm((previous) => ({ ...previous, ...patch }));
   const { serviceId, stylistId, dateStr, time, durationMin, notes, status, notifyCustomer, customerQuery, picked, name, email, phone, customerLocale, priceChange } = form;
   // A draft saved before this field existed has none: refund, the default.
   const refundDeposit = form.refundDeposit !== false;
-  const applyConsultationCredit = form.applyConsultationCredit !== false;
 
   // Results carry the query they answered, so a slow reply for an abandoned
   // query is never rendered under a newer one.
@@ -238,7 +246,25 @@ export function AppointmentDialog({
         : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)
           ? { email: typedEmail, serviceId, dateStr, time }
           : null;
-  const creditChoice = takesCredit ? { applyConsultationCredit } : {};
+  const creditKey = creditLookup ? JSON.stringify(creditLookup) : '';
+  const creditPreview = useConsultationCreditPreview(creditLookup);
+  const creditAnswer = takesCredit && creditPreview.state === 'answered' ? creditPreview.preview : null;
+  // Where the box starts: ticked for a new booking (again whenever its customer,
+  // service or time changes); for an edit, as the booking stands — a credit that
+  // became available is added only by ticking it.
+  const choice = form.creditChoice ?? null;
+  const applyConsultationCredit = isEdit
+    ? (choice ? choice.apply : recordedCredit !== null)
+    : (choice?.key === creditKey ? choice.apply : true);
+  // Sent only for what the admin could see: the box, shown for this exact
+  // question, or (editing) the note that saving removes a credit that no
+  // longer applies. Otherwise omitted, and the server leaves the credit as it
+  // is — a new booking gets none.
+  const creditChoice = !creditAnswer
+    ? {}
+    : creditAnswer.available
+      ? { applyConsultationCredit }
+      : recordedCredit ? { applyConsultationCredit: false } : {};
 
   /** The price the admin is looking at right now, sent back so the server can refuse a stale one. */
   const expectedQuote = () => {
@@ -562,9 +588,9 @@ export function AppointmentDialog({
 
           {takesCredit ? (
             <ConsultationCreditOption
-              lookup={creditLookup}
+              preview={creditPreview}
               apply={applyConsultationCredit}
-              onApplyChange={(apply) => update({ applyConsultationCredit: apply })}
+              onApplyChange={(apply) => update({ creditChoice: { key: creditKey, apply } })}
               recorded={recordedCredit}
             />
           ) : recordedCredit && pricing && (

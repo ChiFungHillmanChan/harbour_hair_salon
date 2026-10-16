@@ -138,6 +138,18 @@ test('of two consultations the most recent qualifying one is offered', () => {
   assert.equal(pick([newerUsed, older])?.fromAppointmentId, 'old');
 });
 
+test('a preferred consultation that still qualifies is kept over a newer one', () => {
+  const older = consultation({ id: 'old', date: new Date('2026-06-01T10:00:00Z'), consultationCreditUsedBy: [{ id: 't1', status: 'CONFIRMED' }] });
+  const newer = consultation({ id: 'new', date: SEPT });
+  const options = { at: AT, now: NOW, excludeAppointmentId: 't1' };
+  // Re-checking t1's credit keeps the consultation it already records…
+  assert.equal(pickConsultationCredit([older, newer], { ...options, preferAppointmentId: 'old' })?.fromAppointmentId, 'old');
+  // …unless that one no longer qualifies, when the most recent is offered.
+  const lapsed = { ...older, date: new Date('2026-03-01T10:00:00Z') };
+  assert.equal(pickConsultationCredit([lapsed, newer], { ...options, preferAppointmentId: 'old' })?.fromAppointmentId, 'new');
+  assert.equal(pickConsultationCredit([older, newer], { ...options, preferAppointmentId: 'gone' })?.fromAppointmentId, 'new');
+});
+
 test('creditFor caps the credit at the treatment price and is 0 without a credit', () => {
   const credit = { fromAppointmentId: 'c1', amountPence: 1500, consultationDate: SEPT };
   assert.equal(creditFor(credit, 4500), 1500);
