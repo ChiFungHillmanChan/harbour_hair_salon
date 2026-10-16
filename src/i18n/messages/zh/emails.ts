@@ -66,6 +66,7 @@ const emails: Localized<Messages['emails']> = {
     textIntro: '你於 Harbour Hair Salon 的預約已經確認。',
     textManage: '你可於預約前 24 小時或之前，在「我的預約」頁面管理預約：{url}',
     footnoteWithDeposit: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消（訂金全數退還）或申請改期。',
+    footnoteNoPayment: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。',
     depositPaid: '你已繳付 {deposit} 訂金；餘下 {remainder} 於店內繳付，接受現金及信用卡。',
     depositPaidNoTotal: '你已繳付 {deposit} 訂金；餘款於店內繳付，接受現金及信用卡。',
     depositPaidInFull: '你已繳付的 {deposit} 訂金已包括全部費用，到店時無須再付款。',

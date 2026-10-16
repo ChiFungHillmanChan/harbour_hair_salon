@@ -17,10 +17,14 @@
  * needs rules for how they combine with NHS prices, which do not exist yet.
  */
 export const DISCOUNTS_PAUSED = true as const;
-// BEFORE unpausing: the offer items on /booking-terms and /offers
-// (legal.bookingTerms.offers) must be enforced in code, not just stated: one
-// discount code per booking, never combined with NHS/student prices or another
-// offer, no cash value (it applies to the listed price).
+// BEFORE unpausing:
+// - the offer items on /booking-terms and /offers (legal.bookingTerms.offers)
+//   must be enforced in code, not just stated: one discount code per booking,
+//   never combined with NHS/student prices or another offer, no cash value (it
+//   applies to the listed price);
+// - the booking wizard's discount-code field must show a one-line summary of
+//   those terms linking to /booking-terms (spec 2026-10-16 §5, E2). The wizard
+//   has no code field while this is true, so the summary is built with it.
 
 export const PRICE_TYPES = ['STANDARD', 'NHS'] as const;
 export type PriceType = (typeof PRICE_TYPES)[number];

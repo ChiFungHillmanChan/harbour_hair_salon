@@ -80,10 +80,16 @@ export function ServiceList({ categories, categorySlugs, consultationFees }: Ser
   const activeSlug = active ? categorySlugs?.[active.category] : undefined;
 
   // "From" ranges quote STANDARD prices only: an NHS price is not a price
-  // everyone can book, so it never becomes the advertised minimum.
+  // everyone can book, so it never becomes the advertised minimum. A category
+  // made only of consultation-required services has no upper bound to show:
+  // each of its prices is a starting point (effectivePriceNature).
   const rangeByCategory = useMemo(() => {
-    const map: Record<string, { min: number; max: number } | null> = {};
-    for (const group of categories) map[group.category] = standardPriceRange(group.entries.flatMap(entryServices));
+    const map: Record<string, { min: number; max: number; fromOnly: boolean } | null> = {};
+    for (const group of categories) {
+      const services = group.entries.flatMap(entryServices);
+      const range = standardPriceRange(services);
+      map[group.category] = range && { ...range, fromOnly: services.every((service) => service.requiresConsultation) };
+    }
     return map;
   }, [categories]);
 
@@ -160,7 +166,7 @@ export function ServiceList({ categories, categorySlugs, consultationFees }: Ser
               {tp('from')}
             </p>
             <p className="text-2xl font-serif text-zinc-900">
-              {activeRange.min === activeRange.max
+              {activeRange.min === activeRange.max || activeRange.fromOnly
                 ? formatPrice(activeRange.min)
                 : tp('range', { min: formatPrice(activeRange.min), max: formatPrice(activeRange.max) })}
             </p>

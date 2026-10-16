@@ -69,6 +69,8 @@ const emails = {
     textIntro: 'Your appointment at Harbour Hair Salon is confirmed.',
     textManage: 'Manage your booking up to 24 hours before the appointment from the My Bookings page: {url}',
     footnoteWithDeposit: 'Need to make a change? You can cancel (your deposit is refunded in full) or request a new time from My Bookings up to 24 hours before your appointment.',
+    /** confirmation.footnote without its payment sentence: a consultation-credit sentence already says what is left to pay. */
+    footnoteNoPayment: 'Need to make a change? You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.',
     depositPaid: 'Your {deposit} deposit is paid; {remainder} is left to pay in the salon. Cash and card are accepted.',
     depositPaidNoTotal: 'Your {deposit} deposit is paid; the rest is due at the salon. Cash and card are accepted.',
     depositPaidInFull: 'Your {deposit} deposit covers the full price: there is nothing left to pay in the salon.',

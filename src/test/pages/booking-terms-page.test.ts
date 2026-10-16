@@ -115,7 +115,7 @@ test('the periods the terms state are the ones the code enforces', async () => {
   assert.ok(zh.includes(`最少提前 ${MIN_BOOKING_NOTICE_MINUTES / 60} 小時`));
   assert.ok(zh.includes(`最少 ${PATCH_TEST_MIN_LEAD_HOURS} 小時前`));
   assert.ok(zh.includes('最長 7 日'));
-  assert.ok(zh.includes(`如你在 ${CONSULTATION_CREDIT_MONTHS} 個月內進行療程，我們會在療程價錢中扣除一次。`));
+  assert.ok(zh.includes(`如你在 ${CONSULTATION_CREDIT_MONTHS} 個月內進行療程，本店會在療程價錢中扣除一次。`));
 });
 
 test('the offer terms say what they say, in both languages', async () => {

@@ -236,6 +236,18 @@ function creditPaidNote(appointment: EmailAppointment, locale: Locale): string |
 }
 
 /**
+ * A credited booking's payment sentence for the reminder (spec §2.4), worded
+ * as its confirmation: what the taken deposit and the credit leave to pay in
+ * the salon. Nothing for a booking without a recorded credit, so every other
+ * reminder reads as it always has.
+ */
+function creditPaymentNote(appointment: EmailAppointment, locale: Locale): string[] {
+  if (creditAmount(appointment) === null) return [];
+  const sentence = depositPaidNote(appointment, locale)?.sentence ?? creditPaidNote(appointment, locale);
+  return sentence ? [sentence] : [];
+}
+
+/**
  * The calendar file a customer email carries. A confirmed time (confirmation,
  * approved move, reminder) adds or updates the customer's own calendar entry;
  * a confirmed booking's cancellation removes it. Never for a request that is
@@ -319,6 +331,13 @@ export function appointmentEmailContent(
         ? [t('confirmation.consultationCredit', { months: CONSULTATION_CREDIT_MONTHS, amount: money(appointment.price.amountPence, locale) })] : [];
       // A treatment with a credit recorded: what is left once it is off.
       const creditNote = paid ? null : creditPaidNote(appointment, locale);
+      // A deposit or credit sentence already says how payment works: the change
+      // footnote must not repeat it (or say "payment is due" after "nothing to pay").
+      const footnotes = paid
+        ? [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')]
+        : creditNote
+          ? [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnoteNoPayment'), creditNote, t('calendar.attached')]
+          : [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnote'), t('calendar.attached')];
       return {
         ...base,
         subject: t('confirmation.subject'),
@@ -332,9 +351,7 @@ export function appointmentEmailContent(
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('confirmation.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: paid
-          ? [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')]
-          : [lateArrival, ...eligibility, ...consultationCredit, ...(creditNote ? [creditNote] : []), t('confirmation.footnote'), t('calendar.attached')],
+        footnotes,
       };
     }
     case 'REQUEST_RECEIVED': {
@@ -439,7 +456,7 @@ export function appointmentEmailContent(
         callout: { title: t('labels.whereToFind'), body: t('common.address') },
         cta: { label: t('reminder.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: [lateArrival, ...eligibility, t('reminder.footnote'), t('calendar.attached')],
+        footnotes: [lateArrival, ...eligibility, ...creditPaymentNote(appointment, locale), t('reminder.footnote'), t('calendar.attached')],
       };
     }
     case 'REVIEW_REQUEST':

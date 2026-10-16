@@ -20,7 +20,8 @@ export type RemainderPriceFacts = { vatDisplay?: string | null; priceNature?: st
 /**
  * Two more rows for the booking summary's price block: the deposit taken if
  * the salon confirms, and the rest in the salon — with the price's own fine
- * print when the rest is not exact (VAT added, or a consultation may change it).
+ * print when the rest is not exact (VAT excluded, or the final price is
+ * confirmed at the consultation).
  */
 export function DepositRows({ t, formatPrice, depositPence, remainderPence, price = {} }: {
   t: BookingT;

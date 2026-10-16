@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { formatGBP, parsePoundsInput, penceToDecimalString, toPence } from './money';
 import { buildQuote, parseQuote, QuoteIntegrityError, quoteMatches, serializeQuote, type QuotableService } from './quote';
 import { recordedPrice } from './recorded-price';
@@ -187,4 +188,25 @@ test('a consultation-required service quotes subject to consultation, whatever i
   const quote = buildQuote(service({ requiresConsultation: true, priceNature: 'LISTED' }));
   assert.equal(quote.amountPence, 15700);
   assert.deepEqual({ ...quote, priceNature: 'LISTED' }, buildQuote(service({ priceNature: 'LISTED' })));
+});
+
+// Final review M7 — production change A (2026-10-16): Styling (blow-dries) is
+// booked directly; chemical services keep their consultation. The repo's data
+// scripts must not put the gate back on a re-seed or a re-run.
+test('the price catalog gates Colouring and Perms behind a consultation, never Styling', () => {
+  for (const offering of OFFERINGS) {
+    if (offering.category === 'Styling') assert.equal(offering.flags.requiresConsultation, false, offering.key);
+    if (offering.category === 'Colouring' || offering.category === 'Perms') assert.equal(offering.flags.requiresConsultation, true, offering.key);
+  }
+  assert.ok(OFFERINGS.some((offering) => offering.category === 'Styling'));
+});
+
+test('the consultation backfill and the seed leave Styling bookable directly', () => {
+  const backfill = readFileSync('prisma/backfill-consultation-flags.ts', 'utf8');
+  const gated = backfill.match(/category: \{ in: \[([^\]]*)\] \}/);
+  assert.ok(gated, 'the backfill names the categories it gates');
+  assert.deepEqual(gated[1].split(',').map((name) => name.trim().replace(/'/g, '')), ['Colouring', 'Perms']);
+  const seed = readFileSync('prisma/seed.ts', 'utf8');
+  const heatSet = seed.split('\n').find((line) => line.includes("'Heat Set Add-on'"));
+  assert.ok(heatSet && !/requiresConsultation: true/.test(heatSet), heatSet);
 });

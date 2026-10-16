@@ -175,7 +175,8 @@ export const OFFERINGS: CatalogOffering[] = [
     ],
   },
   {
-    key: 'shampoo-blow-dry', category: 'Styling', name: 'Shampoo & Blow Dry', displayOrder: 140, flags: byConsultation,
+    // Booked directly, no consultation (owner, 2026-10-16: production change A).
+    key: 'shampoo-blow-dry', category: 'Styling', name: 'Shampoo & Blow Dry', displayOrder: 140, flags: cut,
     options: [
       { hairLength: 'SHORT', priceType: 'STANDARD', pricePence: 3000, vatEvidence: T, priceNature: 'LISTED', legacyNames: ['Shampoo & Blow Dry - Short Over Ears'] },
       { hairLength: 'SHORT', priceType: 'NHS', pricePence: 2500, vatEvidence: T, priceNature: 'LISTED', legacyNames: ['Shampoo & Blow Dry - Short Over Ears (Student & NHS)'] },

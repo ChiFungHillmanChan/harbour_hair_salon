@@ -104,7 +104,7 @@ const booking: Localized<Messages['booking']> = {
     now: '訂金（本店確認後才收取）',
     rest: '餘款（於店內支付）',
     restVatExcluded: '未含 VAT',
-    restMayChange: '或會於諮詢後調整',
+    restMayChange: '最終價錢於諮詢時確定',
     payNothingNow: '你現在毋須付款。我們會先在你的信用卡預留款項，只有在本店確認你的預約後，才會收取 {amount} 訂金；如本店拒絕或未有確認你的申請，預留款項會被解除。',
     refund: '於預約前最少 24 小時取消可獲全數退款。',
     lateOrNoShow: '如你缺席預約，或遲到超過 {minutes} 分鐘而沒有通知本店，本店會保留訂金；如你在預約前不足 24 小時取消，本店可能會保留訂金。',

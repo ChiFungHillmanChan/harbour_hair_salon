@@ -576,3 +576,74 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
     }
   });
 }
+
+// Final review I4: a credited confirmation says once how payment works. The
+// credit (or deposit) sentence already does, so the change footnote drops its
+// own "Payment is due at the salon; cash and card are accepted".
+const paymentWords = {
+  'en-GB': {
+    footnote: 'Need to make a change? You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment. Payment is due at the salon; cash and card are accepted.',
+    footnoteNoPayment: 'Need to make a change? You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.',
+    paymentDue: /Payment is due at the salon/, cashAndCard: /cash and card are accepted/gi,
+  },
+  'zh-HK': {
+    footnote: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。費用於店內繳付，接受現金及信用卡。',
+    footnoteNoPayment: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。',
+    paymentDue: /費用於店內繳付/, cashAndCard: /接受現金及信用卡/g,
+  },
+} as const;
+
+for (const locale of ['en-GB', 'zh-HK'] as const) {
+  const words = creditWording[locale];
+  const pay = paymentWords[locale];
+  const treatment = { ...priced, consultationCreditPence: 1500 };
+  const said = (content: ReturnType<typeof appointmentEmailContent>) => content.footnotes.join('\n');
+
+  test(`a credited confirmation says how to pay once, never "payment is due" after "nothing to pay" (${locale})`, () => {
+    // Credit, no deposit: the credit sentence covers payment.
+    const credited = appointmentEmailContent('CONFIRMATION', treatment, locale);
+    assert.ok(credited.footnotes.includes(words.toPay));
+    assert.ok(credited.footnotes.includes(pay.footnoteNoPayment));
+    assert.ok(!credited.footnotes.includes(pay.footnote));
+    assert.equal(said(credited).match(pay.cashAndCard)?.length, 1, 'cash and card, once');
+
+    // The credit covers the whole price: nothing to pay, and nothing saying otherwise.
+    const covered = appointmentEmailContent('CONFIRMATION', { ...treatment, price: { ...priced.price, amountPence: 1500 } }, locale);
+    assert.ok(covered.footnotes.includes(words.covers));
+    assert.ok(covered.footnotes.includes(pay.footnoteNoPayment));
+    assert.doesNotMatch(said(covered), pay.paymentDue);
+    assert.doesNotMatch(said(covered), pay.cashAndCard);
+
+    // A deposit and the credit: the deposit's own footnote, one payment sentence.
+    const both = appointmentEmailContent('CONFIRMATION', { ...treatment, deposit: { amountPence: 2000, status: 'CAPTURED' } }, locale);
+    assert.ok(both.footnotes.includes(words.withDeposit));
+    assert.doesNotMatch(said(both), pay.paymentDue);
+    assert.equal(said(both).match(pay.cashAndCard)?.length, 1);
+    const bothCover = appointmentEmailContent('CONFIRMATION', { ...treatment, deposit: { amountPence: 9000, status: 'CAPTURED' } }, locale);
+    assert.ok(bothCover.footnotes.includes(words.depositAndCredit));
+    assert.doesNotMatch(said(bothCover), pay.paymentDue);
+    assert.doesNotMatch(said(bothCover), pay.cashAndCard);
+
+    // No credit, no deposit: the footnote that says it, as before.
+    assert.ok(appointmentEmailContent('CONFIRMATION', priced, locale).footnotes.includes(pay.footnote));
+    // A credit on a booking whose price was never recorded has no remainder sentence: the full footnote stays.
+    assert.ok(appointmentEmailContent('CONFIRMATION', { ...treatment, price: { known: false } }, locale).footnotes.includes(pay.footnote));
+  });
+
+  // Final review M6 (spec §2.4): the reminder says what is left to pay, as the confirmation does.
+  test(`a credited reminder says what is left to pay in the salon (${locale})`, () => {
+    const reminder = appointmentEmailContent('REMINDER', treatment, locale);
+    assert.ok(reminder.footnotes.includes(words.toPay), reminder.footnotes.join(' | '));
+    assert.ok(appointmentEmailContent('REMINDER', { ...treatment, price: { ...priced.price, amountPence: 1500 } }, locale).footnotes.includes(words.covers));
+    assert.ok(appointmentEmailContent('REMINDER', { ...treatment, deposit: { amountPence: 2000, status: 'CAPTURED' } }, locale).footnotes.includes(words.withDeposit));
+    assert.ok(appointmentEmailContent('REMINDER', { ...treatment, price: { ...priced.price, amountPence: 10000 }, deposit: { amountPence: 9000, status: 'CAPTURED' } }, locale).footnotes.includes(words.depositAndCredit));
+    // The arrive-on-time line stays first; the change footnote follows the payment line.
+    const notes = reminder.footnotes;
+    assert.match(notes[0], locale === 'en-GB' ? /arrive on time/ : /準時到達/);
+    assert.ok(notes.indexOf(words.toPay) < notes.indexOf(translator(locale, 'emails')('reminder.footnote')));
+    // Without a credit the reminder is unchanged: no payment line at all.
+    for (const plain of [priced, taken]) {
+      assert.ok(!appointmentEmailContent('REMINDER', plain, locale).footnotes.some((note) => note.match(pay.cashAndCard) || /left to pay|到店時無須/.test(note)));
+    }
+  });
+}
