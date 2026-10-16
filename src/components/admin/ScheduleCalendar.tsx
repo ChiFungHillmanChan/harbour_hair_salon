@@ -302,9 +302,13 @@ function BusyAgenda({ blocks, stylists, dayKey }: { blocks: ReturnType<typeof ca
       const stylist = entry?.name ?? t('appointment.stylistFallback');
       const wholeDay = isWholeDayBlock(block, hoursOf(entry) ?? salonWindow);
       const label = calendarBusyLabel(block, stylist, block.startMin, block.endMin, t, wholeDay);
-      return <li key={block.id} role="note" aria-label={label.detail} className="border-l-4 border-l-zinc-400 bg-zinc-50 px-4 py-3 text-sm">
+      const line = wholeDay ? t('busy.agendaUnavailable', { stylist })
+        : label.kind === 'blocked' ? t('busy.agendaBlocked', { stylist })
+        : label.kind === 'booking' ? t('busy.agendaBooking', { stylist, provider: label.brand })
+        : t('busy.agendaImported', { stylist });
+      return <li key={block.id} role="note" aria-label={label.detail} className={`border-l-4 border-l-zinc-400 px-4 py-3 text-sm ${label.kind === 'blocked' && !wholeDay ? 'bg-[repeating-linear-gradient(135deg,var(--color-zinc-100)_0_5px,var(--color-white)_5px_10px)]' : 'bg-zinc-50'}`}>
         <div className="flex flex-wrap justify-between gap-2 font-semibold text-zinc-800"><span>{label.provider}</span><span className="tabular-nums">{label.range}</span></div>
-        <p className="mt-1 text-zinc-600">{wholeDay ? t('busy.agendaUnavailable', { stylist }) : t('busy.agendaImported', { stylist })}</p>
+        <p className="mt-1 text-zinc-600">{line}</p>
         <p className="mt-1 text-xs text-zinc-500">{t('busy.agendaSynced', { synced: label.synced })}</p>
       </li>;
     })}

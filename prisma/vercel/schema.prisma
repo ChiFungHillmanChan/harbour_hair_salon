@@ -217,7 +217,7 @@ model ExternalBusyBlock {
   stylist     Stylist  @relation(fields: [stylistId], references: [id], onDelete: Cascade)
   start       DateTime
   end         DateTime
-  summary     String? // raw event title, for debugging only
+  summary     String? // a recognised generic provider title ("Fresha Blocked Time"), never free text — calendar-busy-kind.ts
   lastSyncAt  DateTime @default(now())
 
   @@unique([source, stylistId, externalUid])

@@ -1,7 +1,14 @@
 import { sync as icalSync } from 'node-ical';
 import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
+import { storedBusySummary } from './calendar-busy-kind';
 
-export type CalendarBusyInterval = { uid: string; start: Date; end: Date };
+/**
+ * `summary` is present only when the event's title (SUMMARY) is a recognised
+ * generic provider title such as "Fresha Blocked Time" (calendar-busy-kind.ts).
+ * Any other title is free text — a Google calendar can carry a customer's
+ * name — and never leaves the parser.
+ */
+export type CalendarBusyInterval = { uid: string; start: Date; end: Date; summary?: string };
 export const CALENDAR_WINDOW_DAYS = 90;
 export const MAX_CALENDAR_EVENTS = 2_000;
 const DAY_MS = 86_400_000;
@@ -35,10 +42,27 @@ function eventDate(line: string | undefined): Date | undefined {
 const SALON_TIME_ZONE = 'Europe/London';
 export const MAX_OCCURRENCES_PER_EVENT = 400;
 
+/** The first SUMMARY's text, unescaped (RFC 5545 §3.3.11) and trimmed; undefined when absent or empty. */
+function eventSummary(fields: string[]): string | undefined {
+  const line = fields.find((field) => /^SUMMARY[;:]/.test(field));
+  if (!line) return undefined;
+  // Parameters (e.g. LANGUAGE, or a quoted ALTREP URL) end at the first colon outside quotes.
+  let split = -1;
+  for (let index = 0, quoted = false; index < line.length; index += 1) {
+    if (line[index] === '"') quoted = !quoted;
+    else if (line[index] === ':' && !quoted) { split = index; break; }
+  }
+  if (split < 0) return undefined;
+  const text = line.slice(split + 1, split + 1 + 500)
+    .replace(/\\([\\;,nN])/g, (_, escaped: string) => (escaped === 'n' || escaped === 'N' ? '\n' : escaped))
+    .trim();
+  return text || undefined;
+}
+
 /** Preserve the provider's UTC/TZID occurrences; only DATE values use salon days. */
 function expandRecurrence(
   block: string,
-  anchor: { start: Date; end: Date; uid: string; allDay: boolean },
+  anchor: { start: Date; end: Date; uid: string; allDay: boolean; summary?: string },
   bounds: { now: Date; windowEnd: Date },
 ): CalendarBusyInterval[] {
   type Recurring = { rrule?: { between(a: Date, b: Date, inc?: boolean): Date[] } };
@@ -78,7 +102,7 @@ function expandRecurrence(
     if (end <= bounds.now || start >= bounds.windowEnd) continue;
     // Each occurrence is upserted separately on (source, stylistId, externalUid),
     // so they cannot share the series UID or they would overwrite each other.
-    intervals.push({ uid: `${anchor.uid}::${start.toISOString()}`, start, end });
+    intervals.push({ uid: `${anchor.uid}::${start.toISOString()}`, start, end, ...(anchor.summary ? { summary: anchor.summary } : {}) });
   }
   return intervals;
 }
@@ -165,9 +189,10 @@ export function parseCalendarBusyIntervals(
     if (!start || !end || end <= start) throw new CalendarFeedError('Calendar event is missing a valid start or end.');
     try { icalSync.parseICS(`BEGIN:VCALENDAR\r\n${block}\r\nEND:VCALENDAR`); }
     catch { throw new CalendarFeedError('Invalid calendar event.'); }
+    const summary = storedBusySummary(eventSummary(fields)) ?? undefined;
     if (recurring) {
-      result.push(...expandRecurrence(block, { start, end, uid, allDay }, { now, windowEnd }));
-    } else if (end > now && start < windowEnd) result.push({ uid, start, end });
+      result.push(...expandRecurrence(block, { start, end, uid, allDay, summary }, { now, windowEnd }));
+    } else if (end > now && start < windowEnd) result.push({ uid, start, end, ...(summary ? { summary } : {}) });
     if (result.length > MAX_CALENDAR_EVENTS) throw new CalendarFeedError('Calendar has too many events.');
   }
   return result;

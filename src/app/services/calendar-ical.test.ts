@@ -145,3 +145,30 @@ test('VTIMEZONE daylight rules do not reject discrete IANA-zone appointments', (
     ics([timezone, summer.replace('END:VEVENT', 'RRULE:FREQ=DAILY;COUNT=2\r\nEND:VEVENT')].join('\r\n')), { now });
   assert.equal(series.length, 2);
 });
+
+// Ivan's real Fresha export (2026-10-16): appointments and blocked times differ
+// only by their generic SUMMARY; a monthly block repeats with an RRULE.
+test('each interval carries its event title, recurring occurrences included', () => {
+  const fresha = (uid: string, fields: string) =>
+    `BEGIN:VEVENT\r\nUID:${uid}\r\nSTATUS:CONFIRMED\r\nTRANSP:OPAQUE\r\nX-FRESHA-ORIGIN:TRUE\r\n${fields}\r\nEND:VEVENT`;
+  const intervals = parseCalendarBusyIntervals(ics([
+    fresha('appt', 'DTSTART:20261025T090000Z\r\nDTEND:20261025T103000Z\r\nSUMMARY:Fresha Appointment'),
+    fresha('block', 'DTSTART:20261024T120000Z\r\nDTEND:20261024T150000Z\r\nSUMMARY:Fresha Blocked Time'),
+    fresha('monthly', 'DTSTART:20261104T170000Z\r\nDTEND:20261104T190000Z\r\nRRULE:FREQ=MONTHLY;BYMONTHDAY=4\r\nSUMMARY:Fresha Blocked Time'),
+  ].join('\r\n')), { now });
+  const byUid = new Map(intervals.map((i) => [i.uid, i.summary]));
+  assert.equal(byUid.get('appt'), 'Fresha Appointment');
+  assert.equal(byUid.get('block'), 'Fresha Blocked Time');
+  const monthly = intervals.filter((i) => i.uid.startsWith('monthly::'));
+  assert.ok(monthly.length >= 2);
+  assert.ok(monthly.every((i) => i.summary === 'Fresha Blocked Time'));
+});
+
+test('a known title is unescaped and canonicalised; free text and a missing title leave no summary key', () => {
+  const [known] = parseCalendarBusyIntervals(ics(event('DTSTART:20261025T100000Z\r\nDTEND:20261025T110000Z\r\nSUMMARY;LANGUAGE=en:  fresha  blocked\\ntime ')), { now });
+  assert.equal(known.summary, 'Fresha Blocked Time');
+  const [free] = parseCalendarBusyIntervals(ics(event('DTSTART:20261025T100000Z\r\nDTEND:20261025T110000Z\r\nSUMMARY:Jane Smith\\, colour')), { now });
+  assert.equal('summary' in free, false);
+  const [untitled] = parseCalendarBusyIntervals(ics(event('DTSTART:20261025T100000Z\r\nDTEND:20261025T110000Z')), { now });
+  assert.equal('summary' in untitled, false);
+});
