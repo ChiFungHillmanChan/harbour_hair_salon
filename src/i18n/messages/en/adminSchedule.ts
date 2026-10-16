@@ -69,6 +69,18 @@ const adminSchedule = {
     badge: 'Move requested',
     dialogNote: 'The customer asked to move this to {to}.',
   },
+  /** Late arrivals (services/late-arrival-board.ts): the arrivals panel, the dialog toggle and the grid mark. */
+  arrivals: {
+    title: 'Arrivals',
+    markArrived: 'Arrived',
+    clearArrived: 'Not arrived',
+    arrivedMark: 'Arrived',
+    cancelsAt: 'Not arrived — cancels automatically at {time}',
+    lateCancelled: 'Cancelled at {time}: not arrived {minutes} minutes after the start',
+    alreadyEmailed: 'The customer has already been emailed that it was cancelled — tell them it stands.',
+    restore: 'Restore',
+    restoreClash: 'This time now clashes with another booking or blocked time. Restore anyway?',
+  },
   appointment: {
     customerFallback: 'Customer',
     stylistFallback: 'Stylist',

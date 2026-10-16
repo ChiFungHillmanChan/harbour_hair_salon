@@ -17,7 +17,7 @@ import { adminDepositView, adminDepositViewSelect, depositView, depositViewSelec
 export const calendarAppointmentSelect = {
   id: true, date: true, status: true, stylistId: true, serviceId: true, updatedAt: true,
   durationAtBooking: true, priceAtBooking: true, quoteJson: true, notes: true,
-  rescheduleRequestedDate: true, rescheduleRequestedAt: true,
+  rescheduleRequestedDate: true, rescheduleRequestedAt: true, arrivedAt: true,
   user: { select: { id: true, name: true, email: true } },
   stylist: { select: { name: true, calendarColor: true } },
   service: { select: { name: true, duration: true, calendarColor: true } },
@@ -42,6 +42,8 @@ export function serializeCalendarAppointment(row: CalendarRow, includeContact = 
     durationAtBooking: row.durationAtBooking, notes: row.notes,
     rescheduleRequestedDate: row.rescheduleRequestedDate?.toISOString() ?? null,
     rescheduleRequestedAt: row.rescheduleRequestedAt?.toISOString() ?? null,
+    // Staff marked the customer arrived (late-arrival rule): the grid shows it, the dialog toggles it.
+    arrivedAt: row.arrivedAt?.toISOString() ?? null,
     price: boardPrice(row),
     deposit: adminDepositView(row.paymentAttempt),
     user: { id: row.user.id, name: row.user.name, email: includeContact ? row.user.email : null },

@@ -67,6 +67,17 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     badge: '申請改期',
     dialogNote: '客人申請改去 {to}。',
   },
+  arrivals: {
+    title: '到達',
+    markArrived: '已到達',
+    clearArrived: '未到達',
+    arrivedMark: '已到達',
+    cancelsAt: '未到達 — 將於 {time} 自動取消',
+    lateCancelled: '已於 {time} 取消：開始 {minutes} 分鐘後仍未到達',
+    alreadyEmailed: '客人已收到取消電郵 — 請告訴客人預約仍然有效。',
+    restore: '還原',
+    restoreClash: '這個時段現在與其他預約或封鎖時段衝突。仍要還原嗎？',
+  },
   appointment: {
     customerFallback: '顧客',
     stylistFallback: '髮型師',

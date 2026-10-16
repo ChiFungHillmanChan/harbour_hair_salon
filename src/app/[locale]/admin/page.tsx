@@ -1,7 +1,9 @@
 import { requireAdmin } from '@/app/lib/session';
 import { getAdminCalendarData } from '@/app/services/admin-calendar-data';
+import { getLateArrivalBoard } from '@/app/services/late-arrival-board';
 import { getSiteSettings } from '@/app/services/site-settings-service';
 import { CalendarSetupNotice } from '@/components/admin/CalendarSetupNotice';
+import { LateArrivalPanel } from '@/components/admin/LateArrivalPanel';
 import { ScheduleCalendar } from '@/components/admin/ScheduleCalendar';
 import { type CalendarQuery } from '@/app/services/admin-calendar-range';
 import { getT } from '@/i18n/server';
@@ -28,10 +30,11 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
 }
 
 async function ScheduleContent({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[] }> }) {
-  const [calendar, settings, t] = await Promise.all([
+  const [calendar, settings, t, arrivals] = await Promise.all([
     getAdminCalendarData(await searchParams),
     getSiteSettings(),
     getT('adminSchedule'),
+    getLateArrivalBoard(),
   ]);
   const { dateStr, view, appointments, pendingAppointments, pendingCount, pendingNext,
     pendingHasPrevious, monthCounts, periodCount, todayStats, syncCoverage, stylists, busyBlocks,
@@ -76,6 +79,8 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
           <p className="text-3xl font-bold text-zinc-900 mt-1">{periodCount}</p>
         </div>
       </div>
+
+      <LateArrivalPanel board={arrivals} />
 
       <ScheduleCalendar loadedAt={calendar.loadedAt} dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} rescheduleRequests={rescheduleRequests} stylists={stylists} busyBlocks={busyBlocks} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} />
     </>
