@@ -22,6 +22,12 @@ type FixtureOptions = {
   /** The booking's card deposit, by status; omitted: none. */
   deposit?: string;
   clashes?: Row[];
+  /** The consultation credit the booking records (consultation-credit.ts); omitted: none. */
+  credit?: { fromId: string; pence: number };
+  /** The customer's consultations as the credit lookup reads them (ConsultationCreditCandidate rows). */
+  consultations?: Row[];
+  /** The deposit's amount when there is one (pence). */
+  depositPence?: number;
   /** Runs between the action's read and its write: another request got there first. */
   afterRead?: (state: { appointment: Row; attempt: Row | null }) => void;
 };
@@ -37,10 +43,13 @@ function fixture(options: FixtureOptions = {}) {
       id: 'appointment-1', userId: 'user-1', stylistId: 'stylist-1',
       date: options.date ?? minutes(-20), status: options.status ?? 'CONFIRMED', durationAtBooking: 45,
       arrivedAt: options.arrivedAt ?? null, lateCancelledAt: options.lateCancelledAt ?? null, notificationVersion: 1,
+      priceAtBooking: '45.00', quoteJson: null,
+      consultationCreditFromId: options.credit?.fromId ?? null, consultationCreditPence: options.credit?.pence ?? null,
       service: { duration: 60 },
     } as Row,
-    attempt: (options.deposit ? { id: 'attempt-1', status: options.deposit } : null) as Row | null,
+    attempt: (options.deposit ? { id: 'attempt-1', status: options.deposit, amountPence: options.depositPence ?? 2250 } : null) as Row | null,
   };
+  const creditLookups: Row[] = [];
   const audits: { action: string; actorUserId: string | null; targetId: string; metadata: Row }[] = [];
   const clashChecks: { client: unknown; target: Row }[] = [];
   const counts = { reads: 0, writes: 0, invalidations: 0 };
@@ -60,6 +69,12 @@ function fixture(options: FixtureOptions = {}) {
           if (snapshot) options.afterRead(snapshot);
         }
         return row;
+      },
+      // The consultation-credit lookup (findConsultationCredit): this customer's consultations.
+      findMany: async ({ where }: { where: Row }) => {
+        assert.equal(transactionActive, true, 'the credit is re-checked inside the restore transaction');
+        creditLookups.push(where);
+        return where.userId === state.appointment.userId ? structuredClone(options.consultations ?? []) : [];
       },
       updateMany: async ({ where, data }: { where: Row; data: Row }) => {
         counts.writes++;
@@ -126,7 +141,7 @@ function fixture(options: FixtureOptions = {}) {
     },
     'next/cache': { revalidatePath: () => undefined },
   });
-  return { actions, state, audits, clashChecks, counts, tx };
+  return { actions, state, audits, clashChecks, counts, tx, creditLookups };
 }
 
 const text = (code: Parameters<typeof bookingErrorText>[1]) => bookingErrorText('en-GB', code);
@@ -354,4 +369,62 @@ test('the restored booking refreshes the busy feed', async () => {
   const f = fixture({ status: 'CANCELLED', lateCancelledAt: minutes(-5), deposit: 'KEPT' });
   assert.deepEqual(await f.actions.restoreLateCancellation('appointment-1'), { success: true });
   assert.equal(f.counts.invalidations, 1);
+});
+
+// Final review I1: while a booking is late-cancelled its consultation credit is
+// free (a CANCELLED booking does not hold one), so another booking may take it.
+// A restore re-checks the credit in its own transaction: kept, moved to another
+// consultation that qualifies, or cleared — never one credit on two live bookings.
+const consultation = (id: string, date: Date, usedBy: { id: string; status: string }[]): Row => ({
+  id, date, status: 'COMPLETED', lateCancelledAt: null, priceAtBooking: '15.00',
+  service: { isConsultation: true, isPatchTest: false }, consultationCreditUsedBy: usedBy,
+});
+const CANCELLED_HERE = { id: 'appointment-1', status: 'CANCELLED' };
+const lateCancelledWithCredit = (consultations: Row[], extra: FixtureOptions = {}) => fixture({
+  status: 'CANCELLED', lateCancelledAt: minutes(-5), credit: { fromId: 'consult-1', pence: 1500 }, consultations, ...extra,
+});
+
+test('restore keeps a consultation credit nobody else has taken, and says so in the audit', async () => {
+  const f = lateCancelledWithCredit([consultation('consult-1', minutes(-30 * 24 * 60), [CANCELLED_HERE])]);
+  assert.deepEqual(await f.actions.restoreLateCancellation('appointment-1'), { success: true });
+  assert.equal(f.state.appointment.status, 'CONFIRMED');
+  assert.deepEqual([f.state.appointment.consultationCreditFromId, f.state.appointment.consultationCreditPence], ['consult-1', 1500]);
+  assert.deepEqual(f.audits.map((audit) => audit.metadata), [{ forced: false, consultationCredit: 'kept', consultationCreditPence: 1500 }]);
+  assert.equal(f.creditLookups.length, 1);
+  assert.equal(f.creditLookups[0].userId, 'user-1');
+});
+
+test('restore clears a consultation credit another booking took while this one was cancelled', async () => {
+  // Late-cancelled → staff booked the treatment again with the same credit → the first booking is restored.
+  const f = lateCancelledWithCredit([consultation('consult-1', minutes(-30 * 24 * 60), [CANCELLED_HERE, { id: 'rebooked', status: 'CONFIRMED' }])]);
+  assert.deepEqual(await f.actions.restoreLateCancellation('appointment-1'), { success: true });
+  assert.equal(f.state.appointment.status, 'CONFIRMED');
+  assert.deepEqual([f.state.appointment.consultationCreditFromId, f.state.appointment.consultationCreditPence], [null, null], 'one credit, one live booking');
+  assert.deepEqual(f.audits.map((audit) => audit.metadata), [{ forced: false, consultationCredit: 'cleared', consultationCreditPence: 0 }]);
+});
+
+test('restore moves the credit to another unused consultation when its own was taken', async () => {
+  const f = lateCancelledWithCredit([
+    consultation('consult-1', minutes(-60 * 24 * 60), [CANCELLED_HERE, { id: 'rebooked', status: 'CONFIRMED' }]),
+    consultation('consult-2', minutes(-10 * 24 * 60), []),
+  ]);
+  assert.deepEqual(await f.actions.restoreLateCancellation('appointment-1'), { success: true });
+  assert.deepEqual([f.state.appointment.consultationCreditFromId, f.state.appointment.consultationCreditPence], ['consult-2', 1500]);
+  assert.deepEqual(f.audits.map((audit) => audit.metadata), [{ forced: false, consultationCredit: 'reassigned', consultationCreditPence: 1500 }]);
+});
+
+test('restore keeps the consultation but re-caps the credit at what the restored deposit leaves of the price', async () => {
+  // £45 treatment, £40 deposit back to CAPTURED: only £5 is left to take the credit off.
+  const f = lateCancelledWithCredit([consultation('consult-1', minutes(-30 * 24 * 60), [CANCELLED_HERE])], { deposit: 'KEPT', depositPence: 4000 });
+  assert.deepEqual(await f.actions.restoreLateCancellation('appointment-1'), { success: true });
+  assert.equal(f.state.attempt?.status, 'CAPTURED');
+  assert.deepEqual([f.state.appointment.consultationCreditFromId, f.state.appointment.consultationCreditPence], ['consult-1', 500]);
+  assert.deepEqual(f.audits.map((audit) => audit.metadata), [{ forced: false, deposit: 'CAPTURED', consultationCredit: 'kept', consultationCreditPence: 500 }]);
+});
+
+test('a restore without a consultation credit never looks one up', async () => {
+  const f = fixture({ status: 'CANCELLED', lateCancelledAt: minutes(-5), consultations: [consultation('consult-1', minutes(-30 * 24 * 60), [])] });
+  assert.deepEqual(await f.actions.restoreLateCancellation('appointment-1'), { success: true });
+  assert.deepEqual(f.creditLookups, []);
+  assert.deepEqual([f.state.appointment.consultationCreditFromId, f.state.appointment.consultationCreditPence], [null, null]);
 });

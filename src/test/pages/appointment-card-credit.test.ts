@@ -31,8 +31,14 @@ function card(locale: Locale, extra: Record<string, unknown>, price: unknown = {
 }
 
 const words = {
-  'en-GB': { credit: 'Consultation credit: −£15.00', toPay: (amount: string) => `To pay in the salon: ${amount}` },
-  'zh-HK': { credit: '諮詢費抵扣：−£15.00', toPay: (amount: string) => `到店繳付：${amount}` },
+  'en-GB': {
+    credit: 'Consultation credit: −£15.00', toPay: (amount: string) => `To pay in the salon: ${amount}`,
+    toPayAfterConsultation: 'To pay in the salon: £85.00 (VAT excluded · Final price confirmed at your consultation)',
+  },
+  'zh-HK': {
+    credit: '諮詢費抵扣：−£15.00', toPay: (amount: string) => `到店繳付：${amount}`,
+    toPayAfterConsultation: '到店繳付：£85.00（未含 VAT · 最終價錢於諮詢時確定）',
+  },
 } as const;
 
 for (const locale of ['en-GB', 'zh-HK'] as const) {
@@ -60,5 +66,27 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
     const past = card(locale, { consultationCreditPence: 1500, status: 'COMPLETED' }, undefined, false);
     assert.ok(past.includes(w.credit));
     assert.ok(!past.includes(w.toPay('£85.00')));
+  });
+}
+
+for (const locale of ['en-GB', 'zh-HK'] as const) {
+  const w = words[locale];
+  // Final review I2: what is left to pay carries the price's own fine print,
+  // so a consultation-required price never reads as a fixed amount.
+  test(`${locale}: what is left to pay says the final price is confirmed at the consultation`, () => {
+    const afterConsultation = card(locale, { consultationCreditPence: 1500 }, { known: true, amountPence: 10000, priceType: 'STANDARD', vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION' });
+    assert.ok(afterConsultation.includes(w.toPayAfterConsultation), afterConsultation);
+    // An exact price: the line as before, no brackets.
+    const exact = card(locale, { consultationCreditPence: 1500 }, { known: true, amountPence: 10000, priceType: 'STANDARD', vatDisplay: 'UNSPECIFIED', priceNature: 'LISTED' });
+    assert.ok(exact.includes(w.toPay('£85.00')) && !exact.includes(`${w.toPay('£85.00')} (`) && !exact.includes(`${w.toPay('£85.00')}（`), exact);
+  });
+
+  // Final review M2: a cancelled booking deducts nothing, so it shows no credit.
+  test(`${locale}: a cancelled booking shows no consultation credit`, () => {
+    for (const isUpcoming of [true, false]) {
+      const cancelled = card(locale, { consultationCreditPence: 1500, status: 'CANCELLED' }, undefined, isUpcoming);
+      assert.ok(!cancelled.includes(w.credit), cancelled);
+      assert.ok(!cancelled.includes(w.toPay('£85.00')));
+    }
   });
 }

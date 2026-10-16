@@ -398,11 +398,13 @@ test('the day list shows a booking’s recorded consultation credit, in both lan
   };
   const row = { ...boardAppointment('treatment', 'CONFIRMED', '2026-09-16T14:00:00.000Z'), consultationCredit: { amountPence: 1500, consultationDate: '2026-09-01T10:00:00.000Z' } };
   const plain = boardAppointment('plain', 'CONFIRMED', '2026-09-16T15:00:00.000Z');
+  // Final review M2: a cancelled booking deducts nothing, so it shows no credit.
+  const cancelled = { ...boardAppointment('cancelled', 'CANCELLED', '2026-09-16T16:00:00.000Z'), consultationCredit: { amountPence: 1500, consultationDate: '2026-09-01T10:00:00.000Z' } };
   for (const [locale, words] of [['en-GB', 'Consultation credit −£15.00'], ['zh-HK', '諮詢費抵扣 −£15.00']] as const) {
-    const { rendered } = renderClient('2026-09-16', 'day', [], [row, plain], locale);
+    const { rendered } = renderClient('2026-09-16', 'day', [], [row, plain, cancelled], locale);
     const days = byName(elements(rendered), 'DayView');
     assert.equal(days.length, 1);
     const shown = text(run(days[0]));
-    assert.equal(shown.split(words).length - 1, 1, 'once, for the booking that has a credit only');
+    assert.equal(shown.split(words).length - 1, 1, 'once, for the live booking that has a credit only');
   }
 });

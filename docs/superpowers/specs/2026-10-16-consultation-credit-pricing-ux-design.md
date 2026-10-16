@@ -64,7 +64,9 @@ separate, recorded deduction. "To pay in the salon" = price − deposit − cred
 - The most recent qualifying consultation is offered.
 
 Amount = the consultation's `priceAtBooking` (pence), capped at the treatment's
-recorded price.
+recorded price less any deposit already taken (`CAPTURED`) on the booking — never
+below £0, and no credit is recorded (the consultation is not used up) when
+nothing is left to deduct from (final review M8).
 
 ### 2.3 Applying it (staff only)
 
@@ -84,14 +86,26 @@ credit is applied only in Admin:
   clears both fields. Cancelling the treatment keeps the fields (history) but the
   "not already used" rule ignores CANCELLED bookings, so the credit is free again.
 - Audit metadata carries `consultationCreditPence` and the consultation id.
+- Restoring a late cancellation (Arrivals → Restore, `restoreLateCancellation`)
+  re-checks a recorded credit inside the restore's own Serializable transaction
+  (final review I1): while the booking was CANCELLED its credit was free, and
+  another booking may have taken it. The same lookup runs at the booking's
+  start, preferring the consultation it already records and capped at what the
+  restored deposit leaves of the price. The result is written — the same
+  consultation (`kept`), another unused one (`reassigned`) or none (`cleared`) —
+  and audited flat on `APPOINTMENT.LATE_CANCEL_RESTORED` as
+  `consultationCredit` + `consultationCreditPence`. One consultation's credit is
+  never on two live bookings.
 
 ### 2.4 Showing it
 
 - Admin board and dialog: "Consultation credit −£15".
 - Customer: confirmation/reminder email details and My Bookings card get a row
   "Consultation credit −£15" and "To pay in the salon £X" (price − deposit −
-  credit, never below 0). The notification snapshot gains
-  `consultationCreditPence`.
+  credit, never below 0), with the price's own fine print when it is not exact
+  ("£85.00 (final price confirmed at your consultation)"). A CANCELLED booking
+  shows no credit (on My Bookings or the admin board): it deducts nothing. The
+  notification snapshot gains `consultationCreditPence`.
 - Booking wizard gate panel (`gate.byConsultation`): "This service needs a
   {fee} consultation first. If you go ahead with the treatment within 6 months,
   the {fee} is taken off its price." (Free consultation: unchanged wording.)
@@ -124,6 +138,14 @@ credit is applied only in Admin:
   adjusted after consultation" everywhere it shows).
 - Structured data (JSON-LD) for these services: the offer's price is a minimum
   (`priceSpecification.minPrice`), not a fixed price.
+- Recorded quotes use the same rule (final review I2): `buildQuote` stores
+  `effectivePriceNature(service)` as the quote's `priceNature`, so a new
+  booking for a consultation-required service — Perms are stored `LISTED` —
+  records `SUBJECT_TO_CONSULTATION`, and its confirmation, reminder and My
+  Bookings "To pay in the salon" line say the final price is confirmed at the
+  consultation instead of stating a fixed amount left to pay. The recorded
+  amount itself is unchanged. Bookings made before this keep the quote they
+  recorded.
 - Staff-entered bookings record whatever price staff set, as today.
 
 ## 5. E — Eligibility and discount-code notices

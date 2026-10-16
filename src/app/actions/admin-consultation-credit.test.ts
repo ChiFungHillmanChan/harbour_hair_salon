@@ -42,7 +42,11 @@ const NEWER_CONSULTATION: Row = {
   lateCancelledAt: null, priceAtBooking: '15.00', consultationCreditFromId: null,
 };
 
-function fixture(options: { role?: string; treatment?: Row | null; extraRows?: Row[]; databaseDown?: boolean } = {}) {
+function fixture(options: {
+  role?: string; treatment?: Row | null; extraRows?: Row[]; databaseDown?: boolean;
+  /** The treatment's card deposit (status, amountPence); omitted: none. */
+  deposit?: Row;
+} = {}) {
   const rows: Row[] = [
     // Mei's paid colour consultation, two weeks before the treatment.
     { id: 'consult-1', userId: MEI.id, serviceId: 'consult', date: CONSULTATION_DATE, status: 'COMPLETED', lateCancelledAt: null, priceAtBooking: '15.00', consultationCreditFromId: null },
@@ -101,7 +105,7 @@ function fixture(options: { role?: string; treatment?: Row | null; extraRows?: R
             user: { email: MEI.email, name: MEI.name, phone: null },
             stylist: { name: 'Ivan', treatwellExternalId: null },
             service: { ...service },
-            paymentAttempt: null,
+            paymentAttempt: row.id === 'appt-1' ? options.deposit ?? null : null,
           });
         },
         create: async ({ data }: { data: Row }) => {
@@ -368,6 +372,24 @@ test('changing to another consultation-required service re-caps the credit at th
   assert.deepEqual(creditOf(updates[0]), { from: 'consult-1', pence: 1000 });
 });
 
+// Final review M8: a deposit already taken is part of the price, so the credit
+// only takes off what it leaves — and a consultation is never used up for £0.
+test('an edit caps the credit at what a taken deposit leaves of the price', async () => {
+  const twenty = { priceAtBooking: '20.00' };
+  const capped = fixture({ treatment: twenty, deposit: { status: 'CAPTURED', amountPence: 1000 } });
+  await capped.schedule.editAppointmentByAdmin(editColour({ applyConsultationCredit: true }));
+  assert.deepEqual(creditOf(capped.updates[0]), { from: 'consult-1', pence: 1000 });
+
+  const covered = fixture({ treatment: twenty, deposit: { status: 'CAPTURED', amountPence: 2000 } });
+  await covered.schedule.editAppointmentByAdmin(editColour({ applyConsultationCredit: true }));
+  assert.deepEqual(creditOf(covered.updates[0]), { from: null, pence: null }, 'nothing left to deduct from');
+
+  // A hold on the card is not money taken: the whole credit applies.
+  const held = fixture({ treatment: twenty, deposit: { status: 'AUTHORIZED', amountPence: 1000 } });
+  await held.schedule.editAppointmentByAdmin(editColour({ applyConsultationCredit: true }));
+  assert.deepEqual(creditOf(held.updates[0]), { from: 'consult-1', pence: 1500 });
+});
+
 test('a booking whose price was never recorded takes no credit', async () => {
   const { schedule, updates } = fixture({ treatment: { priceAtBooking: null, consultationCreditFromId: null, consultationCreditPence: null } });
 
@@ -420,6 +442,15 @@ test('the preview for a booking being edited does not count the booking itself a
   assert.deepEqual(await preview.previewConsultationCredit(previewFor({ appointmentId: 'appt-1', serviceId: 'toner' })), {
     available: true, amountPence: 1000, consultationDate: CONSULTATION_DATE.toISOString(),
   });
+});
+
+test('the preview for a booking being edited caps the credit at what a taken deposit leaves', async () => {
+  const { preview } = fixture({ treatment: { priceAtBooking: '20.00' }, deposit: { status: 'CAPTURED', amountPence: 1000 } });
+  assert.deepEqual(await preview.previewConsultationCredit(previewFor({ appointmentId: 'appt-1' })), {
+    available: true, amountPence: 1000, consultationDate: CONSULTATION_DATE.toISOString(),
+  });
+  const covered = fixture({ treatment: { priceAtBooking: '20.00' }, deposit: { status: 'CAPTURED', amountPence: 2000 } });
+  assert.deepEqual(await covered.preview.previewConsultationCredit(previewFor({ appointmentId: 'appt-1' })), { available: false });
 });
 
 test('the preview for a booking being edited names the consultation it already records', async () => {

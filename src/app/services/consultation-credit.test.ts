@@ -158,6 +158,17 @@ test('creditFor caps the credit at the treatment price and is 0 without a credit
   assert.equal(creditFor(null, 4500), 0);
 });
 
+// Final review M8: a deposit already taken is part of the price paid, so the
+// credit can only take off what is left of it.
+test('creditFor caps the credit at what a taken deposit leaves of the price', () => {
+  const credit = { fromAppointmentId: 'c1', amountPence: 1500, consultationDate: SEPT };
+  assert.equal(creditFor(credit, 8000, 4000), 1500, 'plenty left: the whole credit');
+  assert.equal(creditFor(credit, 2000, 1000), 1000, 'only £10 left after the deposit');
+  assert.equal(creditFor(credit, 2000, 2000), 0, 'the deposit covers the price');
+  assert.equal(creditFor(credit, 2000, 2500), 0, 'never below £0');
+  assert.equal(creditFor(credit, 2000, 0), 1500);
+});
+
 test('findConsultationCredit reads this customer\'s consultations in the window, with who used them', async () => {
   const calls: unknown[] = [];
   const past = new Date(Date.now() - 7 * 24 * 3600_000);
@@ -214,4 +225,18 @@ test('findApplicableConsultationCredit caps the amount and offers nothing that w
   assert.equal(await applicable(null), null);
   assert.equal(await applicable(0), null);
   assert.equal(reads, 0, 'nothing to deduct from, so nothing is read');
+});
+
+test('findApplicableConsultationCredit takes a captured deposit off the price first', async () => {
+  const past = new Date(Date.now() - 7 * 24 * 3600_000);
+  const at = new Date(Date.now() + 7 * 24 * 3600_000);
+  const db = { appointment: { findMany: async () => [consultation({ id: 'c1', date: past })] } };
+  const applicable = (treatmentPricePence: number, capturedDepositPence?: number) =>
+    findApplicableConsultationCredit(db as never, { userId: 'u1', at, treatmentPricePence, capturedDepositPence });
+
+  assert.equal((await applicable(8000, 4000))?.amountPence, 1500);
+  assert.equal((await applicable(2000, 1000))?.amountPence, 1000, 'capped at price − deposit');
+  // Nothing left to deduct from: the consultation is not used up for £0.
+  assert.equal(await applicable(2000, 2000), null);
+  assert.equal(await applicable(2000, 3000), null);
 });

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { BookingError } from '@/app/services/booking-errors';
-import { findApplicableConsultationCredit } from '@/app/services/consultation-credit';
+import { capturedDepositPence, findApplicableConsultationCredit } from '@/app/services/consultation-credit';
 import { quoteForNewBooking } from '@/app/services/pricing/quote-service';
 import { recordedPrice } from '@/app/services/pricing/recorded-price';
 import { resolveSalonDateTime, SALON_DATE_RE, SALON_TIME_RE } from '@/app/services/salon-time';
@@ -60,14 +60,20 @@ export async function previewConsultationCredit(input: {
     let userId: string | null = null;
     let recordedPence: number | null | undefined;
     let preferAppointmentId: string | undefined;
+    let depositPence = 0;
     if (appointmentId) {
       const booking = await prisma.appointment.findUnique({
         where: { id: appointmentId },
-        select: { userId: true, serviceId: true, priceAtBooking: true, quoteJson: true, consultationCreditFromId: true },
+        select: {
+          userId: true, serviceId: true, priceAtBooking: true, quoteJson: true, consultationCreditFromId: true,
+          paymentAttempt: { select: { status: true, amountPence: true } },
+        },
       });
       if (!booking) return NONE;
       userId = booking.userId;
       preferAppointmentId = booking.consultationCreditFromId ?? undefined;
+      // A deposit already taken caps the credit, exactly as saving will.
+      depositPence = capturedDepositPence(booking.paymentAttempt);
       if (booking.serviceId === serviceId) {
         const recorded = recordedPrice(booking);
         recordedPence = recorded.known ? recorded.amountPence : null;
@@ -82,7 +88,9 @@ export async function previewConsultationCredit(input: {
       ? recordedPence
       : (await quoteForNewBooking(prisma, serviceId, 'ADMIN')).quote.amountPence;
 
-    const credit = await findApplicableConsultationCredit(prisma, { userId, at, treatmentPricePence, excludeAppointmentId: appointmentId, preferAppointmentId });
+    const credit = await findApplicableConsultationCredit(prisma, {
+      userId, at, treatmentPricePence, capturedDepositPence: depositPence, excludeAppointmentId: appointmentId, preferAppointmentId,
+    });
     return credit ? { available: true, amountPence: credit.amountPence, consultationDate: credit.consultationDate.toISOString() } : NONE;
   } catch (error) {
     // A service that cannot be booked or priced offers no credit; saving reports the real problem.

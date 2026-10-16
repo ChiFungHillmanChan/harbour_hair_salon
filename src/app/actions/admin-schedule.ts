@@ -23,7 +23,7 @@ import { quoteForNewBooking } from '@/app/services/pricing/quote-service';
 import { quoteMatches, serializeQuote, type PriceQuote } from '@/app/services/pricing/quote';
 import { penceToDecimalString } from '@/app/services/pricing/money';
 import { recordedPrice } from '@/app/services/pricing/recorded-price';
-import { findApplicableConsultationCredit } from '@/app/services/consultation-credit';
+import { capturedDepositPence, findApplicableConsultationCredit } from '@/app/services/consultation-credit';
 import { getActionLocale } from '@/i18n/request';
 import { isLocale, type Locale } from '@/i18n/config';
 import { revalidateAllLocales } from '@/i18n/revalidate';
@@ -171,6 +171,8 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
           user: { select: { email: true, name: true, phone: true } },
           stylist: { select: { name: true, treatwellExternalId: true } },
           service: { select: { id: true, name: true, price: true, duration: true, requiresPatchTest: true, requiresConsultation: true, treatwellExternalId: true } },
+          // A deposit already taken caps the consultation credit (consultation-credit.ts creditFor).
+          paymentAttempt: { select: { status: true, amountPence: true } },
         },
       });
       if (!current) throw new BookingError('APPOINTMENT_NOT_FOUND');
@@ -220,6 +222,8 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
           userId: current.userId,
           at: newDate,
           treatmentPricePence: newQuote ? newQuote.amountPence : recorded.known ? recorded.amountPence : null,
+          // Never more than a taken deposit leaves of the price.
+          capturedDepositPence: capturedDepositPence(current.paymentAttempt),
           excludeAppointmentId: appointmentId,
           // Keep the consultation it already records while that still qualifies.
           preferAppointmentId: current.consultationCreditFromId ?? undefined,

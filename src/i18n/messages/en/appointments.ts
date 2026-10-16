@@ -55,6 +55,8 @@ const appointments = {
     /** A consultation credit recorded on the booking, taken off what is paid in the salon. */
     consultationCredit: 'Consultation credit: −{amount}',
     toPayInSalon: 'To pay in the salon: {amount}',
+    /** The same, when the price is not exact. {notes}: pricing.vatExcluded / pricing.subjectToConsultation, joined. */
+    toPayInSalonWithNotes: 'To pay in the salon: {amount} ({notes})',
   },
   /** The booking's card deposit, by state (lib/deposit-display.ts). */
   deposit: {

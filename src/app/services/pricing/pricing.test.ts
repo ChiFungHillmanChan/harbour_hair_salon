@@ -9,7 +9,7 @@ import { OFFERINGS, RETIRE_UNVERIFIED_NHS, DELIBERATELY_UNCHANGED } from '../../
 const service = (overrides: Partial<QuotableService> = {}): QuotableService => ({
   id: 'svc', price: '157.000000000000000000000000000000', duration: 150, offeringId: 'off', hairLength: 'LONG', priceType: 'STANDARD',
   priceVersion: 3, vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION', durationConfirmed: true,
-  surchargeBaseServiceId: null, surchargeAmount: null, priceSource: 'treatwell:2026-09-28', ...overrides,
+  surchargeBaseServiceId: null, surchargeAmount: null, priceSource: 'treatwell:2026-09-28', requiresConsultation: false, ...overrides,
 });
 
 test('money converts Decimal strings exactly, never through a float', () => {
@@ -171,4 +171,20 @@ test('a consultation-required service always reads as subject to consultation, w
   ] as const) {
     assert.equal(effectivePriceNature({ requiresConsultation, priceNature }), expected, `${requiresConsultation} ${priceNature}`);
   }
+});
+
+// Final review I2: the quote a booking records says what the customer is told.
+// Perms are stored LISTED but need a consultation, so their recorded price is a
+// starting point too — never a fixed "left to pay".
+test('a consultation-required service quotes subject to consultation, whatever its row stores', () => {
+  assert.equal(buildQuote(service({ requiresConsultation: true, priceNature: 'LISTED' })).priceNature, 'SUBJECT_TO_CONSULTATION');
+  assert.equal(buildQuote(service({ requiresConsultation: true, priceNature: 'SUBJECT_TO_CONSULTATION' })).priceNature, 'SUBJECT_TO_CONSULTATION');
+  // A service that needs no consultation keeps its stored nature, as before.
+  assert.equal(buildQuote(service({ requiresConsultation: false, priceNature: 'LISTED' })).priceNature, 'LISTED');
+  assert.equal(buildQuote(service({ requiresConsultation: false, priceNature: 'SUBJECT_TO_CONSULTATION' })).priceNature, 'SUBJECT_TO_CONSULTATION');
+  assert.equal(buildQuote(service({ requiresConsultation: false, priceNature: 'NONSENSE' })).priceNature, 'LISTED', 'an unknown value reads as listed');
+  // Nothing else about the quote changes.
+  const quote = buildQuote(service({ requiresConsultation: true, priceNature: 'LISTED' }));
+  assert.equal(quote.amountPence, 15700);
+  assert.deepEqual({ ...quote, priceNature: 'LISTED' }, buildQuote(service({ priceNature: 'LISTED' })));
 });

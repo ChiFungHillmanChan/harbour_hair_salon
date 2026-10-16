@@ -53,6 +53,7 @@ const appointments: Localized<Messages['appointments']> = {
     confirmWithdrawRelease: '確定要撤回此預約要求嗎？你信用卡上 {amount} 的預留款項會被解除。',
     consultationCredit: '諮詢費抵扣：−{amount}',
     toPayInSalon: '到店繳付：{amount}',
+    toPayInSalonWithNotes: '到店繳付：{amount}（{notes}）',
   },
   deposit: {
     HELD: '訂金：已在你的信用卡預留 {amount}，尚未扣款。只有在本店確認預約後才會扣款。',

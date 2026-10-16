@@ -109,11 +109,20 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
   // The recorded amount and the notes that were true when it was booked.
   const { price } = appointment;
   const deposit = appointment.deposit ?? null;
-  const credit = appointment.consultationCreditPence && appointment.consultationCreditPence > 0 ? appointment.consultationCreditPence : null;
+  // A cancelled booking deducts nothing: its credit is free again for another booking.
+  const credit = appointment.status !== 'CANCELLED' && appointment.consultationCreditPence && appointment.consultationCreditPence > 0
+    ? appointment.consultationCreditPence : null;
   // What is left to pay in the salon once a taken deposit and the credit are off — never below £0.
   const toPayInSalon = credit !== null && price.known && isUpcoming && ['CONFIRMED', 'PENDING'].includes(appointment.status)
     ? Math.max(0, price.amountPence - (deposit?.state === 'PAID' ? deposit.amountPence : 0) - credit)
     : null;
+  // …with the price's own fine print when that amount is not exact, as the emails say it.
+  const toPayNotes = price.known
+    ? [
+        ...(price.vatDisplay === 'EXCLUDED' ? [tp('vatExcluded')] : []),
+        ...(price.priceNature === 'SUBJECT_TO_CONSULTATION' ? [tp('subjectToConsultation')] : []),
+      ]
+    : [];
   const priceNotes: string[] = [];
   if (price.known) {
     if (price.priceType === 'NHS') priceNotes.push(tp('nhsApplied'));
@@ -204,7 +213,13 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             </p>
             {priceNotes.length > 0 && <p className="text-xs text-zinc-500">{priceNotes.join(' · ')}</p>}
             {credit !== null && <p className="text-sm text-zinc-700">{t('card.consultationCredit', { amount: formatPrice(credit) })}</p>}
-            {toPayInSalon !== null && <p className="text-sm text-zinc-700">{t('card.toPayInSalon', { amount: formatPrice(toPayInSalon) })}</p>}
+            {toPayInSalon !== null && (
+              <p className="text-sm text-zinc-700">
+                {toPayNotes.length > 0
+                  ? t('card.toPayInSalonWithNotes', { amount: formatPrice(toPayInSalon), notes: toPayNotes.join(' · ') })
+                  : t('card.toPayInSalon', { amount: formatPrice(toPayInSalon) })}
+              </p>
+            )}
             {needsProof && <p className="text-xs text-zinc-500">{tp('eligibilityProof')}</p>}
             {!price.known && <p className="text-xs text-zinc-500">{tp('unknownPriceHelp')}</p>}
             {deposit && (

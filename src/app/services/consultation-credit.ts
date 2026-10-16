@@ -110,25 +110,46 @@ export async function findConsultationCredit(
   return pickConsultationCredit(rows, { at: input.at, now, excludeAppointmentId: input.excludeAppointmentId, preferAppointmentId: input.preferAppointmentId });
 }
 
-/** The credit to deduct from a treatment priced `treatmentPricePence`: the credit capped at the price, 0 without one. */
-export function creditFor(credit: ConsultationCredit | null, treatmentPricePence: number): number {
+/**
+ * The credit to deduct from a treatment priced `treatmentPricePence`: the
+ * credit capped at what is left of the price once a deposit already taken on
+ * the booking (`capturedDepositPence`) is off — never below 0, and 0 without
+ * a credit.
+ */
+export function creditFor(credit: ConsultationCredit | null, treatmentPricePence: number, capturedDepositPence = 0): number {
   if (!credit) return 0;
-  return Math.max(0, Math.min(credit.amountPence, treatmentPricePence));
+  return Math.max(0, Math.min(credit.amountPence, treatmentPricePence - Math.max(0, capturedDepositPence)));
 }
 
 /**
  * The credit a consultation-required booking priced `treatmentPricePence` would
- * record, its amount already capped (spec §2.3). The Admin preview and the
- * booking write both use it, so the dialog never offers what saving would not
- * record. Null when nothing would be deducted — an unrecorded treatment price
- * (legacy bookings) or a £0 one — so a consultation is never used up for £0.
+ * record, its amount already capped (spec §2.3) — at the price, less any
+ * deposit already taken on the booking (`capturedDepositPence`). The Admin
+ * preview, the booking write and the late-cancellation restore all use it, so
+ * the dialog never offers what saving would not record. Null when nothing
+ * would be deducted — an unrecorded treatment price (legacy bookings), a £0
+ * one, or a deposit that already covers it — so a consultation is never used
+ * up for £0.
  */
 export async function findApplicableConsultationCredit(
   db: Pick<PrismaClient, 'appointment'> | Prisma.TransactionClient,
-  input: { userId: string; at: Date; treatmentPricePence: number | null; excludeAppointmentId?: string; preferAppointmentId?: string },
+  input: {
+    userId: string;
+    at: Date;
+    treatmentPricePence: number | null;
+    /** A card deposit already taken (CAPTURED) on the booking, in pence. */
+    capturedDepositPence?: number;
+    excludeAppointmentId?: string;
+    preferAppointmentId?: string;
+  },
 ): Promise<ConsultationCredit | null> {
-  if (input.treatmentPricePence === null || input.treatmentPricePence <= 0) return null;
+  if (input.treatmentPricePence === null || input.treatmentPricePence - (input.capturedDepositPence ?? 0) <= 0) return null;
   const credit = await findConsultationCredit(db, input);
-  const amountPence = creditFor(credit, input.treatmentPricePence);
+  const amountPence = creditFor(credit, input.treatmentPricePence, input.capturedDepositPence);
   return credit && amountPence > 0 ? { ...credit, amountPence } : null;
+}
+
+/** A deposit taken on the booking (CAPTURED), in pence; 0 for none, a hold, or anything refunded or kept. */
+export function capturedDepositPence(attempt: { status: string; amountPence: number } | null | undefined): number {
+  return attempt && attempt.status === 'CAPTURED' && Number.isSafeInteger(attempt.amountPence) && attempt.amountPence > 0 ? attempt.amountPence : 0;
 }
