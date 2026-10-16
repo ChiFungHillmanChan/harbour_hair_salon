@@ -42,7 +42,7 @@ const emails: Localized<Messages['emails']> = {
     unknownPrice: '未有記錄——請向本店查詢',
     nhsPrice: 'NHS 價',
     vatExcluded: '未含 VAT',
-    subjectToConsultation: '或會於諮詢後調整',
+    subjectToConsultation: '最終價錢於諮詢時確定',
     withNotes: '{amount}（{notes}）',
     nameNotGiven: '未有提供姓名',
     notProvided: '未有提供',

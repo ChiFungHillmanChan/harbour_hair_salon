@@ -2,7 +2,7 @@
 
 import type { PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { OfferingPrices } from '@/components/pricing/OfferingPrices';
-import { Duration, PriceFinePrint, useFormatPrice } from '@/components/pricing/PriceParts';
+import { Duration, PriceFinePrint, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
 /**
  * The price table on a category page: each menu item with its length ×
@@ -10,7 +10,7 @@ import { Duration, PriceFinePrint, useFormatPrice } from '@/components/pricing/P
  * catalogue as the services list and the booking wizard.
  */
 export function CategoryPriceList({ entries }: { entries: PriceListEntry[] }) {
-  const formatPrice = useFormatPrice();
+  const formatPrice = useFormatServicePrice();
   return (
     <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden divide-y divide-zinc-100">
       {entries.map((entry) => entry.kind === 'offering' ? (
@@ -38,7 +38,7 @@ export function CategoryPriceList({ entries }: { entries: PriceListEntry[] }) {
             </p>
           </div>
           <div className="text-right shrink-0">
-            <span className="text-lg font-serif font-bold text-zinc-900 tabular-nums">{formatPrice(entry.service.amountPence)}</span>
+            <span className="text-lg font-serif font-bold text-zinc-900 tabular-nums">{formatPrice(entry.service)}</span>
             <PriceFinePrint service={entry.service} showNhs />
           </div>
         </article>

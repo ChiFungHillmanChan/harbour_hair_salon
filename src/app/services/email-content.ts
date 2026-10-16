@@ -160,8 +160,8 @@ function depositClosingNote(appointment: EmailAppointment, locale: Locale, outco
 
 /**
  * What is left to pay in the salon, with the fine print the price itself
- * carries when that amount is not exact: "£80.00 (VAT excluded · may be
- * adjusted after consultation)" (see describeEmailPrice).
+ * carries when that amount is not exact: "£80.00 (VAT excluded · final price
+ * confirmed at your consultation)" (see describeEmailPrice).
  */
 function remainderText(price: Extract<EmailPrice, { known: true }>, depositPence: number, locale: Locale): string {
   const t = translator(locale, 'emails');

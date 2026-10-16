@@ -43,7 +43,7 @@ const emails = {
     unknownPrice: 'Not recorded — please ask the salon',
     nhsPrice: 'NHS price',
     vatExcluded: 'VAT excluded',
-    subjectToConsultation: 'may be adjusted after consultation',
+    subjectToConsultation: 'final price confirmed at your consultation',
     /** An amount with the price's fine print, e.g. what is left to pay (values.vatExcluded / subjectToConsultation). */
     withNotes: '{amount} ({notes})',
     nameNotGiven: 'Name not given',

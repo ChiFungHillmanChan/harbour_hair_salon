@@ -19,7 +19,7 @@ const pricing = {
   nhsApplies: 'NHS discount applies',
   nhsApplied: 'NHS price applied',
   vatExcluded: 'VAT excluded',
-  subjectToConsultation: 'May be adjusted after consultation',
+  subjectToConsultation: 'Final price confirmed at your consultation',
   extraLongBreakdown: 'Long hair price {base} + extra long {surcharge}',
   minutes: { one: '{count} min', other: '{count} mins' },
   durationAtConsultation: 'Time confirmed at consultation',
@@ -27,6 +27,8 @@ const pricing = {
   unknownPrice: 'Price not recorded',
   unknownPriceHelp: 'This booking was made before prices were saved with each appointment. Please ask the salon if you need the amount.',
   from: 'From',
+  /** One price with its "from" prefix: a consultation-required service's listed price is a starting point. */
+  fromPrice: 'From {price}',
   range: '{min} – {max}',
   notBookableOnline: 'Call the salon to book this option',
   discountsPaused: 'Offers and discount codes are paused at the moment. Prices shown are the listed prices.',

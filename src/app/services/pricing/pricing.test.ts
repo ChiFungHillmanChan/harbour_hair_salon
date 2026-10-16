@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { formatGBP, parsePoundsInput, penceToDecimalString, toPence } from './money';
 import { buildQuote, parseQuote, QuoteIntegrityError, quoteMatches, serializeQuote, type QuotableService } from './quote';
 import { recordedPrice } from './recorded-price';
-import { DISCOUNTS_PAUSED, menuItemDescription } from './policy';
+import { DISCOUNTS_PAUSED, effectivePriceNature, menuItemDescription } from './policy';
 import { OFFERINGS, RETIRE_UNVERIFIED_NHS, DELIBERATELY_UNCHANGED } from '../../../../prisma/price-catalog/treatwell-2026-09-28';
 
 const service = (overrides: Partial<QuotableService> = {}): QuotableService => ({
@@ -160,4 +160,15 @@ test('a menu item never borrows one option\'s length-specific description', () =
   assert.equal(menuItemDescription(null, [{ description: 'Single option.' }]), 'Single option.');
   assert.equal(menuItemDescription(null, [{ description: null }, { description: '' }]), null);
   assert.equal(menuItemDescription(null, []), null);
+});
+
+test('a consultation-required service always reads as subject to consultation, whatever its row stores', () => {
+  for (const [requiresConsultation, priceNature, expected] of [
+    [true, 'LISTED', 'SUBJECT_TO_CONSULTATION'],
+    [true, 'SUBJECT_TO_CONSULTATION', 'SUBJECT_TO_CONSULTATION'],
+    [false, 'LISTED', 'LISTED'],
+    [false, 'SUBJECT_TO_CONSULTATION', 'SUBJECT_TO_CONSULTATION'],
+  ] as const) {
+    assert.equal(effectivePriceNature({ requiresConsultation, priceNature }), expected, `${requiresConsultation} ${priceNature}`);
+  }
 });

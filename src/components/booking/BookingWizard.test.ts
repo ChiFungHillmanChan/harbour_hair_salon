@@ -52,6 +52,7 @@ function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unkno
     '@/components/pricing/PriceParts': {
       Duration: () => null, OptionLabel: () => null, PriceFinePrint: () => null, SurchargeBreakdown: () => null,
       useCategoryLabel: () => (category: string) => category, useFormatPrice: () => (pence: number) => `£${(pence / 100).toFixed(2)}`,
+      useFormatServicePrice: () => (service: { amountPence: number }) => `£${(service.amountPence / 100).toFixed(2)}`,
     },
   });
   const props = { services: [SERVICE], offerings: [], categories: [], stylists: [STYLIST], closedContact: { phone: '0113 496 0000', marketplaces: [] } };
@@ -199,6 +200,7 @@ function mountWizard(options: { draft: Record<string, unknown>; preview?: unknow
     '@/components/pricing/PriceParts': {
       Duration: () => null, OptionLabel: () => null, PriceFinePrint: () => null, SurchargeBreakdown: () => null,
       useCategoryLabel: () => (category: string) => category, useFormatPrice: () => (pence: number) => `£${(pence / 100).toFixed(2)}`,
+      useFormatServicePrice: () => (service: { amountPence: number }) => `£${(service.amountPence / 100).toFixed(2)}`,
     },
   });
   const props = {

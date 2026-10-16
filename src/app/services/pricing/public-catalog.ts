@@ -3,7 +3,7 @@ import type { Locale } from '@/i18n/config';
 import { publicServiceSelect, type ClientPublicService } from '../public-service-select';
 import { loadPublishedTranslations, overlay } from '../content/translations';
 import { toPence } from './money';
-import { HAIR_LENGTH_ORDER, isHairLength } from './policy';
+import { effectivePriceNature, HAIR_LENGTH_ORDER, isHairLength } from './policy';
 
 export const CATEGORY_ORDER = ['Haircuts', 'Colouring', 'Perms', 'Treatments', 'Styling'] as const;
 
@@ -66,6 +66,7 @@ export async function getPublicCatalog(locale: Locale): Promise<PublicCatalog> {
     const amountPence = toPence(price);
     return {
       ...localized,
+      priceNature: effectivePriceNature(row),
       price: amountPence / 100,
       amountPence,
       surchargeAmountPence: surchargeAmount === null ? null : toPence(surchargeAmount),

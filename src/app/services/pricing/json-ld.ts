@@ -17,13 +17,24 @@ type Labels = {
  */
 function offerFor(option: ClientPublicService, name: string | undefined) {
   const price = penceToDecimalString(option.amountPence);
+  const vat = option.vatDisplay === 'EXCLUDED' ? { valueAddedTaxIncluded: false } : {};
+  // A price the stylist confirms at the consultation is a starting point: it
+  // is published as a minimum, never as the fixed price of the service.
+  if (option.priceNature === 'SUBJECT_TO_CONSULTATION') {
+    return {
+      '@type': 'Offer' as const,
+      ...(name ? { name } : {}),
+      priceCurrency: 'GBP',
+      priceSpecification: { '@type': 'PriceSpecification' as const, minPrice: price, priceCurrency: 'GBP', ...vat },
+    };
+  }
   return {
     '@type': 'Offer' as const,
     ...(name ? { name } : {}),
     price,
     priceCurrency: 'GBP',
     ...(option.vatDisplay === 'EXCLUDED'
-      ? { priceSpecification: { '@type': 'PriceSpecification' as const, price, priceCurrency: 'GBP', valueAddedTaxIncluded: false } }
+      ? { priceSpecification: { '@type': 'PriceSpecification' as const, price, priceCurrency: 'GBP', ...vat } }
       : {}),
   };
 }

@@ -11,12 +11,23 @@ export function useFormatPrice() {
   return (pence: number) => formatGBP(pence, HTML_LANG[locale]);
 }
 
+/**
+ * One price as the page shows it: "From £157.00" for a consultation-required
+ * service (its listed price is a starting point), the plain amount otherwise.
+ */
+export function useFormatServicePrice() {
+  const t = useT('pricing');
+  const format = useFormatPrice();
+  return (service: Pick<ClientPublicService, 'amountPence' | 'requiresConsultation'>) =>
+    service.requiresConsultation ? t('fromPrice', { price: format(service.amountPence) }) : format(service.amountPence);
+}
+
 type PriceSemantics = Pick<ClientPublicService, 'vatDisplay' | 'priceNature' | 'priceType'>;
 
 /**
  * The small print that must travel with a price wherever it is shown: the
  * VAT wording (only when the price list says so — no claim otherwise), and
- * "may be adjusted after consultation" for prices that are not final.
+ * "final price confirmed at your consultation" for prices that are not final.
  */
 export function PriceFinePrint({ service, className = '', showNhs = false }: { service: PriceSemantics; className?: string; showNhs?: boolean }) {
   const t = useT('pricing');

@@ -265,7 +265,7 @@ test('an appointment whose price was never recorded says so instead of showing t
   const texts = expand(rendered).flatMap((node) => [node.props.children].flat().filter((child) => typeof child === 'string'));
   assert.ok(texts.includes('Price not recorded'), 'an unknown amount is shown as unknown');
   assert.ok(texts.includes('£142.00'), 'a recorded amount is shown as recorded');
-  assert.ok(texts.some((text) => /NHS price applied · VAT excluded · May be adjusted after consultation/.test(text)));
+  assert.ok(texts.some((text) => /NHS price applied · VAT excluded · Final price confirmed at your consultation/.test(text)));
   assert.ok(!texts.some((text) => /£0\.00/.test(text)), 'an unknown amount is never shown as zero');
 });
 

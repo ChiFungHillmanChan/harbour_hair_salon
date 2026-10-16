@@ -23,7 +23,7 @@ import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
 import { useDraftState, clearDraft } from '@/i18n/draft-store';
 import { formatCalendarDay } from '@/i18n/dates';
-import { Duration, OptionLabel, PriceFinePrint, SurchargeBreakdown, useCategoryLabel, useFormatPrice } from '@/components/pricing/PriceParts';
+import { Duration, OptionLabel, PriceFinePrint, SurchargeBreakdown, useCategoryLabel, useFormatPrice, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
 // Services reach the browser through the public select, so this type must
 // stay narrower than the full Service row (see app/services/public-service-select.ts).
@@ -68,6 +68,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
   const tc = useT('common');
   const locale = useLocale();
   const formatPrice = useFormatPrice();
+  const formatServicePrice = useFormatServicePrice();
   const categoryLabel = useCategoryLabel();
 
   // Everything the customer has chosen survives a language switch (in memory
@@ -536,7 +537,9 @@ export function BookingWizard({ services, offerings, categories, stylists, close
           </div>
           {standard.length > 0 && (
             <span className="font-serif text-lg text-zinc-900 font-medium whitespace-nowrap">
-              {Math.min(...standard) === Math.max(...standard)
+              {needsConsultation
+                ? tp('fromPrice', { price: formatPrice(Math.min(...standard)) })
+                : Math.min(...standard) === Math.max(...standard)
                 ? formatPrice(standard[0])
                 : tp('range', { min: formatPrice(Math.min(...standard)), max: formatPrice(Math.max(...standard)) })}
             </span>
@@ -575,7 +578,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                       </span>
                     </span>
                     <span className="text-right">
-                      <span className="block font-serif text-base text-zinc-900 tabular-nums">{formatPrice(option.amountPence)}</span>
+                      <span className="block font-serif text-base text-zinc-900 tabular-nums">{formatServicePrice(option)}</span>
                       <PriceFinePrint service={option} showNhs />
                       <SurchargeBreakdown option={option} base={base} />
                     </span>
@@ -626,7 +629,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
         </div>
       </div>
       <span className="text-right">
-        <span className="block font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">{formatPrice(service.amountPence)}</span>
+        <span className="block font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">{formatServicePrice(service)}</span>
         <PriceFinePrint service={service} showNhs />
       </span>
     </button>

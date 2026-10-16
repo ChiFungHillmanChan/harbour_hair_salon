@@ -8,7 +8,7 @@ import type { PriceListEntry } from '@/app/services/pricing/public-catalog';
 import { standardPriceRange } from '@/app/services/pricing/public-catalog';
 import { menuItemDescription } from '@/app/services/pricing/policy';
 import { OfferingPrices } from '@/components/pricing/OfferingPrices';
-import { Duration, PriceFinePrint, useCategoryLabel, useFormatPrice } from '@/components/pricing/PriceParts';
+import { Duration, PriceFinePrint, useCategoryLabel, useFormatPrice, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
 interface ServiceListProps {
   categories: { category: string; entries: PriceListEntry[] }[];
@@ -69,6 +69,7 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
   const t = useT('services');
   const tp = useT('pricing');
   const formatPrice = useFormatPrice();
+  const formatServicePrice = useFormatServicePrice();
   const categoryLabel = useCategoryLabel();
   // The open tab survives a language switch (in memory only).
   const [activeCategory, setActiveCategory] = useDraftState<string>('services-list:tab', categories[0]?.category ?? '');
@@ -206,7 +207,7 @@ export function ServiceList({ categories, categorySlugs }: ServiceListProps) {
                 {entry.kind === 'single' && (
                   <div className="text-right whitespace-nowrap flex-shrink-0">
                     <span className="text-2xl font-serif font-semibold text-zinc-900 tabular-nums">
-                      {formatPrice(entry.service.amountPence)}
+                      {formatServicePrice(entry.service)}
                     </span>
                     <PriceFinePrint service={entry.service} showNhs />
                   </div>

@@ -44,6 +44,16 @@ export type PriceNature = (typeof PRICE_NATURES)[number];
 const oneOf = <T extends string>(values: readonly T[]) => (value: unknown): value is T =>
   typeof value === 'string' && (values as readonly string[]).includes(value);
 
+/**
+ * A consultation-required service's price is a starting point: the stylist
+ * confirms the final price at the consultation (owner, 2026-10-16). The rule
+ * lives here, not in each service row, so a service switched to "consultation
+ * required" reads right everywhere at once.
+ */
+export function effectivePriceNature(service: { requiresConsultation: boolean; priceNature: string }): PriceNature {
+  return service.requiresConsultation ? 'SUBJECT_TO_CONSULTATION' : (service.priceNature as PriceNature);
+}
+
 export const isPriceType = oneOf(PRICE_TYPES);
 export const isHairLength = oneOf(HAIR_LENGTHS);
 export const isVatDisplay = oneOf(VAT_DISPLAYS);

@@ -420,10 +420,10 @@ test('the amount left to pay carries the price’s own fine print when it is not
     ...taken, price: { known: true, amountPence: 10000, priceType: null, vatDisplay, priceNature } as EmailAppointment['price'],
   }, locale).footnotes[2];
   assert.equal(remainder('en-GB', 'UNSPECIFIED', 'LISTED'), 'Your £20.00 deposit is paid; £80.00 is left to pay in the salon. Cash and card are accepted.', 'an exact price: as before');
-  assert.equal(remainder('en-GB', null, 'SUBJECT_TO_CONSULTATION'), 'Your £20.00 deposit is paid; £80.00 (may be adjusted after consultation) is left to pay in the salon. Cash and card are accepted.');
+  assert.equal(remainder('en-GB', null, 'SUBJECT_TO_CONSULTATION'), 'Your £20.00 deposit is paid; £80.00 (final price confirmed at your consultation) is left to pay in the salon. Cash and card are accepted.');
   assert.equal(remainder('en-GB', 'EXCLUDED', null), 'Your £20.00 deposit is paid; £80.00 (VAT excluded) is left to pay in the salon. Cash and card are accepted.');
-  assert.equal(remainder('en-GB', 'EXCLUDED', 'SUBJECT_TO_CONSULTATION'), 'Your £20.00 deposit is paid; £80.00 (VAT excluded · may be adjusted after consultation) is left to pay in the salon. Cash and card are accepted.');
-  assert.equal(remainder('zh-HK', 'EXCLUDED', 'SUBJECT_TO_CONSULTATION'), '你已繳付 £20.00 訂金；餘下 £80.00（未含 VAT · 或會於諮詢後調整） 於店內繳付，接受現金及信用卡。');
+  assert.equal(remainder('en-GB', 'EXCLUDED', 'SUBJECT_TO_CONSULTATION'), 'Your £20.00 deposit is paid; £80.00 (VAT excluded · final price confirmed at your consultation) is left to pay in the salon. Cash and card are accepted.');
+  assert.equal(remainder('zh-HK', 'EXCLUDED', 'SUBJECT_TO_CONSULTATION'), '你已繳付 £20.00 訂金；餘下 £80.00（未含 VAT · 最終價錢於諮詢時確定） 於店內繳付，接受現金及信用卡。');
 });
 
 test('mail queued before deposit outcomes existed renders exactly as it always did', () => {
