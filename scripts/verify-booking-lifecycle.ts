@@ -179,7 +179,8 @@ async function main() {
     fixturesStarted = true;
     await db.siteSettings.upsert({ where: { id: 'singleton' }, create: { bookingEnabled: true }, update: { bookingEnabled: true } });
     await db.user.createMany({ data: [
-      { id: ids.customer, name: 'PRIVATE_WEBSITE_CUSTOMER', email: 'customer@example.invalid' },
+      // Managing a booking online needs a proved address (security review 2026-10-16).
+      { id: ids.customer, name: 'PRIVATE_WEBSITE_CUSTOMER', email: 'customer@example.invalid', emailVerifiedAt: new Date() },
       { id: ids.other, name: 'Synthetic other customer', email: 'other@example.invalid' },
       { id: ids.admin, name: 'Synthetic administrator', email: 'admin@example.invalid', role: 'ADMIN' },
     ] });
@@ -242,7 +243,7 @@ async function main() {
     const unlimited = { check: async () => true };
     const customerActions = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
       ...actionDependencies,
-      '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited },
+      '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited, cancelLimiter: unlimited },
     });
     // The loader replaces direct imports only. Keep admin.ts's category helper
     // real while also adapting its session/navigation imports outside Next.
@@ -265,7 +266,7 @@ async function main() {
     const fixedCustomer = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
       ...actionDependencies, '@/app/services/booking-service': raceBooking,
       '@/app/lib/session': { verifySession: async () => ({ userId: ids.customer, role: 'USER' }) },
-      '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited },
+      '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited, cancelLimiter: unlimited },
     });
     const fixedAdmin = loadServerModule<typeof import('../src/app/actions/admin')>('src/app/actions/admin.ts', {
       ...actionDependencies, '@/app/services/booking-service': raceBooking,
@@ -529,7 +530,7 @@ async function main() {
       const depositCustomer = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
         ...actionDependencies,
         '@/app/lib/session': { verifySession: async () => ({ userId: ids.other, role: 'USER' }) },
-        '@/app/lib/rate-limit': { ...realRateLimit, bookingLimiter: unlimited },
+        '@/app/lib/rate-limit': { ...realRateLimit, bookingLimiter: unlimited, bookingDailyLimiter: unlimited },
         '@/app/services/square-gateway': { createSquareGateway: () => fakeSquare },
         '@/app/lib/online-booking-lock': {
           usableSquareConfig: () => ({ environment: 'sandbox', accessToken: 'synthetic-never-sent', applicationId: 'sandbox-sq0idb-synthetic', locationId: 'synthetic-location', webhookSignatureKey: 'synthetic', webhookNotificationUrl: 'https://example.invalid/api/webhooks/square' }),
@@ -683,7 +684,7 @@ async function main() {
       const depositOwner = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
         ...actionDependencies, '@/app/services/deposit-lifecycle': depositLifecycle,
         '@/app/lib/session': { verifySession: async () => ({ userId: ids.other, role: 'USER' }) },
-        '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited },
+        '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited, cancelLimiter: unlimited },
       });
       const lapse = loadServerModule<typeof import('../src/app/services/pending-request-lapse')>('src/app/services/pending-request-lapse.ts', {
         '@/app/lib/prisma': db, './booking-service': booking, './notification-outbox-service': notifications,

@@ -81,7 +81,8 @@ async function main() {
     await db.user.createMany({ data: [
       { id: 'http-admin', email: 'http-admin@example.invalid', name: 'PRIVATE_FIXTURE_ADMIN', role: 'ADMIN', mfaEnabledAt: new Date() },
       { id: 'http-enroll-admin', email: 'http-enroll@example.invalid', name: 'Synthetic MFA administrator', role: 'ADMIN' },
-      { id: 'http-user', email: 'http-user@example.invalid', name: 'PRIVATE_FIXTURE_CUSTOMER' },
+      // My Bookings needs a proved address (security review 2026-10-16).
+      { id: 'http-user', email: 'http-user@example.invalid', name: 'PRIVATE_FIXTURE_CUSTOMER', emailVerifiedAt: new Date() },
     ] });
     await db.stylist.create({ data: { id: 'http-stylist', name: 'PRIVATE_FIXTURE_STAFF', role: 'Stylist', icalToken: 'PRIVATE_FIXTURE_ICAL_SECRET' } });
     await db.service.create({ data: { id: 'http-service', name: 'Synthetic Cut', category: 'Cut', price: 120, duration: 30 } });
