@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadServerModule } from '../../test/load-server-module';
 
 // Admin → Integrations → "Sync now" (task G9, spec §7): administrators only,
@@ -14,13 +16,14 @@ function load(options: { role?: string; enabled?: boolean; job?: unknown; auditF
   const log: string[] = [];
   const audits: Record<string, unknown>[] = [];
   const revalidated: string[] = [];
+  const deadlines: (number | undefined)[] = [];
   let redirected = '';
   const action = loadServerModule<typeof import('./admin-google-calendar')>('src/app/actions/admin-google-calendar.ts', {
     'server-only': {},
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => { log.push('config'); return options.enabled === false ? null : CONFIG; } },
     '@/app/services/google-calendar-job': {
-      runGoogleCalendarJob: async (run: string) => { log.push(`job:${run}`); return options.job ?? STEPS; },
+      runGoogleCalendarJob: async (run: string, input?: { deadline?: number }) => { log.push(`job:${run}`); deadlines.push(input?.deadline); return options.job ?? STEPS; },
     },
     '@/app/lib/audit': {
       appendAuditEvent: async (input: Record<string, unknown>) => {
@@ -35,7 +38,7 @@ function load(options: { role?: string; enabled?: boolean; job?: unknown; auditF
     'next/navigation': { redirect: (to: string) => { redirected = to; throw new Error('NEXT_REDIRECT'); } },
   });
   const run = async () => { await assert.rejects(action.syncGoogleCalendarNow(), /NEXT_REDIRECT/); return redirected; };
-  return { action, run, log, audits, revalidated };
+  return { action, run, log, audits, revalidated, deadlines };
 }
 
 test('a non-administrator is refused before anything else happens', async () => {
@@ -59,10 +62,22 @@ test('with the sync on it runs the daily job, audits it and redirects done', asy
   assert.ok(f.revalidated.includes('/admin/integrations'));
 });
 
+test('the job is told when the page\'s function is cut off, so it skips a pull it could not finish', async () => {
+  const f = load();
+  const before = Date.now();
+  await f.run();
+  const [deadline] = f.deadlines;
+  assert.ok(deadline !== undefined && deadline >= before + 300_000 && deadline <= Date.now() + 300_000);
+  // The action runs under the Integrations page's own limit.
+  const page = readFileSync(join(process.cwd(), 'src/app/[locale]/admin/integrations/page.tsx'), 'utf8');
+  assert.match(page, /export const maxDuration = 300;/);
+});
+
 test('a step that failed, bookings Google refused, or a job that threw all redirect error (still audited)', async () => {
   for (const job of [
     { ...STEPS, ok: false, push: { written: 0, deleted: 0, unchanged: 0, failed: 2 } },
     { ...STEPS, ok: false, pull: 'failed' },
+    { ...STEPS, ok: false, pull: { reverted: 0, blocks: 0, changed: false, failed: true } },
     { ok: false, error: true },
     { skipped: 'disabled' },
   ]) {

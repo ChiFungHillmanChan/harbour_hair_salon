@@ -24,6 +24,7 @@ type Appt = {
   stylist: { id: string; name: string };
   service: { id: string; name: string; duration: number };
   paymentAttempt: { status: string; amountPence: number; refunds: { status: string; amountPence: number }[] } | null;
+  rescheduleRequestedDate?: Date | null;
 };
 
 /** A booking tomorrow at 13:00 (BST), changed five minutes ago. */
@@ -453,6 +454,83 @@ test('explicit ids reach past the window up to the 12-month limit, updating or d
   assert.equal(rows.get('oldRemoved')!.removed, true);
   assert.equal(rows.has('oldUnwritten'), false);
   assert.deepEqual(rows.get('thirteenMonths'), eventRow('thirteenMonths'));
+});
+
+test('recent mode looks back 45 minutes, so a change made between two half-hourly runs is never missed', async () => {
+  // The notifications cron lapses requests on the same :00/:30 ticks as calendar-sync.
+  const { db } = fakeDb(
+    [appt('fortyMinutes', { updatedAt: at(-40) }), appt('fiftyMinutes', { updatedAt: at(-50) })],
+    [eventRow('fortyMinutes'), eventRow('fiftyMinutes')],
+  );
+  const google = fakeGateway();
+  assert.deepEqual(await run(db, google.gateway), { written: 1, deleted: 0, unchanged: 0, failed: 0 });
+  assert.deepEqual(google.calls.map((call) => call.id), [googleEventIdFor('fortyMinutes')]);
+});
+
+test('an erasure push that failed or never ran is repaired by the next run, back to the 12-month limit', async () => {
+  // Erasure clears syncedHash in its own transaction (actions/admin-erasure.ts);
+  // the push it schedules afterwards may fail, or never run at all.
+  const yearAgo = new Date('2098-09-01T12:00:00Z');
+  const erased = { name: ERASED_CUSTOMER_NAME, phone: null, email: erasedEmailFor('u1') };
+  const old = { date: at(-10 * DAY), updatedAt: at(-10 * DAY), user: erased };
+  const { db, rows } = fakeDb([
+    appt('pushFailed', old),
+    appt('pushNeverRan', old),
+    appt('cancelledFailed', { ...old, status: 'CANCELLED' }),
+    appt('settled', old),
+    appt('removed', old),
+    appt('pastRetention', { ...old, date: new Date(yearAgo.getTime() - 3 * DAY * 60_000) }),
+  ], [
+    eventRow('pushFailed', { syncedHash: null, attempts: 1, lastError: OPERATIONS_MESSAGES.GOOGLE_PUSH_FAILED }),
+    eventRow('pushNeverRan', { syncedHash: null }),
+    eventRow('cancelledFailed', { attempts: 1, lastError: OPERATIONS_MESSAGES.GOOGLE_PUSH_FAILED }),
+    eventRow('settled'),
+    eventRow('removed', { removed: true, syncedHash: null }),
+    eventRow('pastRetention', { syncedHash: null }),
+  ]);
+  const google = fakeGateway();
+  assert.deepEqual(await run(db, google.gateway), { written: 2, deleted: 1, unchanged: 0, failed: 0 });
+  const byId = new Map(google.calls.map((call) => [call.id, call]));
+  for (const id of ['pushFailed', 'pushNeverRan']) {
+    assert.equal(byId.get(googleEventIdFor(id))!.event!.summary, `Ivan · ${ERASED_CUSTOMER_NAME} · Haircut`, id);
+    assert.ok(rows.get(id)!.syncedHash, id);
+  }
+  assert.equal(byId.get(googleEventIdFor('cancelledFailed'))!.op, 'delete');
+  assert.equal(google.calls.length, 3, 'settled, removed and past-retention rows are left alone');
+  // Repaired: the next run has nothing to do.
+  assert.deepEqual(await run(db, fakeGateway().gateway, { now: at(60) }), { written: 0, deleted: 0, unchanged: 0, failed: 0 });
+});
+
+test('the daily reconcile also repairs rows owed from before the window', async () => {
+  const { db } = fakeDb([appt('old', { date: at(-20 * DAY), updatedAt: at(-20 * DAY) })], [eventRow('old', { syncedHash: null })]);
+  const google = fakeGateway();
+  assert.deepEqual(await run(db, google.gateway, { mode: 'all' }), { written: 1, deleted: 0, unchanged: 0, failed: 0 });
+});
+
+test('explicit ids are pushed in full, past 100, with the 12-month limit applied in the query', async () => {
+  // A customer with 150 bookings (many at the same time, so the cursor's tie-break matters), and one too old.
+  const bookings = Array.from({ length: 150 }, (_, index) => appt(`b${String(index).padStart(3, '0')}`, {
+    date: at(-(Math.floor(index / 6) + 1) * 7 * DAY), updatedAt: at(-DAY),
+  }));
+  const tooOld = appt('tooOld', { date: new Date('2098-01-01T10:00:00Z'), updatedAt: at(-DAY) });
+  const { db } = fakeDb([...bookings, tooOld], [...bookings, tooOld].map((a) => eventRow(a.id)));
+  const queries: Record<string, unknown>[] = [];
+  const findMany = db.appointment.findMany.bind(db.appointment);
+  db.appointment.findMany = async (args) => { queries.push(args.where ?? {}); return findMany(args); };
+  const google = fakeGateway();
+  const ids = [...bookings, tooOld].map((a) => a.id);
+  assert.deepEqual(await run(db, google.gateway, { appointmentIds: ids }), { written: 150, deleted: 0, unchanged: 0, failed: 0 });
+  assert.equal(new Set(google.calls.map((call) => call.id)).size, 150, 'each event exactly once');
+  assert.ok(!google.calls.some((call) => call.id === googleEventIdFor('tooOld')));
+  assert.ok(queries.length >= 2, 'in batches');
+  assert.ok(queries.every((where) => JSON.stringify(where).includes('"date"')), 'the retention limit is part of every query');
+});
+
+test('an open reschedule request is part of the event the push writes', async () => {
+  const { db } = fakeDb([appt('a1', { rescheduleRequestedDate: at(3 * DAY) })]);
+  const google = fakeGateway();
+  await run(db, google.gateway);
+  assert.match(google.calls[0].event!.description!, /Customer asked to move to /);
 });
 
 test('appointmentIds pushes exactly those bookings', async () => {

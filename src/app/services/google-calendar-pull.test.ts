@@ -402,7 +402,8 @@ test('a failing listing is recorded, never thrown; stored busy time is kept', as
   google.listError = new GoogleCalendarError('retryable', 503);
   const { pull, invalidations } = load();
 
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false });
+  // Reported as failed too, so the job running it (google-calendar-job.ts) records the failure.
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false, failed: true });
   assert.deepEqual(
     { lastPullAt: store.state!.lastPullAt, lastPullSuccessAt: store.state!.lastPullSuccessAt, lastPullError: store.state!.lastPullError, busyHash: store.state!.busyHash },
     { lastPullAt: NOW, lastPullSuccessAt: earlier, lastPullError: OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED, busyHash: 'h' },
@@ -414,7 +415,7 @@ test('a failing listing is recorded, never thrown; stored busy time is kept', as
   // Google is back: the next pull succeeds and clears the error.
   google.listError = null;
   const later = at(30);
-  await run(pull, store.db, google.gateway, later);
+  assert.equal((await run(pull, store.db, google.gateway, later)).failed, undefined);
   assert.deepEqual(
     { lastPullAt: store.state!.lastPullAt, lastPullSuccessAt: store.state!.lastPullSuccessAt, lastPullError: store.state!.lastPullError },
     { lastPullAt: later, lastPullSuccessAt: later, lastPullError: null },
@@ -426,7 +427,7 @@ test('a database failure in the replace rolls it back and is recorded; even a fa
   const store = fakeDb([], { blocks: [kept], state: { busyHash: 'h' }, failCreate: true });
   const google = fakeGoogle([foreign('evt1', 'Ivan: dentist', 60, 120)]);
   const { pull, invalidations } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false, failed: true });
   assert.deepEqual(store.blocks, [kept]);
   assert.equal(store.state!.busyHash, 'h');
   assert.equal(store.state!.lastPullError, OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED);
@@ -435,7 +436,7 @@ test('a database failure in the replace rolls it back and is recorded; even a fa
   const broken = fakeDb([], { failStateWrite: true });
   const failing = fakeGoogle([]);
   failing.listError = new GoogleCalendarError('auth', 401);
-  assert.deepEqual(await run(pull, broken.db, failing.gateway), { reverted: 0, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, broken.db, failing.gateway), { reverted: 0, blocks: 0, changed: false, failed: true });
 });
 
 test('a revert Google fails is recorded on the booking\'s row for the push to retry; the pull itself succeeds', async () => {

@@ -8,11 +8,15 @@ import { describeFault } from '@/app/lib/fault';
 
 // Retention, request lapses, card-deposit reconciliation and the daily Google
 // Calendar run share this one daily wake; each Square or Google call can take
-// 10 seconds, so the deposit checks (payment-reconciliation.ts) and the Google
-// push and pull keep to their own time budgets inside this limit.
+// 10 seconds. The deposit checks (payment-reconciliation.ts) start nothing new
+// after 25 seconds, the Google push nothing new after 40 seconds, and the
+// Google pull is not started with less than 35 seconds of this limit left
+// (google-calendar-job.ts).
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
+  // When this function is cut off: the Google step skips its pull rather than start it too late.
+  const deadline = Date.now() + maxDuration * 1000;
   const secret = process.env.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   if (!safeCompare(request.headers.get('authorization') ?? '', `Bearer ${secret}`)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -54,7 +58,7 @@ export async function GET(request: NextRequest) {
     // fails the retention run; with the Google sync off it does nothing at all.
     let googleCalendar: Awaited<ReturnType<typeof runGoogleCalendarJob>> | { error: true };
     try {
-      googleCalendar = await runGoogleCalendarJob('daily');
+      googleCalendar = await runGoogleCalendarJob('daily', { deadline });
     } catch (error) {
       console.error('Google Calendar in housekeeping failed', describeFault(error));
       googleCalendar = { error: true };

@@ -41,6 +41,13 @@ function seed(): Rows {
       { id: 'd-other', appointmentId: 'b-1', kind: 'REMINDER', status: 'PENDING', payloadJson: '{"to":"ben@example.com"}', lockedAt: null, lockToken: null, lastError: null },
     ],
     review: [{ id: 'r1', userId: 'customer-1', appointmentId: 'a-past', rating: 5, comment: 'Lovely cut', status: 'APPROVED' }],
+    // Google Calendar copies (services/google-calendar-push.ts): the cancelled booking's was deleted.
+    googleCalendarEvent: [
+      { id: 'g-past', appointmentId: 'a-past', syncedHash: 'h-past', removed: false },
+      { id: 'g-cancelled', appointmentId: 'a-cancelled', syncedHash: null, removed: true },
+      { id: 'g-no-show', appointmentId: 'a-no-show', syncedHash: 'h-no-show', removed: false },
+      { id: 'g-ben', appointmentId: 'b-1', syncedHash: 'h-ben', removed: false },
+    ],
     auditEvent: [],
   };
 }
@@ -95,6 +102,7 @@ function fixture(options: { role?: 'ADMIN' | 'USER'; resend?: 'ok' | 'not-found'
   // Google Calendar pushes scheduled by the action, and whether a transaction was open at the time.
   const googlePushes: { ids: string[] | undefined; inTransaction: boolean }[] = [];
   let inTransaction = false;
+  let googleRowsMarkedInTransaction: boolean | null = null;
   const client = () => ({
     user: { ...table(rows, 'user', counts), updateMany: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
       options.beforeWrite?.(rows);
@@ -105,6 +113,10 @@ function fixture(options: { role?: 'ADMIN' | 'USER'; resend?: 'ok' | 'not-found'
     appointment: table(rows, 'appointment', counts),
     notificationDelivery: table(rows, 'notificationDelivery', counts),
     review: table(rows, 'review', counts),
+    googleCalendarEvent: { ...table(rows, 'googleCalendarEvent', counts), updateMany: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      googleRowsMarkedInTransaction = inTransaction;
+      return table(rows, 'googleCalendarEvent', counts).updateMany(args);
+    } },
     auditEvent: table(rows, 'auditEvent', counts),
   });
   const actions = loadServerModule<typeof import('./admin-erasure')>('src/app/actions/admin-erasure.ts', {
@@ -130,7 +142,7 @@ function fixture(options: { role?: 'ADMIN' | 'USER'; resend?: 'ok' | 'not-found'
       } };
     } },
   });
-  return { actions, rows: () => rows, counts, removed, googlePushes };
+  return { actions, rows: () => rows, counts, removed, googlePushes, googleRowsMarkedInTransaction: () => googleRowsMarkedInTransaction };
 }
 
 const user = (rows: Rows, id: string) => rows.user.find((row) => row.id === id)!;
@@ -242,6 +254,22 @@ test('after the erasure commits, the customer\'s Google Calendar copies are re-r
   // window (up to the 12-month limit): the past visit is named in Google too.
   // Ben's booking is not theirs.
   assert.deepEqual(f.googlePushes, [{ ids: ['a-past', 'a-cancelled', 'a-no-show'], inTransaction: false }]);
+});
+
+test('erasure marks the customer\'s live Google copies for re-rendering in its own transaction, so a failed push is repaired later', async () => {
+  const f = fixture();
+  assert.equal((await f.actions.eraseCustomerData('customer-1', 'amy@example.com')).success, true);
+  assert.equal(f.googleRowsMarkedInTransaction(), true, 'committed with the anonymisation, never after it');
+  const row = (id: string) => f.rows().googleCalendarEvent.find((item) => item.id === id)!;
+  assert.deepEqual([row('g-past').syncedHash, row('g-no-show').syncedHash], [null, null]);
+  assert.deepEqual([row('g-cancelled').syncedHash, row('g-cancelled').removed], [null, true], 'a deleted copy stays deleted');
+  assert.equal(row('g-ben').syncedHash, 'h-ben', 'another customer\'s copy is untouched');
+});
+
+test('a failed erasure leaves the Google copies as they were', async () => {
+  const f = fixture({ beforeWrite: (rows) => { user(rows, 'customer-1').email = 'amy.new@example.com'; } });
+  assert.deepEqual(await f.actions.eraseCustomerData('customer-1', 'amy@example.com'), error('CHANGED'));
+  assert.equal(f.rows().googleCalendarEvent.find((item) => item.id === 'g-past')!.syncedHash, 'h-past');
 });
 
 test('a customer whose account changes mid-erasure is left untouched', async () => {

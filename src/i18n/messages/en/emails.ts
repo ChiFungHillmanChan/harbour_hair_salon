@@ -257,6 +257,7 @@ const emails = {
       CONFIRMED: 'Confirmed',
       COMPLETED: 'Completed',
     },
+    rescheduleRequest: 'Customer asked to move to {when}',
     deposit: {
       label: 'Deposit: {state}',
       HELD: '{amount} held on the card, not taken',

@@ -245,6 +245,7 @@ const emails: Localized<Messages['emails']> = {
       CONFIRMED: '已確認',
       COMPLETED: '已完成',
     },
+    rescheduleRequest: '客人要求改期至 {when}',
     deposit: {
       label: '訂金：{state}',
       HELD: '{amount} 已在信用卡預授權，尚未收取',

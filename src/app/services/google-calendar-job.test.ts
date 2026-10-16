@@ -18,7 +18,7 @@ type Options = {
   enabled?: boolean;
   channel?: 'created' | 'renewed' | 'current' | Error;
   push?: typeof PUSHED | Error;
-  pull?: typeof PULLED | Error;
+  pull?: { reverted: number; blocks: number; changed: boolean; failed?: true } | Error;
   /** The single-flight lock was held: the holder pulls, this caller does not. */
   deferred?: boolean;
   jobRowFails?: boolean;
@@ -150,6 +150,46 @@ test('a pull that throws is recorded the same way', async (t) => {
   const result = await h.job.runGoogleCalendarJob('calendar-sync');
   assert.deepEqual(result, { ok: false, push: PUSHED, pull: 'failed' });
   assert.equal(h.finalRow()!.lastError, OPERATIONS_MESSAGES.GOOGLE_SYNC_FAILED);
+});
+
+test('a pull that could not complete (recorded on the sync state) flags the job row too', async () => {
+  const failedPull = { ...PULLED, failed: true as const };
+  const h = harness({ pull: failedPull });
+  const result = await h.job.runGoogleCalendarJob('calendar-sync');
+  assert.deepEqual(result, { ok: false, push: PUSHED, pull: failedPull });
+  assert.ok(h.finalRow()!.lastFailedAt instanceof Date);
+  assert.equal(h.finalRow()!.lastError, OPERATIONS_MESSAGES.GOOGLE_SYNC_FAILED);
+});
+
+test('with too little of the function\'s time left the pull is skipped and said so; the push still runs', async () => {
+  for (const run of ['calendar-sync', 'daily'] as const) {
+    const h = harness();
+    const result = await h.job.runGoogleCalendarJob(run, { deadline: Date.now() + 30_000 });
+    assert.ok(!h.order.includes('pull') && !h.order.includes('single-flight'), run);
+    assert.ok(h.order.some((step) => step.startsWith('push:')), run);
+    assert.deepEqual(result, { ok: true, ...(run === 'daily' ? { channel: 'current' } : {}), push: PUSHED, pull: 'skipped: no time left' });
+    assert.equal(h.finalRow()!.lastError, null, 'the next run pulls: nothing failed');
+  }
+  const roomy = harness();
+  await roomy.job.runGoogleCalendarJob('calendar-sync', { deadline: Date.now() + 120_000 });
+  assert.ok(roomy.order.includes('pull'));
+});
+
+test('the deadline is checked after the push, when the time it took is known', async () => {
+  const realNow = Date.now;
+  let clock = 1_000_000;
+  Date.now = () => clock;
+  try {
+    const h = harness();
+    // 100 s left at the start; the push takes 70 s of it.
+    const push = h.job.runGoogleCalendarJob('calendar-sync', { deadline: clock + 100_000 });
+    clock += 70_000;
+    const result = await push;
+    assert.deepEqual(h.order.filter((step) => step === 'pull'), []);
+    assert.equal((result as { pull: unknown }).pull, 'skipped: no time left');
+  } finally {
+    Date.now = realNow;
+  }
 });
 
 test('bookings Google would not take are counted on their rows and flag the job row', async () => {

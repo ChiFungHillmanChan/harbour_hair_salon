@@ -34,6 +34,8 @@ class ErasureRaced extends Error {}
  * of them held in the notification outbox. Their reviews are deleted: the
  * privacy notice keeps a review only while the account is open, and its text
  * (with the visit's date, service and stylist) can identify the person.
+ * Their bookings' copies in the salon's Google Calendar are re-rendered with
+ * the anonymised name (marked in the transaction, pushed after it).
  *
  * Refused for administrators, for the acting admin, and while the customer has
  * an upcoming PENDING/CONFIRMED booking (staff cancel those first, so no
@@ -104,6 +106,10 @@ export async function eraseCustomerData(userId: string, confirmation: string): P
           data: { payloadJson: '{}' },
         });
         notifications = stopped.count + redacted.count;
+        // Their copies in the salon's Google Calendar carry the name and phone: mark each live one
+        // for re-rendering here, with the anonymisation. The push scheduled after the commit
+        // re-renders them; if it fails or never runs, the next calendar sync finds them owed.
+        await tx.googleCalendarEvent.updateMany({ where: { appointmentId: { in: appointmentIds }, removed: false }, data: { syncedHash: null } });
       }
       // Published reviews go with the account (privacy notice: kept while the account is open).
       const reviews = (await tx.review.deleteMany({ where: { userId } })).count;
@@ -127,8 +133,9 @@ export async function eraseCustomerData(userId: string, confirmation: string): P
   // The public reviews page names review authors.
   revalidateAllLocales(revalidatePath, '/reviews');
   // The salon's Google Calendar holds a copy of each booking with the customer's
-  // name and phone: re-render them all, by id so it reaches past the push's
-  // 7-day window (spec §9). Nothing while the sync is off.
+  // name and phone: re-render them all now, by id so it reaches past the push's
+  // 7-day window (spec §9). Nothing while the sync is off; the rows marked above
+  // keep them owed until a push succeeds.
   scheduleGoogleCalendarPush(outcome.appointmentIds);
 
   const marketing = await removeFromMarketingAudience(outcome.erasedEmail);

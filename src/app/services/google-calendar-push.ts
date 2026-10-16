@@ -3,10 +3,12 @@ import 'server-only';
 // Website → Google (docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md §5, §7, §9):
 // writes each booking in the window to the salon's Google Calendar and deletes
 // the event once the booking is cancelled, or (mode 'all') 12 months after the
-// appointment ended. Explicit ids (erasure, an old cancellation) reach past the
-// window up to that 12-month limit, but only to update or delete an event that
-// is still live. Google is never called inside a database transaction, and one
-// booking's failure is recorded on its row, never thrown.
+// appointment ended. Explicit ids (erasure, an old cancellation) and rows the
+// website still owes Google (a failed write, or one erasure marked for
+// re-rendering) reach past the window up to that 12-month limit, but only to
+// update or delete an event that is still live. Google is never called inside
+// a database transaction, and one booking's failure is recorded on its row,
+// never thrown.
 
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
@@ -22,12 +24,18 @@ import { googleEventIdFor, renderGoogleEvent, stylistColorId } from './google-ca
 import { OPERATIONS_MESSAGES } from './operations-messages';
 import { salonDateKey, salonDayWindow } from './salon-time';
 
-/** 'recent' and explicit runs take at most this many; 'all' pages through in batches this size. */
+/** 'recent' runs take at most this many; explicit ids and 'all' page through in batches this size. */
 const MAX_PER_RUN = 100;
-/** No new write starts after this (nor, in 'all' mode, a new batch); Vercel functions are cut off soon after. */
+/** No new write starts after this (nor a new batch); Vercel functions are cut off soon after. */
 const TIME_BUDGET_MS = 40_000;
-/** 'recent' mode: bookings changed this recently are re-rendered. */
-const RECENT_MS = 15 * 60_000;
+/**
+ * 'recent' mode: bookings changed this recently are re-rendered. Longer than
+ * the half-hourly calendar-sync cadence, so a change made between two runs
+ * (a lapse by the notifications cron, on the same :00/:30 ticks) is never missed.
+ */
+const RECENT_MS = 45 * 60_000;
+/** No booking lasts a day: one starting this long before the retention cutoff has certainly ended before it. */
+const RETENTION_QUERY_MARGIN_MS = 24 * 60 * 60_000;
 /** Outbound window: from salon-local midnight this many days back. */
 const WINDOW_DAYS = 7;
 /** The Google copy is a working diary: deleted 12 months after the appointment ended (owner decision). */
@@ -46,6 +54,7 @@ export const appointmentSelect = {
   user: { select: { name: true, phone: true, email: true } },
   stylist: { select: { id: true, name: true } },
   service: { select: { id: true, name: true, duration: true } },
+  rescheduleRequestedDate: true,
   paymentAttempt: { select: depositViewSelect },
   googleCalendarEvent: { select: { eventId: true, syncedHash: true, syncedAt: true, removed: true, lastError: true } },
 } satisfies Prisma.AppointmentSelect;
@@ -72,18 +81,30 @@ function endTime(appointment: { date: Date; durationAtBooking: number | null; se
 }
 
 function selection(now: Date, mode: 'recent' | 'all', appointmentIds?: string[]): Prisma.AppointmentWhereInput {
-  // Explicit ids reach past the window (erasure re-renders, old cancellations delete); the
-  // 12-month retention limit is applied per row.
-  if (appointmentIds) return { id: { in: appointmentIds } };
+  // The 12-month retention limit, in the query (no row past it fills a batch); exact per row after.
+  const retained: Prisma.AppointmentWhereInput = { date: { gte: new Date(retentionCutoff(now).getTime() - RETENTION_QUERY_MARGIN_MS) } };
+  // Explicit ids reach past the window (erasure re-renders, old cancellations delete).
+  if (appointmentIds) return { id: { in: appointmentIds }, ...retained };
   const inWindow: Prisma.AppointmentWhereInput = { date: { gte: windowStart(now) } };
-  if (mode === 'all') return inWindow;
+  // What the website still owes Google, back to the retention limit rather than the window: a
+  // failed write, or a row marked for re-rendering (erasure clears syncedHash in its own
+  // transaction, so a push that failed or never ran is repaired by the next run).
+  const owed: Prisma.AppointmentWhereInput = {
+    ...retained,
+    googleCalendarEvent: { is: { OR: [{ lastError: { not: null } }, { syncedHash: null, removed: false }] } },
+  };
+  if (mode === 'all') return { OR: [inWindow, owed] };
   return {
-    ...inWindow,
     OR: [
-      { updatedAt: { gte: new Date(now.getTime() - RECENT_MS) } },
-      // A cancelled booking never written has nothing to delete: leave it out, or it is picked every run.
-      { googleCalendarEvent: { is: null }, status: { not: 'CANCELLED' } },
-      { googleCalendarEvent: { is: { lastError: { not: null } } } },
+      {
+        ...inWindow,
+        OR: [
+          { updatedAt: { gte: new Date(now.getTime() - RECENT_MS) } },
+          // A cancelled booking never written has nothing to delete: leave it out, or it is picked every run.
+          { googleCalendarEvent: { is: null }, status: { not: 'CANCELLED' } },
+        ],
+      },
+      owed,
     ],
   };
 }
@@ -112,6 +133,7 @@ export function renderAppointment(appointment: PushAppointment, context: RenderC
     stylist: { id: appointment.stylist.id, name: appointment.stylist.name },
     serviceName,
     deposit: depositView(appointment.paymentAttempt),
+    rescheduleRequestedDate: appointment.rescheduleRequestedDate,
   }, { locale: context.locale, adminDayUrl, colorId: stylistColorId(context.stylistIds, appointment.stylist.id) });
 }
 
@@ -241,9 +263,10 @@ export async function pushGoogleCalendar(options: {
     }
   };
 
-  if (!reconcile) {
+  if (mode === 'recent' && !options.appointmentIds) {
+    // The most recently changed first; the rest wait for the next run.
     const appointments = await db.appointment.findMany({
-      where: selection(now, mode, options.appointmentIds),
+      where: selection(now, mode),
       select: appointmentSelect,
       orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
       take: MAX_PER_RUN,
@@ -252,9 +275,10 @@ export async function pushGoogleCalendar(options: {
     return result;
   }
 
-  // 'all': retention first, then the whole window, each in (date, id) keyset batches until done or out of time.
+  // 'all': retention first. Then, for 'all' and explicit ids alike, every selected booking in
+  // (date, id) keyset batches until done or out of time: an erasure never stops at 100.
   let after: { date: Date; id: string } | null = null;
-  while (withinBudget()) {
+  while (reconcile && withinBudget()) {
     const page: { appointmentId: string; eventId: string; appointment: { date: Date; durationAtBooking: number | null; service: { duration: number } } }[] =
       await db.googleCalendarEvent.findMany({
         where: {
@@ -275,10 +299,10 @@ export async function pushGoogleCalendar(options: {
   }
 
   after = null;
-  const inWindow = selection(now, mode);
+  const selected = selection(now, mode, options.appointmentIds);
   while (withinBudget()) {
     const page: PushAppointment[] = await db.appointment.findMany({
-      where: after ? { AND: [inWindow, { OR: [{ date: { gt: after.date } }, { date: after.date, id: { gt: after.id } }] }] } : inWindow,
+      where: after ? { AND: [selected, { OR: [{ date: { gt: after.date } }, { date: after.date, id: { gt: after.id } }] }] } : selected,
       select: appointmentSelect,
       orderBy: [{ date: 'asc' }, { id: 'asc' }],
       take: MAX_PER_RUN,

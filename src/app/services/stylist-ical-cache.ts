@@ -114,8 +114,8 @@ export function invalidateStylistIcalFeed(): void {
  * It never pushes to Google Calendar: the Google pull calls it after storing
  * busy time, and a push from there would bring another Google notification,
  * another pull and another push without end. Cron-side booking changes (lapses,
- * late cancellations) reach Google with the calendar-sync run's own push, or
- * past its 15-minute look-back with housekeeping's daily reconcile.
+ * late cancellations) reach Google with the next calendar-sync run's push,
+ * which looks back 45 minutes (longer than its half-hourly cadence).
  */
 export function invalidateStylistIcalFeedFromCron(): void {
   revalidateTag(EVENTS_TAG, { expire: 0 });
@@ -124,11 +124,12 @@ export function invalidateStylistIcalFeedFromCron(): void {
 /**
  * Writes the website's bookings to the salon's Google Calendar after the
  * response (services/google-calendar-push.ts; spec §5 "Real time"). Without
- * ids: every booking changed in the last 15 minutes, never synced or failing.
- * With ids: exactly those bookings, even past the 7-day window (erasure
- * re-renders the anonymised name). Call it after the commit, from a Server
- * Action, for a change that alters only the event's text; a change of time or
- * status calls invalidateStylistIcalFeed, which already schedules it.
+ * ids: every booking changed in the last 45 minutes, never synced, failing or
+ * marked for re-rendering. With ids: exactly those bookings, even past the
+ * 7-day window (erasure re-renders the anonymised name). Call it after the
+ * commit, from a Server Action, for a change that alters only the event's
+ * text (a reschedule request, a deposit's state); a change of time or status
+ * calls invalidateStylistIcalFeed, which already schedules it.
  *
  * Nothing is scheduled or imported while the sync is off. A failure never
  * reaches the action: the push records its own per-booking failures, the

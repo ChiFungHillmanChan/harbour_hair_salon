@@ -14,12 +14,17 @@ test('housekeeping runs by default, needs authentication, and stops only when ex
   const lapseOptions: unknown[] = [];
   const order: string[] = [];
   const reconciled = { skipped: false, checked: 3, lateCaptureRefunds: 0, unresolved: 1, failed: 0, outOfTime: false };
+  const deadlines: number[] = [];
   try {
     const route = loadServerModule<{ GET(request: NextRequest): Promise<Response> }>('src/app/api/cron/housekeeping/route.ts', {
       '@/app/services/housekeeping-service': { runHousekeeping: async () => { runs++; order.push('retention'); return { scrubbed: 1 }; } },
       '@/app/services/pending-request-lapse': { lapseStartedPendingRequests: async (_at: Date, options: unknown) => { lapses++; lapseOptions.push(options); order.push('lapse'); return { lapsed: 2, failed: 0 }; } },
       '@/app/services/payment-reconciliation': { reconcilePayments: async () => { order.push('payments'); return reconciled; } },
-      '@/app/services/google-calendar-job': { runGoogleCalendarJob: async (run: string) => { order.push(`google:${run}`); return { skipped: 'disabled' }; } },
+      '@/app/services/google-calendar-job': { runGoogleCalendarJob: async (run: string, input: { deadline: number }) => {
+        order.push(`google:${run}`);
+        deadlines.push(input.deadline);
+        return { skipped: 'disabled' };
+      } },
     });
     const request = new NextRequest('https://example.invalid/api/cron/housekeeping', { headers: { authorization: 'Bearer fixture-secret' } });
     assert.equal((await route.GET(new NextRequest(request.url))).status, 401);
@@ -29,8 +34,11 @@ test('housekeeping runs by default, needs authentication, and stops only when ex
     assert.deepEqual(order, [], 'no payment checks (nor Google Calendar) before the gates either');
     // Unset means ON: the privacy notice's retention periods depend on this job.
     delete process.env.HOUSEKEEPING_ENABLED;
+    const before = Date.now();
     const response = await route.GET(request);
     assert.equal(response.status, 200);
+    // The Google step is told when this function is cut off (start + maxDuration), to skip a pull it could not finish.
+    assert.ok(deadlines.length === 1 && deadlines[0] >= before + 300_000 && deadlines[0] <= Date.now() + 300_000);
     // With email sending (and so the notifications cron) still off, unanswered
     // booking requests whose time has passed are closed here; card deposits
     // are reconciled last, on the same wake.

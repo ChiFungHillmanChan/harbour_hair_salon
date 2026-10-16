@@ -4,7 +4,8 @@ import 'server-only';
 // lists the salon calendar, writes back any website event edited, moved or
 // deleted in Google (the website wins, D6), and stores the salon's own
 // Google-only events as GOOGLE busy blocks. Google is never called inside a
-// database transaction, and a failure is recorded on the sync state, never thrown.
+// database transaction, and a failure is recorded on the sync state and
+// reported in the result (`failed: true`), never thrown.
 
 import type { PrismaClient } from '@prisma/client';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
@@ -39,7 +40,8 @@ const REWRITE_HOLD_MS = 10 * 60_000;
 /** Only what the pull needs; the full gateway satisfies it. */
 export type GooglePullGateway = Pick<ReturnType<typeof createGoogleCalendarGateway>, 'listEvents' | 'putEvent' | 'insertEvent' | 'deleteEvent'>;
 
-export type GooglePullResult = { reverted: number; blocks: number; changed: boolean; skipped?: 'disabled' };
+/** `failed`: the pull could not complete (recorded as lastPullError); the caller decides what that means for its run. */
+export type GooglePullResult = { reverted: number; blocks: number; changed: boolean; skipped?: 'disabled'; failed?: true };
 
 function websiteAppointmentId(event: GoogleEvent): string | null {
   const id = event.extendedProperties?.private?.[GOOGLE_APPOINTMENT_PROPERTY];
@@ -226,6 +228,7 @@ export async function pullGoogleCalendar(options: {
     });
     const failure = { lastPullAt: now, lastPullError: OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED };
     await db.googleCalendarSyncState.upsert({ where: { id: STATE_ID }, create: { id: STATE_ID, ...failure }, update: failure }).catch(() => undefined);
+    result.failed = true;
   }
   return result;
 }

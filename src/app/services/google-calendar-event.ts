@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto';
 import { formatInTimeZone } from 'date-fns-tz';
 import type { Locale } from '@/i18n/config';
+import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { translator } from '@/i18n/messages';
 import { formatGBP } from './pricing/money';
 import { SALON_TIMEZONE } from './salon-time';
@@ -26,6 +27,8 @@ export type RenderableAppointment = {
   customer: { name: string | null; phone: string | null; erased: boolean };
   stylist: { id: string; name: string }; serviceName: string;
   deposit: { state: string; amountPence: number } | null;
+  /** The new time the customer asked for; the booking keeps its own time until staff approve. */
+  rescheduleRequestedDate?: Date | null;
 };
 
 /** Titles are one line: free text (names, services) never breaks the layout. */
@@ -59,6 +62,13 @@ export function renderGoogleEvent(
   lines.push(t('googleCalendar.status.label', {
     status: t.dynamic(`googleCalendar.status.${appt.status}`, undefined, appt.status),
   }));
+  // Only a confirmed booking carries an open request (every other status change clears it).
+  if (appt.rescheduleRequestedDate && appt.status === 'CONFIRMED') {
+    const requested = appt.rescheduleRequestedDate;
+    lines.push(t('googleCalendar.rescheduleRequest', {
+      when: `${formatSalonLongDate(ctx.locale, requested)} ${formatSalonClock(ctx.locale, requested)}`,
+    }));
+  }
   if (appt.deposit && appt.deposit.amountPence > 0) {
     const amount = formatGBP(appt.deposit.amountPence, ctx.locale);
     lines.push(t('googleCalendar.deposit.label', {

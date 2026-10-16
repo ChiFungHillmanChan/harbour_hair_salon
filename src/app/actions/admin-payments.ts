@@ -9,6 +9,7 @@ import { describeDepositRecheck } from '@/app/services/deposit-recheck-copy';
 import { recheckAppointmentDeposit, type DepositRecheck } from '@/app/services/payment-reconciliation';
 import { settleRefundOutsideWebsite, type SettleOutsideOutcome } from '@/app/services/payment-refunds';
 import { formatGBP } from '@/app/services/pricing/money';
+import { scheduleGoogleCalendarPush } from '@/app/services/stylist-ical-cache';
 import { HTML_LANG } from '@/i18n/config';
 import { translator } from '@/i18n/messages';
 import { getActionLocale } from '@/i18n/request';
@@ -56,9 +57,11 @@ export async function recheckAppointmentPayment(appointmentId: string): Promise<
     // The check itself is done (and every money step it took is on the rows); say so.
     console.error('Recording a payment re-check failed', { appointmentId, ...describeFault(error) });
   }
-  // The board's deposit chip, and the customer's own booking page.
+  // The board's deposit chip, the customer's own booking page, and the
+  // deposit line of the booking's Google Calendar event.
   revalidateAllLocales(revalidatePath, '/admin');
   revalidateAllLocales(revalidatePath, '/appointments');
+  scheduleGoogleCalendarPush([appointmentId]);
   return { success: true, lines: describeDepositRecheck(result, locale) };
 }
 
@@ -92,9 +95,11 @@ export async function markRefundSettledOutside(appointmentId: string, refundId: 
   }
   switch (outcome.kind) {
     case 'SETTLED':
-      // The board's deposit chip, and the customer's own booking page.
+      // The board's deposit chip, the customer's own booking page, and the
+      // deposit line of the booking's Google Calendar event.
       revalidateAllLocales(revalidatePath, '/admin');
       revalidateAllLocales(revalidatePath, '/appointments');
+      scheduleGoogleCalendarPush([appointmentId]);
       return { success: true, message: t('deposit.settleOutside.done', { amount: formatGBP(outcome.amountPence, HTML_LANG[locale]) }) };
     case 'SENDING':
       return { success: false, error: t('deposit.settleOutside.sending') };

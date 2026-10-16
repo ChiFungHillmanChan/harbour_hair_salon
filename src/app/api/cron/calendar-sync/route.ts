@@ -8,12 +8,15 @@ import { runGoogleCalendarJob } from '@/app/services/google-calendar-job';
 import { OPERATIONS_MESSAGES } from '@/app/services/operations-messages';
 import { describeFault } from '@/app/lib/fault';
 
-// The feed import stops starting new feeds after 40 seconds, and the Google
-// Calendar push and pull after it keep to 40 seconds each (their own budgets);
-// the time is mostly network wait.
+// Mostly network wait. The feed import starts no new feed after 40 seconds;
+// the Google push starts no new write after 40 seconds (each Google call may
+// take 10 more); the Google pull is not started with less than 35 seconds of
+// this limit left (google-calendar-job.ts) and starts no write-back after 40.
 export const maxDuration = 180;
 
 export async function GET(request: NextRequest) {
+  // When this function is cut off: the Google step skips its pull rather than start it too late.
+  const deadline = Date.now() + maxDuration * 1000;
   const secret = process.env.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   const actual = Buffer.from(request.headers.get('authorization') ?? '');
@@ -45,7 +48,7 @@ export async function GET(request: NextRequest) {
     } });
     const lateArrivals = await runLateArrivals(db);
     // After the late-arrival step, so its cancellations reach Google in the same run.
-    const googleCalendar = await runGoogleCalendar(db);
+    const googleCalendar = await runGoogleCalendar(db, deadline);
     return NextResponse.json({ ok, results, lateArrivals, googleCalendar }, { status: ok ? 200 : 502 });
   } catch {
     try {
@@ -81,9 +84,9 @@ async function runLateArrivals(db: Pick<PrismaClient, 'backgroundJobState'>) {
  * safety net for a missed notification. Its own job row (`google-calendar`);
  * never fails the sync, and with the Google sync off it makes no query and no call.
  */
-async function runGoogleCalendar(db: Pick<PrismaClient, 'backgroundJobState'>) {
+async function runGoogleCalendar(db: Pick<PrismaClient, 'backgroundJobState'>, deadline: number) {
   try {
-    return await runGoogleCalendarJob('calendar-sync', { db });
+    return await runGoogleCalendarJob('calendar-sync', { db, deadline });
   } catch (error) {
     // The job records its own failures; this is a failure to load it.
     console.error('Google Calendar step failed:', describeFault(error));

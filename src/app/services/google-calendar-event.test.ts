@@ -6,6 +6,7 @@ import {
 } from './google-calendar-event';
 import { ERASED_CUSTOMER_NAME } from '../lib/customer-erasure';
 import type { Locale } from '@/i18n/config';
+import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 
 const appt: RenderableAppointment = {
   id: 'appt-1',
@@ -93,10 +94,28 @@ test('the hash is stable and changes with every rendered field', () => {
     colour: [appt, { ...ctx, colorId: '4' }],
     locale: [appt, { ...ctx, locale: 'zh-HK' }],
     url: [appt, { ...ctx, adminDayUrl: 'https://x.test/' }],
+    reschedule: [{ ...appt, rescheduleRequestedDate: new Date('2026-10-24T13:00:00Z') }, ctx],
   };
   for (const [name, [a, c]] of Object.entries(variants)) {
     assert.notEqual(renderGoogleEvent(a, c).hash, base, name);
   }
+});
+
+test('an open reschedule request is shown, in salon time and the salon language; none once it is answered', () => {
+  // 13:00Z on Friday 24 October 2026 is 14:00 in London (BST).
+  const requested = { ...appt, rescheduleRequestedDate: new Date('2026-10-24T13:00:00Z') };
+  const when = (locale: Locale) => `${formatSalonLongDate(locale, requested.rescheduleRequestedDate)} ${formatSalonClock(locale, requested.rescheduleRequestedDate)}`;
+  assert.match(when('en-GB'), /Saturday,? 24 October 2026 14:00/);
+  const en = renderGoogleEvent(requested, ctx).event.description!.split('\n');
+  assert.ok(en.includes(`Customer asked to move to ${when('en-GB')}`), en.join(' | '));
+  assert.ok(en.indexOf(`Customer asked to move to ${when('en-GB')}`) === en.indexOf('Status: Confirmed') + 1, 'right under the status');
+  const zh = renderGoogleEvent(requested, { ...ctx, locale: 'zh-HK' }).event.description!.split('\n');
+  assert.ok(zh.includes(`客人要求改期至 ${when('zh-HK')}`), zh.join(' | '));
+  for (const answered of [{ ...appt, rescheduleRequestedDate: null }, { ...appt }]) {
+    assert.ok(!renderGoogleEvent(answered, ctx).event.description!.includes('asked to move'));
+  }
+  // Only a confirmed booking can carry an open request: anything else never shows a stale one.
+  assert.ok(!renderGoogleEvent({ ...requested, status: 'COMPLETED' }, ctx).event.description!.includes('asked to move'));
 });
 
 test('stylistColorId follows sorted ids and cycles 1..11', () => {
