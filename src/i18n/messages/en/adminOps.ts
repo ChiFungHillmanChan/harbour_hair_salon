@@ -214,6 +214,8 @@ const adminOps = {
       PAYMENT_LATE_CAPTURE_REFUNDED: 'Square took this deposit although its booking had closed or was never made, so it is being refunded in full.',
       PAYMENT_UNKNOWN_CANCELLING: 'Square never confirmed this deposit authorization. It is cancelled by its idempotency key again every day until any hold would have run out (7 days). Nothing was booked.',
       LATE_ARRIVAL_FAILED: 'The late-arrival check could not complete. Bookings were left as they were; it runs again with the next calendar sync.',
+      GOOGLE_PUSH_FAILED: 'This booking could not be written to Google Calendar: Google was unavailable or refused access to the website. It is tried again with the next calendar sync; if it keeps failing, check the Google Calendar settings in Vercel and that the calendar is shared with the service account.',
+      GOOGLE_PUSH_REFUSED: 'Google Calendar refused the event for this booking. It is tried again with the next calendar sync; if it keeps failing, the booking is still correct on the website, but its Google copy is out of date.',
     },
     report: {
       title: 'Latest readiness report',

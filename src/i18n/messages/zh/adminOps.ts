@@ -210,6 +210,8 @@ const adminOps: Localized<Messages['adminOps']> = {
       PAYMENT_LATE_CAPTURE_REFUNDED: '預約已結束或從未建立，但 Square 仍收取了此訂金，因此正全數退還。',
       PAYMENT_UNKNOWN_CANCELLING: 'Square 一直未有確認此訂金授權。系統每日都會按冪等鍵再次要求取消，直至任何預留款項都已到期（7 日）。沒有建立預約。',
       LATE_ARRIVAL_FAILED: '遲到檢查未能完成。預約保持不變，下次日曆同步會再檢查。',
+      GOOGLE_PUSH_FAILED: '此預約未能寫入 Google 日曆：Google 暫時無法使用，或拒絕了網站的存取。下次日曆同步會再嘗試；如持續失敗，請檢查 Vercel 上的 Google 日曆設定，以及日曆是否已共用給服務帳戶。',
+      GOOGLE_PUSH_REFUSED: 'Google 日曆拒絕了此預約的活動。下次日曆同步會再嘗試；如持續失敗，網站上的預約仍然正確，只是 Google 上的副本未有更新。',
     },
     report: {
       title: '最新就緒報告',
