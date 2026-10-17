@@ -65,6 +65,7 @@ function fixture(options: { requiresPatchTest?: boolean; patchTestDate?: Date } 
         return { id: 'new', notificationVersion: 0, ...data, user: { name: 'Customer', email: 'c@example.test', phone: null }, stylist: { name: String(data.stylistId) }, service: { ...liveService } };
       },
     },
+    googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [] },
     user: { findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }) },
     notificationDelivery: { findUnique: async () => null, upsert: async () => ({ id: 'event-1' }) },

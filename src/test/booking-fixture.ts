@@ -185,6 +185,7 @@ export function bookingFixture(options: {
         return { count: matched.length };
       },
     },
+    googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [] },
     user: { findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }), update: async () => ({}) },
   };

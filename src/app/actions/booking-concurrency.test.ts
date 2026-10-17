@@ -138,6 +138,7 @@ function fixture(options: {
       options.offDays?.includes(where.dayOfWeek) ? null : ({ startTime: '09:00', endTime: options.hoursEnd ?? '18:00', isOff: false }) },
     // No card deposit on this booking (deposits: admin-deposit.test.ts, booking-cancel-deposit.test.ts).
     paymentAttempt: { findUnique: async () => null },
+    googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [
       ...(options.externalConflict ? [{ stylistId: 'stylist-1', start: new Date('2099-09-14T12:15:00Z'), end: new Date('2099-09-14T13:00:00Z') }] : []),
       ...(options.externalSameTime ? [{ stylistId: 'stylist-1', start: new Date(originalDate), end: new Date(originalDate.getTime() + 60 * 60_000) }] : []),

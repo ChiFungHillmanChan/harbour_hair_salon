@@ -24,6 +24,7 @@ function fixture(options: { enabled?: boolean; fail?: boolean; limited?: boolean
     } },
     appointment: { findMany: async ({ where }: { where: Where }) => { calls.push({ model: 'appointment', where }); return []; } },
     externalBusyBlock: { findMany: async ({ where }: { where: Where }) => { calls.push({ model: 'externalBusyBlock', where }); return [pause]; } },
+    googleDiaryEntry: { findMany: async ({ where }: { where: Where }) => { calls.push({ model: 'googleDiaryEntry', where }); return []; } },
   };
   const readiness = { isBookingEnabled: async () => options.enabled !== false, assertOnlineBookingReady: async () => ({}) };
   const service = loadServerModule<typeof import('./booking-service')>('src/app/services/booking-service.ts', {
@@ -51,11 +52,11 @@ function fixture(options: { enabled?: boolean; fail?: boolean; limited?: boolean
 
 const FOURTEEN = Array.from({ length: 14 }, (_, i) => new Date(Date.UTC(2026, 9, 1 + i)).toISOString().slice(0, 10));
 
-test('fourteen days cost exactly three queries', async () => {
+test('fourteen days cost exactly four queries', async () => {
   const f = fixture();
   const days = await f.service.getBookingDays('funky', FOURTEEN, 60);
   assert.equal(days.length, 14);
-  assert.deepEqual(f.calls.map((call) => call.model).sort(), ['appointment', 'availability', 'externalBusyBlock']);
+  assert.deepEqual(f.calls.map((call) => call.model).sort(), ['appointment', 'availability', 'externalBusyBlock', 'googleDiaryEntry']);
 });
 
 test('a named stylist on a Fresha Pause day is Unavailable', async () => {

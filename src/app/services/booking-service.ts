@@ -17,6 +17,8 @@ import { penceToDecimalString } from './pricing/money';
 import type { Locale } from '@/i18n/config';
 import { bookingCoverageEndsAt, isBookableDateWindow, isWithinBookingHorizon } from './booking-horizon';
 import { buildBookingDays, type BookingDay, type WorkingHours } from './booking-days';
+import { loadChairContext } from './diary-chair-load';
+import { diaryChairAllows } from './diary-chair-rule';
 import { ANY_STYLIST_ID, meetsMinimumNotice } from '@/app/lib/booking-constants';
 import { getTreatwellApiConfiguration, initialTreatwellSyncStatus } from './treatwell-api';
 
@@ -57,6 +59,7 @@ export async function assertAppointmentSlotAvailable(
   appointment: Pick<Appointment, 'id' | 'stylistId' | 'durationAtBooking'> & { service: Pick<Service, 'duration'> },
   date: Date,
   loadedBlocking?: BookedInterval[],
+  options: { chairRule?: boolean } = {},
 ) {
   const duration = appointment.durationAtBooking ?? appointment.service.duration;
   if (!isWithinBookingHorizon(date, duration)) {
@@ -97,6 +100,13 @@ export async function assertAppointmentSlotAvailable(
     ];
   }
   if (hasConflict(date, duration, blocking)) throw new SlotUnavailableError();
+  // The diary chair rule (spec §6): customer paths only. Staff confirming a
+  // request or approving a move pass { chairRule: false }; admin create/move
+  // warn instead (admin-move-clashes.ts).
+  if (options.chairRule !== false) {
+    const chair = await loadChairContext(tx, salonDayWindow(date), { excludeAppointmentId: appointment.id || undefined });
+    if (!diaryChairAllows(chair, appointment.stylistId, date, duration)) throw new SlotUnavailableError();
+  }
 }
 
 type SlotAppointment = { date: Date; service: { duration: number } };
@@ -157,7 +167,7 @@ export async function getAvailableSlots(
 
   // 2. Get existing appointments for this stylist on this date. The appointment
   // query and the external-busy query are independent, so run them concurrently.
-  const [existingAppointments, externalBlocks] = await Promise.all([
+  const [existingAppointments, externalBlocks, chair] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         stylistId,
@@ -167,6 +177,7 @@ export async function getAvailableSlots(
       select: slotAppointmentSelect,
     }),
     loadExternalBusy(prisma, [stylistId], window),
+    loadChairContext(prisma, window),
   ]);
 
   // 3. Merge Treatwell (external) busy blocks for this stylist/day, then build slots.
@@ -181,7 +192,10 @@ export async function getAvailableSlots(
   ];
 
   return buildStylistSlots(availability, busy, dateStr, serviceDuration, now)
-    .filter((slot) => isRequestableOnline(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now));
+    .filter((slot) => {
+      const start = resolveSalonDateTime(dateStr, slot.time).utc;
+      return isRequestableOnline(start, serviceDuration, now) && diaryChairAllows(chair, stylistId, start, serviceDuration);
+    });
 }
 
 /**
@@ -197,8 +211,10 @@ function isRequestableOnline(start: Date, durationMinutes: number, now: Date): b
  * used by the "Anyone / first available" booking path so the customer sees a
  * slot whenever at least one stylist is free.
  *
- * Three batched reads: working hours, appointments and external busy blocks.
- * Their number is independent of stylist count — no per-stylist fan-out.
+ * Four batched reads: working hours, appointments, external busy blocks and red
+ * diary entries, plus three when the day holds a red diary entry (the chair
+ * rule, diary-chair-load.ts). Their number is independent of stylist count —
+ * no per-stylist fan-out.
  */
 export async function getAvailableSlotsUnion(
   date: string | Date,
@@ -218,7 +234,7 @@ export async function getAvailableSlotsUnion(
 
   // The appointment query and the external-busy load are independent (both keyed
   // by stylistIds + the same day window), so run them concurrently.
-  const [appointments, externalBlocks] = await Promise.all([
+  const [appointments, externalBlocks, chair] = await Promise.all([
     prisma.appointment.findMany({
       where: {
         stylistId: { in: stylistIds },
@@ -228,6 +244,7 @@ export async function getAvailableSlotsUnion(
       select: slotAppointmentSelect,
     }),
     loadExternalBusy(prisma, stylistIds, window),
+    loadChairContext(prisma, window),
   ]);
 
   const apptsByStylist = new Map<string, SlotAppointment[]>();
@@ -255,7 +272,8 @@ export async function getAvailableSlotsUnion(
       now,
     );
     for (const slot of slots) {
-      if (slot.available && isRequestableOnline(resolveSalonDateTime(dateStr, slot.time).utc, serviceDuration, now)) times.add(slot.time);
+      const start = resolveSalonDateTime(dateStr, slot.time).utc;
+      if (slot.available && diaryChairAllows(chair, availability.stylistId, start, serviceDuration) && isRequestableOnline(start, serviceDuration, now)) times.add(slot.time);
     }
   }
 
@@ -266,9 +284,11 @@ export async function getAvailableSlotsUnion(
 
 /**
  * Up to two weeks of the booking page's date strip and time grid for one
- * stylist or "Anyone". Three batched reads cover the whole range — working
- * hours, appointments and synced busy blocks (a Fresha "Pause" arrives as one
- * of those) — so a visit costs the same few queries however many days it shows.
+ * stylist or "Anyone". Four batched reads cover the whole range — working
+ * hours, appointments, synced busy blocks (a Fresha "Pause" arrives as one of
+ * those) and red diary entries, plus three when the range holds a red diary
+ * entry (the chair rule, diary-chair-load.ts) — so a visit costs the same few
+ * queries however many days it shows.
  */
 export async function getBookingDays(stylistId: string, dates: string[], serviceDuration: number): Promise<BookingDay[]> {
   const now = new Date();
@@ -286,14 +306,15 @@ export async function getBookingDays(stylistId: string, dates: string[], service
     select: { stylistId: true, dayOfWeek: true, startTime: true, endTime: true },
   });
   const stylistIds = [...new Set(rows.map((row) => row.stylistId))];
-  const [appointments, externalBlocks] = stylistIds.length === 0
-    ? [[], []]
+  const [appointments, externalBlocks, chair] = stylistIds.length === 0
+    ? [[], [], null]
     : await Promise.all([
       prisma.appointment.findMany({
         where: { stylistId: { in: stylistIds }, date: { gte: window.start, lte: window.end }, status: { not: 'CANCELLED' } },
         select: slotAppointmentSelect,
       }),
       loadExternalBusy(prisma, stylistIds, window),
+      loadChairContext(prisma, window),
     ]);
 
   // Append in place: copying each list per row made grouping quadratic.
@@ -318,6 +339,7 @@ export async function getBookingDays(stylistId: string, dates: string[], service
     bookable: (start, duration) => isWithinBookingHorizon(start, duration, now),
     // Too soon for staff to approve: still shown, greyed like a taken time.
     requestable: (start) => meetsMinimumNotice(start, now),
+    chairAllows: (id, start, duration) => diaryChairAllows(chair, id, start, duration),
   });
 }
 
@@ -528,7 +550,11 @@ async function chooseFreeStylist(db: Prisma.TransactionClient, candidateStylistI
     bookedByStylist.set(row.stylistId, list);
   }
 
-  const stylistId = firstFreeStylist(candidateStylistIds, date, durationMinutes, bookedByStylist);
+  // The diary chair rule, in this transaction: only candidates that leave every red
+  // diary event a free stylist. "Anyone" then takes the first of them that is free.
+  const chair = await loadChairContext(db, { start: dayStart, end: dayEnd });
+  const allowed = candidateStylistIds.filter((id) => diaryChairAllows(chair, id, date, durationMinutes));
+  const stylistId = firstFreeStylist(allowed, date, durationMinutes, bookedByStylist);
   if (!stylistId) throw new SlotUnavailableError('NO_STYLIST_AT_TIME');
   return { stylistId, blocking: bookedByStylist.get(stylistId) ?? [] };
 }
@@ -565,7 +591,8 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
       serviceExternalId: service.treatwellExternalId,
     });
 
-    await assertAppointmentSlotAvailable(tx, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date, blocking);
+    // chooseFreeStylist applied the chair rule in this transaction.
+    await assertAppointmentSlotAvailable(tx, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date, blocking, { chairRule: false });
     const created = await tx.appointment.create({
       data: {
         date: data.date,
@@ -609,7 +636,8 @@ export async function precheckBookingRequest(data: NewBookingInput & ({ stylistI
   const { service } = await quoteInTx(prisma, data);
   if ('candidateStylistIds' in data) {
     const { stylistId, blocking } = await chooseFreeStylist(prisma, data.candidateStylistIds, data.date, service.duration);
-    await assertAppointmentSlotAvailable(prisma, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date, blocking);
+    // chooseFreeStylist applied the chair rule in this transaction.
+    await assertAppointmentSlotAvailable(prisma, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date, blocking, { chairRule: false });
     return;
   }
   const stylist = await prisma.stylist.findUnique({ where: { id: data.stylistId }, select: { isActive: true } });

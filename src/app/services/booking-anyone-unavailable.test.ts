@@ -36,6 +36,7 @@ function fixture(blocks: { stylistId: string; start: Date; end: Date }[], booked
         return row;
       },
     },
+    googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async ({ where }: { where: { stylistId: { in: string[] } } }) => blocks.filter((block) => where.stylistId.in.includes(block.stylistId)) },
   };
   const db = { ...tx, $transaction: async (fn: (database: typeof tx) => Promise<unknown>) => fn(tx) };

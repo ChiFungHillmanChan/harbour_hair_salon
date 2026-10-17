@@ -1,0 +1,96 @@
+import { test, before, after, mock } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { loadServerModule } from '../../test/load-server-module';
+import { ANY_STYLIST_ID } from '../lib/booking-constants';
+import { resolveSalonDateTime } from './salon-time';
+
+before(() => mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-01T09:00:00Z') }));
+after(() => mock.timers.reset());
+
+// A red walk-in (UNASSIGNED) 15:00–16:00 on Tuesday 2026-10-06 (spec §6).
+const DAY = '2026-10-06';
+const at = (time: string) => resolveSalonDateTime(DAY, time).utc;
+type Where = Record<string, unknown>;
+const idsOf = (value: unknown) => (typeof value === 'string' ? [value] : (value as { in: string[] }).in);
+
+function fixture(input: { funkyBusyAt?: string; funkyUntil?: string; ivan?: boolean } = {}) {
+  const hours = [
+    { stylistId: 'lox', dayOfWeek: 2, startTime: '10:00', endTime: '19:00' },
+    { stylistId: 'funky', dayOfWeek: 2, startTime: '10:00', endTime: input.funkyUntil ?? '19:00' },
+    ...(input.ivan ? [{ stylistId: 'ivan', dayOfWeek: 2, startTime: '10:00', endTime: '19:00' }] : []),
+  ];
+  const appointments = input.funkyBusyAt
+    ? [{ id: 'f1', stylistId: 'funky', date: at(input.funkyBusyAt), durationAtBooking: 60, service: { duration: 60 } }]
+    : [];
+  const walkIn = { start: at('15:00'), end: at('16:00') };
+  const db = {
+    availability: {
+      findMany: async ({ where }: { where: Where }) => hours.filter((row) => !where.stylistId || row.stylistId === where.stylistId),
+      findFirst: async ({ where }: { where: Where }) => hours.find((row) => row.stylistId === where.stylistId && row.dayOfWeek === where.dayOfWeek) ?? null,
+    },
+    appointment: {
+      findMany: async ({ where }: { where: Where }) => appointments.filter((row) => idsOf(where.stylistId).includes(row.stylistId)),
+      count: async () => 0,
+    },
+    externalBusyBlock: { findMany: async () => [] },
+    googleDiaryEntry: {
+      findMany: async ({ where }: { where: { kind: string; start: { lt: Date }; end: { gt: Date } } }) =>
+        [walkIn].filter((row) => where.kind === 'UNASSIGNED' && row.start < where.start.lt && row.end > where.end.gt),
+    },
+  };
+  const service = loadServerModule<typeof import('./booking-service')>('src/app/services/booking-service.ts', {
+    '@/app/lib/prisma': db,
+    '@/app/lib/booking-maintenance': { assertOnlineBookingReady: async () => ({}) },
+    './notification-outbox-service': {},
+    './pricing/quote-service': { quoteForNewBooking: async () => ({ service: { id: 'svc', duration: 60, treatwellExternalId: null }, quote: { amountPence: 3000 } }) },
+  });
+  return { service, db };
+}
+const slot = (days: { slots: { time: string; available: boolean }[] }[], time: string) => days[0].slots.find((s) => s.time === time)?.available;
+
+test('Lox’s times meeting the walk-in are taken when nobody else could serve it (Funky booked)', async () => {
+  const { service } = fixture({ funkyBusyAt: '15:00' });
+  const days = await service.getBookingDays('lox', [DAY], 60);
+  for (const time of ['14:30', '15:00', '15:30']) assert.equal(slot(days, time), false, time);
+  for (const time of ['14:00', '16:00']) assert.equal(slot(days, time), true, time);
+  assert.ok(!(await service.getAvailableSlots('lox', DAY, 60)).some((s) => s.time === '15:00'));
+});
+
+test('with Funky free, Lox keeps 15:00: Funky serves the walk-in', async () => {
+  const { service } = fixture();
+  assert.equal(slot(await service.getBookingDays('lox', [DAY], 60), '15:00'), true);
+  assert.ok((await service.getAvailableSlots('lox', DAY, 60)).some((s) => s.time === '15:00'));
+});
+
+test('Funky rostered only until 15:30 does not count: the walk-in must be covered whole', async () => {
+  assert.equal(slot(await fixture({ funkyUntil: '15:30' }).service.getBookingDays('lox', [DAY], 60), '15:00'), false);
+});
+
+test('"Anyone" stays open while one stylist can take the booking and another the walk-in, and closes when not', async () => {
+  assert.equal(slot(await fixture().service.getBookingDays(ANY_STYLIST_ID, [DAY], 60), '15:00'), true);
+  assert.equal(slot(await fixture({ funkyBusyAt: '15:00' }).service.getBookingDays(ANY_STYLIST_ID, [DAY], 60), '15:00'), false);
+  assert.ok(!(await fixture({ funkyBusyAt: '15:00' }).service.getAvailableSlotsUnion(DAY, 60)).some((s) => s.time === '15:00'));
+});
+
+test('a submitted request is refused with the slot-unavailable error; { chairRule: false } (staff) is not', async () => {
+  const { service, db } = fixture({ funkyBusyAt: '15:00' });
+  const appointment = { id: '', stylistId: 'lox', durationAtBooking: 60, service: { duration: 60 } };
+  await assert.rejects(service.assertAppointmentSlotAvailable(db as never, appointment, at('15:00')), (error: { code?: string }) => error.code === 'SLOT_UNAVAILABLE');
+  await service.assertAppointmentSlotAvailable(db as never, appointment, at('15:00'), undefined, { chairRule: false });
+});
+
+test('"Anyone": NO_STYLIST_AT_TIME when no candidate leaves a chair; a free stylist outside the candidates still serves the walk-in', async () => {
+  const request = { userId: 'u1', serviceId: 'svc', date: at('15:00'), candidateStylistIds: ['lox', 'funky'] };
+  await assert.rejects(fixture({ funkyBusyAt: '15:00' }).service.precheckBookingRequest(request), (error: { code?: string }) => error.code === 'NO_STYLIST_AT_TIME');
+  // Ivan does not offer this service (not a candidate) but is free at 15:00.
+  await fixture({ funkyBusyAt: '15:00', ivan: true }).service.precheckBookingRequest(request);
+});
+
+test('staff paths in actions/admin.ts never apply the chair rule (confirming a request, approving a move)', () => {
+  const source = readFileSync('src/app/actions/admin.ts', 'utf8');
+  const calls = source.match(/assertAppointmentSlotAvailable\(/g) ?? [];
+  const exempt = source.match(/assertAppointmentSlotAvailable\([^;]*\{ chairRule: false \}\)/g) ?? [];
+  assert.equal(calls.length, 4);
+  assert.equal(exempt.length, calls.length);
+});
