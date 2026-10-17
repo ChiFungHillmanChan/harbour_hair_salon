@@ -1,6 +1,9 @@
-import { clearGoogleBusyTime, syncGoogleCalendarNow } from '@/app/actions/admin-google-calendar';
+import { clearGoogleBusyTime, saveGoogleDiaryColours, syncGoogleCalendarNow } from '@/app/actions/admin-google-calendar';
+import { stylistSwatch } from '@/app/lib/calendar-colors';
 import { operationsMessageKey } from '@/app/services/operations-messages';
 import type { GoogleCalendarStatus as Status } from '@/app/services/google-calendar-status';
+import type { DiaryConfig } from '@/app/services/google-diary-classify';
+import { GoogleColorPicker } from '@/components/admin/GoogleColorPicker';
 import { GoogleClearBusyButton } from '@/components/admin/GoogleClearBusyButton';
 import { GoogleSyncButton } from '@/components/admin/GoogleSyncButton';
 import { formatSalonDateTime } from '@/i18n/dates';
@@ -9,9 +12,10 @@ import { getLocale, getT } from '@/i18n/server';
 /**
  * Admin → Integrations: whether the Google Calendar sync is on and healthy,
  * "Sync now", and "Clear Google busy time" (offered on or off: it is how the
- * busy time read from Google is removed after the sync is turned off).
+ * busy time read from Google is removed after the sync is turned off), and
+ * "Diary colours" (the no-stylist and leave colours, on or off).
  */
-export async function GoogleCalendarStatus({ status }: { status: Status }) {
+export async function GoogleCalendarStatus({ status, colours }: { status: Status; colours: DiaryConfig }) {
   const [locale, t] = await Promise.all([getLocale(), getT('adminOps')]);
   const never = t('integrations.connections.never');
   const timestamp = (value: Date | null) => (value ? formatSalonDateTime(locale, value) : never);
@@ -36,6 +40,25 @@ export async function GoogleCalendarStatus({ status }: { status: Status }) {
     <form action={syncGoogleCalendarNow} className="mt-4">
       <GoogleSyncButton label={t('integrations.google.syncNow')} busy={t('integrations.google.syncing')} disabled={!status.enabled} />
       <p className="mt-2 text-xs leading-5 text-zinc-500">{status.enabled ? t('integrations.google.syncNowHelp') : t('integrations.google.syncNowOff')}</p>
+    </form>
+    <form action={saveGoogleDiaryColours} className="mt-5 space-y-4 border-t border-zinc-100 pt-4">
+      <h3 className="text-sm font-semibold">{t('integrations.google.colours.title')}</h3>
+      <p className="text-xs leading-5 text-zinc-500">{t('integrations.google.colours.intro')}</p>
+      <GoogleColorPicker name="googleUnassignedColorId" label={t('integrations.google.colours.unassigned')} help={t('integrations.google.colours.unassignedHelp')} initial={colours.unassignedColorId} allowNone={false} />
+      <GoogleColorPicker name="googleLeaveColorId" label={t('integrations.google.colours.leave')} help={t('integrations.google.colours.leaveHelp')} initial={colours.leaveColorId} allowNone={false} />
+      <div>
+        <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-600">{t('integrations.google.colours.stylists')}</h4>
+        <ul className="space-y-1 text-sm">
+          {colours.stylists.map((stylist) => <li key={stylist.id} className="flex items-center gap-2">
+            {stylist.googleColorId
+              ? <span aria-hidden="true" className={`inline-block h-3 w-3 rounded-full ${stylistSwatch({ calendarColor: null, googleColorId: stylist.googleColorId }).swatch}`} />
+              : <span className="text-xs text-zinc-400">{t('integrations.google.colours.stylistNone')}</span>}
+            <span>{stylist.name}</span>
+            {stylist.googleAliases && <span className="text-xs text-zinc-500">({stylist.googleAliases})</span>}
+          </li>)}
+        </ul>
+      </div>
+      <button type="submit" className="rounded bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800">{t('integrations.google.colours.save')}</button>
     </form>
     <form action={clearGoogleBusyTime} className="mt-5 border-t border-zinc-100 pt-4">
       <h3 className="text-sm font-semibold">{t('integrations.google.clear.title')}</h3>

@@ -6,6 +6,7 @@ import { getIntegrationReadiness, listCalendarConnectionsForAdmin } from '@/app/
 import { CalendarConnectionsSetup } from '@/components/admin/CalendarConnectionsSetup';
 import { GoogleCalendarStatus } from '@/components/admin/GoogleCalendarStatus';
 import { getGoogleCalendarStatus } from '@/app/services/google-calendar-status';
+import { loadDiaryConfig } from '@/app/services/google-diary-config';
 import { CALENDAR_FRESHNESS_MINUTES } from '@/app/services/treatwell-sync-coverage';
 import { SITE_URL } from '@/app/lib/site-url';
 import { getT } from '@/i18n/server';
@@ -23,7 +24,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   await requireAdmin();
   const session = await verifySession();
   if (session.role !== 'ADMIN') throw new Error('Unauthorized');
-  const [readiness, stylists, query, t, googleStatus] = await Promise.all([getIntegrationReadiness(), listCalendarConnectionsForAdmin(SITE_URL), searchParams, getT('adminOps'), getGoogleCalendarStatus()]);
+  const [readiness, stylists, query, t, googleStatus, diaryColours] = await Promise.all([getIntegrationReadiness(), listCalendarConnectionsForAdmin(SITE_URL), searchParams, getT('adminOps'), getGoogleCalendarStatus(), loadDiaryConfig()]);
   const { treatwell, resend, cdn } = readiness;
   // Each setup check has a code (issues[i] matches blockers[i]); a check
   // without one is shown in its English wording and marked as English.
@@ -61,8 +62,8 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
               ? t('integrations.status.outboundConfirmed')
               : t('integrations.status.saved')}
     </div>}
-    {(query.gcal === 'done' || query.gcal === 'disabled' || query.gcal === 'cleared') && <div role="status" className="rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">{t(`integrations.google.status.${query.gcal}`)}</div>}
-    {(query.gcal === 'error' || query.gcal === 'clearError') && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{t(`integrations.google.status.${query.gcal}`)}</div>}
+    {(query.gcal === 'done' || query.gcal === 'disabled' || query.gcal === 'cleared' || query.gcal === 'coloursSaved') && <div role="status" className="rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">{t(`integrations.google.status.${query.gcal}`)}</div>}
+    {(query.gcal === 'error' || query.gcal === 'clearError' || query.gcal === 'coloursSame' || query.gcal === 'coloursTaken' || query.gcal === 'coloursInvalid') && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{t(`integrations.google.status.${query.gcal}`)}</div>}
     <section className={`rounded-lg border p-5 ${treatwell.syncCoverage.safeToEnableOnlineBooking ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
       <h2 className="font-semibold">{treatwell.syncCoverage.safeToEnableOnlineBooking ? t('integrations.coverage.pass') : t('integrations.coverage.attention')}</h2>
       {setupChecks.length > 0 && <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">{setupChecks.map((check) => <li key={check.key} lang={check.lang}>{check.text}</li>)}</ul>}
@@ -78,7 +79,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
       <p className="mt-3 rounded bg-zinc-50 p-3 text-sm">{scheduledSyncEnabled ? t('integrations.setup.scheduledOn') : t('integrations.setup.scheduledOff')}</p>
     </section>
     <CalendarConnectionsSetup stylists={stylists} />
-    <GoogleCalendarStatus status={googleStatus} />
+    <GoogleCalendarStatus status={googleStatus} colours={diaryColours} />
     <div className="grid gap-6 lg:grid-cols-2">
       <section className="rounded-xl border border-zinc-200 bg-white p-6"><h2 className="text-xl font-semibold">{t('integrations.resend.title')}</h2><ul className="mt-4">{config('RESEND_API_KEY', resend.apiKeyConfigured)}{config('EMAIL_FROM', resend.fromAddressConfigured)}{config('EMAIL_REPLY_TO', resend.replyToConfigured)}{config('RESEND_AUDIENCE_ID', resend.audienceConfigured)}</ul><p className="mt-4 text-xs leading-5 text-zinc-500">{t('integrations.resend.note')}</p></section>
       <section className="rounded-xl border border-zinc-200 bg-white p-6"><h2 className="text-xl font-semibold">{t('integrations.cdn.title')}</h2><p className="mt-2 text-sm text-zinc-600">{t('integrations.cdn.note', { minutes: cdn.homeRevalidateSeconds / 60 })}</p><ul className="mt-4">{config('NEXT_PUBLIC_SITE_URL', cdn.siteUrlConfigured)}</ul></section>

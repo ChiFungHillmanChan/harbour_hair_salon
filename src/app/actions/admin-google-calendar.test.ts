@@ -223,3 +223,71 @@ test('clear Google busy time that cannot be saved changes nothing and says so', 
   assert.ok(!f.log.some((step) => step.startsWith('invalidate')), 'nothing changed: the busy feeds stay cached');
   assert.doesNotMatch(JSON.stringify(logged), /db\.internal/);
 });
+
+// Admin → Integrations → "Diary colours" (Google diary mirror task 7): the
+// no-stylist and leave colours. Administrators only; two valid, different
+// colours that no active stylist holds; audited with the write.
+
+function loadColours(options: { role?: string; holder?: { name: string } } = {}) {
+  const updates: Record<string, unknown>[] = [];
+  const audits: Record<string, unknown>[] = [];
+  const holderQueries: unknown[] = [];
+  let redirected = '';
+  const tx = {
+    siteSettings: { upsert: async ({ update }: { update: Record<string, unknown> }) => { updates.push(update); return {}; } },
+  };
+  const action = loadServerModule<typeof import('./admin-google-calendar')>('src/app/actions/admin-google-calendar.ts', {
+    'server-only': {},
+    '@/app/lib/prisma': {
+      __esModule: true,
+      default: {
+        stylist: { findFirst: async (query: unknown) => { holderQueries.push(query); return options.holder ?? null; } },
+        $transaction: async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx),
+      },
+    },
+    '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
+    '@/app/lib/google-calendar-config': { googleCalendarConfig: () => CONFIG },
+    '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => { throw new Error('not part of colours'); } },
+    '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => {} },
+    '@/app/lib/audit': { appendAuditEvent: async (input: Record<string, unknown>) => { audits.push(input); } },
+    '@/i18n/request': { localizedPath: async (path: string) => `/zh-hk${path}` },
+    '@/i18n/revalidate': { revalidateAllLocales: () => {} },
+    'next/cache': { revalidatePath: () => {} },
+    'next/navigation': { redirect: (to: string) => { redirected = to; throw new Error('NEXT_REDIRECT'); } },
+  });
+  const run = async (unassigned: string, leave: string) => {
+    const form = new FormData();
+    form.set('googleUnassignedColorId', unassigned);
+    form.set('googleLeaveColorId', leave);
+    await assert.rejects(action.saveGoogleDiaryColours(form), /NEXT_REDIRECT/);
+    return redirected;
+  };
+  return { action, run, updates, audits, holderQueries };
+}
+
+test('diary colours: a non-administrator is refused before anything is recorded', async () => {
+  const f = loadColours({ role: 'USER' });
+  await assert.rejects(f.action.saveGoogleDiaryColours(new FormData()), /Unauthorized/);
+  assert.deepEqual([f.updates, f.audits, f.holderQueries], [[], [], []]);
+});
+
+test('diary colours: an unknown colour id, the same colour twice, or a colour an active stylist holds changes nothing', async () => {
+  for (const [unassigned, leave, holder, expected] of [
+    ['12', '8', undefined, 'coloursInvalid'],
+    ['', '8', undefined, 'coloursInvalid'],
+    ['8', '8', undefined, 'coloursSame'],
+    ['4', '8', { name: 'Ivan' }, 'coloursTaken'],
+  ] as const) {
+    const f = loadColours({ holder });
+    assert.equal(await f.run(unassigned, leave), `/zh-hk/admin/integrations?gcal=${expected}`, expected);
+    assert.deepEqual([f.updates, f.audits], [[], []], expected);
+  }
+});
+
+test('diary colours: two different free colours are saved with one audit, then the page says so', async () => {
+  const f = loadColours();
+  assert.equal(await f.run('4', '8'), '/zh-hk/admin/integrations?gcal=coloursSaved');
+  assert.deepEqual(f.updates, [{ googleUnassignedColorId: '4', googleLeaveColorId: '8' }]);
+  assert.deepEqual(f.audits, [{ actorUserId: 'admin-1', action: 'INTEGRATION.GOOGLE_DIARY_COLOURS', targetType: 'Integration', targetId: 'google-calendar', metadata: { unassigned: '4', leave: '8' } }]);
+  assert.deepEqual(f.holderQueries, [{ where: { isActive: true, googleColorId: { in: ['4', '8'] } }, select: { name: true } }]);
+});
