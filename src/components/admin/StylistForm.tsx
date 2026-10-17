@@ -36,6 +36,8 @@ interface StylistFormProps {
   googleAliases?: string | null;
   /** Counts as a chair for the diary's no-stylist (red) bookings; a new stylist does. */
   takesWalkIns?: boolean;
+  /** Shown to customers (public Stylists pages, online booking); a new stylist is. */
+  showOnWebsite?: boolean;
 }
 
 const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
@@ -48,7 +50,7 @@ const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc
  * publish); in create mode that editor is embedded here, because a new
  * profile needs its text in both languages first.
  */
-export function StylistForm({ mode, action, stylist, saved, treatwellExternalId, calendarColor, googleColorId, googleAliases, takesWalkIns = true }: StylistFormProps) {
+export function StylistForm({ mode, action, stylist, saved, treatwellExternalId, calendarColor, googleColorId, googleAliases, takesWalkIns = true, showOnWebsite = true }: StylistFormProps) {
   const t = useT('adminContent');
   const tc = useT('common');
   const draftKey = `stylist-form:${stylist?.id ?? 'new'}`;
@@ -167,6 +169,17 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
           <label htmlFor="stylist-google-names" className={labelClass}>{t('stylists.form.googleNames')}</label>
           <input id="stylist-google-names" type="text" name="googleAliases" maxLength={200} defaultValue={googleAliases ?? ''} className={fieldClass} />
           <p className="text-xs text-zinc-500 mt-1">{t('stylists.form.googleNamesHelp')}</p>
+        </div>
+      </section>
+
+      <section className="bg-white rounded-lg border border-zinc-200 p-6 space-y-4">
+        <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('stylists.form.websiteAndBooking')}</h2>
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
+            <input type="checkbox" name="showOnWebsite" defaultChecked={showOnWebsite} className="h-4 w-4" />
+            {t('stylists.form.showOnWebsite')}
+          </label>
+          <p className="text-xs text-zinc-500 mt-1">{t('stylists.form.showOnWebsiteHelp')}</p>
         </div>
         <div>
           <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">

@@ -86,6 +86,10 @@ model Stylist {
   /// Counts as a free chair for the diary's no-stylist (red) events (chair rule, services/diary-chair-rule.ts).
   /// Off for staff who take no walk-ins (e.g. an assistant): never counted free, and their own bookings use no chair.
   takesWalkIns        Boolean              @default(true)
+  /// Shown to customers on the website: the public Stylists pages and online booking (the wizard,
+  /// "Anyone", and the booking actions refuse a hidden one). Hidden staff stay in Admin, the Google
+  /// diary, staff bookings and their Fresha feed, and are left out of the online-booking coverage gate.
+  showOnWebsite       Boolean              @default(true)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   appointments        Appointment[]

@@ -56,8 +56,9 @@ export const dynamic = 'force-dynamic';
 async function getStylists(locale: Awaited<ReturnType<typeof getLocale>>) {
   // Only public-safe fields — the full row includes the secret treatwellIcalUrl,
   // which must never reach this client component / the RSC payload.
+  // Only stylists shown on the website (Admin → Stylists) are offered.
   const stylists = await prisma.stylist.findMany({
-    where: { isActive: true },
+    where: { isActive: true, showOnWebsite: true },
     orderBy: { name: 'asc' },
     select: { id: true, name: true, role: true, imageUrl: true },
   });

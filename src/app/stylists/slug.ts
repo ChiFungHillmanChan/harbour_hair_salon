@@ -95,7 +95,7 @@ async function localize(rows: StylistRuntime[], locale: Locale): Promise<Stylist
 
 export const getAllStylistsWithSlug = cache(async (locale: Locale = 'en-GB'): Promise<StylistRuntime[]> => {
   const stylists = await prisma.stylist.findMany({
-    where: { isActive: true },
+    where: { isActive: true, showOnWebsite: true },
     orderBy: { name: 'asc' },
     select: publicStylistSelect,
   });
@@ -104,12 +104,12 @@ export const getAllStylistsWithSlug = cache(async (locale: Locale = 'en-GB'): Pr
 
 export const getStylistBySlug = cache(async (slug: string, locale: Locale = 'en-GB'): Promise<StylistRuntime | null> => {
   const row = await prisma.stylist.findUnique({
-    where: { slug, isActive: true }, select: publicStylistSelect,
+    where: { slug, isActive: true, showOnWebsite: true }, select: publicStylistSelect,
   });
   if (row) return (await localize([mapStylist(row)], locale))[0];
   // Legacy profiles predate stored slugs. Only those rows need name matching.
   const legacy = await prisma.stylist.findMany({
-    where: { isActive: true, slug: null }, orderBy: { name: 'asc' }, select: publicStylistSelect,
+    where: { isActive: true, showOnWebsite: true, slug: null }, orderBy: { name: 'asc' }, select: publicStylistSelect,
   });
   const match = legacy.find((stylist) => slugify(stylist.name) === slug);
   return match ? (await localize([mapStylist(match)], locale))[0] : null;
@@ -117,14 +117,14 @@ export const getStylistBySlug = cache(async (slug: string, locale: Locale = 'en-
 
 export async function getStylistSlugs() {
   const rows = await prisma.stylist.findMany({
-    where: { isActive: true }, select: { slug: true, name: true },
+    where: { isActive: true, showOnWebsite: true }, select: { slug: true, name: true },
   });
   return rows.map((row) => ({ slug: row.slug ?? slugify(row.name) }));
 }
 
 export async function getRelatedStylists(excludeId: string, locale: Locale = 'en-GB') {
   const rows = await prisma.stylist.findMany({
-    where: { isActive: true, id: { not: excludeId } }, orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    where: { isActive: true, showOnWebsite: true, id: { not: excludeId } }, orderBy: [{ name: 'asc' }, { id: 'asc' }],
     take: 3, select: { id: true, name: true, slug: true, role: true, imageUrl: true },
   });
   const translations = await loadPublishedTranslations(prisma, 'STYLIST', rows.map((row) => row.id), locale);
@@ -134,10 +134,24 @@ export async function getRelatedStylists(excludeId: string, locale: Locale = 'en
   });
 }
 
+/** Admin only (the stylist edit page): finds hidden stylists too. */
 export async function getStylistById(id: string): Promise<StylistRuntime | null> {
   const row = await prisma.stylist.findUnique({
     where: { id },
     select: publicStylistSelect,
   });
   return row ? mapStylist(row) : null;
+}
+
+/**
+ * Admin → Stylists: every active stylist, shown on the website or not, with
+ * their two booking switches. The public helpers above leave hidden ones out.
+ */
+export async function getStylistsForAdmin() {
+  const rows = await prisma.stylist.findMany({
+    where: { isActive: true },
+    orderBy: { name: 'asc' },
+    select: { ...publicStylistSelect, showOnWebsite: true, takesWalkIns: true },
+  });
+  return rows.map((row) => ({ ...mapStylist(row), showOnWebsite: row.showOnWebsite, takesWalkIns: row.takesWalkIns }));
 }

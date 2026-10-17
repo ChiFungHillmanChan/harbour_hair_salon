@@ -71,11 +71,15 @@ test('Anyone on the same day stays open through the other stylist', async () => 
   assert.equal(tuesday.status, 'OPEN');
 });
 
-test('only active stylists’ working rows are read', async () => {
+test('only active stylists’ working rows are read; "Anyone" only those shown on the website', async () => {
   const f = fixture();
   await f.service.getBookingDays(ANY_STYLIST_ID, ['2026-10-06'], 60);
   const where = f.calls.find((call) => call.model === 'availability')!.where;
-  assert.deepEqual(where, { isOff: false, stylist: { isActive: true } });
+  assert.deepEqual(where, { isOff: false, stylist: { isActive: true, showOnWebsite: true } });
+  // A named stylist may be hidden: a customer rescheduling an existing booking with them.
+  const named = fixture();
+  await named.service.getBookingDays('funky', ['2026-10-06'], 60);
+  assert.deepEqual(named.calls.find((call) => call.model === 'availability')!.where, { isOff: false, stylist: { isActive: true }, stylistId: 'funky' });
 });
 
 test('the action refuses bad input without touching the database', async () => {

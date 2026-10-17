@@ -32,6 +32,8 @@ export default function EmployeeForm({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
+  // "Also add as stylist" makes a new stylist, so the existing-stylist choice is off meanwhile.
+  const [addAsStylist, setAddAsStylist] = useState(false);
   // Unsaved fields survive a language switch (memory only); the new-employee
   // PIN is deliberately left out and has to be typed again.
   const draftKey = `employee-form:${employee?.id ?? 'new'}`;
@@ -50,7 +52,10 @@ export default function EmployeeForm({
     const message = res && 'error' in res ? res.error : undefined;
     setError(message ?? null);
     setSaved(!message);
-    if (!message) clearDraft(draftKey);
+    if (!message) {
+      clearDraft(draftKey);
+      setAddAsStylist(false);
+    }
   }
 
   const f = (key: Parameters<typeof t>[0]) => ({ placeholder: t(key), 'aria-label': t(key) });
@@ -75,12 +80,24 @@ export default function EmployeeForm({
       <input name="overtimeThresholdHours" type="number" step="0.5" defaultValue={employee?.overtimeThresholdHours ?? ''} {...f('employees.form.overtimeThreshold')} className="w-full border p-2 rounded" />
       <input name="overtimeMultiplier" type="number" step="0.1" min="1" defaultValue={employee?.overtimeMultiplier ?? ''} {...f('employees.form.overtimeMultiplier')} className="w-full border p-2 rounded" />
       <input name="unpaidBreakMinutes" type="number" min="0" max="480" step="5" defaultValue={employee?.unpaidBreakMinutes ?? ''} {...f('employees.form.unpaidBreak')} className="w-full border p-2 rounded" />
-      <select name="stylistId" defaultValue={employee?.stylistId ?? ''} aria-label={t('employees.form.stylist')} className="w-full border p-2 rounded">
+      {/* Keyed by the saved link: a select keeps its first defaultValue, so after
+          "Also add as stylist" it would still show none and a second save would unlink. */}
+      <select key={employee?.stylistId ?? 'none'} name="stylistId" defaultValue={employee?.stylistId ?? ''} disabled={addAsStylist} aria-label={t('employees.form.stylist')} className="w-full border p-2 rounded disabled:opacity-50">
         <option value="">{t('employees.form.noStylist')}</option>
         {selectableStylists.map((s) => (
           <option key={s.id} value={s.id}>{s.name}</option>
         ))}
       </select>
+      {/* Only for someone with no stylist yet: a new employee, or one never linked. */}
+      {!employee?.stylistId && (
+        <div>
+          <label className="flex items-center gap-2">
+            <input name="addAsStylist" type="checkbox" data-no-preserve checked={addAsStylist} onChange={(event) => setAddAsStylist(event.target.checked)} />
+            {t('employees.form.addAsStylist')}
+          </label>
+          <p className="text-xs text-zinc-500 mt-1">{t('employees.form.addAsStylistHelp')}</p>
+        </div>
+      )}
       {!employee && (
         <input name="pin" inputMode="numeric" pattern="\d{4,6}" {...f('employees.form.pin')} required autoComplete="off" data-no-preserve className="w-full border p-2 rounded" />
       )}

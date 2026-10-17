@@ -103,5 +103,5 @@ test('legacy stylist fallback only scans active rows with null slugs', async () 
     } },
   });
   assert.equal((await service.getStylistBySlug('legacy-stylist'))?.id, 'legacy');
-  assert.deepEqual(query.where, { isActive: true, slug: null });
+  assert.deepEqual(query.where, { isActive: true, showOnWebsite: true, slug: null });
 });
