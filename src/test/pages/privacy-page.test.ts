@@ -131,7 +131,7 @@ test('the notice names every cookie the code sets for visitors', async () => {
 
 test('the periods the notice states are the ones the code enforces', async () => {
   const en = (await privacyPage('en-GB')).text;
-  assert.ok(en.includes('Last updated: 16 October 2026'));
+  assert.ok(en.includes('Last updated: 17 October 2026'));
   assert.ok(en.includes(`email confirmation after ${EMAIL_VERIFICATION_TTL_HOURS} hours`));
   assert.ok(en.includes(`password reset after ${RESET_TOKEN_TTL_MS / 3_600_000} hour`));
   assert.ok(en.includes(`unsubscribe after ${UNSUBSCRIBE_TOKEN_TTL_DAYS} days`));
@@ -141,6 +141,7 @@ test('the periods the notice states are the ones the code enforces', async () =>
   assert.ok(en.includes(`within ${(EMAIL_SEND_DAILY_POLICY.windowSeconds * 2) / 86_400} days`));
 
   const zh = (await privacyPage('zh-HK')).text;
+  assert.ok(zh.includes('最後更新：2026年10月17日'));
   assert.ok(zh.includes(`電郵確認連結為 ${EMAIL_VERIFICATION_TTL_HOURS} 小時`));
   assert.ok(zh.includes(`重設密碼連結為 ${RESET_TOKEN_TTL_MS / 3_600_000} 小時`));
   assert.ok(zh.includes(`取消訂閱連結為 ${UNSUBSCRIBE_TOKEN_TTL_DAYS} 日`));

@@ -117,13 +117,13 @@ test('Clear Google busy time is offered on and off, posts to its own action, in 
   for (const status of [ON, { enabled: false } as Status]) {
     const en = await render('en-GB', status);
     assert.equal(en.clearButtons.length, 1, `enabled: ${status.enabled}`);
-    assert.deepEqual([en.clearButtons[0].props?.label, en.clearButtons[0].props?.busy], ['Clear Google busy time', 'Clearing…']);
+    assert.deepEqual([en.clearButtons[0].props?.label, en.clearButtons[0].props?.busy], ['Clear Google busy time and diary copy', 'Clearing…']);
     assert.match(en.clearButtons[0].props?.confirm ?? '', /^Remove every busy period read from Google Calendar, and the copy of the diary shown on Admin → Schedule\?/);
     assert.ok(en.text.includes('It also removes the copy of the diary shown on Admin → Schedule.'), 'the help mentions the diary copy');
     assert.ok(en.forms.some((form) => form.props?.action === clearAction));
     assert.ok(en.text.includes(status.enabled ? 'While the sync is on, the next check of Google reads them again' : 'The sync is off, so nothing reads Google any more'));
     const zh = await render('zh-HK', status);
-    assert.deepEqual([zh.clearButtons[0].props?.label, zh.clearButtons[0].props?.busy], ['清除 Google 忙碌時段', '清除中…']);
+    assert.deepEqual([zh.clearButtons[0].props?.label, zh.clearButtons[0].props?.busy], ['清除 Google 忙碌時段及記事簿副本', '清除中…']);
     assert.match(zh.clearButtons[0].props?.confirm ?? '', /^要刪除所有從 Google 日曆讀取的忙碌時段嗎？/);
     assert.ok((zh.clearButtons[0].props?.confirm ?? '').endsWith('亦會刪除後台預約時間表上顯示的記事簿副本。'));
   }

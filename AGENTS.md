@@ -14,7 +14,7 @@ Harbour Hair Salon — a bilingual Next.js 16 website for a hair salon in Leeds:
 - **Staff kiosk.**
 - **Calendars:** Fresha availability exchanged both ways through iCal busy feeds; two-way sync with the salon's primary "HarbourHair" Google Calendar, mirrored in Admin → Schedule by colour (sync on in production since 2026-10-16; diary mirror 2026-10-17, rollout in `docs/google-calendar-setup.md` §2b).
 
-**Production state (2026-10-16):** online booking closed (`SiteSettings.bookingEnabled=false` plus the Square lock); `NOTIFICATIONS_ENABLED=false`; `CALENDAR_SYNC_ENABLED=true`; housekeeping on; late-arrival rule off; Google Calendar sync off until its five `GOOGLE_CALENDAR_*` variables are set on Production. Remaining launch steps: `LAUNCH.md`.
+**Production state (2026-10-16):** online booking closed (`SiteSettings.bookingEnabled=false` plus the Square lock); `NOTIFICATIONS_ENABLED=false`; `CALENDAR_SYNC_ENABLED=true`; housekeeping on; late-arrival rule off; Google Calendar sync ON since 2026-10-16 (its five `GOOGLE_CALENDAR_*` variables are set on Production), still on #72's "Harbour website bookings" calendar until the switch to the HarbourHair diary (pending: `docs/google-calendar-setup.md` §2b). Remaining launch steps: `LAUNCH.md`.
 
 ## Commands
 

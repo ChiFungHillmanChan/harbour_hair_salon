@@ -11,7 +11,7 @@ import { getLocale, getT } from '@/i18n/server';
 
 /**
  * Admin → Integrations: whether the Google Calendar sync is on and healthy,
- * "Sync now", and "Clear Google busy time" (offered on or off: it is how the
+ * "Sync now", and "Clear Google busy time and diary copy" (offered on or off: it is how the
  * busy time read from Google is removed after the sync is turned off), and
  * "Diary colours" (the no-stylist and leave colours, on or off).
  */

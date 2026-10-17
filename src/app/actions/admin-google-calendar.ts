@@ -49,7 +49,7 @@ export async function syncGoogleCalendarNow(): Promise<void> {
 }
 
 /**
- * Admin → Integrations → "Clear Google busy time": makes turning the sync off
+ * Admin → Integrations → "Clear Google busy time and diary copy": makes turning the sync off
  * reversible. Busy time already read from Google (`ExternalBusyBlock` source
  * GOOGLE) otherwise stays on the website, and in the busy feed Fresha imports,
  * until its time has passed, because nothing reads Google any more. This

@@ -14,10 +14,10 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 ## Status (2026-10-16)
 
 - The public site is live. Releases #62 (review follow-ups, Google Calendar links, i18n) and #63 (Square deposits) are deployed and verified.
-- Deployed on 2026-10-16: Fresha blocked time labelled "Blocked" in the schedule (#68), sign-out that ends every session (#69), late-arrival auto-cancel (#70, switched off), consultation credit, "From £X" prices for consultation services, move confirmation and NHS/student and offer terms (#71), and two-way Google Calendar sync (#72, switched off).
+- Deployed on 2026-10-16: Fresha blocked time labelled "Blocked" in the schedule (#68), sign-out that ends every session (#69), late-arrival auto-cancel (#70, switched off), consultation credit, "From £X" prices for consultation services, move confirmation and NHS/student and offer terms (#71), and two-way Google Calendar sync (#72, switched on the same day).
 - **Online booking is closed.** It opens only once Square production credentials are set, after the sandbox acceptance checklist has passed. Until then customers book by phone, Fresha or Treatwell.
 - **Switched off until the salon is ready:** the late-arrival rule (Admin → Settings, after briefing staff).
-- **Google Calendar sync is on** (since 2026-10-16): bookings are written to the "Harbour website bookings" calendar on harbourhairuk@gmail.com, and staff busy time there blocks the website and Fresha ([runbook](docs/google-calendar-setup.md)). Google sign-in and the calendar's service account both live in the `harbourhair` Google Cloud project.
+- **Google Calendar sync is on** (since 2026-10-16): until the switch to the HarbourHair diary (below), bookings are written to #72's "Harbour website bookings" calendar on harbourhairuk@gmail.com, and staff busy time there blocks the website and Fresha ([runbook](docs/google-calendar-setup.md)). Google sign-in and the calendar's service account both live in the `harbourhair` Google Cloud project.
 - **Google diary mirror** (2026-10-17, being rolled out): the sync moves to the salon's primary "HarbourHair" calendar, the diary staff already keep, and Admin → Schedule mirrors it by colour. The steps left are in the [runbook](docs/google-calendar-setup.md) §2b.
 - The remaining launch steps, in order, are in [LAUNCH.md](LAUNCH.md).
 
@@ -45,7 +45,7 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 - **Staff:** shifts, timesheets and payroll.
 - **Users:** includes customer data erasure.
 - **Site settings:** the booking switch, the deposit policy and the late-arrival rule.
-- **Integrations:** Fresha calendar connections, setup readiness, and the Google Calendar status with "Sync now", "Clear Google busy time" and the diary colours.
+- **Integrations:** Fresha calendar connections, setup readiness, and the Google Calendar status with "Sync now", "Clear Google busy time and diary copy" and the diary colours.
 - **Operations:** diagnostics, background jobs and payments needing attention.
 - **Staff kiosk** on a shared salon device.
 

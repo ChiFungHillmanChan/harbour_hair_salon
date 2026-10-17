@@ -11,7 +11,8 @@ How the website shares the salon's appointment diary with Google Calendar, how t
   bookings" calendar is retired; production uses it until `GOOGLE_CALENDAR_ID` is switched (§2b).
 - **Customer-facing text:** `/privacy` (Google Calendar under "Who we share it with", and "How
   long we keep it": the Google copies and the salon diary shown to staff).
-- **Ships OFF.** Nothing happens until all five variables in §3 are set on Vercel **Production**.
+- **Off by default** (a missing variable keeps it off); **on in production since 2026-10-16.** Nothing
+  happens until all five variables in §3 are set on Vercel **Production**.
 
 ---
 
@@ -74,7 +75,7 @@ How the website shares the salon's appointment diary with Google Calendar, how t
   missed, the 30-minute calendar-sync run (staff hours, §3) pulls anyway.
 
 Google is **not** a calendar connection in Admin → Integrations (no per-stylist links); that
-page only shows its status, a "Sync now" button, "Clear Google busy time" (§6) and the diary
+page only shows its status, a "Sync now" button, "Clear Google busy time and diary copy" (§6) and the diary
 colours (§2a).
 
 ---
@@ -85,7 +86,7 @@ colours (§2a).
    ("Continue with Google"): **`harbourhair`** (`harbourhair-511821`), signed in as
    harbourhairuk@gmail.com. APIs & Services → Library → **Google Calendar API** → Enable.
    (Done 2026-10-16: service account `harbour-website-calendar@harbourhair-511821.iam.gserviceaccount.com`.
-   #72's calendar "Harbour website bookings" on harbourhairuk@gmail.com is retired, §2b.)
+   #72's calendar "Harbour website bookings" on harbourhairuk@gmail.com is retired at the switch, §2b.)
 2. APIs & Services → Credentials → Create credentials → **Service account**. Name it
    `harbour-website-calendar`; no project roles are needed. Copy its email
    (`…@….iam.gserviceaccount.com`): this is `GOOGLE_CALENDAR_SA_EMAIL`.
@@ -289,7 +290,7 @@ Cloud.
    the busy time already read from it stays. It keeps blocking those hours on `/book` (and the
    diary stays on Admin → Schedule, its walk-ins still taking chairs). It also stays in each
    stylist's busy feed, **so Fresha keeps those hours blocked too**, until each period has passed. To undo that at once, press **Admin →
-   Integrations → Google Calendar → Clear Google busy time**.
+   Integrations → Google Calendar → Clear Google busy time and diary copy**.
    - Administrators only. It asks to confirm, and the audit log records it as
      `INTEGRATION.GOOGLE_BUSY_CLEARED`, with the number of periods removed (`removed`) and of
      diary entries removed (`diaryRemoved`).

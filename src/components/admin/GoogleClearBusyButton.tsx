@@ -4,7 +4,7 @@ import type { MouseEvent } from 'react';
 import { useFormStatus } from 'react-dom';
 
 /**
- * "Clear Google busy time": asks first (it frees every hour blocked from
+ * "Clear Google busy time and diary copy": asks first (it frees every hour blocked from
  * Google, on the website and in the Fresha busy feed), then stays disabled
  * while the action runs. Words come from the server component.
  */
