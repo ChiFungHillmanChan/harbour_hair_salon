@@ -280,6 +280,7 @@ test('a reschedule request row shows when it was asked and a tel: link for the c
       './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
       './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
       './RescheduleRequestActions': { RescheduleRequestActions: () => null },
+      './MobileScheduleDisclosure': { MobileScheduleDisclosure: ({ children }: { children: unknown }) => children },
       '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
     },
   );

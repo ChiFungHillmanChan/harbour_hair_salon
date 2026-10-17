@@ -5,6 +5,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     title: '預約時間表',
     subtitle: '管理預約及可預約時間。',
     loading: '正在載入時間表',
+    tools: '工具及提示',
   },
   stats: {
     scope: '網站預約統計',

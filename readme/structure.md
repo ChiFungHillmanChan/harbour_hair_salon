@@ -448,7 +448,8 @@ Runbook `docs/google-calendar-setup.md`; design `docs/superpowers/specs/2026-10-
 - `AppointmentDialog.tsx` — local category/search → offering → real length/price option selection, with a collapsed selection summary. String-backed duration entry removes leading zeroes, accepts blank edits, validates whole minutes from 15 to 720 and previews the end time. Existing numeric drafts, retired services and recorded prices are retained.
 - `admin-calendar-data.ts` — `getAdminCalendarData(query, locale)` includes offering names and published service/offering translations; original and translated names support bilingual local search without another request per keystroke.
 - `AdminSidebar.tsx` and `admin/layout.tsx` — all 19 destinations retained; the phone drawer traps keyboard focus, closes on Escape and restores focus. The viewport-height sidebar keeps its links scrollable and Sign Out reachable; the main column can shrink without overflowing.
-- Regression coverage: `schedule-agenda.test.ts`, `calendar-colors.test.ts`, `AppointmentDialog.test.ts`, `admin-calendar-data.test.ts`, `AdminSidebar.test.ts`, `ScheduleGoogleDiary.test.ts` and `src/test/pages/admin-calendar-navigation.test.ts`.
+- `MobileScheduleDisclosure.tsx` — compact, expandable phone controls for setup/statistics, arrival alerts and request queues; desktop panels stay visible. The phone toolbar keeps date navigation, period selection, Today, new booking and refresh together. Refresh explanations sit below the diary.
+- Regression coverage: `MobileScheduleDisclosure.test.ts`, `schedule-agenda.test.ts`, `calendar-colors.test.ts`, `AppointmentDialog.test.ts`, `admin-calendar-data.test.ts`, `AdminSidebar.test.ts`, `ScheduleGoogleDiary.test.ts` and `src/test/pages/admin-calendar-navigation.test.ts`.
 
 ## Booking clarity and local search (2026-10-01)
 

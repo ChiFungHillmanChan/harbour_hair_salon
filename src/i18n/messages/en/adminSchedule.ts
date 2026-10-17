@@ -6,6 +6,7 @@ const adminSchedule = {
     title: 'Schedule',
     subtitle: 'Manage appointments and availability.',
     loading: 'Loading schedule',
+    tools: 'Tools & alerts',
   },
   stats: {
     scope: 'Website bookings',

@@ -33,7 +33,7 @@ async function renderCalendar(query: Query, rows: Row[] = []) {
     '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
     '@/app/services/admin-calendar-data': loadServerModule('src/app/services/admin-calendar-data.ts', {
       '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
-    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
+    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null, blockers: [] }) },
     '@/app/lib/prisma': { __esModule: true, getDatabaseProvider: () => 'postgresql', default: {
       appointment: {
         findMany: async ({ where }: { where: { date?: Record<string, Date>; status?: string } }) => {
@@ -166,11 +166,12 @@ test('invalid and duplicate query parameters fall back to a valid salon date and
 function renderClient(dateStr: string, view: string, pendingAppointments: Record<string, unknown>[] = [], appointments: Record<string, unknown>[] = [], locale: 'en-GB' | 'zh-HK' = 'en-GB', options: { props?: Record<string, unknown>; stylistFilter?: string } = {}) {
   const urls: string[] = [];
   const statuses: string[][] = [];
+  const refreshes: boolean[] = [];
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
     react: { useEffect: () => undefined, useState: (value: unknown) => [value, () => undefined], useTransition: () => [false, (run: () => void) => run()] },
     // The localized router adds /zh-hk on Chinese pages; the board itself only
     // ever asks for language-free /admin URLs.
-    '@/i18n/navigation': { useLocalizedRouter: () => ({ push: (url: string) => urls.push(url), refresh: () => undefined }) },
+    '@/i18n/navigation': { useLocalizedRouter: () => ({ push: (url: string) => urls.push(url), refresh: () => refreshes.push(true) }) },
     '@/i18n/client': { useT: (namespace: Namespace) => translator(locale, namespace), useLocale: () => locale },
     '@/i18n/draft-store': { useDraftState: (key: string, initial: unknown) => [key === 'schedule-board:stylist' ? options.stylistFilter ?? '' : initial, () => undefined] },
     './ScheduleDayGrid': { ScheduleDayGrid: () => null },
@@ -181,8 +182,27 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': { updateAppointmentStatus: async (id: string, status: string) => { statuses.push([id, status]); return { success: true }; } },
   });
-  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments, pendingAppointments, rescheduleRequests: [], stylists: [], busyBlocks: [], ...options.props }), urls, statuses };
+  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments, pendingAppointments, rescheduleRequests: [], stylists: [], busyBlocks: [], ...options.props }), urls, statuses, refreshes };
 }
+
+test('the compact phone controls keep all calendar periods and refresh available in both languages', () => {
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const t = translator(locale, 'adminSchedule');
+    const { rendered, urls, refreshes } = renderClient('2026-10-17', 'day', [], [], locale);
+    const nodes = elements(rendered);
+    const periods = nodes.find(element => element.type === 'select' && element.props['aria-label'] === t('views.label'));
+    assert.ok(periods, 'phones must retain a labelled calendar period control');
+    assert.deepEqual(elements(periods).filter(element => element.type === 'option').map(element => element.props.value), ['day', 'week', 'month', 'year']);
+    for (const value of ['day', 'week', 'month', 'year']) {
+      (periods.props.onChange as (event: { target: { value: string } }) => void)({ target: { value } });
+    }
+    assert.deepEqual(urls, ['day', 'week', 'month', 'year'].map(view => `/admin?date=2026-10-17&view=${view}`));
+    const refresh = nodes.find(element => element.type === 'button' && element.props['aria-label'] === t('refresh.button'));
+    assert.ok(refresh, 'the compact refresh icon must have a translated accessible name');
+    (refresh.props.onClick as () => void)();
+    assert.deepEqual(refreshes, [true]);
+  }
+});
 
 /** A board row (CalendarAppointment) for the client renderer. */
 function boardAppointment(id: string, status: string, date: string) {

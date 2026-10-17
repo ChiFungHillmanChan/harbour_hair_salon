@@ -11,6 +11,7 @@ import { ScheduleDayGrid, type GridAppointment, type GridBusyBlock, type GridSty
 import { googleDisplaySwatch, stylistDisplaySwatch } from '@/app/lib/calendar-colors';
 import { diaryForDay, diaryRange, type CalendarDiaryEntry, type PlacedDiaryEntry } from '@/app/lib/calendar-diary-display';
 import { GoogleDiaryPanel } from './GoogleDiaryPanel';
+import { MobileScheduleDisclosure } from './MobileScheduleDisclosure';
 import { diaryStylistNames, filterScheduleForStylist, scheduleAgenda } from '@/app/lib/schedule-agenda';
 import { formatSalonTime, resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import type { CalendarView } from '@/app/services/admin-calendar-range';
@@ -660,16 +661,9 @@ export function ScheduleCalendar({
   const selectedKey = format(selectedDate, 'yyyy-MM-dd');
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-600">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs">{loadedAt && <>{t('refresh.loadedAt', { date: formatSalonLongDate(locale, new Date(loadedAt)), time: formatSalonClock(locale, new Date(loadedAt)) })} </>}</p>
-          <details className="mt-1 text-xs"><summary className="cursor-pointer font-medium text-zinc-700">{t('refresh.details')}</summary><p className="mt-2 leading-relaxed">{view === 'year' ? t('refresh.yearNote') : t('refresh.autoNote')}
-          {' '}{t('refresh.savedNote')}</p></details>
-        </div>
-        <button type="button" onClick={() => startNavigation(() => router.refresh())} disabled={isNavigating} className="shrink-0 rounded border border-zinc-300 px-3 py-2 font-semibold text-zinc-900 disabled:opacity-50">{t('refresh.button')}</button>
-      </div>
+    <div className="space-y-2 sm:space-y-4">
       {(pendingAppointments.length > 0 || pendingHasPrevious) && (
+        <MobileScheduleDisclosure label={t('stats.awaiting')} attention>
         <section aria-label={t('pending.sectionLabel')} className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <h2 className="font-semibold text-amber-900">{t('pending.title')}</h2>
           <div className="mt-3 max-h-80 overflow-y-auto divide-y divide-amber-200">
@@ -691,8 +685,10 @@ export function ScheduleCalendar({
             {pendingNext && <button type="button" onClick={() => pendingPage(pendingNext)}>{t('pending.nextPage')}</button>}
           </nav>}
         </section>
+        </MobileScheduleDisclosure>
       )}
       {rescheduleRequests.length > 0 && (
+        <MobileScheduleDisclosure label={t('rescheduleRequests.title')} count={rescheduleRequests.length} attention>
         <section aria-label={t('rescheduleRequests.sectionLabel')} className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <h2 className="font-semibold text-amber-900">{t('rescheduleRequests.title')}</h2>
           <div className="mt-3 max-h-80 overflow-y-auto divide-y divide-amber-200">
@@ -718,11 +714,20 @@ export function ScheduleCalendar({
             })}
           </div>
         </section>
+        </MobileScheduleDisclosure>
       )}
       {/* Toolbar */}
-      <div className="flex flex-wrap justify-between items-center gap-3 bg-white p-3 sm:p-4 rounded-lg shadow border border-zinc-200">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md shadow-sm" role="group" aria-label={t('views.label')}>
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white p-2 shadow-sm sm:gap-3 sm:p-4">
+        <div className="min-w-0 flex-1 sm:flex-none">
+          <select
+            aria-label={t('views.label')}
+            value={viewMode}
+            onChange={event => setViewMode(event.target.value as CalendarView)}
+            className="min-h-11 w-full rounded-md border border-zinc-300 bg-white px-2 text-sm font-medium capitalize text-zinc-900 sm:hidden"
+          >
+            {(['day', 'week', 'month', 'year'] as const).map(period => <option key={period} value={period}>{t(`views.${period}`)}</option>)}
+          </select>
+          <div className="hidden rounded-md shadow-sm sm:inline-flex" role="group" aria-label={t('views.label')}>
             {(['day', 'week', 'month', 'year'] as const).map((period, index, all) => (
               <button
                 key={period}
@@ -739,40 +744,53 @@ export function ScheduleCalendar({
           </div>
         </div>
 
-        <div className="order-first flex w-full min-w-0 items-center gap-1 lg:order-none lg:w-auto">
-          <button onClick={prev} disabled={isNavigating} aria-label={t('toolbar.previous')} className="p-2 hover:bg-zinc-100 rounded-full disabled:opacity-50">
+        <div className="order-first flex w-full min-w-0 items-center gap-1 lg:order-none lg:w-auto lg:flex-1">
+          <button onClick={prev} disabled={isNavigating} aria-label={t('toolbar.previous')} className="min-h-11 min-w-11 rounded-full p-2 hover:bg-zinc-100 disabled:opacity-50">
              ←
           </button>
           <h2 className="min-w-0 flex-1 text-balance text-center text-sm font-bold text-zinc-900 sm:text-base lg:max-w-80">
             {title}
           </h2>
-          <button onClick={next} disabled={isNavigating} aria-label={t('toolbar.next')} className="p-2 hover:bg-zinc-100 rounded-full disabled:opacity-50">
+          <button onClick={next} disabled={isNavigating} aria-label={t('toolbar.next')} className="min-h-11 min-w-11 rounded-full p-2 hover:bg-zinc-100 disabled:opacity-50">
              →
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <button onClick={goToToday} className="text-sm font-medium text-zinc-900 hover:underline">
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-3">
+          <button onClick={goToToday} className="min-h-11 min-w-11 px-2 text-sm font-medium text-zinc-900 hover:underline">
             {t('toolbar.today')}
           </button>
           {viewMode !== 'year' && services.some((service) => service.isBookable) && stylists.length > 0 && (
             <button
               type="button"
               onClick={() => setDialog({ mode: 'create', dateStr, time: formatSalonTime(new Date()) })}
-              className="rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              aria-label={t('toolbar.newBooking')}
+              title={t('toolbar.newBooking')}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
             >
-              {t('toolbar.newBooking')}
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5 sm:hidden"><path d="M12 5v14M5 12h14" /></svg>
+              <span className="hidden sm:inline">{t('toolbar.newBooking')}</span>
             </button>
           )}
+          <button
+            type="button"
+            aria-label={t('refresh.button')}
+            title={t('refresh.button')}
+            onClick={() => startNavigation(() => router.refresh())}
+            disabled={isNavigating}
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-zinc-300 text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={`h-5 w-5 ${isNavigating ? 'animate-spin motion-reduce:animate-none' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7v5h-5M4 17v-5h5M6.1 6.1A8 8 0 0 1 19.6 10M4.4 14a8 8 0 0 0 13.5 3.9" /></svg>
+          </button>
         </div>
       </div>
-      {viewMode !== 'year' && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-        <label htmlFor="schedule-stylist" className="font-medium text-zinc-700">{t('toolbar.stylist')}</label>
-        <select id="schedule-stylist" value={stylistFilter} onChange={event => setStylistFilter(event.target.value)} className="min-w-0 max-w-full rounded border border-zinc-300 bg-white px-3 py-2 text-zinc-900">
+      {viewMode !== 'year' && <div className="flex items-center gap-2 text-sm sm:flex-wrap sm:gap-x-3 sm:gap-y-1">
+        <label htmlFor="schedule-stylist" className="shrink-0 font-medium text-zinc-700">{t('toolbar.stylist')}</label>
+        <select id="schedule-stylist" value={stylistFilter} onChange={event => setStylistFilter(event.target.value)} className="min-h-11 min-w-0 max-w-full flex-1 rounded-md border border-zinc-300 bg-white px-2 py-2 text-zinc-900 sm:flex-none sm:px-3">
           <option value="">{t('toolbar.allStylists')}</option>
           {stylists.map(stylist => <option key={stylist.id} value={stylist.id}>{stylist.name}</option>)}
         </select>
-        <span className="text-xs text-zinc-500">{t('toolbar.filterHelp')}</span>
+        <span className="hidden text-xs text-zinc-500 sm:inline">{t('toolbar.filterHelp')}</span>
       </div>}
       {isNavigating && <p role="status" className="text-sm text-zinc-600">{t('toolbar.loading')}</p>}
 
@@ -903,6 +921,12 @@ export function ScheduleCalendar({
              </div>
          </div>
       )}
+
+      <div className="rounded-lg border border-zinc-200 bg-white p-3 text-xs text-zinc-600">
+        {loadedAt && <p>{t('refresh.loadedAt', { date: formatSalonLongDate(locale, new Date(loadedAt)), time: formatSalonClock(locale, new Date(loadedAt)) })}</p>}
+        <details className="mt-1"><summary className="cursor-pointer font-medium text-zinc-700">{t('refresh.details')}</summary><p className="mt-2 leading-relaxed">{view === 'year' ? t('refresh.yearNote') : t('refresh.autoNote')}
+        {' '}{t('refresh.savedNote')}</p></details>
+      </div>
 
       {dialog && (
         <AppointmentDialog
