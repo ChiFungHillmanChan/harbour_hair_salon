@@ -36,6 +36,12 @@ export function buildBookingDays(input: {
    * a taken one, rather than vanishing as the horizon's do.
    */
   requestable?: (start: Date) => boolean;
+  /**
+   * The diary chair rule (diary-chair-rule.ts): whether `stylistId` may take
+   * this start without leaving a red diary event unserved. A start it refuses
+   * is shown taken for that stylist; "Anyone" stays open through another.
+   */
+  chairAllows?: (stylistId: string, start: Date, duration: number) => boolean;
 }): BookingDay[] {
   return input.dates.map((date) => {
     const { dayOfWeek } = resolveSalonDateTime(date, '12:00');
@@ -52,7 +58,7 @@ export function buildBookingDays(input: {
       for (const slot of buildSlotGridForWindow(date, hours, busy, input.duration, input.now)) {
         const start = resolveSalonDateTime(date, slot.time).utc;
         if (!input.bookable(start, input.duration)) continue;
-        const open = slot.available && (input.requestable?.(start) ?? true);
+        const open = slot.available && (input.chairAllows?.(stylistId, start, input.duration) ?? true) && (input.requestable?.(start) ?? true);
         free.set(slot.time, (free.get(slot.time) ?? false) || open);
       }
     }

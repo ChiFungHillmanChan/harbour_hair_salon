@@ -140,6 +140,7 @@ function fixture(options: {
         update: async () => { writes++; return users[0]; },
       },
       availability: { findFirst: async () => ({ startTime: '09:00', endTime: '18:00' }) },
+      googleDiaryEntry: { findMany: async () => [] },
       externalBusyBlock: { findMany: async () => [] },
     };
   }

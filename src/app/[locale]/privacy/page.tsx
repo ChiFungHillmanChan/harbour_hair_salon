@@ -9,13 +9,13 @@ import { rich } from '@/i18n/rich';
 import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 
 /** Change this, and the wording in the `legal.privacy` dictionary, together. */
-const LAST_UPDATED = '2026-10-16';
+const LAST_UPDATED = '2026-10-17';
 
 // Each list's items, in the order the page shows them (keys of legal.privacy.*).
 const COLLECTED = ['account', 'google', 'bookings', 'payments', 'patchTests', 'staffBookings', 'emails', 'reviews', 'marketing', 'security', 'visits', 'tryColour'] as const;
 const USES = ['service', 'payments', 'safety', 'reviewRequests', 'reviewsPublished', 'marketing', 'security', 'improvement', 'records'] as const;
 const PROVIDERS = ['vercel', 'neon', 'resend', 'upstash', 'square', 'google', 'marketplaces'] as const;
-const RETENTION = ['account', 'bookings', 'payments', 'security', 'reviews', 'emails', 'googleCalendar', 'rateLimits', 'links', 'marketing'] as const;
+const RETENTION = ['account', 'bookings', 'payments', 'security', 'reviews', 'emails', 'googleCalendar', 'googleDiary', 'rateLimits', 'links', 'marketing'] as const;
 const RIGHTS = ['access', 'rectification', 'erasure', 'restriction', 'objection', 'portability', 'consent'] as const;
 const COOKIES = ['session', 'sessionHint', 'loginDevice', 'googleState', 'locale'] as const;
 

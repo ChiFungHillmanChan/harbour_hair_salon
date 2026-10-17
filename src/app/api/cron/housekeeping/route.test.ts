@@ -117,6 +117,8 @@ function housekeepingWithRealJob(options: { enabled: boolean; channelThrows?: bo
   const job = loadServerModule('src/app/services/google-calendar-job.ts', {
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => (options.enabled ? { calendarId: 'c', clientEmail: 'e', privateKey: 'k', webhookSecret: 's' } : null) },
     '@/app/lib/prisma': counted({ __esModule: true, default: db }),
+    // The calendar change guard (services/google-calendar-guard.ts): the configured calendar is the recorded one.
+    './google-calendar-guard': counted({ guardGoogleCalendarChange: async () => 'same' }),
     './google-calendar-channel': counted({
       ensureGoogleWatchChannel: async (input: unknown) => {
         order.push(`channel:${JSON.stringify(input)}`);
@@ -126,7 +128,7 @@ function housekeepingWithRealJob(options: { enabled: boolean; channelThrows?: bo
       runPullSingleFlight: async (pull: () => Promise<unknown>) => { order.push('single-flight'); await pull(); },
     }),
     './google-calendar-push': counted({ pushGoogleCalendar: async (input: { mode: string }) => { order.push(`push:${input.mode}`); return { written: 0, deleted: 1, unchanged: 9, failed: 0 }; } }),
-    './google-calendar-pull': counted({ pullGoogleCalendar: async () => { order.push('pull'); return { reverted: 0, blocks: 0, changed: false }; } }),
+    './google-calendar-pull': counted({ pullGoogleCalendar: async () => { order.push('pull'); return { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false }; } }),
   });
   const route = loadServerModule<{ GET(request: NextRequest): Promise<Response> }>('src/app/api/cron/housekeeping/route.ts', {
     '@/app/services/housekeeping-service': { runHousekeeping: async () => { order.push('retention'); return { scrubbed: 0 }; } },
@@ -158,7 +160,7 @@ test('daily Google run after payments: watch channel, the whole window, then the
     assert.deepEqual(h.order, ['retention', 'lapse', 'payments', 'channel:{"renew":false}', 'push:all', 'single-flight', 'pull']);
     assert.deepEqual(h.jobRows, ['start:google-calendar-daily', 'end:google-calendar-daily:ok'], 'the daily run has its own row');
     assert.deepEqual((await response.json()).googleCalendar, {
-      ok: true, channel: 'renewed', push: { written: 0, deleted: 1, unchanged: 9, failed: 0 }, pull: { reverted: 0, blocks: 0, changed: false },
+      ok: true, channel: 'renewed', push: { written: 0, deleted: 1, unchanged: 9, failed: 0 }, pull: { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false },
     });
   });
 });

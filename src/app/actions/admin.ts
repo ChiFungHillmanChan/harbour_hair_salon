@@ -575,7 +575,8 @@ export async function updateAppointmentStatus(
           const readiness = await checkCalendarBookingReadiness(tx);
           if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
           // Imported bookings or opening hours may have changed since the request.
-          await assertAppointmentSlotAvailable(tx, current, current.date);
+          // Staff decide; the diary chair rule only refuses customers (spec §6).
+          await assertAppointmentSlotAvailable(tx, current, current.date, undefined, { chairRule: false });
         }
 
         // The deposit, if any: refused while it is being taken; otherwise what
@@ -684,7 +685,8 @@ async function approveWithDeposit(appointmentId: string, actorUserId: string): P
     if (hasAppointmentStarted(current.date, now)) throw new BookingError('REQUEST_EXPIRED');
     const readiness = await checkCalendarBookingReadiness(tx);
     if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
-    await assertAppointmentSlotAvailable(tx, current, current.date);
+    // Staff decide; the diary chair rule only refuses customers (spec §6).
+    await assertAppointmentSlotAvailable(tx, current, current.date, undefined, { chairRule: false });
     const claim = await claimDepositForCapture(tx, appointmentId, now);
     // The deposit was read just before this transaction; it cannot vanish.
     if (claim.kind === 'NONE') throw new BookingError('STALE');
@@ -717,7 +719,8 @@ async function approveWithDeposit(appointmentId: string, actorUserId: string): P
       // refunded it with the closing): leave the money alone.
       if (current.status !== 'PENDING') throw new Error('The request closed while its deposit was being taken');
       try {
-        await assertAppointmentSlotAvailable(tx, current, current.date);
+        // Staff decide; the diary chair rule only refuses customers (spec §6).
+        await assertAppointmentSlotAvailable(tx, current, current.date, undefined, { chairRule: false });
       } catch (error) {
         if (!(error instanceof BookingError)) throw error;
         return cancelAfterSlotLost(tx, current, attempt, actorUserId, now);
@@ -844,7 +847,8 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
         }
       }
       try {
-        await assertAppointmentSlotAvailable(tx, current, requested);
+        // Staff decide; the diary chair rule only refuses customers (spec §6).
+        await assertAppointmentSlotAvailable(tx, current, requested, undefined, { chairRule: false });
       } catch (error) {
         if (error instanceof BookingError && error.code === 'SLOT_UNAVAILABLE') throw new BookingError('RESCHEDULE_SLOT_TAKEN');
         throw error;

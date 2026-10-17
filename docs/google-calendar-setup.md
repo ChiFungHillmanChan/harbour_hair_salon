@@ -3,35 +3,71 @@
 How the website shares the salon's appointment diary with Google Calendar, how to set it up
 (Google Cloud, the calendar, Vercel), how to check it works, and what to do when it does not.
 
-- **Design (decisions and reasons):** `docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md`.
-- **Customer-facing text:** `/privacy` (Google Calendar under "Who we share it with" and "How long we keep it").
-- **Ships OFF.** Nothing happens until all five variables in §3 are set on Vercel **Production**.
+- **Design (decisions and reasons):** `docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md`
+  (the sync, #72) and `docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md`
+  (the diary mirror: colours, the chair rule, the primary calendar).
+- **The sync now reads and writes the salon's primary "HarbourHair" calendar**
+  (`harbourhairuk@gmail.com`), the diary the staff already keep. #72's separate "Harbour website
+  bookings" calendar is retired; production uses it until `GOOGLE_CALENDAR_ID` is switched (§2b).
+- **Customer-facing text:** `/privacy` (Google Calendar under "Who we share it with", and "How
+  long we keep it": the Google copies and the salon diary shown to staff).
+- **Off by default** (a missing variable keeps it off); **on in production since 2026-10-16.** Nothing
+  happens until all five variables in §3 are set on Vercel **Production**.
 
 ---
 
 ## 1. What it does
 
 - **Website to Google (push).** Every booking that is not cancelled is written as one event
-  on one shared calendar, "Harbour website bookings": titled `Stylist · Customer · Service`
-  (a pending request is marked), with the phone number, notes, status, any open reschedule
-  request, deposit state and a link to the day in Admin. A change
+  on the salon's primary "HarbourHair" calendar, in its stylist's **Google colour** (Admin →
+  Stylists, §2a; a stylist with no colour set → the no-stylist colour, default Tomato). It is
+  titled `Stylist · Customer · Service` (a pending request is marked), with the phone number,
+  notes, status, any open reschedule request, deposit state and a link to the day in Admin. A change
   reaches Google within seconds (after the response of the action that made it); the
   calendar-sync cron (every 30 minutes in staff hours) retries failures and catches
   cron-made changes (lapses, late cancellations); housekeeping (daily, 03:15 UTC) re-renders
   the whole window and deletes copies of appointments that ended more than **12 months** ago.
-- **Google to website (pull).** Anyone at the salon can add an event to that calendar whose
-  title starts with a stylist's name **exactly as it is in Admin → Stylists** (the whole name:
-  for "Lox Chan", `Lox Chan: dentist`; case does not matter). It blocks that stylist's hours
-  on `/book`, and is exported in that stylist's outbound busy feed, so Fresha stops selling
-  the hour too. After the name only these are accepted: the end of the title, a space, `:`,
-  `：`, `-` or `·` (`Ivan`, `Ivan dentist`, `Ivan: dentist`, `Ivan：午飯`, `Ivan - holiday`,
-  `Ivan·off`).
-  **Anything else blocks the WHOLE salon, every stylist**: `Ivan, off`, `Ivan's party`,
-  `Ivana`, `Dentist (Ivan)` all name nobody. A title that names nobody, or no title, blocks
-  every stylist (that is how to close the salon, e.g. `Stock take`).
-  Tentative events still block; cancelled events and events marked "Show as: Available" do not.
-- **The website's own events are never blocks**, and an edit or deletion of one in Google is
-  reverted (the website is the authority for bookings). If Google keeps changing an event,
+- **Google to website (pull): the salon diary.** Every other event in the calendar, from 30 days
+  back to 90 days ahead, is copied into the website's diary and sorted, **colour first**:
+  1. **A stylist's Google colour** → that stylist's booking: it blocks that stylist.
+  2. **The no-stylist colour** (default Tomato) → a booking with no stylist yet (a walk-in
+     `(W)`, Treatwell `TW`, …). It **takes one chair**: online booking (the slot grid, `/book`,
+     "Anyone", a customer's reschedule request) only offers a time when enough *other*
+     stylists work and are free for every such event overlapping it. A booking or move made
+     in Admin gets a warning with "Book anyway" instead; staff confirming a request or
+     approving a reschedule are not checked.
+  3. **Any other colour (the leave colour, Graphite, included) or none** → **names in the
+     title**: an event that names a stylist is leave and blocks that stylist (`Ivan off`,
+     `早走(L)`; `遲返 (L)(F)` names two and blocks both). An event that names nobody is a
+     **note** and blocks nothing (`卡機`, `檢查消防`, `見工 zayn`, `GhD Con`).
+
+  A name is the stylist's name as in Admin → Stylists or one of their Google names (§2a); case
+  does not matter:
+  - a name of **one letter** counts only in brackets: `早走(L)`, `( F )`; a bare `F` does not;
+  - a **longer** name counts when no other letter is glued to its left and it is followed by
+    the end, a non-letter or `off`: `Ivan off`, `LoxOff`, `lox.`, `Day off lox` (not `Loxley`
+    or `Ivana`);
+  - a **Chinese** name counts anywhere in the title: `天off`, `天 driving lesson`.
+
+  **"Show as: Available" is ignored**: such an event blocks like any other. #72's rule that
+  available events block nothing is dropped, because Google makes all-day events "available"
+  by default and the salon's leave is all-day. Cancelled events are skipped; an all-day event
+  covers the whole salon day(s).
+
+  Stylist and leave events are stored as busy time (`ExternalBusyBlock`, source `GOOGLE`): they
+  close the stylist's hours on `/book` and are exported in that stylist's outbound busy feed, so
+  Fresha stops selling the hour too (as #72). **Walk-ins (the no-stylist colour) and notes are
+  never sent to Fresha**: the feed says only "Busy", never a title. Only titles and times are
+  copied, never descriptions, attendees or locations.
+
+  **Admin → Schedule shows the whole diary** (30 days back, 90 ahead), read-only, with Google's
+  titles and colours: stylist and leave entries in their stylists' columns, walk-ins in a "No
+  stylist" column, notes in a strip above the grid; a click opens the entry with "Open in Google
+  Calendar". Diary entries are changed in Google, never in Admin.
+- **The website's own events are never part of the diary** (a website booking written in Tomato
+  never takes a chair), and **the website wins**: an edit of one in Google (time, title, notes,
+  colour) or its deletion is written back, for bookings from 7 days back onwards too. Staff
+  change website bookings in **Admin**, never in Google. If Google keeps changing an event,
   the website writes it back at most once every 10 minutes. Until then the booking counts
   under "Bookings Google would not take" on Admin → Integrations (§7).
 - **Real time.** Google calls `POST /api/webhooks/google-calendar` for every change; the
@@ -39,7 +75,8 @@ How the website shares the salon's appointment diary with Google Calendar, how t
   missed, the 30-minute calendar-sync run (staff hours, §3) pulls anyway.
 
 Google is **not** a calendar connection in Admin → Integrations (no per-stylist links); that
-page only shows its status, a "Sync now" button and "Clear Google busy time" (§6).
+page only shows its status, a "Sync now" button, "Clear Google busy time and diary copy" (§6) and the diary
+colours (§2a).
 
 ---
 
@@ -48,8 +85,8 @@ page only shows its status, a "Sync now" button and "Clear Google busy time" (§
 1. **Google Cloud Console** → the project that already holds the Google sign-in client
    ("Continue with Google"): **`harbourhair`** (`harbourhair-511821`), signed in as
    harbourhairuk@gmail.com. APIs & Services → Library → **Google Calendar API** → Enable.
-   (Done 2026-10-16: service account `harbour-website-calendar@harbourhair-511821.iam.gserviceaccount.com`,
-   calendar "Harbour website bookings" on harbourhairuk@gmail.com.)
+   (Done 2026-10-16: service account `harbour-website-calendar@harbourhair-511821.iam.gserviceaccount.com`.
+   #72's calendar "Harbour website bookings" on harbourhairuk@gmail.com is retired at the switch, §2b.)
 2. APIs & Services → Credentials → Create credentials → **Service account**. Name it
    `harbour-website-calendar`; no project roles are needed. Copy its email
    (`…@….iam.gserviceaccount.com`): this is `GOOGLE_CALENDAR_SA_EMAIL`.
@@ -57,17 +94,62 @@ page only shows its status, a "Sync now" button and "Clear Google busy time" (§
    `private_key` (a PEM). **Never commit this file** or paste it into a chat, a ticket or
    the repo; delete the download once it is in Vercel (§3), or keep it only in the git-ignored
    `.secrets/` folder (mode 600; `.gitignore` covers `.secrets/` and `client_secret_*.json`).
-4. Sign in to Google Calendar as **harbourhairuk@gmail.com** (the salon's account):
-   - Other calendars → Create new calendar → name it **Harbour website bookings**.
-   - Its Settings and sharing → **Share with specific people** → add the service account's
-     email with the permission **Make changes to events**.
-   - Same page → Integrate calendar → copy the **Calendar ID**
-     (`…@group.calendar.google.com`): this is `GOOGLE_CALENDAR_ID`.
-5. Staff who want to add busy time need access to that calendar too (share it with them,
-   "Make changes to events"). They add events there, not on their own calendars.
+4. Sign in to Google Calendar as **harbourhairuk@gmail.com** (the salon's account) and share
+   the **HarbourHair** calendar (its Settings and sharing → **Share with specific people**)
+   with the service account's email with **Make changes and see all event details**
+   (變更和查看所有活動詳情). Its Calendar ID is `harbourhairuk@gmail.com`: this is
+   `GOOGLE_CALENDAR_ID`. (Done 2026-10-17.)
+5. Staff keep their own access to HarbourHair, as before: they keep the diary exactly as they
+   always have, and the colours and names in §2a decide what the website makes of each event.
 6. **Only staff write to this calendar.** Never point Fresha's, or any other app's, Google
-   sync at it: their events would land in it as busy time and, naming no stylist, block
-   every stylist.
+   sync at it: a foreign app's events would appear in the diary and, in a stylist's colour or
+   naming one, block that stylist.
+
+### 2a. Diary colours and names
+
+Set these before the sync reads HarbourHair (§2b), and press **Sync now** after any change:
+they are applied by the next sync.
+
+- **Admin → Stylists**, each stylist → Google colour and Google names (comma-separated; the
+  stylist's own name always counts):
+
+  | Stylist | Google colour | Google names |
+  |---|---|---|
+  | Ivan | Lavender | |
+  | Funky | Sage | `F` |
+  | Lox | Banana | `L` |
+  | Shania | none | `天` |
+
+  Each active stylist needs a colour of their own, and the no-stylist and leave colours below
+  cannot be a stylist's. A stylist with no colour (Shania) is blocked only by events whose
+  title names her (`天off`), and her website bookings are written in the no-stylist colour
+  (they are the website's own, so they never take a chair).
+- **Admin → Integrations → Google Calendar → Diary colours**: no stylist **Tomato**, leave
+  **Graphite** (the defaults); the two must differ. Then **Sync now**.
+
+### 2b. Switching to HarbourHair (rollout of the diary mirror)
+
+In this order:
+
+1. Merge and deploy. The production deploy applies `20261017120000_google_diary_mirror`
+   itself; apply it to the **preview** database by hand (§3, "Migration"). Little changes for
+   staff yet: the sync still uses "Harbour website bookings" (its staff events are now read by
+   the rules in §1). The first run after the deploy
+   records that calendar, and in doing so forgets its watch channel without stopping it (§4a):
+   press **Sync now** to make a new one at once (until then, or the 03:15 UTC run, Admin →
+   Operations shows `GOOGLE_CHANNEL_MISSING`).
+2. Share HarbourHair with the service account (§2.4). Done 2026-10-17.
+3. Set every stylist's Google colour and names, and the diary colours (§2a), **before**
+   switching. The first pull of HarbourHair sorts the whole diary by them, and the first push
+   writes every booking in its stylist's colour: without them, the customers in a stylist's
+   colour would be notes that block nothing.
+4. Vercel **Production**: `GOOGLE_CALENDAR_ID` = `harbourhairuk@gmail.com`
+   (`vercel env rm GOOGLE_CALENDAR_ID production`, then `vercel env add GOOGLE_CALENDAR_ID
+   production`; keep it Sensitive), then redeploy (merge a commit to `main`).
+5. Reload **Admin → Integrations → Google Calendar**: it must show the first characters of
+   the new calendar id. Then press **Sync now**: it writes every booking in the window to
+   HarbourHair, reads the diary and watches HarbourHair (§4a).
+6. Verify (§4). Then the owner deletes "Harbour website bookings" (§4.8).
 
 ---
 
@@ -76,7 +158,7 @@ page only shows its status, a "Sync now" button and "Clear Google busy time" (§
 | Variable | Value |
 |---|---|
 | `GOOGLE_CALENDAR_SYNC_ENABLED` | `true` (kill-switch: anything else, or unset, turns everything off) |
-| `GOOGLE_CALENDAR_ID` | the Calendar ID from §2.4 |
+| `GOOGLE_CALENDAR_ID` | `harbourhairuk@gmail.com`, the HarbourHair calendar (§2.4); changing it: §4a |
 | `GOOGLE_CALENDAR_SA_EMAIL` | the service account's email |
 | `GOOGLE_CALENDAR_SA_PRIVATE_KEY` | the PEM `private_key` from the JSON key. A single line with the literal two characters `\n` between lines (exactly as in the JSON file); the website turns them back into newlines |
 | `GOOGLE_CALENDAR_WEBHOOK_SECRET` | `openssl rand -hex 32` |
@@ -107,9 +189,10 @@ vercel env add GOOGLE_CALENDAR_WEBHOOK_SECRET production
   03:15 UTC run remain.
 - Env changes reach the runtime only after a **redeploy** (merge a commit to `main`; production
   is deployed by GitHub Actions only, never `vercel --prod`).
-- **Migration:** the production deploy applies `20261016150000_google_calendar_sync` itself.
-  Apply it to the **preview** database by hand after the merge (`pnpm db:vercel:deploy` with the
-  preview env), or every PR's "Deploy Preview" fails (CLAUDE.md, "Preview deployments").
+- **Migration:** the production deploy applies `20261016150000_google_calendar_sync` and
+  `20261017120000_google_diary_mirror` itself. Apply them to the **preview** database by hand
+  after the merge (`pnpm db:vercel:deploy` with the preview env), or every PR's "Deploy
+  Preview" fails (CLAUDE.md, "Preview deployments").
 - The webhook needs the public URL `https://www.harbourhair.co.uk/api/webhooks/google-calendar`
   to stay reachable: Google cannot pass a challenge, so no Vercel Firewall rule or bot
   protection may challenge or deny it (`infra/vercel-firewall/README.md`).
@@ -124,26 +207,55 @@ vercel env add GOOGLE_CALENDAR_WEBHOOK_SECRET production
    booking in the window to Google and reads Google once. Expect "Google Calendar sync
    finished." and a channel expiry about 7 days away. Reload: "Bookings Google would not take"
    must be 0.
-3. **Booking to Google.** Make a test booking (Admin → Schedule → a phone booking is enough).
-   Within seconds an event for it appears on "Harbour website bookings" with the right
-   stylist and time.
-4. **Google to booking.** In that calendar add an event titled **`Ivan: test`** for a slot in
-   the next few days, with the stylist's name **exactly as in Admin → Stylists** in place of
-   `Ivan` (the whole name, followed by `:`; §1 lists what may follow it: anything else, e.g.
-   `Ivan, test`, blocks the **whole salon**). Within about a minute that stylist's slot is
-   greyed out for that time on `/book` (booking may still be closed in production: check
-   Admin → Schedule, or `/book` on a day it is open), and the stylist's Fresha calendar
-   shows it as **Busy** on Fresha's own import schedule, after the busy feed refreshes
-   (Fresha imports the website's busy feed).
-5. **Clean up.** Delete the `Ivan: test` event, then cancel the test booking. Both events
-   disappear from Google; the slot reopens.
-6. Check Admin → Operations shows no Google problem.
+3. **The diary.** Open **Admin → Schedule** on a week you know well: every HarbourHair event
+   appears with the same title and colour as in Google; customers in their stylist's column,
+   red events in "No stylist", notes in the strip above the grid.
+4. **A red event takes a chair.** Find a red (no-stylist) event at a time when only one
+   stylist works and is free: that stylist's slot is shown taken in the slot grid (`/book`,
+   once booking is open). While booking is closed in production, start a phone booking for
+   that stylist at that time in Admin → Schedule instead: it warns "Leaves too few stylists
+   for the Google diary's bookings without a stylist" with "Book anyway". Do not book it.
+5. **Booking to Google.** Make a test booking (Admin → Schedule → a phone booking is enough).
+   Within seconds an event for it appears in HarbourHair with the right stylist and time, **in
+   that stylist's Google colour**. Cancel it: the event disappears from Google.
+6. **Leave to booking.** In HarbourHair add a Graphite event titled **`Ivan off test`** for a
+   slot in the next few days, with a stylist's name or Google name in place of `Ivan` (§1 lists
+   how names are read). Within about a minute it shows in that stylist's column in Admin →
+   Schedule, the slot is blocked, and the stylist's Fresha calendar shows it as **Busy** on
+   Fresha's own import schedule, after the busy feed refreshes. Delete the event: the slot
+   reopens.
+7. Check Admin → Operations shows no Google problem.
+8. **Retire the old calendar.** Once all of the above passes, the owner deletes "Harbour website
+   bookings" (signed in as harbourhairuk@gmail.com, its Settings → Remove calendar → Delete):
+   the website no longer follows the copies in it.
 
 **Fresha:** link each stylist's Fresha calendar import to their **own** Google calendar if
-they use one, **never** to the shared "Harbour website bookings" calendar. Importing the
-shared calendar into Fresha would hand every customer's name and phone number to Fresha.
-Nor may Fresha's Google sync, or any other app's, write **into** the shared calendar: only
-staff write to it (§2.6).
+they use one, **never** to HarbourHair. Importing HarbourHair into Fresha would hand every
+customer's name and phone number to Fresha; the busy time already reaches Fresha through each
+stylist's busy feed. Nor may Fresha's Google sync, or any other app's, write **into**
+HarbourHair: only staff write to it (§2.6).
+
+---
+
+## 4a. Changing the calendar
+
+`GoogleCalendarSyncState.calendarId` records which calendar the website's own records belong to
+(which bookings it wrote, and its watch channel). When `GOOGLE_CALENDAR_ID` names another
+calendar, or none is recorded yet (the first run after the diary mirror shipped), the next run
+(the push, a pull, the 30-minute run or Sync now) starts over once
+(`services/google-calendar-guard.ts`):
+
+- it forgets which bookings were written and the watch channel, then writes every booking in
+  the window (7 days back onwards) to the new calendar;
+- **Sync now** (or the 03:15 UTC run) then watches the new calendar;
+- the old channel is forgotten **without being stopped**: it keeps watching the old calendar
+  until it expires, within 7 days. A change there only makes the website read the configured
+  calendar once more, which is harmless, and nothing at all once the old calendar is deleted;
+- **events in the old calendar are never deleted** by the website: delete that calendar by hand
+  once the new one is verified (§4.8).
+
+To change it: replace `GOOGLE_CALENDAR_ID` on Production, redeploy, reload Admin →
+Integrations (the new id's first characters), press Sync now, verify (§4).
 
 ---
 
@@ -175,25 +287,32 @@ Cloud.
    **Turning it back on** needs a redeploy with the variable set to `true`, then **Sync now**
    (it makes a new channel at once and catches up the whole window).
 2. **Clear the busy time read from Google.** Turning the sync off stops reading Google, but
-   the busy time already read from it stays. It keeps blocking those hours on `/book` and in
-   Admin → Schedule. It also stays in each stylist's busy feed, **so Fresha keeps those hours
-   blocked too**, until each period has passed. To undo that at once, press **Admin →
-   Integrations → Google Calendar → Clear Google busy time**.
+   the busy time already read from it stays. It keeps blocking those hours on `/book` (and the
+   diary stays on Admin → Schedule, its walk-ins still taking chairs). It also stays in each
+   stylist's busy feed, **so Fresha keeps those hours blocked too**, until each period has passed. To undo that at once, press **Admin →
+   Integrations → Google Calendar → Clear Google busy time and diary copy**.
    - Administrators only. It asks to confirm, and the audit log records it as
-     `INTEGRATION.GOOGLE_BUSY_CLEARED`, with the number of periods removed.
+     `INTEGRATION.GOOGLE_BUSY_CLEARED`, with the number of periods removed (`removed`) and of
+     diary entries removed (`diaryRemoved`).
    - It deletes every busy period read from Google. Fresha and Treatwell busy time is untouched.
+   - It also deletes the website's copy of the diary: Admin → Schedule stops showing it, and
+     walk-ins stop taking chairs.
    - It refreshes the busy feeds, so Fresha frees the hours on its next import.
    - Bookings are not affected.
 
    The button also works while the sync is on. Then, though, the next check of Google (a
-   change in Google, or the 30-minute run) reads the calendar's busy time again.
+   change in Google, or the 30-minute run) reads the calendar's busy time and diary again.
+   Even if it is never pressed, housekeeping (daily, 03:15 UTC) deletes each diary entry 30
+   days after it ends, with the sync off too.
 3. There is no "stop channel" button. If you want the channel stopped cleanly rather than
    left to run out, ask a developer to stop it while the variables are still set.
-4. Events already in Google stay there, with their customer details, and nothing deletes them
-   any more once the sync is off. **When the sync is turned off for good, delete the "Harbour
-   website bookings" calendar** (signed in as the salon's account): otherwise the copies
-   outlive the 12 months the privacy notice promises. Removing the service account's access
-   alone does not remove them.
+4. Events the website wrote stay in HarbourHair, with their customer details, and nothing
+   deletes them any more once the sync is off. HarbourHair is the salon's own diary and cannot
+   be deleted like "Harbour website bookings" could, so **when the sync is turned off for good,
+   delete the website's events by hand** as each passes 12 months after its appointment (they
+   are titled `Stylist · Customer · Service` and their description ends "Change this booking
+   in Admin. Changes made here are undone."): otherwise the copies outlive the 12 months the
+   privacy notice promises. Removing the service account's access alone does not remove them.
 
 ---
 
@@ -245,3 +364,9 @@ Cloud.
 - Erasing a customer (Admin → Users, `docs/data-erasure.md`) re-renders their events with the
   anonymised name and without phone or notes; if Google is unreachable the calendar-sync cron
   retries.
+- **The diary copy** (`GoogleDiaryEntry`) holds the titles staff type in HarbourHair, which may
+  hold customers' names and phone numbers, with their times and colours. It is admin-only (Admin
+  → Schedule; never a public page, the busy feed or an email) and each entry is deleted 30 days
+  after it ends, by the pull and by housekeeping (also with the sync off). The privacy notice
+  says so (`legal.privacy.retention.googleDiary`). Erasure cannot find a customer in it:
+  see `docs/data-erasure.md`.

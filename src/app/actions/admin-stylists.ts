@@ -2,7 +2,8 @@
 
 import { z } from 'zod';
 import { revalidateAllLocales } from '@/i18n/revalidate';
-import { isCalendarColorKey } from '@/app/lib/calendar-colors';
+import { DEFAULT_LEAVE_COLOR_ID, DEFAULT_UNASSIGNED_COLOR_ID, isCalendarColorKey, isGoogleColorId } from '@/app/lib/calendar-colors';
+import { parseGoogleAliases } from '@/app/lib/google-aliases';
 import { revalidatePath, updateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
@@ -27,6 +28,22 @@ const calendarColorField = z
   .refine((v) => !v || isCalendarColorKey(v), 'COLOUR')
   .transform((v) => (v ? v : null));
 
+const googleColorField = z
+  .string()
+  .trim()
+  .optional()
+  .refine((v) => !v || isGoogleColorId(v), 'GOOGLE_COLOUR')
+  .transform((v) => (v ? v : null));
+
+const googleAliasesField = z
+  .string()
+  .max(200, 'GOOGLE_NAMES')
+  .optional()
+  .transform((v) => {
+    const aliases = parseGoogleAliases(v);
+    return aliases.length > 0 ? aliases.join(', ') : null;
+  });
+
 /**
  * Profile SETTINGS — saved immediately, in both languages at once. The name
  * is never translated. The profile text (role, bio, tagline, specialties,
@@ -36,6 +53,8 @@ const calendarColorField = z
  */
 const stylistSchema = z.object({
   calendarColor: calendarColorField,
+  googleColorId: googleColorField,
+  googleAliases: googleAliasesField,
   name: z.string('NAME').trim().min(2, 'NAME').max(100, 'NAME'),
   slug: z
     .string()
@@ -79,6 +98,22 @@ function parseSettings(formData: FormData) {
   return stylistSchema.safeParse(entries);
 }
 
+/**
+ * A Google colour belongs to one active stylist (spec §3), and never to the
+ * no-stylist or leave colour: an event in it would be read as that stylist's.
+ */
+async function googleColourProblem(colorId: string | null, stylistId: string | null): Promise<StylistActionState | null> {
+  if (!colorId) return null;
+  const holder = await prisma.stylist.findFirst({
+    where: { isActive: true, googleColorId: colorId, ...(stylistId ? { id: { not: stylistId } } : {}) },
+    select: { name: true },
+  });
+  if (holder) return errorState('GOOGLE_COLOUR_TAKEN', { stylist: holder.name });
+  const settings = await prisma.siteSettings.findUnique({ where: { id: 'singleton' }, select: { googleUnassignedColorId: true, googleLeaveColorId: true } });
+  const reserved = [settings?.googleUnassignedColorId ?? DEFAULT_UNASSIGNED_COLOR_ID, settings?.googleLeaveColorId ?? DEFAULT_LEAVE_COLOR_ID];
+  return reserved.includes(colorId) ? errorState('GOOGLE_COLOUR_RESERVED') : null;
+}
+
 function refreshStylistPages(...slugs: (string | null)[]) {
   revalidateAllLocales(revalidatePath, '/stylists');
   for (const slug of new Set(slugs)) if (slug) revalidateAllLocales(revalidatePath, `/stylists/${slug}`);
@@ -102,6 +137,8 @@ export async function createStylist(
   if (!slug) return errorState('SLUG_EMPTY');
   const duplicate = await prisma.stylist.findUnique({ where: { slug }, select: { id: true } });
   if (duplicate) return errorState('SLUG_TAKEN', { slug });
+  const colourProblem = await googleColourProblem(parsed.data.googleColorId, null);
+  if (colourProblem) return colourProblem;
 
   let contentFields: unknown = null;
   try {
@@ -125,6 +162,8 @@ export async function createStylist(
           yearsExperience: parsed.data.yearsExperience ?? null,
           treatwellExternalId: parsed.data.treatwellExternalId,
           calendarColor: parsed.data.calendarColor,
+          googleColorId: parsed.data.googleColorId,
+          googleAliases: parsed.data.googleAliases,
           role: typeof english.role === 'string' ? english.role : '',
           bio: optionalText(english.bio),
           tagline: optionalText(english.tagline),
@@ -166,6 +205,8 @@ export async function updateStylist(
     const dup = await prisma.stylist.findUnique({ where: { slug }, select: { id: true } });
     if (dup) return errorState('SLUG_TAKEN', { slug });
   }
+  const colourProblem = await googleColourProblem(parsed.data.googleColorId, id);
+  if (colourProblem) return colourProblem;
 
   await prisma.stylist.update({
     where: { id },
@@ -177,6 +218,8 @@ export async function updateStylist(
       yearsExperience: parsed.data.yearsExperience ?? null,
       treatwellExternalId: parsed.data.treatwellExternalId,
       calendarColor: parsed.data.calendarColor,
+      googleColorId: parsed.data.googleColorId,
+      googleAliases: parsed.data.googleAliases,
     },
   });
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { ScheduleWeekGrid, type WeekStylist } from './ScheduleWeekGrid';
 import { AppointmentDialog, type DialogService, type DialogTarget } from './AppointmentDialog';
@@ -8,7 +8,9 @@ import { withLiveDeposit } from './dialog-target';
 import type { CalendarAppointment, PendingAppointment, RescheduleRequestRow } from '@/app/services/admin-calendar-data';
 import { RescheduleRequestActions } from './RescheduleRequestActions';
 import { ScheduleDayGrid, type GridAppointment, type GridBusyBlock, type GridStylist } from './ScheduleDayGrid';
-import { resolveCalendarColor } from '@/app/lib/calendar-colors';
+import { googleEventSwatch, stylistSwatch } from '@/app/lib/calendar-colors';
+import { diaryForDay, diaryRange, type CalendarDiaryEntry, type PlacedDiaryEntry } from '@/app/lib/calendar-diary-display';
+import { GoogleDiaryPanel } from './GoogleDiaryPanel';
 import { formatSalonTime, resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import type { CalendarView } from '@/app/services/admin-calendar-range';
 import { moveAppointmentByAdmin } from '@/app/actions/admin-schedule';
@@ -37,6 +39,7 @@ type RosterStylist = {
   id: string;
   name: string;
   calendarColor: string | null;
+  googleColorId: string | null;
   availabilities: { dayOfWeek: number; startTime: string; endTime: string; isOff: boolean }[];
 };
 
@@ -253,7 +256,7 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
                     className={`text-[10px] truncate rounded px-1 py-0.5 ${
                       appt.status === 'PENDING'
                         ? 'bg-amber-600 text-white'
-                        : `${resolveCalendarColor(appt.stylist.calendarColor).fill} ${resolveCalendarColor(appt.stylist.calendarColor).text}`
+                        : `${stylistSwatch(appt.stylist).fill} ${stylistSwatch(appt.stylist).text}`
                     }`}
                   >
                     {formatSalonClock(t.locale, new Date(appt.date))} {appt.user.name}
@@ -276,19 +279,27 @@ const MonthView = ({ currentDate, selectedDate, setSelectedDate, getDayAppointme
 interface DayViewProps {
   dateStr: string;
   dayAppts: AppointmentWithDetails[];
-  busyBlocks: ReturnType<typeof calendarBusyForDay>;
+  busyBlocks: ReturnType<typeof calendarBusyForDay<GridBusyBlock>>;
+  /** The day's Google diary entries, then its notes. */
+  diary: PlacedDiaryEntry[];
   stylists: RosterStylist[];
   onRefresh: () => void;
   onEdit: (appointment: AppointmentWithDetails) => void;
+  onSelectDiary: (entry: CalendarDiaryEntry) => void;
 }
 
-/** "3 appointments · 1 imported" */
-function dayCountLabel(t: ScheduleT, appointments: number, imported: number): string {
-  const count = t('day.appointments', { count: appointments });
-  return imported > 0 ? `${count} · ${t('day.imported', { count: imported })}` : count;
+/** "3 appointments · 1 imported · 2 Google diary bookings" */
+function dayCountLabel(t: ScheduleT, appointments: number, imported: number, diary: PlacedDiaryEntry[]): string {
+  // The diary's bookings only: its leave and notes are not appointments.
+  const diaryBookings = diary.filter((entry) => entry.kind === 'STYLIST' || entry.kind === 'UNASSIGNED').length;
+  return [
+    t('day.appointments', { count: appointments }),
+    ...(imported > 0 ? [t('day.imported', { count: imported })] : []),
+    ...(diaryBookings > 0 ? [t('day.googleDiary', { count: diaryBookings })] : []),
+  ].join(' · ');
 }
 
-function BusyAgenda({ blocks, stylists, dayKey }: { blocks: ReturnType<typeof calendarBusyForDay>; stylists: RosterStylist[]; dayKey: string }) {
+function BusyAgenda({ blocks, stylists, dayKey }: { blocks: ReturnType<typeof calendarBusyForDay<GridBusyBlock>>; stylists: RosterStylist[]; dayKey: string }) {
   const t = useT('adminSchedule');
   const weekday = new Date(`${dayKey}T12:00:00Z`).getUTCDay();
   const hoursOf = (entry: RosterStylist | undefined) => {
@@ -315,17 +326,37 @@ function BusyAgenda({ blocks, stylists, dayKey }: { blocks: ReturnType<typeof ca
   </ul>;
 }
 
-const DayView = ({ dateStr, dayAppts, busyBlocks, stylists, onRefresh, onEdit }: DayViewProps) => {
+/** The phone's view of the salon's Google diary for one day: a line per entry, each opening the read-only panel. */
+function DiaryAgenda({ entries, onSelect }: { entries: PlacedDiaryEntry[]; onSelect: (entry: CalendarDiaryEntry) => void }) {
+  const t = useT('adminSchedule');
+  if (entries.length === 0) return null;
+  return <ul className="divide-y divide-zinc-100 border-t border-zinc-100">
+    {entries.map((entry) => (
+      <li key={entry.id}>
+        <button type="button" onClick={() => onSelect(entry)} className="flex w-full items-start gap-2 px-4 py-2 text-left text-sm hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-zinc-900">
+          <span aria-hidden="true" className={`mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full ${googleEventSwatch(entry.colorId).swatch}`} />
+          <span className="w-24 flex-shrink-0 font-medium tabular-nums text-zinc-900">{entry.allDay ? t('diary.allDay') : diaryRange(entry)}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block break-words text-zinc-900">{entry.title || t('diary.noTitle')}</span>
+            <span className="block text-xs text-zinc-500">{t('diary.google')} · {t(`diary.kind.${entry.kind}`)}</span>
+          </span>
+        </button>
+      </li>
+    ))}
+  </ul>;
+}
+
+const DayView = ({ dateStr, dayAppts, busyBlocks, diary, stylists, onRefresh, onEdit, onSelectDiary }: DayViewProps) => {
   const t = useT('adminSchedule');
   const tp = useT('pricing');
   return (
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden flex flex-col">
       <div className="p-4 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center">
           <h3 className="font-bold text-lg">{formatCalendarDay(t.locale, dateStr, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
-          <span className="text-sm text-zinc-500">{dayCountLabel(t, dayAppts.length, busyBlocks.length)}</span>
+          <span className="text-sm text-zinc-500">{dayCountLabel(t, dayAppts.length, busyBlocks.length, diary)}</span>
       </div>
       <div className="divide-y divide-zinc-100 overflow-y-auto max-h-[600px]">
-          {dayAppts.length === 0 && busyBlocks.length === 0 ? (
+          {dayAppts.length === 0 && busyBlocks.length === 0 && diary.length === 0 ? (
               <div className="p-12 text-center text-zinc-500">{t('day.empty')}</div>
           ) : (
               dayAppts.map(appt => {
@@ -380,6 +411,7 @@ const DayView = ({ dateStr, dayAppts, busyBlocks, stylists, onRefresh, onEdit }:
               })
           )}
           <BusyAgenda blocks={busyBlocks} stylists={stylists} dayKey={dateStr} />
+          <DiaryAgenda entries={diary} onSelect={onSelectDiary} />
       </div>
     </div>
   );
@@ -393,6 +425,7 @@ export function ScheduleCalendar({
   rescheduleRequests,
   stylists,
   busyBlocks,
+  diaryEntries = [],
   services = [],
   monthCounts = [],
   pendingNext = null,
@@ -406,6 +439,8 @@ export function ScheduleCalendar({
   rescheduleRequests: RescheduleRequestRow[];
   stylists: RosterStylist[];
   busyBlocks: BusyBlockRow[];
+  /** The salon's Google diary for the day or week on show (admin-calendar-data.ts). */
+  diaryEntries?: CalendarDiaryEntry[];
   services?: DialogService[];
   monthCounts?: number[];
   pendingNext?: string | null;
@@ -425,6 +460,8 @@ export function ScheduleCalendar({
   // survives an interface-language switch; see i18n/draft-store.
   const [localSelection, setLocalSelection] = useDraftState<{ month: string; date: string } | null>('schedule-board:selection', null);
   const [dialog, setDialog] = useDraftState<DialogTarget | null>('schedule-board:dialog', null);
+  // The Google diary entry whose read-only panel is open.
+  const [diaryOpen, setDiaryOpen] = useState<CalendarDiaryEntry | null>(null);
   const selectedDate = localSelection?.month === dateStr.slice(0, 7) ? new Date(`${localSelection.date}T12:00:00`) : currentDate;
   const viewMode = view;
   const navigate = (date: Date, nextView: CalendarView = viewMode) => {
@@ -533,6 +570,7 @@ export function ScheduleCalendar({
     id: stylist.id,
     name: stylist.name,
     calendarColor: stylist.calendarColor,
+    googleColorId: stylist.googleColorId,
     availability: null,
     availabilityByWeekday: Object.fromEntries(
       stylist.availabilities
@@ -573,9 +611,12 @@ export function ScheduleCalendar({
   const closeDialog = () => setDialog(null);
   const savedDialog = () => { setDialog(null); router.refresh(); };
 
+  const dayDiary = diaryForDay(diaryEntries, dayKey);
   const busyStylistIds = new Set([
     ...gridAppointments.map((appt) => appt.stylistId),
     ...gridBusyBlocks.map((block) => block.stylistId),
+    // A stylist the Google diary has booked or away that day gets a column even when off in our rota.
+    ...dayDiary.placed.filter((entry) => entry.kind === 'STYLIST' || entry.kind === 'LEAVE').flatMap((entry) => entry.stylistIds),
   ]);
   const gridStylists: GridStylist[] = stylists
     .map((stylist) => {
@@ -584,6 +625,7 @@ export function ScheduleCalendar({
         id: stylist.id,
         name: stylist.name,
         calendarColor: stylist.calendarColor,
+        googleColorId: stylist.googleColorId,
         availability: availability ? { startTime: availability.startTime, endTime: availability.endTime } : null,
       };
     })
@@ -739,6 +781,8 @@ export function ScheduleCalendar({
                 stylists={weekStylists}
                 appointments={weekAppointments}
                 busyBlocks={gridBusyBlocks}
+                diaryEntries={diaryEntries}
+                onSelectDiary={setDiaryOpen}
                 onMove={moveAppointmentByAdmin}
                 onMoved={() => router.refresh()}
                 onSelect={openEditor}
@@ -749,6 +793,8 @@ export function ScheduleCalendar({
               {weekKeys.map((key) => {
                 const dayAppts = getDayAppointments(new Date(`${key}T12:00:00`));
                 const dayBusy = calendarBusyForDay(gridBusyBlocks, key);
+                const diary = diaryForDay(diaryEntries, key);
+                const diaryLines = [...diary.placed, ...diary.notes];
                 return (
                   <div key={key} className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden">
                     <button
@@ -757,9 +803,9 @@ export function ScheduleCalendar({
                       className={`flex w-full items-center justify-between px-4 py-2 text-left ${key === salonDateKey(new Date()) ? 'bg-zinc-900 text-white' : 'bg-zinc-50 text-zinc-900'}`}
                     >
                       <span className="font-semibold">{formatCalendarDay(locale, key, { weekday: 'long', day: 'numeric', month: 'short' })}</span>
-                      <span className="text-xs opacity-80">{dayCountLabel(t, dayAppts.length, dayBusy.length)}</span>
+                      <span className="text-xs opacity-80">{dayCountLabel(t, dayAppts.length, dayBusy.length, diaryLines)}</span>
                     </button>
-                    {dayAppts.length === 0 && dayBusy.length === 0 ? (
+                    {dayAppts.length === 0 && dayBusy.length === 0 && diaryLines.length === 0 ? (
                       <p className="px-4 py-3 text-sm text-zinc-500">{t('day.nothingBooked')}</p>
                     ) : (
                       <ul className="divide-y divide-zinc-100">
@@ -776,6 +822,7 @@ export function ScheduleCalendar({
                       </ul>
                     )}
                     <BusyAgenda blocks={dayBusy} stylists={stylists} dayKey={key} />
+                    <DiaryAgenda entries={diaryLines} onSelect={setDiaryOpen} />
                   </div>
                 );
               })}
@@ -792,6 +839,8 @@ export function ScheduleCalendar({
                 stylists={gridStylists}
                 appointments={gridAppointments}
                 busyBlocks={gridBusyBlocks}
+                diaryEntries={diaryEntries}
+                onSelectDiary={setDiaryOpen}
                 onMove={moveAppointmentByAdmin}
                 onMoved={() => router.refresh()}
                 onSelect={openEditor}
@@ -803,9 +852,11 @@ export function ScheduleCalendar({
                 dateStr={dateStr}
                 dayAppts={getDayAppointments(currentDate)}
                 busyBlocks={calendarBusyForDay(gridBusyBlocks, dateStr)}
+                diary={[...dayDiary.placed, ...dayDiary.notes]}
                 stylists={stylists}
                 onRefresh={() => router.refresh()}
                 onEdit={openEditor}
+                onSelectDiary={setDiaryOpen}
               />
             </div>
           </>
@@ -862,6 +913,13 @@ export function ScheduleCalendar({
           onClose={closeDialog}
           onSaved={savedDialog}
           onRefresh={() => router.refresh()}
+        />
+      )}
+      {diaryOpen && (
+        <GoogleDiaryPanel
+          entry={diaryOpen}
+          stylistNames={Object.fromEntries(stylists.map((s) => [s.id, s.name]))}
+          onClose={() => setDiaryOpen(null)}
         />
       )}
     </div>

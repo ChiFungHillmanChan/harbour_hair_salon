@@ -24,7 +24,7 @@ const draftStore = (useState: (value: unknown) => unknown) => ({
 const navigation = { useLocalizedRouter: () => ({ push: () => undefined, refresh: () => undefined }) };
 function render(view: 'Day' | 'Week', source: string, start: string, end: string, dayKey = '2026-10-23', duplicate = false) {
   const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(
-    `src/components/admin/Schedule${view}Grid.tsx`, { react: hooks, '@/i18n/client': i18nClient, './MoveConfirmDialog': { MoveConfirmDialog: () => null } },
+    `src/components/admin/Schedule${view}Grid.tsx`, { react: hooks, '@/i18n/client': i18nClient, './MoveConfirmDialog': { MoveConfirmDialog: () => null }, './GoogleDiaryNotes': { GoogleDiaryNotes: () => null } },
   );
   return elements(grid[`Schedule${view}Grid`]({
     day: new Date(`${dayKey}T12:00:00Z`), dayKeys: [dayKey], todayKey: dayKey,
@@ -81,7 +81,7 @@ for (const view of ['Day', 'Week'] as const) {
 
 test('Day calendar: a 10:00–20:30 Pause for a stylist off in our rota is Unavailable against the salon’s hours', () => {
   const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(
-    'src/components/admin/ScheduleDayGrid.tsx', { react: hooks, '@/i18n/client': i18nClient, './MoveConfirmDialog': { MoveConfirmDialog: () => null } },
+    'src/components/admin/ScheduleDayGrid.tsx', { react: hooks, '@/i18n/client': i18nClient, './MoveConfirmDialog': { MoveConfirmDialog: () => null }, './GoogleDiaryNotes': { GoogleDiaryNotes: () => null } },
   );
   const nodes = elements(grid.ScheduleDayGrid({
     day: new Date('2026-10-06T12:00:00Z'),
@@ -98,7 +98,7 @@ test('Day calendar: a 10:00–20:30 Pause for a stylist off in our rota is Unava
 
 test('Week calendar: a Pause covering the stylist’s own hours is Unavailable; a lunch block is not', () => {
   const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(
-    'src/components/admin/ScheduleWeekGrid.tsx', { react: hooks, '@/i18n/client': i18nClient, './MoveConfirmDialog': { MoveConfirmDialog: () => null } },
+    'src/components/admin/ScheduleWeekGrid.tsx', { react: hooks, '@/i18n/client': i18nClient, './MoveConfirmDialog': { MoveConfirmDialog: () => null }, './GoogleDiaryNotes': { GoogleDiaryNotes: () => null } },
   );
   const nodes = elements(grid.ScheduleWeekGrid({
     day: new Date('2026-10-06T12:00:00Z'), dayKeys: ['2026-10-06'], todayKey: '2026-10-06',
@@ -124,7 +124,7 @@ for (const view of ['day', 'week']) {
         '@/i18n/draft-store': draftStore(hooks.useState),
         './ScheduleDayGrid': { ScheduleDayGrid: () => null },
         './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-        './AppointmentDialog': { AppointmentDialog: () => null },
+        './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
         './RescheduleRequestActions': { RescheduleRequestActions: () => null },
         '@/app/actions/admin-schedule': {},
         '@/app/actions/admin': {},
@@ -159,7 +159,7 @@ test('mobile day agenda says a stylist on a whole-day Fresha block is unavailabl
       '@/i18n/draft-store': draftStore(hooks.useState),
       './ScheduleDayGrid': { ScheduleDayGrid: () => null },
       './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-      './AppointmentDialog': { AppointmentDialog: () => null },
+      './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
       './RescheduleRequestActions': { RescheduleRequestActions: () => null },
       '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
     },
@@ -195,7 +195,7 @@ for (const view of ['day', 'week', 'month']) {
         '@/i18n/draft-store': draftStore(useState),
         './ScheduleDayGrid': { ScheduleDayGrid: () => null },
         './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-        './AppointmentDialog': { AppointmentDialog: () => null },
+        './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
         './RescheduleRequestActions': { RescheduleRequestActions: () => null },
         '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
       },
@@ -237,7 +237,7 @@ test('an appointment whose price was never recorded says so instead of showing t
       '@/i18n/draft-store': draftStore(hooks.useState),
       './ScheduleDayGrid': { ScheduleDayGrid: () => null },
       './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-      './AppointmentDialog': { AppointmentDialog: () => null },
+      './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
       './RescheduleRequestActions': { RescheduleRequestActions: () => null },
       '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
     },
@@ -278,7 +278,7 @@ test('a reschedule request row shows when it was asked and a tel: link for the c
       '@/i18n/draft-store': draftStore(hooks.useState),
       './ScheduleDayGrid': { ScheduleDayGrid: () => null },
       './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-      './AppointmentDialog': { AppointmentDialog: () => null },
+      './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
       './RescheduleRequestActions': { RescheduleRequestActions: () => null },
       '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
     },

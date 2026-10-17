@@ -1,0 +1,51 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { loadServerModule } from '../../test/load-server-module';
+import { translator, type Namespace } from '../../i18n/messages';
+import type { Locale } from '../../i18n/config';
+
+type Element = { type: unknown; props: Record<string, unknown> };
+
+function elements(node: unknown): Element[] {
+  if (Array.isArray(node)) return node.flatMap(elements);
+  if (!node || typeof node !== 'object' || !('props' in node)) return [];
+  const element = node as Element;
+  return [element, ...elements(element.props.children)];
+}
+function text(node: unknown): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(text).join('');
+  if (!node || typeof node !== 'object' || !('props' in node)) return '';
+  return text((node as Element).props.children);
+}
+
+function loadForm(locale: Locale) {
+  return loadServerModule<typeof import('./StylistForm')>('src/components/admin/StylistForm.tsx', {
+    react: { useActionState: () => [{ status: 'idle' }, () => undefined, false], useEffect: () => undefined },
+    '@/i18n/client': { useT: (namespace: Namespace) => translator(locale, namespace) },
+    '@/i18n/link': { __esModule: true, default: (props: Record<string, unknown>) => ({ type: 'a', props }) },
+    '@/i18n/draft-store': { clearDraft: () => undefined, usePreservedForm: () => ({ current: null }) },
+    './BilingualContentEditor': { BilingualContentEditor: () => null },
+    './CalendarColorPicker': { CalendarColorPicker: () => null },
+    './GoogleColorPicker': { GoogleColorPicker: () => null },
+    '@/i18n/rich': { rich: (value: string) => value },
+  });
+}
+
+test('the stylist form offers a Google colour (none allowed) and Google names, in English and Chinese', () => {
+  for (const [locale, words] of [
+    ['en-GB', { colour: 'Google colour', names: 'Google names' }],
+    ['zh-HK', { colour: 'Google 顏色', names: 'Google 名稱' }],
+  ] as const) {
+    const nodes = elements(loadForm(locale).StylistForm({
+      mode: 'edit', action: async () => ({ status: 'idle' }), saved: false,
+      stylist: { id: 'lox', name: 'Lox', slug: 'lox', imageUrl: null, yearsExperience: null },
+      googleColorId: '5', googleAliases: 'L',
+    }));
+    const picker = nodes.find((node) => node.props.name === 'googleColorId')!;
+    assert.deepEqual([picker.props.label, picker.props.initial, picker.props.allowNone], [words.colour, '5', true], locale);
+    const names = nodes.find((node) => node.props.name === 'googleAliases')!;
+    assert.deepEqual([names.props.defaultValue, names.props.maxLength], ['L', 200], locale);
+    assert.ok(nodes.some((node) => text(node) === words.names), locale);
+  }
+});

@@ -11,6 +11,8 @@ import { toPence } from './pricing/money';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import type { BoardPrice } from '@/app/lib/board-price';
 import { adminDepositView, adminDepositViewSelect, depositView, depositViewSelect } from '@/app/lib/deposit-display';
+import { parseDiaryStylistIds } from '@/app/lib/calendar-diary-display';
+import type { DiaryKind } from './google-diary-classify';
 
 // The service's CURRENT price is deliberately not selected: an appointment
 // shows only the price recorded when it was booked (unknown when none was).
@@ -19,7 +21,7 @@ export const calendarAppointmentSelect = {
   durationAtBooking: true, priceAtBooking: true, quoteJson: true, notes: true,
   rescheduleRequestedDate: true, rescheduleRequestedAt: true, arrivedAt: true,
   user: { select: { id: true, name: true, email: true } },
-  stylist: { select: { name: true, calendarColor: true } },
+  stylist: { select: { name: true, calendarColor: true, googleColorId: true } },
   service: { select: { name: true, duration: true, calendarColor: true } },
   // The card deposit's state (deposit-display.ts) and our own refund ids —
   // a refund staff may mark settled outside the website — never Square ids.
@@ -125,7 +127,7 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
   const { dateStr, view, range } = resolveAdminCalendarRange(query, now);
   const todayRange = resolveAdminCalendarRange({ view: 'day' }, now).range;
   const cursor = dateCursor(query.pending);
-  const [appointments, todayStats, syncCoverage, stylists, busyBlocks, pendingRows, pendingCount, monthCounts, services, rescheduleRows] = await Promise.all([
+  const [appointments, todayStats, syncCoverage, stylists, busyBlocks, diaryRows, pendingRows, pendingCount, monthCounts, services, rescheduleRows] = await Promise.all([
     view === 'year' ? Promise.resolve([]) : prisma.appointment.findMany({
       where: { date: range },
       select: { ...calendarAppointmentSelect, user: { select: { id: true, name: true, email: view === 'day' } } },
@@ -135,11 +137,17 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     getTreatwellSyncCoverage(),
     view === 'year' ? Promise.resolve([]) : prisma.stylist.findMany({
       where: { isActive: true }, orderBy: { name: 'asc' },
-      select: { id: true, name: true, calendarColor: true, availabilities: { select: { dayOfWeek: true, startTime: true, endTime: true, isOff: true } } },
+      select: { id: true, name: true, calendarColor: true, googleColorId: true, availabilities: { select: { dayOfWeek: true, startTime: true, endTime: true, isOff: true } } },
     }),
     view !== 'day' && view !== 'week' ? Promise.resolve([]) : prisma.externalBusyBlock.findMany({
-      where: { start: { lt: range.lt }, end: { gt: range.gte } },
+      // Google's own busy time is drawn from the diary entries below (diary mirror spec §9).
+      where: { source: { not: 'GOOGLE' }, start: { lt: range.lt }, end: { gt: range.gte } },
       select: { id: true, stylistId: true, source: true, summary: true, start: true, end: true, lastSyncAt: true },
+    }),
+    view !== 'day' && view !== 'week' ? Promise.resolve([]) : prisma.googleDiaryEntry.findMany({
+      where: { start: { lt: range.lt }, end: { gt: range.gte } },
+      select: { id: true, kind: true, stylistIdsJson: true, title: true, colorId: true, start: true, end: true, allDay: true, htmlLink: true },
+      orderBy: [{ start: 'asc' }, { id: 'asc' }],
     }),
     // Only requests that can still be answered: once a request's time has come
     // it cannot be confirmed and the notifications cron closes it
@@ -168,6 +176,9 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     periodCount: view === 'year' ? monthCounts.reduce((sum, count) => sum + count, 0) : appointments.length,
     appointments: appointments.map((row) => serializeCalendarAppointment(row, view === 'day')),
     busyBlocks: busyBlocks.map((row) => ({ ...row, start: row.start.toISOString(), end: row.end.toISOString(), lastSyncAt: row.lastSyncAt.toISOString() })),
+    diaryEntries: diaryRows.map(({ stylistIdsJson, kind, start, end, ...row }) => ({
+      ...row, kind: kind as DiaryKind, stylistIds: parseDiaryStylistIds(stylistIdsJson), start: start.toISOString(), end: end.toISOString(),
+    })),
     pendingAppointments: page.map(serializePending),
     pendingNext: pendingRows.length > 25 ? encodeDateCursor(page[page.length - 1]) : null,
     pendingHasPrevious: Boolean(cursor),

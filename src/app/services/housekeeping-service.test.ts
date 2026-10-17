@@ -43,8 +43,10 @@ function fixture() {
   const kiosks: Row[] = [];
   const jobs: Row[] = [];
   const audits: Row[] = [];
+  const diary: Row[] = [];
   const db = {
     notificationDelivery: table(notices), externalBusyBlock: table(busy), kioskSession: table(kiosks), auditEvent: table(audits),
+    googleDiaryEntry: table(diary),
     backgroundJobState: {
       ...table(jobs),
       upsert: async ({ where, create }: { where: { name: string }; create: Record<string, unknown> }) => {
@@ -52,7 +54,7 @@ function fixture() {
       },
     },
   } as unknown as PrismaClient;
-  return { db, notices, busy, kiosks, jobs, audits };
+  return { db, notices, busy, kiosks, jobs, audits, diary };
 }
 function notice(id: string, changes: Record<string, unknown> = {}): Row {
   return { id, status: 'PENDING', payloadJson: '{"email":"fixture@example.invalid"}', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-01'), lockedAt: null, lockToken: null, attempts: 2, firstAttemptAt: new Date('2026-08-01'), ...changes };
@@ -108,4 +110,13 @@ test('account-event records older than six years are deleted, newer ones kept', 
   const result = await runHousekeeping({ db: f.db, now });
   assert.equal(result.deletedAuditEvents, 1);
   assert.deepEqual(f.audits.map((row) => row.id), ['five-years']);
+});
+
+test('retention deletes diary entries 30 days after they end, also while the Google sync is off', async () => {
+  const f = fixture();
+  const day = 86_400_000;
+  f.diary.push({ id: 'old', end: new Date(now.getTime() - 31 * day) }, { id: 'kept', end: new Date(now.getTime() - 29 * day) }, { id: 'future', end: new Date(now.getTime() + day) });
+  const result = await runHousekeeping({ db: f.db, now });
+  assert.equal(result.deletedDiaryEntries, 1);
+  assert.deepEqual(f.diary.map((row) => row.id), ['kept', 'future']);
 });

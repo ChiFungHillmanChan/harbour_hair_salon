@@ -61,7 +61,8 @@ function mountGrid(view: 'Day' | 'Week', locale: Locale = 'en-GB') {
     `src/components/admin/Schedule${view}Grid.tsx`,
     // The dialog is stubbed by name: its own behaviour is tested below, and the
     // real one would pull in a browser React.
-    { react: runtime.hooks, '@/i18n/client': i18nClient(locale), './MoveConfirmDialog': { MoveConfirmDialog: function MoveConfirmDialog() { return null; } } },
+    { react: runtime.hooks, '@/i18n/client': i18nClient(locale), './MoveConfirmDialog': { MoveConfirmDialog: function MoveConfirmDialog() { return null; } },
+      './GoogleDiaryNotes': { GoogleDiaryNotes: () => null } },
   );
   const moves: Moves = [];
   const calls = { selected: 0, moved: 0 };

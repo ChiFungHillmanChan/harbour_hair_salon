@@ -54,6 +54,7 @@ function bookingFixture(
         return row;
       },
     },
+    googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => { externalReads++; return []; } },
     user: { update: async () => ({}), findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }) },
     discountCode: {

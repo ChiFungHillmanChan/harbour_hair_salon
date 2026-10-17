@@ -33,7 +33,7 @@ export class GoogleCalendarError extends Error {
 export type GoogleEvent = {
   id: string; status?: 'confirmed' | 'tentative' | 'cancelled'; summary?: string; description?: string;
   start?: { dateTime?: string; date?: string; timeZone?: string }; end?: { dateTime?: string; date?: string; timeZone?: string };
-  transparency?: 'opaque' | 'transparent'; colorId?: string;
+  transparency?: 'opaque' | 'transparent'; colorId?: string; htmlLink?: string;
   extendedProperties?: { private?: Record<string, string> };
 };
 
@@ -48,6 +48,7 @@ const eventSchema = z.object({
   end: eventTime.optional(),
   transparency: z.enum(['opaque', 'transparent']).optional(),
   colorId: z.string().optional(),
+  htmlLink: z.string().optional(),
   extendedProperties: z.object({ private: z.record(z.string(), z.string()).optional() }).optional(),
 });
 const listSchema = z.object({ items: z.array(eventSchema).optional(), nextPageToken: z.string().min(1).optional() });

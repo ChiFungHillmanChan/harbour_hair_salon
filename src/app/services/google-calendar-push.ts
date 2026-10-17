@@ -13,8 +13,14 @@ import 'server-only';
 // the sync switched off mid-run) stops the run instead: every other booking
 // would fail the same way, so it is recorded on that one row and reported once
 // (`stopped: 'setup'`) for the job row.
+// Diary mirror (docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md §8):
+// each event takes its stylist's Google colour, else the no-stylist colour; and
+// before any booking is chosen, the calendar change guard (services/google-calendar-guard.ts)
+// clears the rows once when GOOGLE_CALENDAR_ID names another calendar than the
+// one they were written to, so every booking is written to the configured one.
 
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { DEFAULT_UNASSIGNED_COLOR_ID, isGoogleColorId } from '@/app/lib/calendar-colors';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
 import { isErasedEmail } from '@/app/lib/customer-erasure';
 import { depositView, depositViewSelect } from '@/app/lib/deposit-display';
@@ -24,7 +30,8 @@ import { localizeHref } from '@/i18n/paths';
 import type { ContentFields } from './content/fields';
 import { loadPublishedTranslations } from './content/translations';
 import { createGoogleCalendarGateway, GoogleCalendarError, type GoogleEvent } from './google-calendar-gateway';
-import { googleEventIdFor, renderGoogleEvent, stylistColorId } from './google-calendar-event';
+import { googleColorFor, googleEventIdFor, renderGoogleEvent } from './google-calendar-event';
+import { guardGoogleCalendarChange } from './google-calendar-guard';
 import { OPERATIONS_MESSAGES } from './operations-messages';
 import { salonDateKey, salonDayWindow } from './salon-time';
 
@@ -67,7 +74,7 @@ type Outcome = 'written' | 'deleted' | 'unchanged' | 'failed' | 'skipped';
 export const appointmentSelect = {
   id: true, date: true, status: true, notes: true, durationAtBooking: true,
   user: { select: { name: true, phone: true, email: true } },
-  stylist: { select: { id: true, name: true } },
+  stylist: { select: { id: true, name: true, googleColorId: true } },
   service: { select: { id: true, name: true, duration: true } },
   rescheduleRequestedDate: true,
   paymentAttempt: { select: depositViewSelect },
@@ -75,7 +82,7 @@ export const appointmentSelect = {
 } satisfies Prisma.AppointmentSelect;
 export type PushAppointment = Prisma.AppointmentGetPayload<{ select: typeof appointmentSelect }>;
 
-export type RenderContext = { locale: Locale; stylistIds: string[]; serviceFields: Map<string, ContentFields> };
+export type RenderContext = { locale: Locale; unassignedColorId: string; serviceFields: Map<string, ContentFields> };
 
 /** Salon-local midnight WINDOW_DAYS calendar days back: counted in days, not 24-hour steps, so DST cannot shift it. */
 export function windowStart(now: Date): Date {
@@ -133,13 +140,16 @@ function selection(now: Date, mode: 'recent' | 'all', appointmentIds?: string[])
 }
 
 export async function loadRenderContext(db: PrismaClient, appointments: PushAppointment[]): Promise<RenderContext> {
-  // The salon's own diary: its notification language, read from the live row (default Traditional Chinese).
-  const settings = await db.siteSettings.findUnique({ where: { id: 'singleton' }, select: { salonNotificationLocale: true } });
+  // The salon's own diary: its notification language (default Traditional Chinese) and the
+  // no-stylist colour (Admin → Integrations), read from the live row.
+  const settings = await db.siteSettings.findUnique({
+    where: { id: 'singleton' },
+    select: { salonNotificationLocale: true, googleUnassignedColorId: true },
+  });
   const locale: Locale = isLocale(settings?.salonNotificationLocale) ? settings.salonNotificationLocale : 'zh-HK';
-  // Every stylist, retired ones included, so a retirement never shifts the others' colours.
-  const stylists = await db.stylist.findMany({ select: { id: true } });
+  const unassignedColorId = isGoogleColorId(settings?.googleUnassignedColorId) ? settings.googleUnassignedColorId : DEFAULT_UNASSIGNED_COLOR_ID;
   const serviceFields = await loadPublishedTranslations(db, 'SERVICE', appointments.map((appointment) => appointment.service.id), locale);
-  return { locale, stylistIds: stylists.map((stylist) => stylist.id), serviceFields };
+  return { locale, unassignedColorId, serviceFields };
 }
 
 export function renderAppointment(appointment: PushAppointment, context: RenderContext) {
@@ -157,7 +167,7 @@ export function renderAppointment(appointment: PushAppointment, context: RenderC
     serviceName,
     deposit: depositView(appointment.paymentAttempt),
     rescheduleRequestedDate: appointment.rescheduleRequestedDate,
-  }, { locale: context.locale, adminDayUrl, colorId: stylistColorId(context.stylistIds, appointment.stylist.id) });
+  }, { locale: context.locale, adminDayUrl, colorId: googleColorFor(appointment.stylist, context.unassignedColorId) });
 }
 
 function errorKind(error: unknown): GoogleCalendarError['kind'] | null {
@@ -211,9 +221,11 @@ export async function pushGoogleCalendar(options: {
 } = {}): Promise<GooglePushResult> {
   const result = { written: 0, deleted: 0, unchanged: 0, failed: 0 };
   // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
-  if (!googleCalendarConfig()) return { ...result, skipped: 'disabled' };
+  const config = googleCalendarConfig();
+  if (!config) return { ...result, skipped: 'disabled' };
   if (options.appointmentIds && options.appointmentIds.length === 0) return result;
   const db = options.db ?? (await import('@/app/lib/prisma')).default;
+  await guardGoogleCalendarChange(db, config.calendarId);
   const now = options.now ?? new Date();
   const gateway = options.gateway ?? createGoogleCalendarGateway();
   const mode = options.mode ?? 'recent';

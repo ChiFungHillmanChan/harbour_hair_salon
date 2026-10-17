@@ -22,6 +22,7 @@ function loadPage(locale: Locale = 'en-GB') {
     '@/components/admin/CalendarConnectionsSetup': { CalendarConnectionsSetup: () => null },
     '@/components/admin/GoogleCalendarStatus': { GoogleCalendarStatus: () => null },
     '@/app/services/google-calendar-status': { getGoogleCalendarStatus: async () => ({ enabled: false }) },
+    '@/app/services/google-diary-config': { loadDiaryConfig: async () => ({ stylists: [], unassignedColorId: '11', leaveColorId: '8' }) },
     '@/app/lib/site-url': { SITE_URL: 'https://example.test' },
     '@/i18n/server': { getT: async (namespace: Namespace) => translator(locale, namespace) },
   });
@@ -51,11 +52,13 @@ test('?gcal= codes show a status or alert banner in English and Chinese; no code
   const expected = {
     en: { 'en-GB': {
       done: 'Google Calendar sync finished.', disabled: 'Google Calendar sync is off, so nothing was done.', error: 'did not finish cleanly',
-      cleared: 'Busy time read from Google Calendar was removed.', clearError: 'could not be removed. Nothing was changed',
+      cleared: 'Busy time read from Google Calendar, and the copy of the diary shown on Admin → Schedule, were removed.', clearError: 'could not be removed. Nothing was changed',
+      coloursSaved: 'Diary colours saved.', coloursSame: 'must be different', coloursTaken: 'already uses that colour', coloursInvalid: 'Unknown colour',
     } },
     zh: { 'zh-HK': {
       done: 'Google 日曆同步已完成', disabled: 'Google 日曆同步未啟用，因此沒有執行任何動作', error: '未能順利完成',
-      cleared: '已刪除從 Google 日曆讀取的忙碌時段', clearError: '未能刪除從 Google 日曆讀取的忙碌時段',
+      cleared: '已刪除從 Google 日曆讀取的忙碌時段，以及後台預約時間表上顯示的記事簿副本', clearError: '未能刪除從 Google 日曆讀取的忙碌時段',
+      coloursSaved: '已儲存記事簿顏色', coloursSame: '必須不同', coloursTaken: '已使用該顏色', coloursInvalid: '未知的顏色',
     } },
   };
   for (const group of Object.values(expected)) {
@@ -64,7 +67,7 @@ test('?gcal= codes show a status or alert banner in English and Chinese; no code
         const tree = await loadPage(locale).default({ searchParams: Promise.resolve({ gcal: code }) });
         const found = banners(tree).filter((banner) => banner.text.includes(wording));
         assert.equal(found.length, 1, `${locale} ${code}`);
-        assert.equal(found[0].role, code === 'error' || code === 'clearError' ? 'alert' : 'status');
+        assert.equal(found[0].role, ['error', 'clearError', 'coloursSame', 'coloursTaken', 'coloursInvalid'].includes(code) ? 'alert' : 'status');
       }
     }
   }

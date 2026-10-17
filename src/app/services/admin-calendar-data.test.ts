@@ -32,6 +32,36 @@ test('year calendar returns twelve aggregates without loading appointment detail
   assert.deepEqual(result.appointments, []);
 });
 
+test('day view loads the Google diary for the range; Google busy blocks are no longer loaded separately', async () => {
+  const busyWhere: Record<string, unknown>[] = [];
+  const diaryQueries: Record<string, unknown>[] = [];
+  const db = {
+    appointment: { count: async () => 0, groupBy: async () => [], findMany: async () => [] },
+    stylist: { findMany: async () => [] },
+    service: { findMany: async () => [] },
+    externalBusyBlock: { findMany: async ({ where }: { where: Record<string, unknown> }) => { busyWhere.push(where); return []; } },
+    googleDiaryEntry: {
+      findMany: async (query: Record<string, unknown>) => {
+        diaryQueries.push(query);
+        return [{ id: 'd1', kind: 'LEAVE', stylistIdsJson: '["lox","funky"]', title: '遲返 (L)(F)', colorId: '8', start: new Date('2026-09-16T09:00:00Z'), end: new Date('2026-09-16T10:00:00Z'), allDay: false, htmlLink: null }];
+      },
+    },
+    $queryRaw: async () => [{}],
+  };
+  const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
+    '@/app/lib/prisma': { __esModule: true, default: db, getDatabaseProvider: () => 'postgresql' },
+    '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
+    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
+  });
+  const result = await getAdminCalendarData({ date: '2026-09-16', view: 'day' });
+  assert.deepEqual(result.diaryEntries, [{
+    id: 'd1', kind: 'LEAVE', stylistIds: ['lox', 'funky'], title: '遲返 (L)(F)', colorId: '8',
+    start: '2026-09-16T09:00:00.000Z', end: '2026-09-16T10:00:00.000Z', allDay: false, htmlLink: null,
+  }]);
+  assert.equal(diaryQueries.length, 1);
+  assert.deepEqual((busyWhere[0] as { source?: unknown }).source, { not: 'GOOGLE' });
+});
+
 test('calendar refuses unauthorized reads before accessing the database', async () => {
   const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
     '@/app/lib/prisma': { appointment: { findMany: () => { throw new Error('Database touched before authorization'); } } },
@@ -90,6 +120,7 @@ test('the board carries each booking\'s recorded price and only bookable options
     },
     stylist: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [] },
+    googleDiaryEntry: { findMany: async () => [] },
     service: { findMany: async ({ select }: { select: Record<string, unknown> }) => {
       assert.ok(select.isBookable && select.priceVersion && select.priceType, 'the dialog needs the quote fields');
       return [
@@ -133,6 +164,7 @@ test('the board names a refund staff may mark settled outside the website, with 
     },
     stylist: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [] },
+    googleDiaryEntry: { findMany: async () => [] },
     service: { findMany: async () => [] },
   };
   const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {

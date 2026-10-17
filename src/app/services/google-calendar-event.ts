@@ -5,6 +5,7 @@
 
 import { createHash } from 'node:crypto';
 import { formatInTimeZone } from 'date-fns-tz';
+import { isGoogleColorId } from '@/app/lib/calendar-colors';
 import type { Locale } from '@/i18n/config';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { translator } from '@/i18n/messages';
@@ -14,7 +15,6 @@ import type { GoogleEvent } from './google-calendar-gateway';
 
 export const GOOGLE_APPOINTMENT_PROPERTY = 'harbourAppointmentId';
 
-const COLOR_COUNT = 11;
 const LOCAL_ISO = "yyyy-MM-dd'T'HH:mm:ssXXX";
 
 /** 'hh' + 40 hex digits: Google event ids allow a-v and 0-9 (base32hex), and hex is a subset. */
@@ -118,10 +118,13 @@ function hashEvent(event: GoogleEvent): string {
   return createHash('sha256').update(canonical).digest('hex');
 }
 
-/** Stylists get Google's colours 1..11 by their sorted ids, cycling. */
-export function stylistColorId(stylistIds: string[], stylistId: string): string {
-  const index = [...stylistIds].sort().indexOf(stylistId);
-  return String((index < 0 ? 0 : index) % COLOR_COUNT + 1);
+/**
+ * A website event's colour (diary mirror spec §8): its stylist's Google colour,
+ * so it reads like the salon's own entries; else the no-stylist colour. An
+ * "Anyone" request already has a stylist, so it takes theirs.
+ */
+export function googleColorFor(stylist: { googleColorId: string | null }, unassignedColorId: string): string {
+  return isGoogleColorId(stylist.googleColorId) ? stylist.googleColorId : unassignedColorId;
 }
 
 function instant(time: GoogleEvent['start']): number | null {

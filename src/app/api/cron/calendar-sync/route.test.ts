@@ -275,6 +275,8 @@ async function routeWithRealJob(options: { enabled: boolean; pushThrows?: boolea
   const job = loadServerModule('src/app/services/google-calendar-job.ts', {
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => (options.enabled ? { calendarId: 'c', clientEmail: 'e', privateKey: 'k', webhookSecret: 's' } : null) },
     '@/app/lib/prisma': counted({ __esModule: true, default: db }),
+    // The calendar change guard (services/google-calendar-guard.ts): the configured calendar is the recorded one.
+    './google-calendar-guard': counted({ guardGoogleCalendarChange: async () => 'same' }),
     './google-calendar-channel': counted({
       ensureGoogleWatchChannel: async () => { order.push('channel'); return 'current'; },
       runPullSingleFlight: async (pull: () => Promise<unknown>) => { order.push('single-flight'); await pull(); },
@@ -284,7 +286,7 @@ async function routeWithRealJob(options: { enabled: boolean; pushThrows?: boolea
       if (options.pushThrows) throw new Error('database unavailable');
       return { written: 0, deleted: 0, unchanged: 0, failed: 0 };
     } }),
-    './google-calendar-pull': counted({ pullGoogleCalendar: async () => { order.push('pull'); return { reverted: 0, blocks: 0, changed: false }; } }),
+    './google-calendar-pull': counted({ pullGoogleCalendar: async () => { order.push('pull'); return { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false }; } }),
   });
   const route = loadServerModule<{ GET: typeof GET }>('src/app/api/cron/calendar-sync/route.ts', {
     '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => true },

@@ -73,6 +73,12 @@ someone.)
   check Admin → Integrations → Google Calendar shows no "Bookings Google would not take".
   Copies of appointments over 12 months old are deleted by housekeeping anyway. Google
   keeps deleted events in its own trash for a short while.
+- **The salon diary** (the staff's own events in the HarbourHair Google Calendar, and the
+  website's copy of them on Admin → Schedule): their titles are typed by staff and are not
+  linked to any account, so erasure cannot find them. If the customer asks, remove their name
+  and phone number from those Google events by hand (search the calendar for them). The
+  website's copy follows at the next pull, and each entry is deleted 30 days after it ends
+  anyway (`docs/google-calendar-setup.md` §8).
 - **Preview database** (Neon project `harbour-hair-preview-lhr`): it is a copy of
   production taken 2026-09-30 **with real customer data**. Run the same erasure
   on the preview deployment, or refresh the preview copy from production after

@@ -4,7 +4,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { syncCalendarFeeds } from '@/app/services/calendar-sync-service';
 import { isScheduledCalendarSyncOpen } from '@/app/services/calendar-sync-schedule';
 import { cancelLateArrivals } from '@/app/services/late-arrival-cancel';
-import { runGoogleCalendarJob } from '@/app/services/google-calendar-job';
+import { runGoogleCalendarJob, type GoogleCalendarJobDb } from '@/app/services/google-calendar-job';
 import { OPERATIONS_MESSAGES } from '@/app/services/operations-messages';
 import { describeFault } from '@/app/lib/fault';
 
@@ -86,7 +86,7 @@ async function runLateArrivals(db: Pick<PrismaClient, 'backgroundJobState'>) {
  * row (`google-calendar`); never fails the sync, and with the Google sync off
  * it makes no query and no call.
  */
-async function runGoogleCalendar(db: Pick<PrismaClient, 'backgroundJobState' | 'googleCalendarSyncState'>, deadline: number) {
+async function runGoogleCalendar(db: GoogleCalendarJobDb, deadline: number) {
   try {
     return await runGoogleCalendarJob('calendar-sync', { db, deadline });
   } catch (error) {

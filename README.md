@@ -7,17 +7,18 @@ It offers:
 - customer appointment management with Google Calendar links and `.ics` files;
 - an admin panel and a staff kiosk;
 - availability exchanged with Fresha through iCal busy feeds;
-- a two-way sync with the salon's own Google Calendar.
+- a two-way sync with the salon's own Google Calendar diary, mirrored in the admin schedule.
 
 It runs on Vercel with Neon PostgreSQL 18 in London.
 
 ## Status (2026-10-16)
 
 - The public site is live. Releases #62 (review follow-ups, Google Calendar links, i18n) and #63 (Square deposits) are deployed and verified.
-- Deployed on 2026-10-16: Fresha blocked time labelled "Blocked" in the schedule (#68), sign-out that ends every session (#69), late-arrival auto-cancel (#70, switched off), consultation credit, "From £X" prices for consultation services, move confirmation and NHS/student and offer terms (#71), and two-way Google Calendar sync (#72, switched off).
+- Deployed on 2026-10-16: Fresha blocked time labelled "Blocked" in the schedule (#68), sign-out that ends every session (#69), late-arrival auto-cancel (#70, switched off), consultation credit, "From £X" prices for consultation services, move confirmation and NHS/student and offer terms (#71), and two-way Google Calendar sync (#72, switched on the same day).
 - **Online booking is closed.** It opens only once Square production credentials are set, after the sandbox acceptance checklist has passed. Until then customers book by phone, Fresha or Treatwell.
 - **Switched off until the salon is ready:** the late-arrival rule (Admin → Settings, after briefing staff).
-- **Google Calendar sync is on** (since 2026-10-16): bookings are written to the "Harbour website bookings" calendar on harbourhairuk@gmail.com, and staff busy time there blocks the website and Fresha ([runbook](docs/google-calendar-setup.md)). Google sign-in and the calendar's service account both live in the `harbourhair` Google Cloud project.
+- **Google Calendar sync is on** (since 2026-10-16): until the switch to the HarbourHair diary (below), bookings are written to #72's "Harbour website bookings" calendar on harbourhairuk@gmail.com, and staff busy time there blocks the website and Fresha ([runbook](docs/google-calendar-setup.md)). Google sign-in and the calendar's service account both live in the `harbourhair` Google Cloud project.
+- **Google diary mirror** (2026-10-17, being rolled out): the sync moves to the salon's primary "HarbourHair" calendar, the diary staff already keep, and Admin → Schedule mirrors it by colour. The steps left are in the [runbook](docs/google-calendar-setup.md) §2b.
 - The remaining launch steps, in order, are in [LAUNCH.md](LAUNCH.md).
 
 ## What it does
@@ -44,7 +45,7 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 - **Staff:** shifts, timesheets and payroll.
 - **Users:** includes customer data erasure.
 - **Site settings:** the booking switch, the deposit policy and the late-arrival rule.
-- **Integrations:** Fresha calendar connections, setup readiness, and the Google Calendar status with "Sync now" and "Clear Google busy time".
+- **Integrations:** Fresha calendar connections, setup readiness, and the Google Calendar status with "Sync now", "Clear Google busy time and diary copy" and the diary colours.
 - **Operations:** diagnostics, background jobs and payments needing attention.
 - **Staff kiosk** on a shared salon device.
 
@@ -70,10 +71,12 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
   - Fresha works both ways.
   - Treatwell can only import, because it has no export feed.
   - They never create marketplace orders, payments or refunds, and never relay one marketplace's events into another.
-- Google Calendar sync (when switched on) uses one shared salon calendar.
-  - Every website booking is written to it.
-  - A staff event on it blocks the stylist whose name starts its title, or the whole salon otherwise.
-  - Those blocks also go out in the Fresha busy feed.
+- Google Calendar sync (when switched on) uses the salon's primary "HarbourHair" calendar, its real diary.
+  - Every website booking is written to it, in its stylist's Google colour.
+  - Admin → Schedule shows the diary with Google's titles and colours, read-only.
+  - An event in a stylist's colour, or naming a stylist (leave), blocks that stylist; those blocks also go out in the Fresha busy feed.
+  - An event in the no-stylist colour (a walk-in) takes a chair: online booking keeps a stylist free for it. It is never sent to Fresha.
+  - Any other event is a note and blocks nothing. "Show as available" is ignored.
   - Edits to the website's own events in Google are reverted.
   - It runs on Vercel Production only, never on previews.
 - Booking emails wait in an outbox and are only sent while `NOTIFICATIONS_ENABLED=true`. Account emails (verification, password reset) go out at once. Preview deployments only email the addresses in `PREVIEW_EMAIL_ALLOWLIST`, because the preview database is a copy of production.
@@ -89,9 +92,9 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 | [LAUNCH.md](LAUNCH.md) | Launch checklist and the last verified production state |
 | [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) | Architecture, commands, conventions and guardrails for contributors |
 | [docs/square-payments-setup.md](docs/square-payments-setup.md) | Square runbook: sandbox setup, acceptance tests, go-live, staff operations |
-| [docs/google-calendar-setup.md](docs/google-calendar-setup.md) | Google Calendar runbook: Google Cloud and calendar setup, Vercel variables, first run, secret rotation, turning it off |
+| [docs/google-calendar-setup.md](docs/google-calendar-setup.md) | Google Calendar runbook: Google Cloud and calendar setup, diary colours and names, the switch to HarbourHair, Vercel variables, first run, changing the calendar, secret rotation, turning it off |
 | [docs/data-erasure.md](docs/data-erasure.md) | Customer data erasure procedure |
-| [docs/superpowers/specs/](docs/superpowers/specs/) | Design specs: [card deposits](docs/superpowers/specs/2026-10-13-square-deposits-design.md), [late-arrival auto-cancel](docs/superpowers/specs/2026-10-16-late-arrival-auto-cancel-design.md), [consultation credit and pricing](docs/superpowers/specs/2026-10-16-consultation-credit-pricing-ux-design.md), [Google Calendar sync](docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md) |
+| [docs/superpowers/specs/](docs/superpowers/specs/) | Design specs: [card deposits](docs/superpowers/specs/2026-10-13-square-deposits-design.md), [late-arrival auto-cancel](docs/superpowers/specs/2026-10-16-late-arrival-auto-cancel-design.md), [consultation credit and pricing](docs/superpowers/specs/2026-10-16-consultation-credit-pricing-ux-design.md), [Google Calendar sync](docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md), [Google diary mirror](docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md) |
 | [readme/structure.md](readme/structure.md) | Function and component registry |
 | [readme/production-readiness-rollout-cantonese.md](readme/production-readiness-rollout-cantonese.md) | Rollout record (Cantonese) |
 | [readme/backend-security-operations.md](readme/backend-security-operations.md) | Administrator bootstrap, recovery, signing-key rotation, kiosk revocation, database maintenance. Its MFA steps describe dormant code: admin MFA stopped being required in `e9f3a25`. |

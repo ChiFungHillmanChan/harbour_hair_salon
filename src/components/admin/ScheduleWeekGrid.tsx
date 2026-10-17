@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { resolveCalendarColor } from '@/app/lib/calendar-colors';
+import { googleEventSwatch, resolveCalendarColor, stylistSwatch } from '@/app/lib/calendar-colors';
 import {
   MIN_DURATION_MINUTES,
   applyMove,
@@ -16,9 +16,11 @@ import type { MoveClash } from '@/app/services/admin-move-clashes';
 import type { GridAppointment, GridBusyBlock, GridStylist, MoveResult } from './ScheduleDayGrid';
 import { DepositChip } from './DepositChip';
 import { calendarBusyForDay, calendarBusyLabel, isWholeDayBlock, salonWorkingWindow } from '@/app/lib/calendar-busy-display';
+import { diaryForDay, diaryRange, type CalendarDiaryEntry, type PlacedDiaryEntry } from '@/app/lib/calendar-diary-display';
 import { useT } from '@/i18n/client';
 import { formatCalendarDay } from '@/i18n/dates';
 import { MoveConfirmDialog, type MoveChange } from './MoveConfirmDialog';
+import { GoogleDiaryNotes } from './GoogleDiaryNotes';
 
 /**
  * The week board.
@@ -95,6 +97,9 @@ interface ScheduleWeekGridProps {
   stylists: WeekStylist[];
   appointments: GridAppointment[];
   busyBlocks: GridBusyBlock[];
+  /** The salon's Google diary (read-only): drawn in Google's colours, opened with onSelectDiary. */
+  diaryEntries?: CalendarDiaryEntry[];
+  onSelectDiary?: (entry: CalendarDiaryEntry) => void;
   onMove: (input: {
     appointmentId: string;
     dateStr: string;
@@ -109,12 +114,17 @@ interface ScheduleWeekGridProps {
   onCreate: (dateStr: string, time: string) => void;
 }
 
+/** One stable empty diary, so a board without one does not recompute its week on every render. */
+const NO_DIARY: CalendarDiaryEntry[] = [];
+
 export function ScheduleWeekGrid({
   dayKeys,
   todayKey,
   stylists,
   appointments,
   busyBlocks,
+  diaryEntries = NO_DIARY,
+  onSelectDiary,
   onMove,
   onMoved,
   onSelect,
@@ -152,6 +162,10 @@ export function ScheduleWeekGrid({
     return new Map(dayKeys.map((key) => [key, calendarBusyForDay(busyBlocks, key)]));
   }, [busyBlocks, dayKeys]);
 
+  const diaryByDay = useMemo(() => {
+    return new Map(dayKeys.map((key) => [key, diaryForDay(diaryEntries, key)]));
+  }, [diaryEntries, dayKeys]);
+
   // One shared vertical extent for all seven columns — staggered day grids read
   // as seven unrelated charts. Widen past opening hours for anything already in
   // the diary outside them, exactly as the day grid does.
@@ -177,8 +191,14 @@ export function ScheduleWeekGrid({
       start = Math.min(start, block.startMin);
       end = Math.max(end, block.endMin);
     }
+    // All-day diary entries are drawn clamped to these bounds, as on the day grid.
+    for (const entry of [...diaryByDay.values()].flatMap((day) => day.placed)) {
+      if (entry.allDay) continue;
+      start = Math.min(start, entry.startMin);
+      end = Math.max(end, entry.endMin);
+    }
     return { startMin: Math.floor(start / 60) * 60, endMin: Math.ceil(end / 60) * 60 };
-  }, [stylists, weekAppointments, busyByDay]);
+  }, [stylists, weekAppointments, busyByDay, diaryByDay]);
 
   const hours = useMemo(() => {
     const list: number[] = [];
@@ -206,10 +226,11 @@ export function ScheduleWeekGrid({
    * working at 10:00 are not a clash, so they must not be drawn on top of each
    * other — the week column shows both, narrowed.
    */
-  const lanesFor = (dayAppointments: GridAppointment[], dayBusy: ReturnType<typeof calendarBusyForDay>) => {
+  const lanesFor = (dayAppointments: GridAppointment[], dayBusy: ReturnType<typeof calendarBusyForDay<GridBusyBlock>>, dayDiary: PlacedDiaryEntry[]) => {
     const sorted = [
       ...dayAppointments.map((appt) => ({ id: appt.id, ...position(appt) })),
       ...dayBusy.map((block) => ({ id: `busy-${block.id}`, startMin: block.startMin, durationMin: block.endMin - block.startMin })),
+      ...dayDiary.map((entry) => ({ id: `diary-${entry.id}`, startMin: entry.startMin, durationMin: entry.endMin - entry.startMin })),
     ].sort((a, b) => a.startMin - b.startMin);
     const laneEnds: number[] = [];
     const lane = new Map<string, number>();
@@ -398,6 +419,7 @@ export function ScheduleWeekGrid({
         <div className="w-12 flex-shrink-0" />
         {dayKeys.map((key) => {
           const isToday = key === todayKey;
+          const notes = diaryByDay.get(key)?.notes ?? [];
           return (
             <div key={key} className={`flex-1 min-w-0 px-1 py-2 text-center border-l border-zinc-200 ${isToday ? 'bg-zinc-900' : ''}`}>
               <div className={`text-[10px] font-medium uppercase tracking-wide ${isToday ? 'text-zinc-300' : 'text-zinc-500'}`}>
@@ -409,6 +431,8 @@ export function ScheduleWeekGrid({
               <div className={`text-[10px] ${isToday ? 'text-zinc-300' : 'text-zinc-500'}`}>
                 {t('grid.booked', { count: byDay.get(key)?.length ?? 0 })}
               </div>
+              {/* Google diary notes block nothing, so they sit with the day, not in the grid. */}
+              {notes.length > 0 && <GoogleDiaryNotes notes={notes} onSelect={onSelectDiary} compact />}
             </div>
           );
         })}
@@ -439,7 +463,8 @@ export function ScheduleWeekGrid({
           const weekday = new Date(`${key}T12:00:00Z`).getUTCDay();
           const dayAppointments = byDay.get(key) ?? [];
           const dayBusy = busyByDay.get(key) ?? [];
-          const { lane, laneCount } = lanesFor(dayAppointments, dayBusy);
+          const dayDiary = diaryByDay.get(key)?.placed ?? [];
+          const { lane, laneCount } = lanesFor(dayAppointments, dayBusy, dayDiary);
           // The salon is closed for the slice of the grid no stylist covers.
           const open = stylists.reduce<{ from: number; to: number } | null>((span, stylist) => {
             const availability = stylist.availabilityByWeekday[weekday];
@@ -518,12 +543,42 @@ export function ScheduleWeekGrid({
                 );
               })}
 
+              {/* The Google diary, once per entry (a leave naming two stylists is one block here), read-only */}
+              {dayDiary.map((entry) => {
+                const swatch = googleEventSwatch(entry.colorId);
+                const startMin = Math.max(entry.startMin, bounds.startMin);
+                const endMin = Math.min(entry.endMin, bounds.endMin);
+                const title = entry.title || t('diary.noTitle');
+                const label = t('diary.detail', { title, range: entry.allDay ? t('diary.allDay') : diaryRange(entry) });
+                return (
+                  <div
+                    key={`diary-${entry.id}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={label}
+                    title={label}
+                    onClick={(event) => { event.stopPropagation(); onSelectDiary?.(entry); }}
+                    onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectDiary?.(entry); } }}
+                    className={`absolute overflow-hidden rounded-sm px-0.5 text-[9px] leading-[1.15] z-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-zinc-900 ${swatch.fill} ${swatch.text}`}
+                    style={{
+                      top: minutesToOffset(startMin, bounds.startMin, PX_PER_MINUTE),
+                      height: Math.max(14, (endMin - startMin) * PX_PER_MINUTE),
+                      left: `${(lane.get(`diary-${entry.id}`) ?? 0) * 100 / laneCount}%`,
+                      width: `${100 / laneCount}%`,
+                    }}
+                  >
+                    <div className="font-semibold tabular-nums">{entry.allDay ? t('diary.allDay') : timeLabel(entry.startMin)}</div>
+                    <div className="truncate">{title}</div>
+                  </div>
+                );
+              })}
+
               {/* Appointments */}
               {dayAppointments.map((appt) => {
                 const place = position(appt);
                 if (place.dayKey !== key) return null;
                 const stylist = stylistById.get(appt.stylistId);
-                const stylistColour = resolveCalendarColor(stylist?.calendarColor ?? null);
+                const stylistColour = stylistSwatch(stylist ?? { calendarColor: null });
                 const serviceColour = resolveCalendarColor(appt.serviceColor);
                 const isDragging = drag?.appointmentId === appt.id;
                 const slot = lane.get(appt.id) ?? 0;

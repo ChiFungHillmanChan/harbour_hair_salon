@@ -1,6 +1,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { GOOGLE_DIARY_RETENTION_DAYS } from './google-diary-classify';
 
 const DAY_MS = 86_400_000;
 const BATCH_SIZE = 250;
@@ -14,7 +15,7 @@ export async function runHousekeeping(options: { db?: PrismaClient; now?: Date }
   const now = options.now ?? new Date();
   const name = 'housekeeping';
   const lockToken = randomUUID();
-  const result = { busy: false, recovered: 0, scrubbed: 0, deletedNotifications: 0, deletedBusyBlocks: 0, deletedKiosks: 0, deletedAuditEvents: 0 };
+  const result = { busy: false, recovered: 0, scrubbed: 0, deletedNotifications: 0, deletedBusyBlocks: 0, deletedDiaryEntries: 0, deletedKiosks: 0, deletedAuditEvents: 0 };
   await db.backgroundJobState.upsert({ where: { name }, create: { name }, update: {} });
   const claim = await db.backgroundJobState.updateMany({
     where: { name, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] },
@@ -50,6 +51,12 @@ export async function runHousekeeping(options: { db?: PrismaClient; now?: Date }
     const oldBusy = { end: { lt: new Date(now.getTime() - 30 * DAY_MS) } };
     const blocks = await db.externalBusyBlock.findMany({ where: oldBusy, select: { id: true }, orderBy: [{ end: 'asc' }, { id: 'asc' }], take: BATCH_SIZE });
     if (blocks.length) result.deletedBusyBlocks = (await db.externalBusyBlock.deleteMany({ where: { ...oldBusy, id: { in: blocks.map((row) => row.id) } } })).count;
+
+    // The salon diary copy (privacy notice: deleted 30 days after the entry ends),
+    // also while the Google sync is off and no pull runs.
+    const oldDiary = { end: { lt: new Date(now.getTime() - GOOGLE_DIARY_RETENTION_DAYS * DAY_MS) } };
+    const diary = await db.googleDiaryEntry.findMany({ where: oldDiary, select: { id: true }, orderBy: [{ end: 'asc' }, { id: 'asc' }], take: BATCH_SIZE });
+    if (diary.length) result.deletedDiaryEntries = (await db.googleDiaryEntry.deleteMany({ where: { ...oldDiary, id: { in: diary.map((row) => row.id) } } })).count;
 
     const kioskCutoff = new Date(now.getTime() - 30 * DAY_MS);
     const oldKiosks: Prisma.KioskSessionWhereInput = { OR: [{ expiresAt: { lt: kioskCutoff } }, { revokedAt: { lt: kioskCutoff } }] };

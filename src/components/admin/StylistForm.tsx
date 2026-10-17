@@ -4,6 +4,7 @@ import Link from '@/i18n/link';
 import { useActionState, useEffect } from 'react';
 import type { StylistActionState } from '@/app/actions/admin-stylists';
 import { CalendarColorPicker } from './CalendarColorPicker';
+import { GoogleColorPicker } from './GoogleColorPicker';
 import { BilingualContentEditor } from './BilingualContentEditor';
 import { useT } from '@/i18n/client';
 import { rich } from '@/i18n/rich';
@@ -29,6 +30,10 @@ interface StylistFormProps {
   treatwellExternalId?: string | null;
   /** Admin schedule-board colour. Admin-only, so kept out of StylistRuntime too. */
   calendarColor?: string | null;
+  /** Google Calendar event colour id ("1"–"11") this stylist's customers have in the salon diary. Admin-only. */
+  googleColorId?: string | null;
+  /** Other names the diary uses for this stylist, comma-separated. Admin-only. */
+  googleAliases?: string | null;
 }
 
 const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
@@ -41,7 +46,7 @@ const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc
  * publish); in create mode that editor is embedded here, because a new
  * profile needs its text in both languages first.
  */
-export function StylistForm({ mode, action, stylist, saved, treatwellExternalId, calendarColor }: StylistFormProps) {
+export function StylistForm({ mode, action, stylist, saved, treatwellExternalId, calendarColor, googleColorId, googleAliases }: StylistFormProps) {
   const t = useT('adminContent');
   const tc = useT('common');
   const draftKey = `stylist-form:${stylist?.id ?? 'new'}`;
@@ -151,6 +156,16 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
           initial={calendarColor}
           help={t('stylists.form.calendarColourHelp')}
         />
+      </section>
+
+      <section className="bg-white rounded-lg border border-zinc-200 p-6 space-y-4">
+        <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('stylists.form.googleDiary')}</h2>
+        <GoogleColorPicker name="googleColorId" label={t('stylists.form.googleColour')} initial={googleColorId ?? null} help={t('stylists.form.googleColourHelp')} allowNone />
+        <div>
+          <label htmlFor="stylist-google-names" className={labelClass}>{t('stylists.form.googleNames')}</label>
+          <input id="stylist-google-names" type="text" name="googleAliases" maxLength={200} defaultValue={googleAliases ?? ''} className={fieldClass} />
+          <p className="text-xs text-zinc-500 mt-1">{t('stylists.form.googleNamesHelp')}</p>
+        </div>
       </section>
 
       <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">

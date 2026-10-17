@@ -17,6 +17,7 @@ function check(block: { start: Date; end: Date }, id: string) {
   const tx = {
     availability: { findFirst: async () => ({ startTime: '10:00', endTime: '19:00' }) },
     appointment: { findMany: async () => [] },
+    googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [{ stylistId: 'lox', ...block }] },
   };
   const service = loadServerModule<typeof import('./booking-service')>('src/app/services/booking-service.ts', {

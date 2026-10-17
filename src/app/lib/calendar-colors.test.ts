@@ -5,8 +5,16 @@ import {
   CALENDAR_COLORS,
   CALENDAR_COLOR_KEYS,
   DEFAULT_CALENDAR_COLOR,
+  DEFAULT_LEAVE_COLOR_ID,
+  DEFAULT_UNASSIGNED_COLOR_ID,
+  GOOGLE_COLOR_IDS,
+  GOOGLE_EVENT_COLORS,
+  GOOGLE_NO_COLOR,
+  googleEventSwatch,
   isCalendarColorKey,
+  isGoogleColorId,
   resolveCalendarColor,
+  stylistSwatch,
 } from './calendar-colors';
 
 const TAILWIND_BG = /^bg-[a-z]+-\d{2,3}$/;
@@ -72,4 +80,58 @@ test('isCalendarColorKey guards what the admin forms are allowed to store', () =
   assert.equal(isCalendarColorKey(CALENDAR_COLOR_KEYS[0]), true);
   assert.equal(isCalendarColorKey('chartreuse'), false);
   assert.equal(isCalendarColorKey(null), false);
+});
+
+// Google's own event palette (Google diary mirror, spec §3), verbatim.
+const GOOGLE_HEX: Record<string, string> = {
+  '1': '#7986cb', '2': '#33b679', '3': '#8e24aa', '4': '#e67c73', '5': '#f6bf26', '6': '#f4511e',
+  '7': '#039be5', '8': '#616161', '9': '#3f51b5', '10': '#0b8043', '11': '#d50000',
+};
+const ZINC_950 = '#09090b';
+function luminance(hex: string): number {
+  const channel = (offset: number) => {
+    const c = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+function contrast(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+test('Google palette: the eleven ids in order, Google’s hex, every class a full literal', () => {
+  assert.deepEqual(GOOGLE_COLOR_IDS, Object.keys(GOOGLE_HEX));
+  for (const id of GOOGLE_COLOR_IDS) {
+    const swatch = GOOGLE_EVENT_COLORS[id];
+    assert.equal(swatch.hex, GOOGLE_HEX[id], id);
+    for (const cls of [swatch.fill, swatch.swatch, swatch.stripe]) assert.equal(cls, `bg-[${GOOGLE_HEX[id]}]`, id);
+    assert.ok(swatch.label.length > 0 && swatch.key.length > 0, id);
+  }
+  assert.deepEqual(GOOGLE_COLOR_IDS.map((id) => GOOGLE_EVENT_COLORS[id].key),
+    ['lavender', 'sage', 'grape', 'flamingo', 'banana', 'tangerine', 'peacock', 'graphite', 'blueberry', 'basil', 'tomato']);
+});
+
+test('Google palette: text is whichever of white and zinc-950 reads better, and clears WCAG AA', () => {
+  for (const id of GOOGLE_COLOR_IDS) {
+    const { hex, text } = GOOGLE_EVENT_COLORS[id];
+    const white = contrast(hex, '#ffffff');
+    const dark = contrast(hex, ZINC_950);
+    assert.equal(text, white >= dark ? 'text-white' : 'text-zinc-950', id);
+    assert.ok(Math.max(white, dark) >= 4.5, `${id} contrast`);
+  }
+});
+
+test('Google colour ids, the no-colour grey and the stylist swatch', () => {
+  assert.equal(DEFAULT_UNASSIGNED_COLOR_ID, '11');
+  assert.equal(DEFAULT_LEAVE_COLOR_ID, '8');
+  for (const good of ['1', '8', '11']) assert.equal(isGoogleColorId(good), true, good);
+  for (const bad of ['0', '12', '', ' 1', '01', null, undefined, 1, 'toString', '__proto__']) assert.equal(isGoogleColorId(bad), false, String(bad));
+  assert.equal(googleEventSwatch('11').fill, 'bg-[#d50000]');
+  assert.deepEqual(googleEventSwatch(null), GOOGLE_NO_COLOR);
+  assert.deepEqual(googleEventSwatch('99'), GOOGLE_NO_COLOR);
+  // The board matches Google: a stylist's Google colour wins over their calendar colour.
+  assert.equal(stylistSwatch({ calendarColor: 'teal', googleColorId: '5' }).fill, 'bg-[#f6bf26]');
+  assert.equal(stylistSwatch({ calendarColor: 'teal', googleColorId: null }).fill, 'bg-teal-600');
+  assert.equal(stylistSwatch({ calendarColor: null }).fill, DEFAULT_CALENDAR_COLOR.fill);
 });

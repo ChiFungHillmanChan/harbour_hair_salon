@@ -15,20 +15,25 @@ const ON: Status = {
   lastPullError: OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED, failedEvents: 2,
 };
 
-type Node = { type?: unknown; props?: { children?: unknown; disabled?: boolean; label?: string; busy?: string; confirm?: string; action?: unknown; onClick?: (event: unknown) => void } };
+type Node = { type?: unknown; props?: { name?: string; initial?: string | null; allowNone?: boolean; children?: unknown; disabled?: boolean; label?: string; busy?: string; confirm?: string; action?: unknown; onClick?: (event: unknown) => void } };
 const SyncButton = () => null;
 const ClearButton = () => null;
+const ColourPicker = () => null;
 const syncAction = async () => {};
+const coloursAction = async () => {};
 const clearAction = async () => {};
+
+const COLOURS = { stylists: [{ id: 'lox', name: 'Lox', googleColorId: '5', googleAliases: 'L' }, { id: 'shania', name: 'Shania', googleColorId: null, googleAliases: '天' }], unassignedColorId: '11', leaveColorId: '8' };
 
 async function render(locale: Locale, status: Status) {
   const component = loadServerModule<typeof import('../../components/admin/GoogleCalendarStatus')>('src/components/admin/GoogleCalendarStatus.tsx', {
     '@/components/admin/GoogleSyncButton': { GoogleSyncButton: SyncButton },
     '@/components/admin/GoogleClearBusyButton': { GoogleClearBusyButton: ClearButton },
-    '@/app/actions/admin-google-calendar': { syncGoogleCalendarNow: syncAction, clearGoogleBusyTime: clearAction },
+    '@/components/admin/GoogleColorPicker': { GoogleColorPicker: ColourPicker },
+    '@/app/actions/admin-google-calendar': { syncGoogleCalendarNow: syncAction, clearGoogleBusyTime: clearAction, saveGoogleDiaryColours: coloursAction },
     '@/i18n/server': { getLocale: async () => locale, getT: async (namespace: Namespace) => translator(locale, namespace) },
   });
-  const tree = await component.GoogleCalendarStatus({ status });
+  const tree = await component.GoogleCalendarStatus({ status, colours: COLOURS });
   const text = (node: unknown): string => {
     if (typeof node === 'string' || typeof node === 'number') return String(node);
     if (Array.isArray(node)) return node.map(text).join(' ');
@@ -38,16 +43,18 @@ async function render(locale: Locale, status: Status) {
   const buttons: Node[] = [];
   const clearButtons: Node[] = [];
   const forms: Node[] = [];
+  const pickers: Node[] = [];
   const find = (node: unknown) => {
     if (Array.isArray(node)) return node.forEach(find);
     if (!node || typeof node !== 'object' || !('props' in node)) return;
     if ((node as Node).type === SyncButton) buttons.push(node as Node);
     if ((node as Node).type === ClearButton) clearButtons.push(node as Node);
+    if ((node as Node).type === ColourPicker) pickers.push(node as Node);
     if ((node as Node).type === 'form') forms.push(node as Node);
     find((node as Node).props?.children);
   };
   find(tree);
-  return { text: text(tree), buttons, clearButtons, forms };
+  return { text: text(tree), buttons, clearButtons, forms, pickers };
 }
 
 test('on: shows the masked calendar, check times, translated problem, failed count and an enabled Sync now', async () => {
@@ -110,13 +117,30 @@ test('Clear Google busy time is offered on and off, posts to its own action, in 
   for (const status of [ON, { enabled: false } as Status]) {
     const en = await render('en-GB', status);
     assert.equal(en.clearButtons.length, 1, `enabled: ${status.enabled}`);
-    assert.deepEqual([en.clearButtons[0].props?.label, en.clearButtons[0].props?.busy], ['Clear Google busy time', 'Clearing…']);
-    assert.match(en.clearButtons[0].props?.confirm ?? '', /^Remove every busy period read from Google Calendar\?/);
+    assert.deepEqual([en.clearButtons[0].props?.label, en.clearButtons[0].props?.busy], ['Clear Google busy time and diary copy', 'Clearing…']);
+    assert.match(en.clearButtons[0].props?.confirm ?? '', /^Remove every busy period read from Google Calendar, and the copy of the diary shown on Admin → Schedule\?/);
+    assert.ok(en.text.includes('It also removes the copy of the diary shown on Admin → Schedule.'), 'the help mentions the diary copy');
     assert.ok(en.forms.some((form) => form.props?.action === clearAction));
     assert.ok(en.text.includes(status.enabled ? 'While the sync is on, the next check of Google reads them again' : 'The sync is off, so nothing reads Google any more'));
     const zh = await render('zh-HK', status);
-    assert.deepEqual([zh.clearButtons[0].props?.label, zh.clearButtons[0].props?.busy], ['清除 Google 忙碌時段', '清除中…']);
+    assert.deepEqual([zh.clearButtons[0].props?.label, zh.clearButtons[0].props?.busy], ['清除 Google 忙碌時段及記事簿副本', '清除中…']);
     assert.match(zh.clearButtons[0].props?.confirm ?? '', /^要刪除所有從 Google 日曆讀取的忙碌時段嗎？/);
+    assert.ok((zh.clearButtons[0].props?.confirm ?? '').endsWith('亦會刪除後台預約時間表上顯示的記事簿副本。'));
+  }
+});
+
+// "Diary colours": the two salon colours (no "none"), the stylists' colours
+// read-only, posting to its own action; offered on or off, in both languages.
+test('Diary colours: two pickers without "none" posting to their own action, and the stylists listed', async () => {
+  for (const status of [ON, { enabled: false } as Status]) {
+    const en = await render('en-GB', status);
+    assert.ok(en.forms.some((form) => form.props?.action === coloursAction), `enabled: ${status.enabled}`);
+    assert.deepEqual(en.pickers.map((p) => [p.props?.name, p.props?.initial, p.props?.allowNone]), [['googleUnassignedColorId', '11', false], ['googleLeaveColorId', '8', false]]);
+    for (const expected of ['Diary colours', 'Save colours', 'Lox', 'Shania', 'No Google colour']) assert.ok(en.text.includes(expected), expected);
+    assert.match(en.text, /\(\s*L\s*\)/);
+    assert.match(en.text, /\(\s*天\s*\)/);
+    const zh = await render('zh-HK', status);
+    for (const expected of ['記事簿顏色', '儲存顏色', '沒有 Google 顏色']) assert.ok(zh.text.includes(expected), expected);
   }
 });
 

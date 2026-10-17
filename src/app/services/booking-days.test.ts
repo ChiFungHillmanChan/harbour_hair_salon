@@ -137,3 +137,18 @@ test('later days are untouched by the notice period', () => {
   const [day] = days(['2026-10-26'], { ivan: weekdays([1], '10:00', '11:00') }, {}, 30, now, always, withNotice(now));
   assert.ok(day.slots.every((slot) => slot.available));
 });
+
+test('a time the chair rule refuses for a stylist is shown taken for that stylist only', () => {
+  // Use the file's existing helpers for hours and dates; two stylists rostered the same day.
+  const date = '2026-10-06';
+  const hours = { dayOfWeek: 2, startTime: '10:00', endTime: '19:00' };
+  const input = {
+    dates: [date], duration: 60, now: new Date('2026-10-01T09:00:00Z'), busyByStylist: new Map(),
+    bookable: () => true,
+    chairAllows: (stylistId: string, start: Date) => !(stylistId === 'lox' && start.getTime() === resolveSalonDateTime(date, '15:00').utc.getTime()),
+  };
+  const [lox] = buildBookingDays({ ...input, hoursByStylist: new Map([['lox', [hours]]]) });
+  assert.equal(lox.slots.find((slot) => slot.time === '15:00')?.available, false);
+  const [anyone] = buildBookingDays({ ...input, hoursByStylist: new Map([['lox', [hours]], ['funky', [hours]]]) });
+  assert.equal(anyone.slots.find((slot) => slot.time === '15:00')?.available, true);
+});

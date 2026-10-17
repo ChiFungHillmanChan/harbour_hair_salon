@@ -70,6 +70,7 @@ function fixture(options: { hours?: Hours; existing?: { date: Date; durationMin:
       },
       updateMany: async ({ data }: { data: Record<string, unknown> }) => { stored.push(data); return { count: 1 }; },
     },
+    googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [] },
     // A customer whose address is confirmed (see lib/email-verification.ts).
     user: { findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }) },

@@ -77,6 +77,7 @@ const legal = {
       rateLimits: '<b>IP addresses used to limit repeated attempts:</b> deleted automatically within 2 days.',
       links: '<b>Links in our emails</b> stop working after a set time: email confirmation after 48 hours, password reset after 1 hour, unsubscribe after 30 days.',
       googleCalendar: '<b>Copies in the salon’s Google Calendar:</b> up to 12 months after the appointment, then deleted. A deleted copy can stay in Google Calendar’s bin for up to about 30 days before Google removes it. If you ask us to delete your account, the copies show no name, phone number or notes.',
+      googleDiary: '<b>The salon diary shown to our staff on this website:</b> a copy of the titles and times of the entries in the salon’s Google Calendar, in which our staff may write your name or phone number. We keep it so our staff see it in one place and online booking does not clash with it. Only our staff can see it, and each entry is deleted 30 days after the entry ends.',
       marketing: '<b>Marketing list:</b> until you unsubscribe. After that we keep your address marked as unsubscribed, so that we never send you marketing again.',
     },
     rights: {

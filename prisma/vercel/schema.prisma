@@ -79,6 +79,10 @@ model Stylist {
   /// everyone. Admin screens still list them.
   isActive            Boolean              @default(true)
   calendarColor       String? // admin calendar palette key (see lib/calendar-colors.ts); admin-only, never public
+  /// Google Calendar event colour id ("1"–"11") the salon diary uses for this stylist (Google diary mirror); admin-only, never public
+  googleColorId       String?
+  /// Other names the diary uses for this stylist, comma-separated (e.g. "F"); the stylist's own name always counts
+  googleAliases       String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   appointments        Appointment[]
@@ -270,6 +274,30 @@ model GoogleCalendarSyncState {
   lastPullError     String?
   /// Hash of the GOOGLE busy blocks not yet ended when last stored (diagnosis only: the pull compares the stored rows).
   busyHash          String?
+  /// The calendar the GoogleCalendarEvent rows belong to; a different configured id makes the next run start over (calendar change guard)
+  calendarId        String?
+}
+
+/// One event of the salon's Google diary, classified (Google diary mirror). Titles may hold
+/// customers' names and phone numbers typed by staff: admin-only, kept until 30 days after the event.
+model GoogleDiaryEntry {
+  id             String   @id @default(cuid())
+  googleEventId  String   @unique
+  /// STYLIST | UNASSIGNED | LEAVE | NOTE
+  kind           String
+  /// JSON array of stylist ids (empty for UNASSIGNED and NOTE)
+  stylistIdsJson String   @default("[]")
+  /// The event's summary, trimmed, at most 200 characters
+  title          String
+  colorId        String?
+  start          DateTime
+  end            DateTime
+  allDay         Boolean  @default(false)
+  htmlLink       String?
+  lastSyncAt     DateTime @default(now())
+
+  @@index([kind, start])
+  @@index([end])
 }
 
 model Review {
@@ -378,6 +406,9 @@ model SiteSettings {
   /// after this instant are ever cancelled, so switching it on never reaches
   /// back to old bookings nobody marked arrived.
   lateAutoCancelSince        DateTime?
+  /// Google diary colours (Admin → Integrations): events in the no-stylist colour take a chair; the leave colour is reserved for leave
+  googleUnassignedColorId    String @default("11")
+  googleLeaveColorId         String @default("8")
   updatedAt         DateTime @updatedAt
 }
 
