@@ -135,3 +135,18 @@ test('Google colour ids, the no-colour grey and the stylist swatch', () => {
   assert.equal(stylistSwatch({ calendarColor: 'teal', googleColorId: null }).fill, 'bg-teal-600');
   assert.equal(stylistSwatch({ calendarColor: null }).fill, DEFAULT_CALENDAR_COLOR.fill);
 });
+
+test('display tones retain Google identity and readable dark text without changing picker swatches', async () => {
+  const { googleDisplaySwatch, stylistDisplaySwatch } = await import('./calendar-colors');
+  for (const id of GOOGLE_COLOR_IDS) {
+    const display = googleDisplaySwatch(id);
+    assert.equal(display.swatch, GOOGLE_EVENT_COLORS[id].swatch);
+    assert.equal(display.stripe, GOOGLE_EVENT_COLORS[id].stripe);
+    assert.equal(display.text, 'text-zinc-950');
+    const hex = display.fill.match(/#[0-9a-f]{6}/)?.[0];
+    assert.ok(hex);
+    assert.ok(contrast(hex, ZINC_950) >= 7, `${id}: display contrast`);
+    assert.deepEqual(stylistDisplaySwatch({ calendarColor: 'teal', googleColorId: id }), display);
+  }
+  assert.equal(stylistDisplaySwatch({ calendarColor: 'teal', googleColorId: null }).swatch, CALENDAR_COLORS.teal.swatch);
+});

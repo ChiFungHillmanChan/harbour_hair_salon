@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { googleEventSwatch, resolveCalendarColor, stylistSwatch } from '@/app/lib/calendar-colors';
+import { googleDisplaySwatch, stylistDisplaySwatch } from '@/app/lib/calendar-colors';
 import {
   MIN_DURATION_MINUTES,
   applyMove,
@@ -524,10 +524,10 @@ export function ScheduleWeekGrid({
                     onClick={(event) => event.stopPropagation()}
                     className={`absolute overflow-hidden rounded border px-0.5 leading-3 focus-visible:outline-2 focus-visible:outline-zinc-900 ${
                       wholeDay
-                        ? 'border-zinc-400 border-l-2 border-l-zinc-600 bg-[repeating-linear-gradient(135deg,var(--color-zinc-200)_0_6px,var(--color-zinc-100)_6px_12px)] text-[10px] text-zinc-800'
+                        ? 'border-zinc-400 border-l-2 border-l-zinc-600 bg-[repeating-linear-gradient(135deg,var(--color-zinc-100)_0_2px,var(--color-zinc-50)_2px_10px)] text-[10px] text-zinc-800'
                         : label.kind === 'blocked'
                           // A stylist's own blocked time: hatched and dashed, never mistaken for a booking.
-                          ? 'border-dashed border-zinc-400 border-l-2 border-l-zinc-500 bg-[repeating-linear-gradient(135deg,var(--color-zinc-100)_0_5px,var(--color-white)_5px_10px)] text-[9px] text-zinc-600'
+                          ? 'border-dashed border-zinc-400 border-l-2 border-l-zinc-500 bg-[repeating-linear-gradient(135deg,var(--color-zinc-100)_0_1px,var(--color-white)_1px_8px)] text-[9px] text-zinc-600'
                           : 'border-zinc-300 border-l-2 border-l-zinc-500 bg-zinc-100 text-[9px] text-zinc-700'
                     }`}
                     style={{
@@ -545,7 +545,7 @@ export function ScheduleWeekGrid({
 
               {/* The Google diary, once per entry (a leave naming two stylists is one block here), read-only */}
               {dayDiary.map((entry) => {
-                const swatch = googleEventSwatch(entry.colorId);
+                const swatch = googleDisplaySwatch(entry.colorId);
                 const startMin = Math.max(entry.startMin, bounds.startMin);
                 const endMin = Math.min(entry.endMin, bounds.endMin);
                 const title = entry.title || t('diary.noTitle');
@@ -559,7 +559,7 @@ export function ScheduleWeekGrid({
                     title={label}
                     onClick={(event) => { event.stopPropagation(); onSelectDiary?.(entry); }}
                     onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectDiary?.(entry); } }}
-                    className={`absolute overflow-hidden rounded-sm px-0.5 text-[9px] leading-[1.15] z-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-zinc-900 ${swatch.fill} ${swatch.text}`}
+                    className={`absolute overflow-hidden rounded-sm pl-1.5 pr-0.5 text-[10px] leading-tight z-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-zinc-900 ${swatch.fill} ${swatch.text}`}
                     style={{
                       top: minutesToOffset(startMin, bounds.startMin, PX_PER_MINUTE),
                       height: Math.max(14, (endMin - startMin) * PX_PER_MINUTE),
@@ -567,8 +567,10 @@ export function ScheduleWeekGrid({
                       width: `${100 / laneCount}%`,
                     }}
                   >
+                    <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-0.5 ${swatch.stripe}`} />
                     <div className="font-semibold tabular-nums">{entry.allDay ? t('diary.allDay') : timeLabel(entry.startMin)}</div>
                     <div className="truncate">{title}</div>
+                    <div className="truncate text-[9px] text-zinc-600">{t('diary.google')}</div>
                   </div>
                 );
               })}
@@ -578,8 +580,7 @@ export function ScheduleWeekGrid({
                 const place = position(appt);
                 if (place.dayKey !== key) return null;
                 const stylist = stylistById.get(appt.stylistId);
-                const stylistColour = stylistSwatch(stylist ?? { calendarColor: null });
-                const serviceColour = resolveCalendarColor(appt.serviceColor);
+                const stylistColour = stylistDisplaySwatch(stylist ?? { calendarColor: null });
                 const isDragging = drag?.appointmentId === appt.id;
                 const slot = lane.get(appt.id) ?? 0;
                 const width = 100 / laneCount;
@@ -597,12 +598,12 @@ export function ScheduleWeekGrid({
                       width: `${width}%`,
                       touchAction: 'none',
                     }}
-                    className={`absolute rounded-sm overflow-hidden cursor-grab active:cursor-grabbing border border-white/40
+                    className={`absolute rounded-sm overflow-hidden cursor-grab active:cursor-grabbing border border-zinc-200
                       ${stylistColour.fill} ${stylistColour.text}
-                      ${appt.status === 'PENDING' ? 'border-2 border-dashed border-white/70' : ''}
+                      ${appt.status === 'PENDING' ? 'border-2 border-dashed border-amber-400' : ''}
                       ${isDragging ? 'opacity-80 ring-2 ring-zinc-900 z-20' : 'z-10'}`}
                   >
-                    <span className={`absolute left-0 top-0 bottom-0 w-0.5 ${serviceColour.stripe}`} />
+                    <span className={`absolute left-0 top-0 bottom-0 w-0.5 ${stylistColour.stripe}`} />
                     <div
                       onPointerDown={beginDrag(appt, 'top')}
                       className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize"

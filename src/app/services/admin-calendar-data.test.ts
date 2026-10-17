@@ -231,3 +231,41 @@ test('a request on a booking whose original time has passed is listed as expired
   assert.deepEqual(data.rescheduleRequests.map((row) => [row.id, row.expired]), [['past', true], ['open', false]]);
   assert.equal(data.rescheduleRequestCount, 1, 'a request on a visit that already happened needs no answer');
 });
+
+
+test('dialog services load offering names and published translations without changing option IDs or prices', async () => {
+  const translationQueries: Record<string, unknown>[] = [];
+  const db = {
+    appointment: { count: async () => 0, groupBy: async () => [], findMany: async () => [] },
+    stylist: { findMany: async () => [] }, externalBusyBlock: { findMany: async () => [] }, googleDiaryEntry: { findMany: async () => [] },
+    service: { findMany: async ({ select }: { select: Record<string, unknown> }) => {
+      assert.deepEqual(select.offering, { select: { name: true } }, 'offering names use the existing service read');
+      return [
+        { id: 'option-one', name: 'Full Colour long NHS', price: '80.00', offeringId: 'offering-one', offering: { name: 'Full Colour' }, hairLength: 'LONG', priceType: 'NHS', isBookable: true },
+        { id: 'standalone', name: 'Consultation', price: '15.00', offeringId: null, offering: null, hairLength: null, priceType: 'STANDARD', isBookable: true },
+      ];
+    } },
+    contentTranslation: { findMany: async ({ where }: { where: Record<string, unknown> }) => {
+      translationQueries.push(where);
+      return where.entityType === 'SERVICE'
+        ? [{ entityId: 'option-one', fieldsJson: JSON.stringify({ name: '全頭染髮長髮 NHS' }) }]
+        : [{ entityId: 'offering-one', fieldsJson: JSON.stringify({ name: '全頭染髮' }) }];
+    } },
+  };
+  const { getAdminCalendarData } = loadServerModule<typeof import('./admin-calendar-data')>('src/app/services/admin-calendar-data.ts', {
+    '@/app/lib/prisma': { __esModule: true, default: db, getDatabaseProvider: () => 'postgresql' },
+    '@/app/lib/session': { requireAdmin: async () => ({ userId: 'admin', role: 'ADMIN' }) },
+    './integration-readiness': { getTreatwellSyncCoverage: async () => ({ warning: null }) },
+  });
+  const result = await getAdminCalendarData({ date: '2026-10-23', view: 'day' }, 'zh-HK');
+  assert.equal(result.services[0].id, 'option-one');
+  assert.equal(result.services[0].name, '全頭染髮長髮 NHS');
+  assert.equal(result.services[0].offeringId, 'offering-one');
+  assert.equal(result.services[0].offering?.name, '全頭染髮');
+  assert.equal(result.services[0].offering?.searchText, 'Full Colour 全頭染髮');
+  assert.equal(result.services[0].amountPence, 8000);
+  assert.equal(result.services[0].hairLength, 'LONG');
+  assert.equal(result.services[0].priceType, 'NHS');
+  assert.equal(result.services[1].offering, null);
+  assert.deepEqual(translationQueries.map((query) => query.entityType), ['SERVICE', 'SERVICE_OFFERING']);
+});

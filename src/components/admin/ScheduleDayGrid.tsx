@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { googleEventSwatch, resolveCalendarColor, stylistSwatch } from '@/app/lib/calendar-colors';
+import { googleDisplaySwatch, stylistDisplaySwatch } from '@/app/lib/calendar-colors';
 import type { DepositView } from '@/app/lib/deposit-display';
 import { DepositChip } from './DepositChip';
 import {
@@ -391,7 +391,7 @@ export function ScheduleDayGrid({
    * starting a booking. Website bookings (z-10) stay clickable above one.
    */
   const diaryBlock = (entry: PlacedDiaryEntry, place: { left: string; width: string } = { left: '0%', width: '100%' }) => {
-    const swatch = googleEventSwatch(entry.colorId);
+    const swatch = googleDisplaySwatch(entry.colorId);
     const startMin = Math.max(entry.startMin, bounds.startMin);
     const endMin = Math.min(entry.endMin, bounds.endMin);
     const label = t('diary.detail', { title: entry.title || t('diary.noTitle'), range: entry.allDay ? t('diary.allDay') : diaryRange(entry) });
@@ -404,10 +404,11 @@ export function ScheduleDayGrid({
         title={label}
         onClick={(event) => { event.stopPropagation(); onSelectDiary?.(entry); }}
         onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectDiary?.(entry); } }}
-        className={`absolute overflow-hidden rounded px-1 text-[10px] leading-tight z-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-zinc-900 ${swatch.fill} ${swatch.text}`}
+        className={`absolute overflow-hidden rounded pl-2 pr-1 text-[11px] leading-tight z-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-zinc-900 ${swatch.fill} ${swatch.text}`}
         style={{ top: minutesToOffset(startMin, bounds.startMin, PX_PER_MINUTE), height: Math.max(18, (endMin - startMin) * PX_PER_MINUTE), left: place.left, width: place.width }}
       >
-        <span className="mr-1 rounded bg-white/80 px-0.5 font-semibold text-zinc-900">{t('diary.google')}</span>
+        <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1 ${swatch.stripe}`} />
+        <span className="mr-1 text-[10px] text-zinc-600">{t('diary.google')}</span>
         <span className="font-semibold">{entry.title || t('diary.noTitle')}</span>
         <span className="block tabular-nums opacity-90">{entry.allDay ? t('diary.allDay') : diaryRange(entry)}</span>
       </div>
@@ -481,11 +482,11 @@ export function ScheduleDayGrid({
       <div className="flex border-b border-zinc-200 bg-zinc-50">
         <div className="w-14 flex-shrink-0" />
         {stylists.map((stylist) => {
-          const colour = stylistSwatch(stylist);
+          const colour = stylistDisplaySwatch(stylist);
           return (
             <div key={stylist.id} className="flex-1 min-w-0 px-2 py-2 text-center border-l border-zinc-200">
               <div className="flex items-center justify-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${colour.fill}`} />
+                <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${colour.swatch}`} />
                 <span className="text-xs font-bold text-zinc-800 truncate">{stylist.name}</span>
               </div>
               <div className="text-[10px] text-zinc-500">
@@ -527,7 +528,7 @@ export function ScheduleDayGrid({
         </div>
 
         {stylists.map((stylist) => {
-          const stylistColour = stylistSwatch(stylist);
+          const stylistColour = stylistDisplaySwatch(stylist);
           return (
             <div
               key={stylist.id}
@@ -592,10 +593,10 @@ export function ScheduleDayGrid({
                       onClick={(event) => event.stopPropagation()}
                       className={`absolute left-1 right-1 overflow-hidden rounded border px-1 leading-4 focus-visible:outline-2 focus-visible:outline-zinc-900 ${
                         wholeDay
-                          ? 'border-zinc-400 border-l-4 border-l-zinc-600 bg-[repeating-linear-gradient(135deg,var(--color-zinc-200)_0_6px,var(--color-zinc-100)_6px_12px)] py-1 text-xs text-zinc-800'
+                          ? 'border-zinc-400 border-l-4 border-l-zinc-600 bg-[repeating-linear-gradient(135deg,var(--color-zinc-100)_0_2px,var(--color-zinc-50)_2px_10px)] py-1 text-xs text-zinc-800'
                           : label.kind === 'blocked'
                             // A stylist's own blocked time: hatched and dashed, never mistaken for a booking.
-                            ? 'border-dashed border-zinc-400 border-l-4 border-l-zinc-500 bg-[repeating-linear-gradient(135deg,var(--color-zinc-100)_0_5px,var(--color-white)_5px_10px)] text-[10px] text-zinc-600'
+                            ? 'border-dashed border-zinc-400 border-l-4 border-l-zinc-500 bg-[repeating-linear-gradient(135deg,var(--color-zinc-100)_0_1px,var(--color-white)_1px_8px)] text-[10px] text-zinc-600'
                             : 'border-zinc-300 border-l-4 border-l-zinc-500 bg-zinc-100 text-[10px] text-zinc-700'
                       }`}
                       style={{
@@ -619,7 +620,6 @@ export function ScheduleDayGrid({
                 .filter((appt) => blockPosition(appt).stylistId === stylist.id)
                 .map((appt) => {
                   const position = blockPosition(appt);
-                  const serviceColour = resolveCalendarColor(appt.serviceColor);
                   const isDragging = drag?.appointmentId === appt.id;
                   const isClashing = clashingIds.has(appt.id);
                   const height = Math.max(MIN_DURATION_MINUTES * PX_PER_MINUTE, position.durationMin * PX_PER_MINUTE);
@@ -635,25 +635,25 @@ export function ScheduleDayGrid({
                       }}
                       className={`absolute left-1 right-1 rounded overflow-hidden cursor-grab active:cursor-grabbing
                         ${stylistColour.fill} ${stylistColour.text}
-                        ${appt.status === 'PENDING' ? 'border-2 border-dashed border-white/70' : ''}
+                        ${appt.status === 'PENDING' ? 'border-2 border-dashed border-amber-400' : ''}
                         ${isDragging ? 'opacity-80 ring-2 ring-zinc-900 z-20' : 'z-10'}
                         ${isClashing ? 'ring-2 ring-red-500' : ''}`}
                     >
-                      <span className={`absolute left-0 top-0 bottom-0 w-1 ${serviceColour.stripe}`} />
+                      <span className={`absolute left-0 top-0 bottom-0 w-1 ${stylistColour.stripe}`} />
                       <div
                         onPointerDown={beginDrag(appt, 'top')}
                         className="absolute inset-x-0 top-0 h-2 cursor-ns-resize"
                         style={{ touchAction: 'none' }}
                       />
-                      <div className="pl-2.5 pr-1 py-1 text-[10px] leading-tight pointer-events-none">
+                      <div className="pl-2.5 pr-1 py-1 text-[11px] leading-tight pointer-events-none">
                         <div className="font-semibold truncate">
                           {timeLabel(position.startMin)} {appt.customerName ?? t('appointment.customerFallback')}
                         </div>
-                        <div className="truncate opacity-90">{appt.serviceName}</div>
+                        <div className="truncate text-zinc-700">{appt.serviceName}</div>
                         {appt.arrived && <div className="font-semibold uppercase">{t('arrivals.arrivedMark')}</div>}
                         {appt.moveRequested && <div className="font-semibold uppercase">{t('rescheduleRequests.badge')}</div>}
                         {appt.deposit && <div><DepositChip deposit={appt.deposit} t={t} onColour /></div>}
-                        <div className="opacity-80">{t('grid.minutes', { count: position.durationMin })}</div>
+                        <div className="text-zinc-600">{t('grid.minutes', { count: position.durationMin })}</div>
                       </div>
                       <div
                         onPointerDown={beginDrag(appt, 'bottom')}

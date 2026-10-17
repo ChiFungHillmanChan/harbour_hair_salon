@@ -29,8 +29,8 @@ function service(id: string, name: string, amountPence: number, extra: Partial<D
 }
 
 const SERVICES = [
-  service('blow-dry', 'Blow Dry', 4000, { priceVersion: 3 }),
-  service('blow-dry-nhs', 'Blow Dry (NHS)', 3500, { priceType: 'NHS', hairLength: 'LONG' }),
+  service('blow-dry', 'Blow Dry', 4000, { priceVersion: 3, offeringId: 'blow-dry-offering', offering: { name: 'Blow Dry', searchText: 'blow dry' } }),
+  service('blow-dry-nhs', 'Blow Dry (NHS)', 3500, { priceType: 'NHS', hairLength: 'LONG', offeringId: 'blow-dry-offering', offering: { name: 'Blow Dry', searchText: 'blow dry' } }),
   // An unverified legacy option: still on old bookings, closed to new ones.
   service('legacy', 'Blow Dry (Student & NHS)', 3000, { priceType: 'NHS', isBookable: false, vatDisplay: 'UNSPECIFIED' }),
 ];
@@ -52,6 +52,7 @@ function dialog(
   /** markArrived (actions/admin-arrivals.ts): answers, or rejects. */
   markArrived: (id: string, arrived: boolean) => Promise<unknown> = async () => ({ success: true }),
 ) {
+  let locale: 'en-GB' | 'zh-HK' = 'en-GB';
   const lookups: unknown[] = [];
   const store = new Map<string, unknown>();
   const calls: Record<string, unknown>[] = [];
@@ -65,7 +66,7 @@ function dialog(
       useEffect: () => undefined, useRef: (value: unknown) => ({ current: value }),
       useState: (value: unknown) => [typeof value === 'function' ? (value as () => unknown)() : value, (next: unknown) => stateSets.push(next)],
     },
-    '@/i18n/client': { useT: (namespace: Namespace) => translator('en-GB', namespace), useLocale: () => 'en-GB' },
+    '@/i18n/client': { useT: (namespace: Namespace) => translator(locale, namespace), useLocale: () => locale },
     './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     './DepositRecheckButton': { DepositRecheckButton: Recheck },
     './DepositSettleRefundButton': { DepositSettleRefundButton: SettleOutside },
@@ -101,7 +102,7 @@ function dialog(
     const key = `schedule-dialog:${target.mode === 'edit' ? target.appointmentId : 'new'}`;
     store.set(key, { ...(store.get(key) as Record<string, unknown>), ...patch });
   };
-  return { render, calls, patchDraft, statusCalls, lookups, arrivalCalls, stateSets, events };
+  return { render, calls, patchDraft, statusCalls, lookups, arrivalCalls, stateSets, events, setLocale: (next: 'en-GB' | 'zh-HK') => { locale = next; } };
 }
 
 const submitButton = (nodes: Element[]) => nodes.filter((node) => node.type === 'button').at(-1)!;
@@ -113,7 +114,7 @@ test('a new booking offers only bookable options, shows the price, and sends the
   });
   let nodes = render();
   assert.deepEqual(options(nodes, 'appt-service').map((node) => node.props.value), ['blow-dry', 'blow-dry-nhs']);
-  assert.match(text(options(nodes, 'appt-service')[1]), /Blow Dry \(NHS\) · Long hair · NHS price \(45 mins, £35\.00\)/);
+  assert.match(text(options(nodes, 'appt-service')[1]), /Long hair · NHS price \(45 mins, £35\.00\)/);
   assert.match(text(nodes), /Price for this booking£40\.00VAT excluded/);
 
   // A walk-in's email language is chosen here, English by default.
@@ -527,16 +528,124 @@ test('clearing the minutes leaves the box empty, so typing a new length never sh
   });
   const minutes = () => render().find((node) => node.props.id === 'appt-duration')!;
   const type = (value: string) => (minutes().props.onChange as (event: unknown) => void)({ target: { value } });
-  assert.equal(minutes().props.value, 45);
+  assert.equal(minutes().props.value, '45');
 
   // A number box shown 0 keeps it when typing on: "0" then "120" reads "0120".
   type('');
   assert.equal(minutes().props.value, '');
   type('120');
-  assert.equal(minutes().props.value, 120);
+  assert.equal(minutes().props.value, '120');
 
   const nodes = render();
   (nodes.find((node) => node.type === 'input' && node.props.placeholder === 'Search name, phone or email…')!.props.onChange as (event: unknown) => void)({ target: { value: 'Mei' } });
   await (submitButton(render()).props.onClick as () => Promise<void>)();
   assert.equal(calls[0].durationMin, 120);
+});
+
+
+test('minutes normalizes leading zeroes, preserves blank editing and previews the actual end time', async () => {
+  const { render, calls, patchDraft } = dialog({ mode: 'create', dateStr: '2099-09-15', time: '10:00' }, { create: refused });
+  render();
+  patchDraft({ name: 'Mei' });
+  const change = (value: string) => (render().find((node) => node.props.id === 'appt-duration')!.props.onChange as (event: unknown) => void)({ target: { value } });
+  change('00120');
+  let nodes = render();
+  const input = nodes.find((node) => node.props.id === 'appt-duration')!;
+  assert.equal(input.props.value, '120');
+  assert.equal(input.props.type, 'text');
+  assert.equal(input.props.inputMode, 'numeric');
+  assert.match(text(nodes), /Ends at 12:00/);
+  await save(nodes);
+  assert.equal(calls[0].durationMin, 120);
+  change('');
+  nodes = render();
+  assert.equal(nodes.find((node) => node.props.id === 'appt-duration')!.props.value, '');
+  assert.doesNotMatch(text(nodes), /Ends at/);
+  await save(nodes);
+  assert.equal(calls.length, 1, 'blank never reaches the server action');
+});
+
+test('invalid minute values cannot save, while 15, 55, 85 and 720 submit as whole minutes', async () => {
+  const { render, calls, patchDraft } = dialog({ mode: 'create', dateStr: '2099-09-15', time: '10:00' }, { create: refused });
+  render();
+  patchDraft({ name: 'Mei' });
+  for (const invalid of ['', '0', '14', '721', '-15', '1.5', '1e2', 'abc']) {
+    patchDraft({ durationMin: invalid });
+    const nodes = render();
+    assert.equal(submitButton(nodes).props.disabled, true, invalid);
+    assert.ok(nodes.find((node) => node.props.id === 'appt-duration-error'), 'inline error is visible before saving');
+    await save(nodes);
+  }
+  assert.equal(calls.length, 0);
+  for (const valid of ['15', '55', '85', '720']) {
+    patchDraft({ durationMin: valid });
+    assert.equal(submitButton(render()).props.disabled, false);
+    await save(render());
+  }
+  assert.deepEqual(calls.map((call) => call.durationMin), [15, 55, 85, 720]);
+  patchDraft({ durationMin: 85 });
+  assert.equal(render().find((node) => node.props.id === 'appt-duration')!.props.value, '85', 'older numeric drafts still restore');
+});
+
+
+test('service selection groups by offering ID, filters locally, and only shows actual options', () => {
+  const rows = [
+    service('short-standard', 'English option one', 3000, { offeringId: 'cut', offering: { name: '剪髮', searchText: 'haircut 剪髮' }, hairLength: 'SHORT' } as Partial<DialogService>),
+    service('long-nhs', 'English option two', 4000, { offeringId: 'cut', offering: { name: '剪髮', searchText: 'haircut 剪髮' }, hairLength: 'LONG', priceType: 'NHS' } as Partial<DialogService>),
+    service('colour', 'Colour option', 8000, { offeringId: 'colour', offering: { name: '全頭染髮', searchText: 'full colour 全頭染髮' }, category: 'Colouring' } as Partial<DialogService>),
+    service('single', 'Consultation', 1500),
+    service('retired-nhs', 'Retired option', 2000, { offeringId: 'cut', isBookable: false }),
+  ];
+  const { render } = dialog({ mode: 'create', dateStr: '2099-09-15', time: '10:00' }, {}, rows);
+  let nodes = render();
+  assert.deepEqual(options(nodes, 'appt-offering').filter((node) => node.props.value).map(text), ['剪髮', '全頭染髮', 'Consultation']);
+  assert.deepEqual(options(nodes, 'appt-service').map((node) => node.props.value), ['short-standard', 'long-nhs']);
+  assert.match(text(options(nodes, 'appt-service')), /Short hair.*Standard price.*Long hair.*NHS price/);
+  assert.equal(options(nodes, 'appt-service').length, 2, 'no short NHS or long standard choice is invented');
+  const search = nodes.find((node) => node.props.id === 'appt-service-search')!;
+  (search.props.onChange as (event: unknown) => void)({ target: { value: 'full colour' } });
+  nodes = render();
+  assert.deepEqual(options(nodes, 'appt-offering').filter((node) => node.props.value).map(text), ['全頭染髮'], 'English aliases still find a translated offering');
+  assert.equal(options(nodes, 'appt-service').length, 0, 'previous options do not appear under a different search');
+  (nodes.find((node) => node.props.id === 'appt-offering')!.props.onChange as (event: unknown) => void)({ target: { value: 'offering:colour' } });
+  nodes = render();
+  assert.equal(nodes.find((node) => node.props.id === 'appt-service')!.props.value, 'colour');
+  assert.equal(nodes.find((node) => node.props.id === 'appt-duration')!.props.value, '45');
+  (nodes.find((node) => node.props.id === 'appt-service-search')!.props.onChange as (event: unknown) => void)({ target: { value: '' } });
+  (nodes.find((node) => node.props.id === 'appt-service-category')!.props.onChange as (event: unknown) => void)({ target: { value: 'Styling' } });
+  nodes = render();
+  assert.deepEqual(options(nodes, 'appt-offering').filter((node) => node.props.value).map(text), ['剪髮', 'Consultation']);
+  (nodes.find((node) => node.props.id === 'appt-service-search')!.props.onChange as (event: unknown) => void)({ target: { value: 'no such service' } });
+  assert.match(text(render()), /No services match/);
+});
+
+
+test('locale changes restore minute text and the preview identifies a next-day finish', () => {
+  const { render, patchDraft, setLocale } = dialog({ mode: 'create', dateStr: '2099-09-15', time: '23:00' }, {});
+  render();
+  patchDraft({ durationMin: '85', serviceSearch: 'blow' });
+  assert.match(text(render()), /Ends at 00:25 the next day/);
+  setLocale('zh-HK');
+  let nodes = render();
+  assert.equal(nodes.find((node) => node.props.id === 'appt-duration')!.props.value, '85');
+  assert.equal(nodes.find((node) => node.props.id === 'appt-service-search')!.props.value, 'blow');
+  assert.match(text(nodes), /翌日 00:25 結束/);
+  patchDraft({ durationMin: '' });
+  setLocale('en-GB');
+  nodes = render();
+  assert.equal(nodes.find((node) => node.props.id === 'appt-duration')!.props.value, '');
+  assert.equal(submitButton(nodes).props.disabled, true);
+});
+
+test('resizing a retired option retains the price recorded on the booking', async () => {
+  const target = { ...depositTarget('CONFIRMED', { state: 'PAID', amountPence: 2000 }), serviceId: 'legacy', price: { known: true, amountPence: 1234, priceType: 'STANDARD', vatDisplay: 'EXCLUDED', priceNature: 'LISTED' } } as DialogTarget;
+  const { render, calls, patchDraft } = dialog(target, { edit: refused });
+  render();
+  patchDraft({ durationMin: '85' });
+  const nodes = render();
+  assert.match(text(nodes), /Recorded price£12.34/);
+  await save(nodes);
+  assert.equal(calls[0].serviceId, 'legacy');
+  assert.equal(calls[0].durationMin, 85);
+  assert.equal(calls[0].expectedQuote, undefined);
 });

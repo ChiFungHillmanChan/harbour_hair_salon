@@ -6,7 +6,7 @@ import { CalendarSetupNotice } from '@/components/admin/CalendarSetupNotice';
 import { LateArrivalPanel } from '@/components/admin/LateArrivalPanel';
 import { ScheduleCalendar } from '@/components/admin/ScheduleCalendar';
 import { type CalendarQuery } from '@/app/services/admin-calendar-range';
-import { getT } from '@/i18n/server';
+import { getLocale, getT } from '@/i18n/server';
 import { Suspense } from 'react';
 import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
 
@@ -17,9 +17,9 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   // and calendar stream in behind Suspense, so LCP no longer waits on Neon.
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-8">
+      <div className="mb-5 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('page.title')}</h1>
-        <p className="text-zinc-700 mt-2">{t('page.subtitle')}</p>
+        <p className="text-sm text-zinc-700 mt-2 sm:text-base">{t('page.subtitle')}</p>
       </div>
 
       <Suspense fallback={<ScheduleSkeleton label={t('page.loading')} />}>
@@ -30,8 +30,9 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
 }
 
 async function ScheduleContent({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[] }> }) {
+  const locale = await getLocale();
   const [calendar, settings, t, arrivals] = await Promise.all([
-    getAdminCalendarData(await searchParams),
+    getAdminCalendarData(await searchParams, locale),
     getSiteSettings(),
     getT('adminSchedule'),
     getLateArrivalBoard(),
@@ -56,27 +57,31 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
         scheduledSyncEnabled={process.env.CALENDAR_SYNC_ENABLED === 'true'}
       />
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-        <div className={`p-5 rounded-lg shadow border ${pendingCount > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-zinc-200'}`}>
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('stats.awaiting')}</p>
-          <p className={`text-3xl font-bold mt-1 ${pendingCount > 0 ? 'text-amber-700' : 'text-zinc-900'}`}>{pendingCount}</p>
+      {/* Counts remain website-only: imported diary entries are distinct sources. */}
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h2 className="text-xs font-semibold text-zinc-700">{t('stats.scope')}</h2>
+        <p className="text-xs text-zinc-500">{t('stats.scopeHelp')}</p>
+      </div>
+      <div className="grid grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 mb-5 sm:mb-8">
+        <div className={`min-w-0 p-2 sm:p-5 rounded-lg border ${pendingCount > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-zinc-200'}`}>
+          <p className="min-h-7 text-balance text-[11px] leading-[14px] sm:min-h-10 sm:text-sm sm:leading-5 text-zinc-600 font-medium">{t('stats.awaiting')}</p>
+          <p className={`text-xl leading-6 sm:text-3xl font-bold mt-1 ${pendingCount > 0 ? 'text-amber-700' : 'text-zinc-900'}`}>{pendingCount}</p>
         </div>
-        <div className={`p-5 rounded-lg shadow border ${rescheduleRequestCount > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-zinc-200'}`}>
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('rescheduleRequests.stat')}</p>
-          <p className={`text-3xl font-bold mt-1 ${rescheduleRequestCount > 0 ? 'text-amber-700' : 'text-zinc-900'}`}>{rescheduleRequestCount}</p>
+        <div className={`min-w-0 p-2 sm:p-5 rounded-lg border ${rescheduleRequestCount > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-zinc-200'}`}>
+          <p className="min-h-7 text-balance text-[11px] leading-[14px] sm:min-h-10 sm:text-sm sm:leading-5 text-zinc-600 font-medium">{t('rescheduleRequests.stat')}</p>
+          <p className={`text-xl leading-6 sm:text-3xl font-bold mt-1 ${rescheduleRequestCount > 0 ? 'text-amber-700' : 'text-zinc-900'}`}>{rescheduleRequestCount}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('stats.today')}</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{todayConfirmed}</p>
+        <div className="bg-white min-w-0 p-2 sm:p-5 rounded-lg border border-zinc-200">
+          <p className="min-h-7 text-balance text-[11px] leading-[14px] sm:min-h-10 sm:text-sm sm:leading-5 text-zinc-600 font-medium">{t('stats.today')}</p>
+          <p className="text-xl leading-6 sm:text-3xl font-bold text-zinc-900 mt-1">{todayConfirmed}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('stats.cancelledToday')}</p>
-          <p className="text-3xl font-bold text-red-600 mt-1">{todayCancelled}</p>
+        <div className="bg-white min-w-0 p-2 sm:p-5 rounded-lg border border-zinc-200">
+          <p className="min-h-7 text-balance text-[11px] leading-[14px] sm:min-h-10 sm:text-sm sm:leading-5 text-zinc-600 font-medium">{t('stats.cancelledToday')}</p>
+          <p className="text-xl leading-6 sm:text-3xl font-bold text-red-600 mt-1">{todayCancelled}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('stats.period')}</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{periodCount}</p>
+        <div className="bg-white min-w-0 p-2 sm:p-5 rounded-lg border border-zinc-200">
+          <p className="min-h-7 text-balance text-[11px] leading-[14px] sm:min-h-10 sm:text-sm sm:leading-5 text-zinc-600 font-medium">{t('stats.period')}</p>
+          <p className="text-xl leading-6 sm:text-3xl font-bold text-zinc-900 mt-1">{periodCount}</p>
         </div>
       </div>
 
@@ -90,11 +95,11 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
 function ScheduleSkeleton({ label }: { label: string }) {
   return (
     <div className="animate-pulse" aria-busy="true" aria-label={label}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 mb-5 sm:mb-8">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-            <div className="h-4 w-24 rounded bg-zinc-200" />
-            <div className="mt-3 h-8 w-12 rounded bg-zinc-200" />
+          <div key={i} className="bg-white min-w-0 p-2 sm:p-5 rounded-lg border border-zinc-200">
+            <div className="h-7 w-full max-w-24 rounded bg-zinc-200 sm:h-10" />
+            <div className="mt-1 h-6 w-10 rounded bg-zinc-200 sm:h-8 sm:w-12" />
           </div>
         ))}
       </div>

@@ -18,7 +18,7 @@ export type CalendarSwatch = {
   label: string;
   /** Block background. */
   fill: string;
-  /** Block text colour — white on every swatch. */
+  /** Block text colour; display tones use dark text. */
   text: string;
   /** The service stripe drawn on top of a fill. */
   stripe: string;
@@ -116,4 +116,28 @@ export function googleEventSwatch(colorId: string | null | undefined): CalendarS
 /** A stylist's blocks on the board: their Google colour when set, so the board matches Google; else their calendar colour. */
 export function stylistSwatch(stylist: { calendarColor: string | null; googleColorId?: string | null }): CalendarSwatch {
   return isGoogleColorId(stylist.googleColorId) ? GOOGLE_EVENT_COLORS[stylist.googleColorId] : resolveCalendarColor(stylist.calendarColor);
+}
+
+/** Pale board-only fills. Raw Google hex, colour ids and picker swatches above stay exact. */
+const GOOGLE_DISPLAY_FILLS: Record<GoogleColorId, string> = {
+  '1': 'bg-[#eef0fa]', '2': 'bg-[#eaf7ef]', '3': 'bg-[#f4eaf8]',
+  '4': 'bg-[#fcefed]', '5': 'bg-[#fff8df]', '6': 'bg-[#fff0e8]',
+  '7': 'bg-[#e8f5fc]', '8': 'bg-[#f0f0f0]', '9': 'bg-[#eceef8]',
+  '10': 'bg-[#e8f3ec]', '11': 'bg-[#fcebec]',
+};
+const CALENDAR_DISPLAY_FILLS: Record<CalendarColorKey, string> = {
+  slate: 'bg-slate-50', red: 'bg-red-50', amber: 'bg-amber-50', emerald: 'bg-emerald-50',
+  teal: 'bg-teal-50', sky: 'bg-sky-50', indigo: 'bg-indigo-50', violet: 'bg-violet-50',
+  fuchsia: 'bg-fuchsia-50', rose: 'bg-rose-50',
+};
+
+export function googleDisplaySwatch(colorId: string | null | undefined): CalendarSwatch {
+  const raw = googleEventSwatch(colorId);
+  return { ...raw, fill: isGoogleColorId(colorId) ? GOOGLE_DISPLAY_FILLS[colorId] : 'bg-zinc-50', text: 'text-zinc-950' };
+}
+
+export function stylistDisplaySwatch(stylist: { calendarColor: string | null; googleColorId?: string | null }): CalendarSwatch {
+  if (isGoogleColorId(stylist.googleColorId)) return googleDisplaySwatch(stylist.googleColorId);
+  const raw = resolveCalendarColor(stylist.calendarColor);
+  return { ...raw, fill: isCalendarColorKey(stylist.calendarColor) ? CALENDAR_DISPLAY_FILLS[stylist.calendarColor] : 'bg-zinc-50', text: 'text-zinc-950', stripe: raw.swatch };
 }
