@@ -624,7 +624,9 @@ export function AppointmentDialog({
                 min={MIN_DURATION_MINUTES}
                 step={MIN_DURATION_MINUTES}
                 className={inputClass}
-                value={durationMin}
+                // Blank while cleared: a number box given 0 shows it, and typing
+                // on then reads "0120" (React leaves it, as it equals 120).
+                value={durationMin > 0 ? durationMin : ''}
                 onChange={(event) => update({ durationMin: Number(event.target.value) })}
               />
             </div>

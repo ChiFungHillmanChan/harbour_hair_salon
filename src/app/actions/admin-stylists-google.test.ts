@@ -63,3 +63,10 @@ test('the no-stylist and leave colours are reserved; an unknown id is refused; n
     assert.equal(f.updates.length, 0, colour);
   }
 });
+
+test('"Takes walk-ins" saves from its checkbox: ticked is true, unticked (absent from the form) is false', async () => {
+  const f = load();
+  await f.save({ takesWalkIns: 'on' });
+  await f.save({});
+  assert.deepEqual(f.updates.map((data) => data.takesWalkIns), [true, false]);
+});

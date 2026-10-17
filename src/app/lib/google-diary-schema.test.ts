@@ -67,3 +67,14 @@ test('prod (SQL Server) wraps the migration in the TRY/TRAN frame its siblings u
   assert.match(sql, /^BEGIN TRY\s+BEGIN TRAN;/);
   assert.match(sql, /COMMIT TRAN;\s+END TRY\s+BEGIN CATCH/);
 });
+
+// Who counts as a chair for red walk-ins (owner, 2026-10-17): on by default, so
+// every existing stylist keeps counting until Admin unticks them.
+for (const provider of PROVIDERS) {
+  test(`${provider}: Stylist.takesWalkIns defaults to true, added by its own migration`, () => {
+    assert.match(block(readFileSync(`prisma/${provider}/schema.prisma`, 'utf8'), 'Stylist'), /\n\s+takesWalkIns\s+Boolean\s+@default\(true\)/);
+    const file = `prisma/${provider}/migrations/20261017150000_stylist_takes_walk_ins/migration.sql`;
+    assert.ok(existsSync(file), file);
+    assert.match(readFileSync(file, 'utf8'), provider === 'prod' ? /\[takesWalkIns\] BIT NOT NULL .*DEFAULT 1/ : /"takesWalkIns" BOOLEAN NOT NULL DEFAULT true/);
+  });
+}

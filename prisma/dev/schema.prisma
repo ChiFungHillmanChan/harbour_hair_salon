@@ -81,6 +81,9 @@ model Stylist {
   googleColorId       String?
   /// Other names the diary uses for this stylist, comma-separated (e.g. "F"); the stylist's own name always counts
   googleAliases       String?
+  /// Counts as a free chair for the diary's no-stylist (red) events (chair rule, services/diary-chair-rule.ts).
+  /// Off for staff who take no walk-ins (e.g. an assistant): never counted free, and their own bookings use no chair.
+  takesWalkIns        Boolean              @default(true)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   appointments        Appointment[]

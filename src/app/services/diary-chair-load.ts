@@ -11,7 +11,8 @@ type Db = PrismaClient | Prisma.TransactionClient;
  * Serializable transaction when it has one, so the rule and the write see one
  * snapshot (spec §6). One query when the window holds no red (UNASSIGNED)
  * diary entry, the usual case: null, the rule has nothing to say. Otherwise
- * every active stylist's working rows, appointments and busy blocks.
+ * the working rows, appointments and busy blocks of every active stylist who
+ * takes walk-ins (the chairs; Admin → Stylists).
  * `excludeAppointmentId`: the booking being moved never counts as busy.
  */
 export async function loadChairContext(
@@ -23,7 +24,7 @@ export async function loadChairContext(
   });
   if (unassigned.length === 0) return null;
   const rows = await db.availability.findMany({
-    where: { isOff: false, stylist: { isActive: true } },
+    where: { isOff: false, stylist: { isActive: true, takesWalkIns: true } },
     select: { stylistId: true, dayOfWeek: true, startTime: true, endTime: true },
   });
   const stylistIds = [...new Set(rows.map((row) => row.stylistId))];

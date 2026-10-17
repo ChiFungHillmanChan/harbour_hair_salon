@@ -55,6 +55,8 @@ const stylistSchema = z.object({
   calendarColor: calendarColorField,
   googleColorId: googleColorField,
   googleAliases: googleAliasesField,
+  // A checkbox: sent as "on" when ticked, left out of the form when not.
+  takesWalkIns: z.string().optional().transform((v) => v === 'on'),
   name: z.string('NAME').trim().min(2, 'NAME').max(100, 'NAME'),
   slug: z
     .string()
@@ -164,6 +166,7 @@ export async function createStylist(
           calendarColor: parsed.data.calendarColor,
           googleColorId: parsed.data.googleColorId,
           googleAliases: parsed.data.googleAliases,
+          takesWalkIns: parsed.data.takesWalkIns,
           role: typeof english.role === 'string' ? english.role : '',
           bio: optionalText(english.bio),
           tagline: optionalText(english.tagline),
@@ -220,6 +223,7 @@ export async function updateStylist(
       calendarColor: parsed.data.calendarColor,
       googleColorId: parsed.data.googleColorId,
       googleAliases: parsed.data.googleAliases,
+      takesWalkIns: parsed.data.takesWalkIns,
     },
   });
 

@@ -75,7 +75,7 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
   - Every website booking is written to it, in its stylist's Google colour.
   - Admin → Schedule shows the diary with Google's titles and colours, read-only.
   - An event in a stylist's colour, or naming a stylist (leave), blocks that stylist; those blocks also go out in the Fresha busy feed.
-  - An event in the no-stylist colour (a walk-in) takes a chair: online booking keeps a stylist free for it. It is never sent to Fresha.
+  - An event in the no-stylist colour (a walk-in) takes a chair: online booking keeps a stylist free for it. Only stylists ticked "Takes walk-ins" in Admin → Stylists count (an assistant is unticked). It is never sent to Fresha.
   - Any other event is a note and blocks nothing. "Show as available" is ignored.
   - Edits to the website's own events in Google are reverted.
   - It runs on Vercel Production only, never on previews.
