@@ -27,7 +27,7 @@ Deployed on Vercel (Pro plan) with Neon PostgreSQL.
 - Production flags: `NOTIFICATIONS_ENABLED=false` (no booking emails and no daily ops alert yet; the go-live gate needs it `true`), `CALENDAR_SYNC_ENABLED=true`, and housekeeping on (first run 2026-10-14 03:15 UTC).
 - Late-arrival rule: OFF (`SiteSettings.lateAutoCancelSince` null); brief the staff on Arrived first (`LAUNCH.md` §4), then switch it on in Admin → Settings.
 - Google Calendar sync: switched ON in production on 2026-10-16 (five `GOOGLE_CALENDAR_*` variables on Production; runbook `docs/google-calendar-setup.md`). Google Cloud project **`harbourhair`** (`harbourhair-511821`, owned by harbourhairuk@gmail.com) holds the service account `harbour-website-calendar@harbourhair-511821.iam.gserviceaccount.com` **and**, since the same day, the Google sign-in OAuth client (moved from the developer's old personal project; Google account ids are the same across clients, so linked accounts keep working).
-- **Google diary mirror** (#75, `ba82f3a`, deployed 2026-10-17 02:25 UTC with migration `20261017120000_google_diary_mirror`; spec `docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md`, runbook `docs/google-calendar-setup.md` §2b). Done 2026-10-17: HarbourHair shared with the service account; Admin colours set (Ivan Lavender `1`, Funky Sage `2` + `F`, Lox Banana `5` + `L`, Shania names `天`; no-stylist Tomato `11`, leave Graphite `8`); Production `GOOGLE_CALENDAR_ID=harbourhairuk@gmail.com`; Sync now (397 entries) and the Chrome check (Admin day view identical to Google) passed; preview database migrated. **Walk-in chairs:** only stylists with "Takes walk-ins" (Admin → Stylists; `Stylist.takesWalkIns`, default on, #76) count as a chair for red events, and booking an unticked one uses none; Shania (assistant) is unticked in production since 2026-10-17. Left: the owner deletes the old "Harbour website bookings" calendar (empty, checked 2026-10-17).
+- **Google diary mirror** (#75, `ba82f3a`, deployed 2026-10-17 02:25 UTC with migration `20261017120000_google_diary_mirror`; spec `docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md`, runbook `docs/google-calendar-setup.md` §2b). Done 2026-10-17: HarbourHair shared with the service account; Admin colours set (Ivan Lavender `1`, Funky Sage `2` + `F`, Lox Banana `5` + `L`, Shania names `天`; no-stylist Tomato `11`, leave Graphite `8`); Production `GOOGLE_CALENDAR_ID=harbourhairuk@gmail.com`; Sync now (397 entries) and the Chrome check (Admin day view identical to Google) passed; preview database migrated. **Walk-in chairs:** only stylists with "Takes walk-ins" (Admin → Stylists; `Stylist.takesWalkIns`, default on, #76) count as a chair for red events, and booking an unticked one uses none; Shania (assistant) is unticked in production since 2026-10-17. The old "Harbour website bookings" calendar is switched off but kept (the owner prefers disabling to deleting, 2026-10-17): 0 events, unshared from the service account (the website gets 404 for it) and unticked in Google Calendar; re-share it to undo.
 - The remaining launch steps, in order: `LAUNCH.md` §2–§3; open owner decisions and staff briefings in §4.
 
 ## Commands
@@ -206,10 +206,10 @@ Rules that follow from this:
   real customer data**: treat it like production. Previews never migrate, so
   apply every new migration to it too (`prisma migrate deploy` with the preview
   env) or every PR's "Deploy Preview" fails. The last one applied by hand was
-  `20261017120000_google_diary_mirror` (2026-10-17); `20261017150000_stylist_takes_walk_ins` and
-  `20261017180000_stylist_show_on_website` are still to apply. The Blast Radius hook holds
-  `prisma migrate` for the owner's approval, which has timed out twice, so the owner runs the §7
-  command themselves (a `!` line in Claude Code). Refresh the copy with a PostgreSQL 18
+  `20261017180000_stylist_show_on_website` (2026-10-17, with `20261017120000_google_diary_mirror`
+  and `20261017150000_stylist_takes_walk_ins` the same day). The Blast Radius hook holds
+  `prisma migrate` until the owner approves it; when they are away it times out, and the owner
+  can run the §7 command themselves (a `!` line in Claude Code). Refresh the copy with a PostgreSQL 18
   `pg_dump` of production restored into it. The old us-east-1 project
   (`neon-beige-river`) is kept, unused, by owner decision.
 - `infra/aws/treatwell-sync/` is a **dormant** EventBridge→Lambda fallback for

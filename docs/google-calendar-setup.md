@@ -153,7 +153,7 @@ In this order:
 5. Reload **Admin → Integrations → Google Calendar**: it must show the first characters of
    the new calendar id. Then press **Sync now**: it writes every booking in the window to
    HarbourHair, reads the diary and watches HarbourHair (§4a).
-6. Verify (§4). Then the owner deletes "Harbour website bookings" (§4.8).
+6. Verify (§4). Then the owner switches "Harbour website bookings" off (§4.8).
 
 ---
 
@@ -229,9 +229,11 @@ vercel env add GOOGLE_CALENDAR_WEBHOOK_SECRET production
    Fresha's own import schedule, after the busy feed refreshes. Delete the event: the slot
    reopens.
 7. Check Admin → Operations shows no Google problem.
-8. **Retire the old calendar.** Once all of the above passes, the owner deletes "Harbour website
-   bookings" (signed in as harbourhairuk@gmail.com, its Settings → Remove calendar → Delete):
-   the website no longer follows the copies in it.
+8. **Retire the old calendar — switch it off, do not delete it** (owner's preference). Signed in as
+   harbourhairuk@gmail.com, on **"Harbour website bookings"** (never HarbourHair): Settings →
+   Share with specific people → remove `harbour-website-calendar@…` (✕), then untick it under
+   My calendars. Both can be undone. Done 2026-10-17: it had 0 events, the service account now
+   gets 404 for it, and HarbourHair is unaffected.
 
 **Fresha:** link each stylist's Fresha calendar import to their **own** Google calendar if
 they use one, **never** to HarbourHair. Importing HarbourHair into Fresha would hand every
@@ -254,9 +256,9 @@ calendar, or none is recorded yet (the first run after the diary mirror shipped)
 - **Sync now** (or the 03:15 UTC run) then watches the new calendar;
 - the old channel is forgotten **without being stopped**: it keeps watching the old calendar
   until it expires, within 7 days. A change there only makes the website read the configured
-  calendar once more, which is harmless, and nothing at all once the old calendar is deleted;
-- **events in the old calendar are never deleted** by the website: delete that calendar by hand
-  once the new one is verified (§4.8).
+  calendar once more, which is harmless, and nothing at all once the old calendar is unshared;
+- **events in the old calendar are never deleted** by the website: switch that calendar off by
+  hand once the new one is verified (§4.8).
 
 To change it: replace `GOOGLE_CALENDAR_ID` on Production, redeploy, reload Admin →
 Integrations (the new id's first characters), press Sync now, verify (§4).
