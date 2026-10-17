@@ -423,7 +423,9 @@ export function ScheduleDayGrid({
     }));
   };
 
-  if (stylists.length === 0) {
+  // A day nobody works in our rota can still hold diary walk-ins and notes:
+  // they keep their column and strip, and the message is only for an empty day.
+  if (stylists.length === 0 && !showNoStylist && dayDiary.notes.length === 0) {
     return <div className="p-12 text-center text-zinc-500 bg-white rounded-lg border border-zinc-200">{t('grid.noStylists')}</div>;
   }
 

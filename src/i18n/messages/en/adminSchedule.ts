@@ -184,6 +184,8 @@ const adminSchedule = {
   day: {
     appointments: { one: '{count} appointment', other: '{count} appointments' },
     imported: '{count} imported',
+    /** The day's Google diary bookings (stylist and no-stylist colours; never leave or notes). */
+    googleDiary: { one: '{count} Google diary booking', other: '{count} Google diary bookings' },
     empty: 'No appointments for this day.',
     nothingBooked: 'Nothing booked.',
   },

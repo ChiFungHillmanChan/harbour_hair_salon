@@ -288,10 +288,15 @@ interface DayViewProps {
   onSelectDiary: (entry: CalendarDiaryEntry) => void;
 }
 
-/** "3 appointments · 1 imported" */
-function dayCountLabel(t: ScheduleT, appointments: number, imported: number): string {
-  const count = t('day.appointments', { count: appointments });
-  return imported > 0 ? `${count} · ${t('day.imported', { count: imported })}` : count;
+/** "3 appointments · 1 imported · 2 Google diary bookings" */
+function dayCountLabel(t: ScheduleT, appointments: number, imported: number, diary: PlacedDiaryEntry[]): string {
+  // The diary's bookings only: its leave and notes are not appointments.
+  const diaryBookings = diary.filter((entry) => entry.kind === 'STYLIST' || entry.kind === 'UNASSIGNED').length;
+  return [
+    t('day.appointments', { count: appointments }),
+    ...(imported > 0 ? [t('day.imported', { count: imported })] : []),
+    ...(diaryBookings > 0 ? [t('day.googleDiary', { count: diaryBookings })] : []),
+  ].join(' · ');
 }
 
 function BusyAgenda({ blocks, stylists, dayKey }: { blocks: ReturnType<typeof calendarBusyForDay<GridBusyBlock>>; stylists: RosterStylist[]; dayKey: string }) {
@@ -348,7 +353,7 @@ const DayView = ({ dateStr, dayAppts, busyBlocks, diary, stylists, onRefresh, on
     <div className="bg-white rounded-lg shadow border border-zinc-200 overflow-hidden flex flex-col">
       <div className="p-4 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center">
           <h3 className="font-bold text-lg">{formatCalendarDay(t.locale, dateStr, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
-          <span className="text-sm text-zinc-500">{dayCountLabel(t, dayAppts.length, busyBlocks.length)}</span>
+          <span className="text-sm text-zinc-500">{dayCountLabel(t, dayAppts.length, busyBlocks.length, diary)}</span>
       </div>
       <div className="divide-y divide-zinc-100 overflow-y-auto max-h-[600px]">
           {dayAppts.length === 0 && busyBlocks.length === 0 && diary.length === 0 ? (
@@ -798,7 +803,7 @@ export function ScheduleCalendar({
                       className={`flex w-full items-center justify-between px-4 py-2 text-left ${key === salonDateKey(new Date()) ? 'bg-zinc-900 text-white' : 'bg-zinc-50 text-zinc-900'}`}
                     >
                       <span className="font-semibold">{formatCalendarDay(locale, key, { weekday: 'long', day: 'numeric', month: 'short' })}</span>
-                      <span className="text-xs opacity-80">{dayCountLabel(t, dayAppts.length, dayBusy.length)}</span>
+                      <span className="text-xs opacity-80">{dayCountLabel(t, dayAppts.length, dayBusy.length, diaryLines)}</span>
                     </button>
                     {dayAppts.length === 0 && dayBusy.length === 0 && diaryLines.length === 0 ? (
                       <p className="px-4 py-3 text-sm text-zinc-500">{t('day.nothingBooked')}</p>

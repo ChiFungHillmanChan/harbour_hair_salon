@@ -39,14 +39,14 @@ const STYLISTS = [
 ];
 const BOOKING = { id: 'web', stylistId: 'lox', date: '2026-10-23T15:00:00Z', durationMin: 60, status: 'CONFIRMED', customerName: 'Web Customer', serviceName: 'Cut', serviceColor: null, updatedAt: '2026-10-01T00:00:00Z' };
 
-function render(view: 'Day' | 'Week', entries = ENTRIES, locale: Locale = 'en-GB', selected: CalendarDiaryEntry[] = []) {
+function render(view: 'Day' | 'Week', entries = ENTRIES, locale: Locale = 'en-GB', selected: CalendarDiaryEntry[] = [], stylists: unknown[] = STYLISTS) {
   const grid = loadServerModule<Record<string, (props: Record<string, unknown>) => unknown>>(`src/components/admin/Schedule${view}Grid.tsx`, {
     react: hooks, '@/i18n/client': i18n(locale), './MoveConfirmDialog': { MoveConfirmDialog: () => null },
     // Stubbed like every child component in these trees: the real one would pull in a browser React.
     './GoogleDiaryNotes': { GoogleDiaryNotes: () => null },
   });
   return elements(grid[`Schedule${view}Grid`]({
-    day: new Date(`${DAY}T12:00:00Z`), dayKeys: [DAY], todayKey: DAY, stylists: STYLISTS, appointments: [BOOKING], busyBlocks: [],
+    day: new Date(`${DAY}T12:00:00Z`), dayKeys: [DAY], todayKey: DAY, stylists, appointments: [BOOKING], busyBlocks: [],
     diaryEntries: entries, onSelectDiary: (picked: CalendarDiaryEntry) => selected.push(picked),
   }));
 }
@@ -68,6 +68,29 @@ test('day view: no walk-in that day, no No stylist column', () => {
 // Child components (GoogleDiaryNotes) are elements, not rendered output, in these trees:
 // the strip is found by its `notes` prop, and GoogleDiaryNotes is rendered on its own below.
 const strip = (nodes: Element[]) => nodes.find((node) => Array.isArray(node.props.notes));
+
+// Final review: a day with no stylist columns (everyone off in our rota) still shows the diary.
+test('day view without stylists: walk-ins and notes still show; "No stylists" only when the diary is empty too', () => {
+  const noStylists = translator('en-GB', 'adminSchedule')('grid.noStylists');
+  const both = render('Day', ENTRIES, 'en-GB', [], []);
+  assert.ok(!both.some((node) => text(node).includes(noStylists)));
+  assert.ok(both.some((node) => text(node) === 'No stylist'), 'the No stylist column');
+  assert.equal(labelled(both, 'Cut - Erin(W)').length, 1, 'the walk-in in it');
+  assert.deepEqual((strip(both)!.props.notes as CalendarDiaryEntry[]).map((e) => e.id), ['note']);
+
+  const notesOnly = render('Day', ENTRIES.filter((e) => e.kind === 'NOTE'), 'en-GB', [], []);
+  assert.ok(!notesOnly.some((node) => text(node).includes(noStylists)));
+  assert.deepEqual((strip(notesOnly)!.props.notes as CalendarDiaryEntry[]).map((e) => e.id), ['note']);
+  assert.ok(!notesOnly.some((node) => text(node) === 'No stylist'), 'no walk-in, no column');
+
+  // A stylist's own entries have no column to sit in: with nothing else, the message stays.
+  for (const entries of [[], ENTRIES.filter((e) => e.kind === 'STYLIST' || e.kind === 'LEAVE')]) {
+    const empty = render('Day', entries, 'en-GB', [], []);
+    assert.ok(empty.some((node) => text(node).includes(noStylists)));
+    assert.equal(strip(empty), undefined);
+  }
+  assert.ok(render('Day', [], 'zh-HK', [], []).some((node) => text(node) === translator('zh-HK', 'adminSchedule')('grid.noStylists')));
+});
 
 test('day view: a leave naming two stylists sits in both columns; a note goes to the strip, never a column', () => {
   const nodes = render('Day');
@@ -125,3 +148,40 @@ test('the panel: title, kind, stylists and an Open in Google Calendar link only 
   const plain = elements(panel.GoogleDiaryPanel({ entry: { ...ENTRIES[2], htmlLink: null }, stylistNames: {}, onClose: () => undefined }));
   assert.ok(!plain.some((node) => node.type === 'a'));
 });
+
+// Final review: a day whose bookings are all in the Google diary must not read "0 appointments" alone.
+// The phone agendas (day and week) count the diary's bookings (STYLIST, UNASSIGNED), never its leave or notes.
+function renderCalendar(view: 'day' | 'week', locale: Locale, busyBlocks: unknown[] = []) {
+  const draftStore = { useDraftState: (_key: string, initial: unknown) => hooks.useState(typeof initial === 'function' ? (initial as () => unknown)() : initial) };
+  const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
+    react: { ...hooks, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+    '@/i18n/navigation': { useLocalizedRouter: () => ({ push: () => undefined, refresh: () => undefined }) },
+    '@/i18n/client': i18n(locale), '@/i18n/draft-store': draftStore,
+    './ScheduleDayGrid': { ScheduleDayGrid: () => null }, './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
+    './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
+    './RescheduleRequestActions': { RescheduleRequestActions: () => null },
+    '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
+  });
+  const tree = calendar.ScheduleCalendar({
+    dateStr: DAY, view, appointments: [], pendingAppointments: [], rescheduleRequests: [], busyBlocks,
+    stylists: STYLISTS.map(({ id, name, calendarColor, googleColorId }) => ({ id, name, calendarColor, googleColorId, availabilities: [] })),
+    diaryEntries: [...ENTRIES, entry('ivan', 'STYLIST', ['funky'], 'Bo 07700', '2', '2026-10-23T15:00:00Z', '2026-10-23T16:00:00Z')],
+  });
+  const expand = (node: unknown): Element[] => {
+    if (Array.isArray(node)) return node.flatMap(expand);
+    if (!node || typeof node !== 'object' || !('props' in node)) return [];
+    const element = node as Element;
+    if (typeof element.type === 'function') return expand((element.type as (props: unknown) => unknown)(element.props));
+    return [element, ...expand(element.props.children)];
+  };
+  return expand(tree).map((node) => [node.props.children].flat().filter((child) => typeof child === 'string').join(''));
+}
+
+for (const view of ['day', 'week'] as const) {
+  test(`${view} phone agenda: the day's count includes its Google diary bookings, not its leave or notes`, () => {
+    assert.ok(renderCalendar(view, 'en-GB').includes('0 appointments · 3 Google diary bookings'));
+    assert.ok(renderCalendar(view, 'zh-HK').includes('0 個預約 · 3 個 Google 日曆預約'));
+    const imported = [{ id: 'fresha', stylistId: 'lox', source: 'FRESHA', start: '2026-10-23T08:00:00Z', end: '2026-10-23T08:30:00Z', lastSyncAt: '2026-10-20T00:00:00Z' }];
+    assert.ok(renderCalendar(view, 'en-GB', imported).includes('0 appointments · 1 imported · 3 Google diary bookings'));
+  });
+}

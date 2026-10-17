@@ -170,6 +170,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
   day: {
     appointments: { other: '{count} 個預約' },
     imported: '{count} 個已匯入',
+    googleDiary: { other: '{count} 個 Google 日曆預約' },
     empty: '這天沒有預約。',
     nothingBooked: '沒有預約。',
   },
