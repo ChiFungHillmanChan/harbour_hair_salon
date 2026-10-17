@@ -21,7 +21,7 @@ type Appt = {
   id: string; date: Date; status: string; notes: string | null; durationAtBooking: number | null; updatedAt: Date;
   stylistId: string; serviceId: string;
   user: { name: string | null; phone: string | null; email: string };
-  stylist: { id: string; name: string };
+  stylist: { id: string; name: string; googleColorId: string | null };
   service: { id: string; name: string; duration: number };
   paymentAttempt: { status: string; amountPence: number; refunds: { status: string; amountPence: number }[] } | null;
   rescheduleRequestedDate?: Date | null;
@@ -32,7 +32,7 @@ function appt(id: string, overrides: Partial<Appt> = {}): Appt {
   return {
     id, date: at(DAY), status: 'CONFIRMED', notes: null, durationAtBooking: 60, updatedAt: at(-5), stylistId: 's1', serviceId: 'svc',
     user: { name: 'Amy Lee', phone: '07700 900123', email: `${id}@example.test` },
-    stylist: { id: 's1', name: 'Ivan' }, service: { id: 'svc', name: 'Haircut', duration: 45 }, paymentAttempt: null,
+    stylist: { id: 's1', name: 'Ivan', googleColorId: '1' }, service: { id: 'svc', name: 'Haircut', duration: 45 }, paymentAttempt: null,
     ...overrides,
   };
 }
@@ -106,7 +106,7 @@ function fakeDb(
   options: { settings?: { salonNotificationLocale: string } | null; translations?: { entityType: string; entityId: string; locale: string; fieldsJson: string }[]; failWriteFor?: string } = {},
 ) {
   const rows = new Map(events.map((row) => [row.appointmentId, { ...row }]));
-  const settings = options.settings === undefined ? { salonNotificationLocale: 'en-GB' } : options.settings;
+  const settings = options.settings === undefined ? { salonNotificationLocale: 'en-GB', googleUnassignedColorId: '11' } : options.settings;
   const withEvent = (a: Appt) => ({ ...structuredClone(a), googleCalendarEvent: rows.has(a.id) ? { ...rows.get(a.id)! } : null });
   const db = {
     appointment: {
@@ -140,7 +140,6 @@ function fakeDb(
       },
     },
     siteSettings: { async findUnique() { return settings; } },
-    stylist: { async findMany() { return [{ id: 's2' }, { id: 's1' }]; } },
     contentTranslation: {
       async findMany(args: { where: Record<string, unknown> }) {
         return (options.translations ?? []).filter((row) => matches(row, args.where)).map(({ entityId, fieldsJson }) => ({ entityId, fieldsJson }));
@@ -173,10 +172,14 @@ function fakeGateway(fail: (call: Call) => GoogleCalendarError | Error | undefin
 /** Any property read throws: proves nothing touched the database. */
 const untouchable = new Proxy({}, { get(_target, key) { throw new Error(`database touched: ${String(key)}`); } });
 
+/** Calendars the push asked the change guard about (services/google-calendar-guard.ts). */
+const guardCalls: string[] = [];
+
 function load(config: typeof CONFIG | null = CONFIG) {
   return loadServerModule<typeof import('./google-calendar-push')>('src/app/services/google-calendar-push.ts', {
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => config },
     './google-calendar-gateway': gatewayModule,
+    './google-calendar-guard': { guardGoogleCalendarChange: async (_db: unknown, calendarId: string) => { guardCalls.push(calendarId); return 'same'; } },
     '@/app/lib/prisma': untouchable,
   });
 }
@@ -197,6 +200,17 @@ test('sync switched off: nothing is read, nothing is sent', async () => {
   assert.equal(google.calls.length, 0);
 });
 
+test('the push runs the calendar change guard before choosing bookings; switched off, it never does', async () => {
+  guardCalls.length = 0;
+  const { db } = fakeDb([appt('a1')]);
+  const google = fakeGateway();
+  await run(db, google.gateway);
+  assert.deepEqual(guardCalls, [CONFIG.calendarId]);
+  guardCalls.length = 0;
+  await load(null).pushGoogleCalendar({ db: untouchable as never, gateway: google.gateway as never, now: NOW });
+  assert.deepEqual(guardCalls, []);
+});
+
 test('a new confirmed booking: PUT 404 → insert with its own id, and the row is stored', async () => {
   const { db, rows } = fakeDb([appt('a1')]);
   const google = fakeGateway((call) => (call.op === 'put' ? new GoogleCalendarError('not_found', 404) : undefined));
@@ -206,7 +220,7 @@ test('a new confirmed booking: PUT 404 → insert with its own id, and the row i
   assert.equal(event.id, googleEventIdFor('a1'));
   assert.equal(event.status, 'confirmed');
   assert.equal(event.summary, 'Ivan · Amy Lee · Haircut');
-  assert.equal(event.colorId, '1', 'colours follow the sorted stylist ids');
+  assert.equal(event.colorId, '1', 'Ivan’s Google colour');
   assert.equal(new Date(event.start!.dateTime!).getTime(), at(DAY).getTime());
   assert.equal(new Date(event.end!.dateTime!).getTime(), at(DAY + 60).getTime(), 'the booked duration, not the service default');
   assert.ok(event.description!.includes('Phone: 07700 900123'));
@@ -245,7 +259,7 @@ test('the salon language: Chinese title, translated service, /zh-hk admin link; 
   const translations = [{ entityType: 'SERVICE', entityId: 'svc', locale: 'zh-HK', fieldsJson: JSON.stringify({ name: '剪髮' }) }];
   const { db } = fakeDb([
     appt('a1', { status: 'PENDING' }),
-    appt('a2', { serviceId: 'colour', service: { id: 'colour', name: 'Colour', duration: 90 }, stylistId: 's2', stylist: { id: 's2', name: 'Lox' } }),
+    appt('a2', { serviceId: 'colour', service: { id: 'colour', name: 'Colour', duration: 90 }, stylistId: 's2', stylist: { id: 's2', name: 'Lox', googleColorId: null } }),
   ], [], { settings: { salonNotificationLocale: 'zh-HK' }, translations });
   const google = fakeGateway();
   await run(db, google.gateway);
@@ -255,7 +269,7 @@ test('the salon language: Chinese title, translated service, /zh-hk admin link; 
   assert.ok(first.description!.includes(`${SITE_URL}/zh-hk/admin?date=2099-09-02&view=day`));
   const second = byId.get(googleEventIdFor('a2'))!;
   assert.equal(second.summary, 'Lox · Amy Lee · Colour');
-  assert.equal(second.colorId, '2');
+  assert.equal(second.colorId, '11', 'Lox has no Google colour: the no-stylist colour');
 });
 
 test('no settings row: the salon language defaults to Traditional Chinese', async () => {
@@ -400,7 +414,7 @@ test('restored, its PUT failed, then cancelled again: the event is deleted once 
 });
 
 test('a booking that cannot be rendered is recorded as failed and the run goes on', async () => {
-  const { db, rows } = fakeDb([appt('bad', { stylist: { id: 's1', name: null as unknown as string } }), appt('good')]);
+  const { db, rows } = fakeDb([appt('bad', { stylist: { id: 's1', name: null as unknown as string, googleColorId: '1' } }), appt('good')]);
   const google = fakeGateway();
   assert.deepEqual(await run(db, google.gateway), { written: 1, deleted: 0, unchanged: 0, failed: 1 });
   assert.deepEqual(google.calls.map((call) => call.id), [googleEventIdFor('good')]);

@@ -27,7 +27,7 @@ type EventRow = {
 type Appt = {
   id: string; date: Date; status: string; notes: string | null; durationAtBooking: number | null;
   user: { name: string | null; phone: string | null; email: string };
-  stylist: { id: string; name: string };
+  stylist: { id: string; name: string; googleColorId: string | null };
   service: { id: string; name: string; duration: number };
   paymentAttempt: null;
 };
@@ -43,16 +43,16 @@ function appt(id: string, overrides: Partial<Appt> = {}): Appt {
   return {
     id, date: at(DAY), status: 'CONFIRMED', notes: null, durationAtBooking: 60,
     user: { name: 'Amy Lee', phone: '07700 900123', email: `${id}@example.test` },
-    stylist: { id: 's1', name: 'Ivan' }, service: { id: 'svc', name: 'Haircut', duration: 45 }, paymentAttempt: null,
+    stylist: { id: 's1', name: 'Ivan', googleColorId: '1' }, service: { id: 'svc', name: 'Haircut', duration: 45 }, paymentAttempt: null,
     ...overrides,
   };
 }
 
-/** What the website writes for this booking (English salon, colours over every stylist). */
+/** What the website writes for this booking (English salon, the default no-stylist colour). */
 function rendered(appointment: Appt) {
   return renderAppointment(
     { ...appointment, googleCalendarEvent: null } as unknown as PushAppointment,
-    { locale: 'en-GB', stylistIds: STYLISTS.map((stylist) => stylist.id), serviceFields: new Map() },
+    { locale: 'en-GB', unassignedColorId: '11', serviceFields: new Map() },
   );
 }
 
@@ -249,12 +249,16 @@ function fakeGoogle(listing: GoogleEvent[], fail: (call: Call) => Error | undefi
 /** Any property read throws: proves nothing touched the database. */
 const untouchable = new Proxy({}, { get(_target, key) { throw new Error(`database touched: ${String(key)}`); } });
 
+/** Calendars the pull asked the change guard about (services/google-calendar-guard.ts). */
+const guardCalls: string[] = [];
+
 function load(config: typeof CONFIG | null = CONFIG) {
   const invalidations = { count: 0 };
   const pull = loadServerModule<typeof import('./google-calendar-pull')>('src/app/services/google-calendar-pull.ts', {
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => config },
     '@/app/lib/prisma': untouchable,
     './stylist-ical-cache': { invalidateStylistIcalFeedFromCron: () => { invalidations.count += 1; } },
+    './google-calendar-guard': { guardGoogleCalendarChange: async (_db: unknown, calendarId: string) => { guardCalls.push(calendarId); return 'same'; } },
   });
   return { pull, invalidations };
 }
@@ -273,6 +277,17 @@ test('sync switched off: nothing is read, nothing is listed', async () => {
   assert.deepEqual(await pull.pullGoogleCalendar({ gateway: google.gateway as never }), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, skipped: 'disabled' });
   assert.equal(google.lists.length, 0);
   assert.equal(invalidations.count, 0);
+});
+
+test('the pull runs the calendar change guard first; switched off, it never does', async () => {
+  guardCalls.length = 0;
+  const store = fakeDb([], { state: { busyHash: EMPTY_HASH } });
+  const google = fakeGoogle([]);
+  await run(load().pull, store.db, google.gateway);
+  assert.deepEqual(guardCalls, [CONFIG.calendarId]);
+  guardCalls.length = 0;
+  await run(load(null).pull, untouchable, google.gateway);
+  assert.deepEqual(guardCalls, []);
 });
 
 test('website events are never busy blocks, whatever their state', async () => {
@@ -660,6 +675,18 @@ test('a website event listed as a bare deleted id is put back', async () => {
   assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.deepEqual(google.calls.map((call) => [call.op, call.id]), [['put', googleEventIdFor('a1')]]);
   assert.equal(google.calls[0].event!.status, 'confirmed');
+});
+
+test('a website event recoloured in Google is put back in its stylist’s colour', async () => {
+  const booking = appt('a1');
+  const expected = rendered(booking);
+  const store = fakeDb([booking], { events: [syncedRow(booking)], state: { busyHash: EMPTY_HASH } });
+  const google = fakeGoogle([{ ...expected.event, colorId: '11' }]);
+  const { pull } = load();
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
+  assert.deepEqual(google.calls.map((call) => [call.op, call.id]), [['put', googleEventIdFor('a1')]]);
+  assert.equal(google.calls[0].event!.colorId, '1', 'Ivan’s Google colour');
+  assert.equal(store.rows.get('a1')!.syncedHash, expected.hash);
 });
 
 test('loop breaker: a listing that still differs just after the website wrote the same rendering is not written again', async () => {

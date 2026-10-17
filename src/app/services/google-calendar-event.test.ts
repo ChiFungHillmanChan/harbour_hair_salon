@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  GOOGLE_APPOINTMENT_PROPERTY, googleEventIdFor, isWebsiteEvent, renderGoogleEvent, sameRenderedEvent, stylistColorId,
+  GOOGLE_APPOINTMENT_PROPERTY, googleColorFor, googleEventIdFor, isWebsiteEvent, renderGoogleEvent, sameRenderedEvent,
   type RenderableAppointment,
 } from './google-calendar-event';
 import { ERASED_CUSTOMER_NAME } from '../lib/customer-erasure';
@@ -118,13 +118,11 @@ test('an open reschedule request is shown, in salon time and the salon language;
   assert.ok(!renderGoogleEvent({ ...requested, status: 'COMPLETED' }, ctx).event.description!.includes('asked to move'));
 });
 
-test('stylistColorId follows sorted ids and cycles 1..11', () => {
-  assert.equal(stylistColorId(['b', 'a', 'c'], 'a'), '1');
-  assert.equal(stylistColorId(['b', 'a', 'c'], 'c'), '3');
-  const many = Array.from({ length: 13 }, (_, i) => `s${String(i).padStart(2, '0')}`);
-  assert.equal(stylistColorId(many, 's10'), '11');
-  assert.equal(stylistColorId(many, 's11'), '1');
-  assert.equal(stylistColorId(['a'], 'unknown'), '1');
+test('a website event takes its stylist’s Google colour, else the no-stylist colour (spec §8)', () => {
+  assert.equal(googleColorFor({ googleColorId: '1' }, '11'), '1');
+  assert.equal(googleColorFor({ googleColorId: null }, '11'), '11');
+  assert.equal(googleColorFor({ googleColorId: '12' }, '11'), '11', 'not a Google colour id');
+  assert.equal(googleColorFor({ googleColorId: '' }, '4'), '4');
 });
 
 test('sameRenderedEvent compares what the salon can edit', () => {

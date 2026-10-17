@@ -7,12 +7,15 @@ import 'server-only';
 // docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md §5–§7).
 // Google is never called inside a database transaction, and a failure is
 // recorded on the sync state and reported in the result (`failed: true`), never thrown.
+// It first runs the calendar change guard (services/google-calendar-guard.ts, diary
+// mirror spec §8), so rows written to another calendar never decide a write-back.
 
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
 import { describeFault } from '@/app/lib/fault';
 import { createGoogleCalendarGateway, GoogleCalendarError, type GoogleEvent } from './google-calendar-gateway';
 import { googleEventIdFor, GOOGLE_APPOINTMENT_PROPERTY, sameRenderedEvent } from './google-calendar-event';
+import { guardGoogleCalendarChange } from './google-calendar-guard';
 import { googleBusyBlocks, googleBusyHash, type GoogleBusyBlock } from './google-busy-mapping';
 import {
   diaryEntriesFrom, diaryHash, GOOGLE_DIARY_LOOKAHEAD_DAYS, GOOGLE_DIARY_RETENTION_DAYS, type DiaryEntry, type DiaryKind,
@@ -280,7 +283,8 @@ export async function pullGoogleCalendar(options: {
   gateway?: GooglePullGateway;
 } = {}): Promise<GooglePullResult> {
   // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
-  if (!googleCalendarConfig()) return { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, skipped: 'disabled' };
+  const config = googleCalendarConfig();
+  if (!config) return { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, skipped: 'disabled' };
   const db = options.db ?? (await import('@/app/lib/prisma')).default;
   const now = options.now ?? new Date();
   const gateway = options.gateway ?? createGoogleCalendarGateway();
@@ -289,6 +293,7 @@ export async function pullGoogleCalendar(options: {
   const result: GooglePullResult = { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false };
 
   try {
+    await guardGoogleCalendarChange(db, config.calendarId);
     const range = { timeMin: new Date(now.getTime() - LOOKBACK_MS), timeMax: new Date(now.getTime() + LOOKAHEAD_MS) };
     const events = await gateway.listEvents(range);
     // Busy time and the diary first: they are what keep the website from selling a
