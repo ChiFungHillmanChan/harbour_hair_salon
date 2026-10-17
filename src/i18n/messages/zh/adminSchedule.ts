@@ -42,6 +42,10 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     website: '網站預約',
     notes: '全日事項及備註',
   },
+  /** The day and week grids' list of cancelled bookings (ScheduleCancelledList). */
+  cancelled: {
+    title: '已取消的預約',
+  },
   refresh: {
     details: '更新方式',
     loadedAt: '時間表於 {date} {time}（英國時間）載入。',

@@ -11,6 +11,7 @@ import { collectPaymentAttention, pageWindows } from '@/app/services/payment-att
 import { formatGBP } from '@/app/services/pricing/money';
 import { HTML_LANG } from '@/i18n/config';
 import { formatSalonDateTime } from '@/i18n/dates';
+import { salonDateKey } from '@/app/services/salon-time';
 import { getLocale, getT } from '@/i18n/server';
 
 export const dynamic = 'force-dynamic';
@@ -51,8 +52,13 @@ export default async function OperationsPage({ searchParams }: { searchParams: P
     const hours = Math.max(0, Math.floor((now.getTime() - since.getTime()) / HOUR));
     return hours < 48 ? t('operations.payments.age.hours', { count: hours }) : t('operations.payments.age.days', { count: Math.floor(hours / 24) });
   };
+  // Each payment links to its booking on the schedule, which opens it (a cancelled one
+  // included): its dialog re-checks the deposit or records a refund settled outside.
   const booking = (id: string | null, start: Date | null) => id
-    ? <><span className="font-mono text-xs [overflow-wrap:anywhere]">{id}</span>{start && <span className="block text-xs text-zinc-500">{date(start)}</span>}</>
+    ? <>{start
+        ? <Link className="font-mono text-xs underline [overflow-wrap:anywhere]" href={`/admin?${new URLSearchParams({ date: salonDateKey(start), view: 'day', open: id })}`} aria-label={t('operations.payments.openBooking', { date: date(start) })}>{id}</Link>
+        : <span className="font-mono text-xs [overflow-wrap:anywhere]">{id}</span>}
+      {start && <span className="block text-xs text-zinc-500">{date(start)}</span>}</>
     : t('operations.payments.noBooking');
   const nothingOwed = !payments.attempts.length && !payments.refunds.length && !payments.notifications.length && payments.setupRefusals === 0;
   // Job names, delivery IDs and audit action codes are raw diagnostics and

@@ -118,13 +118,13 @@ for (const view of ['day', 'week']) {
   test(`mobile ${view} agenda includes external time even without website appointments`, () => {
     const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
       'src/components/admin/ScheduleCalendar.tsx', {
-        react: { ...hooks, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+        react: { ...hooks, useEffect: () => undefined, useEffectEvent: (run: unknown) => run, useTransition: () => [false, () => undefined] },
         '@/i18n/navigation': navigation,
         '@/i18n/client': i18nClient,
         '@/i18n/draft-store': draftStore(hooks.useState),
         './ScheduleDayGrid': { ScheduleDayGrid: () => null },
         './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-        './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
+        './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null }, './ScheduleCancelledList': { ScheduleCancelledList: () => null },
         './RescheduleRequestActions': { RescheduleRequestActions: () => null },
         '@/app/actions/admin-schedule': {},
         '@/app/actions/admin': {},
@@ -153,13 +153,13 @@ for (const view of ['day', 'week']) {
 test('mobile day agenda says a stylist on a whole-day Fresha block is unavailable all day', () => {
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
     'src/components/admin/ScheduleCalendar.tsx', {
-      react: { ...hooks, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+      react: { ...hooks, useEffect: () => undefined, useEffectEvent: (run: unknown) => run, useTransition: () => [false, () => undefined] },
       '@/i18n/navigation': navigation,
       '@/i18n/client': i18nClient,
       '@/i18n/draft-store': draftStore(hooks.useState),
       './ScheduleDayGrid': { ScheduleDayGrid: () => null },
       './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-      './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
+      './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null }, './ScheduleCancelledList': { ScheduleCancelledList: () => null },
       './RescheduleRequestActions': { RescheduleRequestActions: () => null },
       '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
     },
@@ -189,13 +189,13 @@ for (const view of ['day', 'week', 'month']) {
     const useState = (value: unknown) => [value, (next: unknown) => updates.push(next)];
     const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
       'src/components/admin/ScheduleCalendar.tsx', {
-        react: { ...hooks, useState, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+        react: { ...hooks, useState, useEffect: () => undefined, useEffectEvent: (run: unknown) => run, useTransition: () => [false, () => undefined] },
         '@/i18n/navigation': navigation,
         '@/i18n/client': i18nClient,
         '@/i18n/draft-store': draftStore(useState),
         './ScheduleDayGrid': { ScheduleDayGrid: () => null },
         './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-        './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
+        './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null }, './ScheduleCancelledList': { ScheduleCancelledList: () => null },
         './RescheduleRequestActions': { RescheduleRequestActions: () => null },
         '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
       },
@@ -231,13 +231,13 @@ for (const view of ['day', 'week', 'month']) {
 test('an appointment whose price was never recorded says so instead of showing today\'s service price', () => {
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
     'src/components/admin/ScheduleCalendar.tsx', {
-      react: { ...hooks, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+      react: { ...hooks, useEffect: () => undefined, useEffectEvent: (run: unknown) => run, useTransition: () => [false, () => undefined] },
       '@/i18n/navigation': navigation,
       '@/i18n/client': i18nClient,
       '@/i18n/draft-store': draftStore(hooks.useState),
       './ScheduleDayGrid': { ScheduleDayGrid: () => null },
       './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-      './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
+      './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null }, './ScheduleCancelledList': { ScheduleCancelledList: () => null },
       './RescheduleRequestActions': { RescheduleRequestActions: () => null },
       '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},
     },
@@ -272,13 +272,13 @@ test('an appointment whose price was never recorded says so instead of showing t
 test('a reschedule request row shows when it was asked and a tel: link for the customer', () => {
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>(
     'src/components/admin/ScheduleCalendar.tsx', {
-      react: { ...hooks, useEffect: () => undefined, useTransition: () => [false, () => undefined] },
+      react: { ...hooks, useEffect: () => undefined, useEffectEvent: (run: unknown) => run, useTransition: () => [false, () => undefined] },
       '@/i18n/navigation': navigation,
       '@/i18n/client': i18nClient,
       '@/i18n/draft-store': draftStore(hooks.useState),
       './ScheduleDayGrid': { ScheduleDayGrid: () => null },
       './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
-      './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
+      './AppointmentDialog': { AppointmentDialog: () => null }, './GoogleDiaryPanel': { GoogleDiaryPanel: () => null }, './ScheduleCancelledList': { ScheduleCancelledList: () => null },
       './RescheduleRequestActions': { RescheduleRequestActions: () => null },
       './MobileScheduleDisclosure': { MobileScheduleDisclosure: ({ children }: { children: unknown }) => children },
       '@/app/actions/admin-schedule': {}, '@/app/actions/admin': {},

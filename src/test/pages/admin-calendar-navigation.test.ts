@@ -168,7 +168,7 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
   const statuses: string[][] = [];
   const refreshes: boolean[] = [];
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
-    react: { useEffect: () => undefined, useState: (value: unknown) => [value, () => undefined], useTransition: () => [false, (run: () => void) => run()] },
+    react: { useEffect: () => undefined, useEffectEvent: (run: unknown) => run, useRef: (value: unknown) => ({ current: value }), useState: (value: unknown) => [value, () => undefined], useTransition: () => [false, (run: () => void) => run()] },
     // The localized router adds /zh-hk on Chinese pages; the board itself only
     // ever asks for language-free /admin URLs.
     '@/i18n/navigation': { useLocalizedRouter: () => ({ push: (url: string) => urls.push(url), refresh: () => refreshes.push(true) }) },
@@ -178,6 +178,7 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
     './AppointmentDialog': { AppointmentDialog: () => null },
     './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
+    './ScheduleCancelledList': { ScheduleCancelledList: () => null },
     './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': { updateAppointmentStatus: async (id: string, status: string) => { statuses.push([id, status]); return { success: true }; } },
@@ -389,7 +390,7 @@ test('an outstanding request outside the current month can be opened and approve
 test('the Chinese board translates its periods and controls but keeps language-free navigation URLs', () => {
   const urls: string[] = [];
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
-    react: { useEffect: () => undefined, useState: (value: unknown) => [value, () => undefined], useTransition: () => [false, (run: () => void) => run()] },
+    react: { useEffect: () => undefined, useEffectEvent: (run: unknown) => run, useRef: (value: unknown) => ({ current: value }), useState: (value: unknown) => [value, () => undefined], useTransition: () => [false, (run: () => void) => run()] },
     '@/i18n/navigation': { useLocalizedRouter: () => ({ push: (url: string) => urls.push(url), refresh: () => undefined }) },
     '@/i18n/client': { useT: (namespace: Namespace) => translator('zh-HK', namespace), useLocale: () => 'zh-HK' },
     '@/i18n/draft-store': { useDraftState: (_key: string, initial: unknown) => [initial, () => undefined] },
@@ -397,6 +398,7 @@ test('the Chinese board translates its periods and controls but keeps language-f
     './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
     './AppointmentDialog': { AppointmentDialog: () => null },
     './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
+    './ScheduleCancelledList': { ScheduleCancelledList: () => null },
     './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': {},
@@ -469,4 +471,65 @@ test('stylist filtering affects day/week diary props but leaves global pending a
     assert.ok(byName(nodes, 'PendingActions').some(element => element.props.apptId === 'hidden'));
     assert.ok(byName(nodes, 'RescheduleRequestActions').some(element => element.props.appointmentId === 'hidden'));
   }
+});
+
+// The day and week grids leave cancelled bookings out, so on a tablet or computer the
+// board lists them beneath (ScheduleCancelledList), and Admin → Operations opens one
+// directly (`?open=`): its dialog is where a refund settled outside is recorded.
+function renderLinked(view: string, appointments: Record<string, unknown>[], openId?: string) {
+  const dialogs: unknown[] = [];
+  const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
+    // Effects run at once and are cleaned up at once (the auto-refresh timer must not keep the test alive).
+    react: { useEffect: (effect: () => unknown) => { const cleanup = effect(); if (typeof cleanup === 'function') cleanup(); }, useEffectEvent: (run: unknown) => run, useRef: (value: unknown) => ({ current: value }), useState: (value: unknown) => [value, () => undefined], useTransition: () => [false, (run: () => void) => run()] },
+    '@/i18n/navigation': { useLocalizedRouter: () => ({ push: () => undefined, refresh: () => undefined }) },
+    '@/i18n/client': { useT: (namespace: Namespace) => translator('en-GB', namespace), useLocale: () => 'en-GB' },
+    '@/i18n/draft-store': { useDraftState: (key: string, initial: unknown) => [initial, (value: unknown) => { if (key === 'schedule-board:dialog') dialogs.push(value); }] },
+    './ScheduleDayGrid': { ScheduleDayGrid: () => null },
+    './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
+    './AppointmentDialog': { AppointmentDialog: () => null },
+    './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
+    './ScheduleCancelledList': { ScheduleCancelledList: () => null },
+    './RescheduleRequestActions': { RescheduleRequestActions: () => null },
+    '@/app/actions/admin-schedule': {},
+    '@/app/actions/admin': {},
+  });
+  const previous = (globalThis as { document?: unknown }).document;
+  (globalThis as { document?: unknown }).document = { visibilityState: 'hidden', addEventListener: () => undefined, removeEventListener: () => undefined };
+  let rendered: unknown;
+  try {
+    rendered = calendar.ScheduleCalendar({ dateStr: '2026-10-20', view, appointments, pendingAppointments: [], rescheduleRequests: [], stylists: [], busyBlocks: [], openId });
+  } finally {
+    (globalThis as { document?: unknown }).document = previous;
+  }
+  return { lists: byName(elements(rendered), 'ScheduleCancelledList'), dialogs };
+}
+
+test('day and week grids list the period’s cancelled bookings beneath them, each opening its dialog', () => {
+  const rows = [
+    boardAppointment('gone', 'CANCELLED', '2026-10-20T16:00:00.000Z'),
+    boardAppointment('kept', 'CONFIRMED', '2026-10-21T09:00:00.000Z'),
+  ];
+  const day = renderLinked('day', rows);
+  assert.equal(day.lists.length, 1);
+  assert.equal(day.lists[0].props.showDay, false);
+  assert.deepEqual((day.lists[0].props.appointments as { id: string }[]).map((row) => row.id), ['gone'], 'that day only');
+  (day.lists[0].props.onEdit as (row: unknown) => void)(rows[0]);
+  assert.equal((day.dialogs[0] as { appointmentId: string; status: string }).appointmentId, 'gone');
+  const week = renderLinked('week', rows);
+  assert.equal(week.lists.length, 1);
+  assert.equal(week.lists[0].props.showDay, true);
+  assert.deepEqual((week.lists[0].props.appointments as { id: string }[]).map((row) => row.id).sort(), ['gone', 'kept'], 'the whole week; the list keeps the cancelled ones');
+  assert.equal(renderLinked('month', rows).lists.length, 0, 'the month view lists every booking already');
+});
+
+test('?open= opens that booking’s dialog on arrival, a cancelled one included; an unknown id opens nothing', () => {
+  const rows = [boardAppointment('gone', 'CANCELLED', '2026-10-20T16:00:00.000Z')];
+  const opened = renderLinked('day', rows, 'gone');
+  assert.equal(opened.dialogs.length, 1);
+  assert.deepEqual(
+    (({ mode, appointmentId, status, dateStr }) => ({ mode, appointmentId, status, dateStr }))(opened.dialogs[0] as Record<string, unknown>),
+    { mode: 'edit', appointmentId: 'gone', status: 'CANCELLED', dateStr: '2026-10-20' },
+  );
+  assert.equal(renderLinked('day', rows, 'missing').dialogs.length, 0);
+  assert.equal(renderLinked('day', rows).dialogs.length, 0);
 });
