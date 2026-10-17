@@ -186,7 +186,7 @@ test('no fragment of the private key ever appears in an error: bad keys and fail
 });
 
 test('putEvent PUTs the whole event to its id with the bearer token', async () => {
-  const { gateway, apiCalls } = harness({ api: () => Response.json({ ...event, etag: '"1"', htmlLink: 'https://calendar.google.com/x' }) });
+  const { gateway, apiCalls } = harness({ api: () => Response.json({ ...event, etag: '"1"', creator: { email: 'someone@example.com' } }) });
   const result = await gateway.putEvent(event);
   assert.deepEqual(result, event);
   assert.equal(apiCalls[0].url, `${CALENDAR}/events/${event.id}`);
@@ -287,7 +287,7 @@ test('deleteEvent DELETEs and treats 404 and 410 as already gone', async () => {
 });
 
 test('listEvents asks for single, deleted-included events in the window and follows two pages', async () => {
-  const second: GoogleEvent = { id: 'googleid123_20261021T090000Z', status: 'cancelled' };
+  const second: GoogleEvent = { id: 'googleid123_20261021T090000Z', status: 'cancelled', htmlLink: 'https://www.google.com/calendar/event?eid=x' };
   const { gateway, apiCalls } = harness({
     api: (_call, index) => Response.json(index === 0
       ? { kind: 'calendar#events', items: [event], nextPageToken: 'page-2' }

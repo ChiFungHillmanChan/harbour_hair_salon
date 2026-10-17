@@ -31,7 +31,7 @@ function salonMidnight(day: string): Date | null {
   return Number.isNaN(at.getTime()) ? null : at;
 }
 
-function eventInterval(event: GoogleEvent): { start: Date; end: Date } | null {
+export function eventInterval(event: GoogleEvent): { start: Date; end: Date } | null {
   let start: Date | null;
   let end: Date | null;
   if (event.start?.dateTime) {
