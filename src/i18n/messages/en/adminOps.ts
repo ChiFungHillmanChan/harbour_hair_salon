@@ -357,6 +357,7 @@ const adminOps = {
         object: 'Square ID',
         received: 'Received',
       },
+      openBooking: 'Open the booking of {date} on the schedule',
       noBooking: 'No booking',
       problems: {
         AWAITING_SQUARE: 'Waiting for an answer from Square',

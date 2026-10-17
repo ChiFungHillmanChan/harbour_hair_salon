@@ -11,7 +11,7 @@ import { getLocale, getT } from '@/i18n/server';
 import { Suspense } from 'react';
 import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
 
-export default async function AdminDashboard({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[] }> }) {
+export default async function AdminDashboard({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[]; open?: string | string[] }> }) {
   await requireAdmin();
   const t = await getT('adminSchedule');
   // The static header renders (and paints) immediately; the appointment data
@@ -30,10 +30,13 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   );
 }
 
-async function ScheduleContent({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[] }> }) {
+async function ScheduleContent({ searchParams }: { searchParams: Promise<CalendarQuery & { pending?: string | string[]; open?: string | string[] }> }) {
   const locale = await getLocale();
+  const query = await searchParams;
+  // A booking to open on arrival (Admin → Operations links each payment to its booking).
+  const openId = typeof query.open === 'string' && query.open ? query.open : undefined;
   const [calendar, settings, t, arrivals] = await Promise.all([
-    getAdminCalendarData(await searchParams, locale),
+    getAdminCalendarData(query, locale),
     getSiteSettings(),
     getT('adminSchedule'),
     getLateArrivalBoard(),
@@ -97,7 +100,7 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
         </div>
       ) : <LateArrivalPanel board={arrivals} />}
 
-      <ScheduleCalendar loadedAt={calendar.loadedAt} dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} rescheduleRequests={rescheduleRequests} stylists={stylists} busyBlocks={busyBlocks} diaryEntries={diaryEntries} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} />
+      <ScheduleCalendar loadedAt={calendar.loadedAt} dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} rescheduleRequests={rescheduleRequests} stylists={stylists} busyBlocks={busyBlocks} diaryEntries={diaryEntries} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} openId={openId} />
     </>
   );
 }

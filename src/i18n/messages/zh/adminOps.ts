@@ -349,6 +349,7 @@ const adminOps: Localized<Messages['adminOps']> = {
         object: 'Square 編號',
         received: '收到時間',
       },
+      openBooking: '在時間表打開 {date} 的預約',
       noBooking: '沒有預約',
       problems: {
         AWAITING_SQUARE: '等待 Square 回覆',

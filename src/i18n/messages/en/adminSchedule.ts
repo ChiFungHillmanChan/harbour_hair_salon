@@ -44,6 +44,10 @@ const adminSchedule = {
     website: 'Website booking',
     notes: 'All-day entries & notes',
   },
+  /** The day and week grids' list of cancelled bookings (ScheduleCancelledList). */
+  cancelled: {
+    title: 'Cancelled bookings',
+  },
   refresh: {
     details: 'How refresh works',
     loadedAt: 'Calendar loaded {date} at {time} (UK).',

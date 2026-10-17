@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useEffectEvent, useRef, useState, useTransition } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addDays, startOfYear, endOfYear, eachMonthOfInterval } from 'date-fns';
 import { ScheduleWeekGrid, type WeekStylist } from './ScheduleWeekGrid';
 import { AppointmentDialog, type DialogService, type DialogTarget } from './AppointmentDialog';
@@ -11,6 +11,7 @@ import { ScheduleDayGrid, type GridAppointment, type GridBusyBlock, type GridSty
 import { googleDisplaySwatch, stylistDisplaySwatch } from '@/app/lib/calendar-colors';
 import { diaryForDay, diaryRange, type CalendarDiaryEntry, type PlacedDiaryEntry } from '@/app/lib/calendar-diary-display';
 import { GoogleDiaryPanel } from './GoogleDiaryPanel';
+import { ScheduleCancelledList } from './ScheduleCancelledList';
 import { MobileScheduleDisclosure } from './MobileScheduleDisclosure';
 import { diaryStylistNames, filterScheduleForStylist, scheduleAgenda } from '@/app/lib/schedule-agenda';
 import { formatSalonTime, resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
@@ -448,6 +449,7 @@ export function ScheduleCalendar({
   pendingNext = null,
   pendingHasPrevious = false,
   loadedAt,
+  openId,
 }: {
   dateStr: string;
   view: CalendarView;
@@ -463,6 +465,8 @@ export function ScheduleCalendar({
   pendingNext?: string | null;
   pendingHasPrevious?: boolean;
   loadedAt?: string;
+  /** A booking to open on arrival: Admin → Operations links a payment to it (`?open=`). */
+  openId?: string;
 }) {
   // The period and date live in the URL, so a language switch keeps them; the
   // localized router keeps every navigation in the current language.
@@ -628,6 +632,15 @@ export function ScheduleCalendar({
       ...(appt.consultationCredit ? { consultationCredit: appt.consultationCredit } : {}),
     });
   };
+  // Opened once per link, from the rows the page loaded for that day (a
+  // cancelled booking included); a booking outside them is left alone.
+  const openedFromLink = useRef<string | null>(null);
+  const openLinked = useEffectEvent((id: string) => {
+    if (openedFromLink.current === id || !appointmentById.has(id)) return;
+    openedFromLink.current = id;
+    openEditor({ id });
+  });
+  useEffect(() => { if (openId) openLinked(openId); }, [openId, appointments]);
   const closeDialog = () => setDialog(null);
   const savedDialog = () => { setDialog(null); router.refresh(); };
 
@@ -833,6 +846,11 @@ export function ScheduleCalendar({
                 onSelect={openEditor}
                 onCreate={(day, time) => setDialog({ mode: 'create', dateStr: day, time })}
               />
+              <ScheduleCancelledList
+                appointments={weekKeys.flatMap((key) => getDayAppointments(new Date(`${key}T12:00:00`)))}
+                showDay
+                onEdit={openEditor}
+              />
             </div>
             <div className="md:hidden space-y-3">
               {weekKeys.map((key) => {
@@ -864,6 +882,7 @@ export function ScheduleCalendar({
                 onSelect={openEditor}
                 onCreate={(day, time, stylistId) => setDialog({ mode: 'create', dateStr: day, time, stylistId })}
               />
+              <ScheduleCancelledList appointments={getDayAppointments(currentDate)} showDay={false} onEdit={openEditor} />
             </div>
             <div className="sm:hidden">
               <DayView

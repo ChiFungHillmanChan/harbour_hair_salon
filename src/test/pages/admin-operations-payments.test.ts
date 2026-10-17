@@ -51,15 +51,17 @@ async function render(locale: Locale, store = rows()) {
     return text((node as { props: { children?: unknown } }).props.children);
   };
   const sections: { id?: string; text: string }[] = [];
+  const links: { href: string; label?: string; text: string }[] = [];
   const walk = (node: unknown) => {
     if (Array.isArray(node)) { node.forEach(walk); return; }
     if (!node || typeof node !== 'object' || !('props' in node)) return;
-    const element = node as { type: unknown; props: { children?: unknown; 'aria-labelledby'?: string } };
+    const element = node as { type: unknown; props: { children?: unknown; href?: string; 'aria-label'?: string; 'aria-labelledby'?: string } };
     if (element.type === 'section') sections.push({ id: element.props['aria-labelledby'], text: text(element) });
+    if (typeof element.props.href === 'string') links.push({ href: element.props.href, label: element.props['aria-label'], text: text(element) });
     walk(element.props.children);
   };
   walk(tree);
-  return { section: sections.find((entry) => entry.id === 'payments-attention')?.text ?? '', store };
+  return { section: sections.find((entry) => entry.id === 'payments-attention')?.text ?? '', store, links };
 }
 
 test('payments needing attention are listed in English: what, how much, what to do, how long', async (t) => {
@@ -155,4 +157,20 @@ test('a quiet day says so', async (t) => {
   const { section } = await render('en-GB', paymentsDb({ now: () => NOW }));
   assert.match(section, /Nothing needs attention\./);
   assert.doesNotMatch(section, /Deposits|Refunds/);
+});
+
+// A payment row opens its booking on the schedule (the booking dialog re-checks the
+// deposit or records a refund settled outside), a cancelled booking included.
+test('each payment with a booking links to that booking on the schedule, in both languages', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: NOW });
+  const { salonDateKey } = await import('../../app/services/salon-time');
+  const day = salonDateKey(minutes(3 * 24 * 60));
+  const english = await render('en-GB');
+  const declined = english.links.find((link) => link.text === 'appt-declined');
+  assert.equal(declined?.href, `/admin?date=${day}&view=day&open=appt-declined`);
+  assert.match(declined?.label ?? '', /^Open the booking of .+ on the schedule$/);
+  assert.ok(english.links.some((link) => link.href.endsWith('open=appt-pending')));
+  assert.ok(!english.links.some((link) => /open=$|open=null|undefined/.test(link.href)), 'no link for a payment with no booking');
+  const chinese = await render('zh-HK');
+  assert.match(chinese.links.find((link) => link.text === 'appt-declined')?.label ?? '', /^在時間表打開 .+ 的預約$/);
 });
