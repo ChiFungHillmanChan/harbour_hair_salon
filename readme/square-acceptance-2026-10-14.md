@@ -283,6 +283,30 @@ customers.
 - Original blocked challenge (`3ds-blocked.png`)
 - Original CSP errors (`3ds-console.png`)
 
+## Re-run on a Preview of `main` (started 2026-10-17)
+
+The 2026-10-14 run used a branch upload, so runbook §4 is repeated on a Preview of `main`
+(26932a5, which includes #64 and #65), deployed from this record's own pull request. This
+document is the only change in it. Card details are typed by the owner (cards may only be
+typed by the assistant on a local host); results, payment ids and the preview URL are added
+here as each item passes.
+
+| §4 item | Result | Square payment id | Notes |
+|---|---|---|---|
+| Approve ⇒ capture | pending | | |
+| Decline ⇒ release (and withdrawal) | pending | | |
+| Declined card / failed verification | pending | | |
+| 3-D Secure challenge (+ frictionless, 1-minute wait) | pending | | |
+| Expired hold (a) and (b) | pending | | |
+| Double submit | pending | | |
+| Two customers racing | pending | | |
+| Webhook duplicates and order | pending | | |
+| Refund pending → completed; staff keep | pending | | |
+| Reconciliation | pending | | |
+| Kill switch | pending | | |
+| Wrong access token is not a decline | pending | | |
+| Mark refund as settled outside the website | pending | | |
+
 References: [project runbook](../docs/square-payments-setup.md),
 [Square sandbox values](https://developer.squareup.com/docs/devtools/sandbox/payments),
 [Square CSP guide](https://developer.squareup.com/docs/web-payments/content-security-policy).
