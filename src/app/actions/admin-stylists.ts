@@ -55,8 +55,9 @@ const stylistSchema = z.object({
   calendarColor: calendarColorField,
   googleColorId: googleColorField,
   googleAliases: googleAliasesField,
-  // A checkbox: sent as "on" when ticked, left out of the form when not.
+  // Checkboxes: sent as "on" when ticked, left out of the form when not.
   takesWalkIns: z.string().optional().transform((v) => v === 'on'),
+  showOnWebsite: z.string().optional().transform((v) => v === 'on'),
   name: z.string('NAME').trim().min(2, 'NAME').max(100, 'NAME'),
   slug: z
     .string()
@@ -167,6 +168,7 @@ export async function createStylist(
           googleColorId: parsed.data.googleColorId,
           googleAliases: parsed.data.googleAliases,
           takesWalkIns: parsed.data.takesWalkIns,
+          showOnWebsite: parsed.data.showOnWebsite,
           role: typeof english.role === 'string' ? english.role : '',
           bio: optionalText(english.bio),
           tagline: optionalText(english.tagline),
@@ -224,11 +226,31 @@ export async function updateStylist(
       googleColorId: parsed.data.googleColorId,
       googleAliases: parsed.data.googleAliases,
       takesWalkIns: parsed.data.takesWalkIns,
+      showOnWebsite: parsed.data.showOnWebsite,
     },
   });
 
   refreshStylistPages(existing.slug, slug);
   return { status: 'success' };
+}
+
+const STYLIST_SWITCHES = ['showOnWebsite', 'takesWalkIns'] as const;
+export type StylistSwitch = (typeof STYLIST_SWITCHES)[number];
+
+/**
+ * Admin → Stylists list: turn one of a stylist's two switches on or off —
+ * "Show on website" (the public Stylists pages and online booking) or "Takes
+ * walk-ins" (a chair for the diary's red bookings). Nothing else.
+ */
+export async function setStylistSwitch(id: string, name: StylistSwitch, on: boolean): Promise<{ error?: string; success?: boolean }> {
+  await requireAdmin();
+  if (!STYLIST_SWITCHES.includes(name) || typeof on !== 'boolean') return { error: await message('INVALID') };
+  const existing = await prisma.stylist.findUnique({ where: { id }, select: { slug: true, name: true } });
+  if (!existing) return { error: await message('NOT_FOUND') };
+  await prisma.stylist.update({ where: { id }, select: { id: true }, data: { [name]: on } });
+  // A profile from before slugs were stored is served at its name's slug.
+  refreshStylistPages(existing.slug ?? slugify(existing.name));
+  return { success: true };
 }
 
 export async function deleteStylist(formData: FormData): Promise<void> {

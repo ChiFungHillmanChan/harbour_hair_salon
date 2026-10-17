@@ -2,8 +2,8 @@ import { requireAdmin } from '@/app/lib/session';
 import Link from '@/i18n/link';
 import { unstable_rethrow } from 'next/navigation';
 import prisma from '@/app/lib/prisma';
-import { getAllStylistsWithSlug } from '@/app/stylists/slug';
-import { deleteStylist } from '@/app/actions/admin-stylists';
+import { getStylistsForAdmin } from '@/app/stylists/slug';
+import { deleteStylist, setStylistSwitch } from '@/app/actions/admin-stylists';
 import { RowActionButton, type RowActionResult } from '@/components/admin/RowActionButton';
 import { ContentStatusBadges } from '@/components/admin/ContentStatusBadges';
 import { loadContentStatus } from '@/app/services/admin-content-status';
@@ -39,11 +39,19 @@ async function deleteStylistRow(id: string): Promise<RowActionResult> {
   return { success: true };
 }
 
+/** A row switch: filled when on, outlined when off. One click flips it. */
+function switchClass(on: boolean) {
+  return `text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${on
+    ? 'bg-zinc-900 text-white hover:bg-zinc-700'
+    : 'border border-zinc-300 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900'}`;
+}
+
 export default async function AdminStylistsPage() {
   await requireAdmin();
   const [stylists, counts, t, tc] = await Promise.all([
     // English: admins manage the source text; translation state is shown per row.
-    getAllStylistsWithSlug(),
+    // Hidden stylists are listed too (the public helpers leave them out).
+    getStylistsForAdmin(),
     prisma.appointment.groupBy({
       by: ['stylistId'],
       _count: { _all: true },
@@ -71,6 +79,7 @@ export default async function AdminStylistsPage() {
               ),
             })}
           </p>
+          <p className="text-sm text-zinc-500 mt-2">{t('stylists.list.switchesHelp')}</p>
         </div>
         <Link
           href="/admin/stylists/new"
@@ -104,6 +113,12 @@ export default async function AdminStylistsPage() {
                 <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3">
                   {t('stylists.list.columns.slug')}
                 </th>
+                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3">
+                  {t('stylists.list.columns.website')}
+                </th>
+                <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3">
+                  {t('stylists.list.columns.walkIns')}
+                </th>
                 <th className="text-right text-xs uppercase tracking-wider text-zinc-500 font-medium px-4 py-3 w-28">
                   {t('stylists.list.columns.bookings')}
                 </th>
@@ -124,16 +139,35 @@ export default async function AdminStylistsPage() {
                     </td>
                     <td className="px-4 py-4 text-sm text-zinc-600">{s.role}</td>
                     <td className="px-4 py-4 text-xs text-zinc-500 font-mono">/{s.slug}</td>
+                    <td className="px-4 py-4">
+                      <RowActionButton
+                        action={setStylistSwitch.bind(null, s.id, 'showOnWebsite', !s.showOnWebsite)}
+                        label={s.showOnWebsite ? t('stylists.list.shown') : t('stylists.list.hidden')}
+                        pendingLabel={t('stylists.list.switching')}
+                        buttonClassName={switchClass(s.showOnWebsite)}
+                      />
+                    </td>
+                    <td className="px-4 py-4">
+                      <RowActionButton
+                        action={setStylistSwitch.bind(null, s.id, 'takesWalkIns', !s.takesWalkIns)}
+                        label={s.takesWalkIns ? t('stylists.list.walkIns') : t('stylists.list.noWalkIns')}
+                        pendingLabel={t('stylists.list.switching')}
+                        buttonClassName={switchClass(s.takesWalkIns)}
+                      />
+                    </td>
                     <td className="px-4 py-4 text-right text-sm text-zinc-600">{bookings}</td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={`/stylists/${s.slug}`}
-                          target="_blank"
-                          className="text-xs font-medium text-zinc-600 hover:text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
-                        >
-                          {t('stylists.list.view')}
-                        </Link>
+                        {/* A hidden stylist has no public page to view. */}
+                        {s.showOnWebsite && (
+                          <Link
+                            href={`/stylists/${s.slug}`}
+                            target="_blank"
+                            className="text-xs font-medium text-zinc-600 hover:text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                          >
+                            {t('stylists.list.view')}
+                          </Link>
+                        )}
                         <Link
                           href={`/admin/stylists/${s.id}/edit`}
                           className="text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"

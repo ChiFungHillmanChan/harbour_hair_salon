@@ -62,3 +62,15 @@ test('"Takes walk-ins" is a checkbox, ticked for a new stylist and as saved for 
     assert.ok(nodes.some((node) => text(node).includes(label)), locale);
   }
 });
+
+test('"Show on website" is a checkbox, ticked for a new stylist and as saved for an existing one, in English and Chinese', () => {
+  for (const [locale, label] of [['en-GB', 'Show on website'], ['zh-HK', '在網站顯示']] as const) {
+    const { StylistForm } = loadForm(locale);
+    const box = (props: Record<string, unknown>) => elements(StylistForm({ action: async () => ({ status: 'idle' }), ...props } as never)).find((node) => node.props.name === 'showOnWebsite')!;
+    assert.deepEqual([box({ mode: 'create' }).props.type, box({ mode: 'create' }).props.defaultChecked], ['checkbox', true], locale);
+    const hidden = box({ mode: 'edit', stylist: { id: 'shania', name: 'Shania', slug: 'shania', imageUrl: null, yearsExperience: null }, showOnWebsite: false });
+    assert.equal(hidden.props.defaultChecked, false, locale);
+    const nodes = elements(StylistForm({ mode: 'create', action: async () => ({ status: 'idle' }) }));
+    assert.ok(nodes.some((node) => text(node).includes(label)), locale);
+  }
+});

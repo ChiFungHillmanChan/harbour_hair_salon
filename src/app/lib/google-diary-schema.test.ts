@@ -78,3 +78,13 @@ for (const provider of PROVIDERS) {
     assert.match(readFileSync(file, 'utf8'), provider === 'prod' ? /\[takesWalkIns\] BIT NOT NULL .*DEFAULT 1/ : /"takesWalkIns" BOOLEAN NOT NULL DEFAULT true/);
   });
 }
+
+// Who customers see (owner, 2026-10-17): on by default, so every existing stylist stays on the website.
+for (const provider of PROVIDERS) {
+  test(`${provider}: Stylist.showOnWebsite defaults to true, added by its own migration`, () => {
+    assert.match(block(readFileSync(`prisma/${provider}/schema.prisma`, 'utf8'), 'Stylist'), /\n\s+showOnWebsite\s+Boolean\s+@default\(true\)/);
+    const file = `prisma/${provider}/migrations/20261017180000_stylist_show_on_website/migration.sql`;
+    assert.ok(existsSync(file), file);
+    assert.match(readFileSync(file, 'utf8'), provider === 'prod' ? /\[showOnWebsite\] BIT NOT NULL .*DEFAULT 1/ : /"showOnWebsite" BOOLEAN NOT NULL DEFAULT true/);
+  });
+}

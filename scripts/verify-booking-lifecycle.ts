@@ -1398,6 +1398,24 @@ async function main() {
       await db.stylist.update({ where: { id: ids.stylist }, data: { takesWalkIns: false } });
       for (const time of ['14:30', '15:00', '15:30']) assert.equal(await slotAvailable(gDay(3), time), true, `${time} is free: a stylist who takes no walk-ins uses no chair`);
       await db.stylist.update({ where: { id: ids.stylist }, data: { takesWalkIns: true } });
+      // A stylist hidden from the website (Admin → Stylists) is never offered or booked online,
+      // while their own times still read by name (a customer rescheduling an existing booking).
+      await db.stylist.update({ where: { id: ids.stylist }, data: { showOnWebsite: false } });
+      assert.equal(await slotAvailable(gDay(3), '10:00'), true, 'a hidden stylist still reads by name');
+      assert.ok(!(await booking.getAvailableSlotsUnion(gDay(3), 60)).some(slot => slot.available), '"Anyone" never offers a hidden stylist');
+      // With nobody left to book online, the go-live gate closes booking (NO_STYLISTS)…
+      await assert.rejects(create(gDay(3), '10:00'), /Online booking is closed/, 'no stylist shown: booking closed');
+      // …and with another stylist shown, the hidden one is refused by name.
+      const shownPeer = 'lifecycle-shown-peer';
+      await db.stylist.create({ data: { id: shownPeer, name: 'Synthetic Shown Stylist', role: 'Stylist',
+        availabilities: { create: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '18:00', isOff: false })) } } });
+      try {
+        await assert.rejects(create(gDay(3), '10:00'), /stylist is no longer available/, 'a new booking for a hidden stylist is refused');
+      } finally {
+        await db.availability.deleteMany({ where: { stylistId: shownPeer } });
+        await db.stylist.delete({ where: { id: shownPeer } });
+      }
+      await db.stylist.update({ where: { id: ids.stylist }, data: { showOnWebsite: true } });
       // (c) The busy feed Fresha imports exports the GOOGLE blocks, and nothing else of the diary.
       const googleFeed = await readFeed();
       for (const block of stored) {
@@ -1453,7 +1471,7 @@ async function main() {
       assert.deepEqual((await googleBlocks()).map((block) => block.start.getTime()), [instant(gDay(3), '09:00').getTime(), instant(gDay(3), '12:00').getTime()]);
       assert.equal(await slotAvailable(gDay(3), '11:00'), true);
       assert.equal(await slotAvailable(gDay(3), '12:00'), false);
-      console.log('PASS: Google pull over PostgreSQL — Google-only events stored as the diary with their kinds (stylist, leave, walk-in, note; "Show as available" ignored), and the stylist and leave entries as GOOGLE blocks, in one transaction (a failure at its last write leaves the old blocks and diary exactly); entries past the 30-day window deleted; website events never blocks and a stripped one written back; an unchanged pull writes nothing; the blocks close slots in the real availability code and are exported in the busy feed; the walk-in closes its slot through the chair rule (not for a stylist who takes no walk-ins) and never reaches the feed; no diary title leaves the website. Google was a fake.');
+      console.log('PASS: Google pull over PostgreSQL — Google-only events stored as the diary with their kinds (stylist, leave, walk-in, note; "Show as available" ignored), and the stylist and leave entries as GOOGLE blocks, in one transaction (a failure at its last write leaves the old blocks and diary exactly); entries past the 30-day window deleted; website events never blocks and a stripped one written back; an unchanged pull writes nothing; the blocks close slots in the real availability code and are exported in the busy feed; the walk-in closes its slot through the chair rule (not for a stylist who takes no walk-ins) and never reaches the feed; a stylist hidden from the website is never offered or booked online; no diary title leaves the website. Google was a fake.');
 
       // "Clear Google busy time" over a real transaction: GOOGLE blocks only, audited.
       await sync(icalFeed([{ uid: 'synthetic-fresha-during-google', start: instant(gDay(4), '10:00'), end: instant(gDay(4), '11:00') }]));

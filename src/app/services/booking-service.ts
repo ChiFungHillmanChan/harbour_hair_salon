@@ -225,7 +225,8 @@ export async function getAvailableSlotsUnion(
   if (window.start >= bookingCoverageEndsAt(now) || window.end <= now) return [];
 
   const availabilities = await prisma.availability.findMany({
-    where: { dayOfWeek, isOff: false, stylist: { isActive: true } },
+    // "Anyone" only ever means a stylist customers can see.
+    where: { dayOfWeek, isOff: false, stylist: { isActive: true, showOnWebsite: true } },
     select: { stylistId: true, startTime: true, endTime: true },
   });
   if (availabilities.length === 0) return [];
@@ -302,7 +303,11 @@ export async function getBookingDays(stylistId: string, dates: string[], service
     end: salonDayWindow(resolveSalonDateTime(ordered[ordered.length - 1], '12:00').utc).end,
   };
   const rows = await prisma.availability.findMany({
-    where: { isOff: false, stylist: { isActive: true }, ...(stylistId === ANY_STYLIST_ID ? {} : { stylistId }) },
+    // "Anyone" only ever means a stylist customers can see; a stylist named
+    // here may be hidden (a customer rescheduling an existing booking with them).
+    where: stylistId === ANY_STYLIST_ID
+      ? { isOff: false, stylist: { isActive: true, showOnWebsite: true } }
+      : { isOff: false, stylist: { isActive: true }, stylistId },
     select: { stylistId: true, dayOfWeek: true, startTime: true, endTime: true },
   });
   const stylistIds = [...new Set(rows.map((row) => row.stylistId))];
@@ -466,6 +471,15 @@ async function linkDeposit(tx: Prisma.TransactionClient, data: NewBookingInput, 
   return { status: 'AUTHORIZED', amountPence: data.deposit.amountPence };
 }
 
+/**
+ * A new online booking only goes to a stylist customers can see: active and
+ * shown on the website (Admin → Stylists). Staff bookings and a customer's
+ * existing bookings never come here.
+ */
+function assertShownOnWebsite<T extends { isActive: boolean; showOnWebsite: boolean }>(stylist: T | null): asserts stylist is T {
+  if (!stylist?.isActive || stylist.showOnWebsite === false) throw new BookingError('STYLIST_UNAVAILABLE');
+}
+
 export async function createBooking(data: NewBookingInput & { stylistId: string }) {
   refuseDiscountCode(data.discountCode);
   // Use Serializable transaction to prevent double-booking race conditions
@@ -478,10 +492,10 @@ export async function createBooking(data: NewBookingInput & { stylistId: string 
       quoteInTx(tx, data),
       tx.stylist.findUnique({
         where: { id: data.stylistId },
-        select: { isActive: true, treatwellExternalId: true },
+        select: { isActive: true, showOnWebsite: true, treatwellExternalId: true },
       }),
     ]);
-    if (!stylist?.isActive) throw new BookingError('STYLIST_UNAVAILABLE');
+    assertShownOnWebsite(stylist);
 
     await assertAppointmentSlotAvailable(tx, { id: '', stylistId: data.stylistId, durationAtBooking: service.duration, service }, data.date);
 
@@ -580,9 +594,9 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
 
     const stylist = await tx.stylist.findUnique({
       where: { id: stylistId },
-      select: { isActive: true, treatwellExternalId: true },
+      select: { isActive: true, showOnWebsite: true, treatwellExternalId: true },
     });
-    if (!stylist?.isActive) throw new BookingError('STYLIST_UNAVAILABLE');
+    assertShownOnWebsite(stylist);
 
     const api = getTreatwellApiConfiguration();
     const treatwellSyncStatus = initialTreatwellSyncStatus({
@@ -640,8 +654,8 @@ export async function precheckBookingRequest(data: NewBookingInput & ({ stylistI
     await assertAppointmentSlotAvailable(prisma, { id: '', stylistId, durationAtBooking: service.duration, service }, data.date, blocking, { chairRule: false });
     return;
   }
-  const stylist = await prisma.stylist.findUnique({ where: { id: data.stylistId }, select: { isActive: true } });
-  if (!stylist?.isActive) throw new BookingError('STYLIST_UNAVAILABLE');
+  const stylist = await prisma.stylist.findUnique({ where: { id: data.stylistId }, select: { isActive: true, showOnWebsite: true } });
+  assertShownOnWebsite(stylist);
   await assertAppointmentSlotAvailable(prisma, { id: '', stylistId: data.stylistId, durationAtBooking: service.duration, service }, data.date);
 }
 
