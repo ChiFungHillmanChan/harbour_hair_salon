@@ -3,16 +3,21 @@ import 'server-only';
 // Google → website (docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md §6):
 // lists the salon calendar, writes back any website event edited, moved or
 // deleted in Google (the website wins, D6), and stores the salon's own
-// Google-only events as GOOGLE busy blocks. Google is never called inside a
-// database transaction, and a failure is recorded on the sync state and
-// reported in the result (`failed: true`), never thrown.
+// Google-only events as GOOGLE busy blocks and the salon diary (GoogleDiaryEntry,
+// docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md §5–§7).
+// Google is never called inside a database transaction, and a failure is
+// recorded on the sync state and reported in the result (`failed: true`), never thrown.
 
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
 import { describeFault } from '@/app/lib/fault';
 import { createGoogleCalendarGateway, GoogleCalendarError, type GoogleEvent } from './google-calendar-gateway';
 import { googleEventIdFor, GOOGLE_APPOINTMENT_PROPERTY, sameRenderedEvent } from './google-calendar-event';
 import { googleBusyBlocks, googleBusyHash, type GoogleBusyBlock } from './google-busy-mapping';
+import {
+  diaryEntriesFrom, diaryHash, GOOGLE_DIARY_LOOKAHEAD_DAYS, GOOGLE_DIARY_RETENTION_DAYS, type DiaryEntry, type DiaryKind,
+} from './google-diary-classify';
+import { loadDiaryConfig } from './google-diary-config';
 import {
   appointmentSelect, loadRenderContext, recordFailure, renderAppointment, windowStart, writeEvent,
 } from './google-calendar-push';
@@ -20,9 +25,11 @@ import { invalidateStylistIcalFeedFromCron } from './stylist-ical-cache';
 import { OPERATIONS_MESSAGES } from './operations-messages';
 
 const DAY_MS = 24 * 60 * 60_000;
-/** Inbound window: Google is listed from a day back to 90 days ahead. */
-const LOOKBACK_MS = DAY_MS;
-const LOOKAHEAD_MS = 90 * DAY_MS;
+/** Inbound window (diary mirror spec §7): Google is listed from 30 days back to 90 days ahead. */
+const LOOKBACK_MS = GOOGLE_DIARY_RETENTION_DAYS * DAY_MS;
+const LOOKAHEAD_MS = GOOGLE_DIARY_LOOKAHEAD_DAYS * DAY_MS;
+/** GOOGLE busy blocks keep #72's one-day look-back: busy time that long gone changes nothing bookable. */
+const BUSY_LOOKBACK_MS = DAY_MS;
 /** No new write-back starts after this; the outcome must still be recorded before Vercel cuts the function off. */
 const TIME_BUDGET_MS = 40_000;
 const BATCH_SIZE = 100;
@@ -40,8 +47,13 @@ const REWRITE_HOLD_MS = 10 * 60_000;
 /** Only what the pull needs; the full gateway satisfies it. */
 export type GooglePullGateway = Pick<ReturnType<typeof createGoogleCalendarGateway>, 'listEvents' | 'putEvent' | 'insertEvent' | 'deleteEvent'>;
 
-/** `failed`: the pull could not complete (recorded as lastPullError); the caller decides what that means for its run. */
-export type GooglePullResult = { reverted: number; blocks: number; changed: boolean; skipped?: 'disabled'; failed?: true };
+/**
+ * `changed`: the GOOGLE busy blocks changed (the busy feeds were dropped); `diaryChanged`: the diary entries changed.
+ * `failed`: the pull could not complete (recorded as lastPullError); the caller decides what that means for its run.
+ */
+export type GooglePullResult = {
+  reverted: number; blocks: number; entries: number; changed: boolean; diaryChanged: boolean; skipped?: 'disabled'; failed?: true;
+};
 
 function websiteAppointmentId(event: GoogleEvent): string | null {
   const id = event.extendedProperties?.private?.[GOOGLE_APPOINTMENT_PROPERTY];
@@ -64,48 +76,93 @@ function notEnded(blocks: GoogleBusyBlock[], now: Date): GoogleBusyBlock[] {
   return blocks.filter((block) => block.end.getTime() > now.getTime());
 }
 
-/**
- * Replaces every GOOGLE block in the window in one transaction, as the iCal
- * sync does: readers never see an empty calendar. Returns false, writing
- * nothing and leaving the busy feeds cached, when the blocks that have not
- * ended equal the stored ones that have not ended. Compared with the stored
- * rows themselves, at this pull's `now`: an event that has ended, or has left
- * the look-back window, changes nothing anyone can book or a marketplace can
- * import, so it never wakes Fresha's next poll. (`busyHash` is still written,
- * for diagnosis; "Clear Google busy time" deletes the rows, which this sees.)
- */
-async function storeBusyBlocks(db: PrismaClient, blocks: GoogleBusyBlock[], now: Date): Promise<boolean> {
-  const hash = googleBusyHash(notEnded(blocks, now));
-  const stored = await db.externalBusyBlock.findMany({
-    where: { source: 'GOOGLE', end: { gt: now } },
-    select: { externalUid: true, stylistId: true, start: true, end: true },
-  });
-  if (googleBusyHash(stored) === hash) return false;
-  await db.$transaction(async (tx) => {
-    await tx.externalBusyBlock.deleteMany({
-      where: { source: 'GOOGLE', end: { gt: new Date(now.getTime() - LOOKBACK_MS) }, start: { lt: new Date(now.getTime() + LOOKAHEAD_MS) } },
-    });
-    for (let offset = 0; offset < blocks.length; offset += BATCH_SIZE) {
-      const batch = blocks.slice(offset, offset + BATCH_SIZE);
-      // An event stored before the window and moved into it keeps its key: drop the old row first.
-      await tx.externalBusyBlock.deleteMany({ where: { source: 'GOOGLE', externalUid: { in: batch.map((block) => block.externalUid) } } });
-      await tx.externalBusyBlock.createMany({
-        data: batch.map((block) => ({
-          source: 'GOOGLE', stylistId: block.stylistId, externalUid: block.externalUid,
-          start: block.start, end: block.end, summary: null, lastSyncAt: now,
-        })),
-      });
-    }
-    await tx.googleCalendarSyncState.upsert({ where: { id: STATE_ID }, create: { id: STATE_ID, busyHash: hash }, update: { busyHash: hash } });
-  }, { timeout: 15_000, maxWait: 5_000 });
-  // The stylists' outbound feeds export GOOGLE blocks. A route handler cannot
-  // updateTag; the feed's one-day safety net heals a failed drop.
+const diarySelect = {
+  googleEventId: true, kind: true, stylistIdsJson: true, title: true, colorId: true, start: true, end: true, allDay: true, htmlLink: true,
+} satisfies Prisma.GoogleDiaryEntrySelect;
+type StoredDiaryRow = Prisma.GoogleDiaryEntryGetPayload<{ select: typeof diarySelect }>;
+
+function storedStylistIds(json: string): string[] {
   try {
-    invalidateStylistIcalFeedFromCron();
-  } catch (error) {
-    console.error('Dropping the busy-feed cache after a Google Calendar pull failed:', describeFault(error));
+    const value: unknown = JSON.parse(json);
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
   }
-  return true;
+}
+
+function fromRow({ stylistIdsJson, kind, ...row }: StoredDiaryRow): DiaryEntry {
+  return { ...row, kind: kind as DiaryKind, stylistIds: storedStylistIds(stylistIdsJson) };
+}
+
+/**
+ * Stores the diary and the busy time it implies. Entries that ended before
+ * the window are deleted first (privacy notice: 30 days). Then, when either
+ * changed, ONE transaction replaces the window's GOOGLE busy blocks (as #72)
+ * and/or the window's diary entries, so readers never see half a diary.
+ * Compared at this pull's `now`: busy blocks that have not ended against the
+ * stored ones that have not ended (as #72), the window's entries against the
+ * stored window. The busy feeds are dropped only when busy blocks changed: a
+ * renamed walk-in or a new note changes nothing Fresha imports.
+ */
+async function storeDiary(
+  db: PrismaClient, entries: DiaryEntry[], blocks: GoogleBusyBlock[], range: { timeMin: Date; timeMax: Date }, now: Date,
+): Promise<{ busyChanged: boolean; diaryChanged: boolean }> {
+  await db.googleDiaryEntry.deleteMany({ where: { end: { lte: range.timeMin } } });
+  const [storedBlocks, storedEntries] = await Promise.all([
+    db.externalBusyBlock.findMany({
+      where: { source: 'GOOGLE', end: { gt: now } },
+      select: { externalUid: true, stylistId: true, start: true, end: true },
+    }),
+    db.googleDiaryEntry.findMany({ where: { end: { gt: range.timeMin }, start: { lt: range.timeMax } }, select: diarySelect }),
+  ]);
+  const hash = googleBusyHash(notEnded(blocks, now));
+  const busyChanged = googleBusyHash(storedBlocks) !== hash;
+  const diaryChanged = diaryHash(storedEntries.map(fromRow)) !== diaryHash(entries);
+  if (!busyChanged && !diaryChanged) return { busyChanged, diaryChanged };
+  await db.$transaction(async (tx) => {
+    if (busyChanged) {
+      await tx.externalBusyBlock.deleteMany({
+        where: { source: 'GOOGLE', end: { gt: new Date(now.getTime() - BUSY_LOOKBACK_MS) }, start: { lt: range.timeMax } },
+      });
+      for (let offset = 0; offset < blocks.length; offset += BATCH_SIZE) {
+        const batch = blocks.slice(offset, offset + BATCH_SIZE);
+        // An event stored before the window and moved into it keeps its key: drop the old row first.
+        await tx.externalBusyBlock.deleteMany({ where: { source: 'GOOGLE', externalUid: { in: batch.map((block) => block.externalUid) } } });
+        await tx.externalBusyBlock.createMany({
+          data: batch.map((block) => ({
+            source: 'GOOGLE', stylistId: block.stylistId, externalUid: block.externalUid,
+            start: block.start, end: block.end, summary: null, lastSyncAt: now,
+          })),
+        });
+      }
+      await tx.googleCalendarSyncState.upsert({ where: { id: STATE_ID }, create: { id: STATE_ID, busyHash: hash }, update: { busyHash: hash } });
+    }
+    if (diaryChanged) {
+      await tx.googleDiaryEntry.deleteMany({ where: { end: { gt: range.timeMin }, start: { lt: range.timeMax } } });
+      for (let offset = 0; offset < entries.length; offset += BATCH_SIZE) {
+        const batch = entries.slice(offset, offset + BATCH_SIZE);
+        // An entry stored outside the window and moved into it keeps its id: drop the old row first.
+        await tx.googleDiaryEntry.deleteMany({ where: { googleEventId: { in: batch.map((entry) => entry.googleEventId) } } });
+        await tx.googleDiaryEntry.createMany({
+          data: batch.map((entry) => ({
+            googleEventId: entry.googleEventId, kind: entry.kind, stylistIdsJson: JSON.stringify(entry.stylistIds),
+            title: entry.title, colorId: entry.colorId, start: entry.start, end: entry.end,
+            allDay: entry.allDay, htmlLink: entry.htmlLink, lastSyncAt: now,
+          })),
+        });
+      }
+    }
+  }, { timeout: 15_000, maxWait: 5_000 });
+  if (busyChanged) {
+    // The stylists' outbound feeds export GOOGLE blocks. A route handler cannot
+    // updateTag; the feed's one-day safety net heals a failed drop.
+    try {
+      invalidateStylistIcalFeedFromCron();
+    } catch (error) {
+      console.error('Dropping the busy-feed cache after a Google Calendar pull failed:', describeFault(error));
+    }
+  }
+  return { busyChanged, diaryChanged };
 }
 
 /** Logs a bookkeeping write that failed after Google answered; the next push or pull repairs the row. */
@@ -223,24 +280,28 @@ export async function pullGoogleCalendar(options: {
   gateway?: GooglePullGateway;
 } = {}): Promise<GooglePullResult> {
   // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
-  if (!googleCalendarConfig()) return { reverted: 0, blocks: 0, changed: false, skipped: 'disabled' };
+  if (!googleCalendarConfig()) return { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, skipped: 'disabled' };
   const db = options.db ?? (await import('@/app/lib/prisma')).default;
   const now = options.now ?? new Date();
   const gateway = options.gateway ?? createGoogleCalendarGateway();
   const startedAt = Date.now();
   const withinBudget = () => Date.now() - startedAt < TIME_BUDGET_MS;
-  const result: GooglePullResult = { reverted: 0, blocks: 0, changed: false };
+  const result: GooglePullResult = { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false };
 
   try {
     const range = { timeMin: new Date(now.getTime() - LOOKBACK_MS), timeMax: new Date(now.getTime() + LOOKAHEAD_MS) };
     const events = await gateway.listEvents(range);
-    // Busy time first: it is what keeps the website from selling a taken chair,
-    // and the write-backs after it are the slow part. Website events are never
-    // blocks (googleBusyBlocks' echo guard).
-    const stylists = await db.stylist.findMany({ where: { isActive: true }, select: { id: true, name: true } });
-    const blocks = distinct(googleBusyBlocks(events, stylists));
-    result.changed = await storeBusyBlocks(db, blocks, now);
+    // Busy time and the diary first: they are what keep the website from selling a
+    // taken chair, and the write-backs after them are the slow part. Website events
+    // are never part of the diary (classifyDiaryEvent's echo guard).
+    const entries = diaryEntriesFrom(events, await loadDiaryConfig(db));
+    const busyFrom = now.getTime() - BUSY_LOOKBACK_MS;
+    const blocks = distinct(googleBusyBlocks(entries.filter((entry) => entry.end.getTime() > busyFrom)));
+    const stored = await storeDiary(db, entries, blocks, range, now);
+    result.changed = stored.busyChanged;
+    result.diaryChanged = stored.diaryChanged;
     result.blocks = blocks.length;
+    result.entries = entries.length;
     result.reverted = await revertWebsiteEvents(db, gateway, events, range, now, withinBudget);
     const success = { lastPullAt: now, lastPullSuccessAt: now, lastPullError: null };
     await db.googleCalendarSyncState.upsert({ where: { id: STATE_ID }, create: { id: STATE_ID, ...success }, update: success });

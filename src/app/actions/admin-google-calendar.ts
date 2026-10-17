@@ -52,8 +52,9 @@ export async function syncGoogleCalendarNow(): Promise<void> {
  * reversible. Busy time already read from Google (`ExternalBusyBlock` source
  * GOOGLE) otherwise stays on the website, and in the busy feed Fresha imports,
  * until its time has passed, because nothing reads Google any more. This
- * deletes every GOOGLE block (no other source), forgets the hash of the blocks
- * last stored and records who did it, in one transaction; then the busy feeds
+ * deletes every GOOGLE block (no other source) and the copy of the diary
+ * (`GoogleDiaryEntry`), forgets the hash of the blocks last stored and records
+ * who did it, in one transaction; then the busy feeds
  * are dropped, so Fresha's next poll sees the time free. It works whether the
  * sync is on or off: while it is on, the next check of Google reads the
  * calendar's busy time again. Administrators only; the page asks to confirm.
@@ -65,13 +66,14 @@ export async function clearGoogleBusyTime(): Promise<void> {
   try {
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.externalBusyBlock.deleteMany({ where: { source: 'GOOGLE' } });
+      const diary = await tx.googleDiaryEntry.deleteMany({});
       await tx.googleCalendarSyncState.updateMany({ where: { id: 'singleton' }, data: { busyHash: null } });
       await appendAuditEvent({
         actorUserId: session.userId,
         action: 'INTEGRATION.GOOGLE_BUSY_CLEARED',
         targetType: 'Integration',
         targetId: 'google-calendar',
-        metadata: { removed: count },
+        metadata: { removed: count, diaryRemoved: diary.count },
       }, tx);
     });
   } catch (error) {

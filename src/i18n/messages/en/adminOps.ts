@@ -191,11 +191,11 @@ const adminOps = {
       syncNowOff: 'Sync now is unavailable while the sync is off.',
       clear: {
         title: 'Clear Google busy time',
-        helpOn: 'Removes every busy period read from Google Calendar, on the website and in the busy feed Fresha imports. While the sync is on, the next check of Google reads them again: use this after turning the sync off.',
-        helpOff: 'The sync is off, so nothing reads Google any more, but busy time already read from it still blocks those hours on the website and in the busy feed Fresha imports until it has passed. This removes all of it.',
+        helpOn: 'Removes every busy period read from Google Calendar, on the website and in the busy feed Fresha imports. While the sync is on, the next check of Google reads them again: use this after turning the sync off. It also removes the copy of the diary shown on Admin → Schedule.',
+        helpOff: 'The sync is off, so nothing reads Google any more, but busy time already read from it still blocks those hours on the website and in the busy feed Fresha imports until it has passed. This removes all of it. It also removes the copy of the diary shown on Admin → Schedule.',
         button: 'Clear Google busy time',
         clearing: 'Clearing…',
-        confirm: 'Remove every busy period read from Google Calendar? Those hours become bookable on the website again, and Fresha sees them free after its next import. Bookings are not affected.',
+        confirm: 'Remove every busy period read from Google Calendar, and the copy of the diary shown on Admin → Schedule? Those hours become bookable on the website again, and Fresha sees them free after its next import. Bookings are not affected.',
       },
       status: {
         done: 'Google Calendar sync finished.',

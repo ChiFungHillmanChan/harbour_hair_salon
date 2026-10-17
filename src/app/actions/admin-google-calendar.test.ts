@@ -135,6 +135,7 @@ function loadClear(options: { role?: string; enabled?: boolean; failDelete?: boo
         return { count: before - store.blocks.length };
       },
     },
+    googleDiaryEntry: { deleteMany: async () => { log.push('diary'); return { count: 4 }; } },
     googleCalendarSyncState: {
       updateMany: async ({ where, data }: { where: { id: string }; data: { busyHash: null } }) => {
         log.push(`state:${inTransaction ? 'tx' : 'outside'}`);
@@ -191,15 +192,15 @@ test('clear Google busy time: a non-administrator is refused before anything is 
   assert.equal(f.store.blocks.length, 4);
 });
 
-test('clear Google busy time deletes only GOOGLE blocks, forgets the busy hash and is audited, in one transaction; then drops the busy feeds', async () => {
+test('clear Google busy time deletes only GOOGLE blocks and the diary copy, forgets the busy hash and is audited, in one transaction; then drops the busy feeds', async () => {
   const f = loadClear();
   assert.equal(await f.run(), '/zh-hk/admin/integrations?gcal=cleared');
   assert.deepEqual(f.store.deleteWhere, [{ source: 'GOOGLE' }]);
   assert.deepEqual(f.store.blocks.map((block) => block.source).sort(), ['FRESHA', 'TREATWELL'], 'Fresha and Treatwell busy time stays');
   assert.equal(f.store.state.busyHash, null, 'the next pull compares against nothing and stores afresh');
-  assert.deepEqual(f.store.audits, [{ actorUserId: 'admin-1', action: 'INTEGRATION.GOOGLE_BUSY_CLEARED', targetType: 'Integration', targetId: 'google-calendar', metadata: { removed: 2 } }]);
+  assert.deepEqual(f.store.audits, [{ actorUserId: 'admin-1', action: 'INTEGRATION.GOOGLE_BUSY_CLEARED', targetType: 'Integration', targetId: 'google-calendar', metadata: { removed: 2, diaryRemoved: 4 } }]);
   assert.equal(f.store.auditClient[0], f.tx, 'the audit is written in the same transaction');
-  assert.deepEqual(f.log, ['delete:tx', 'state:tx', 'audit:tx', 'commit', 'invalidate:after-commit']);
+  assert.deepEqual(f.log, ['delete:tx', 'diary', 'state:tx', 'audit:tx', 'commit', 'invalidate:after-commit']);
   for (const path of ['/admin/integrations', '/admin', '/book']) assert.ok(f.revalidated.includes(path), path);
 });
 
@@ -207,6 +208,7 @@ test('clear Google busy time works with the sync off too (that is what it is for
   const f = loadClear({ enabled: false });
   assert.equal(await f.run(), '/zh-hk/admin/integrations?gcal=cleared');
   assert.deepEqual(f.store.blocks.map((block) => block.source).sort(), ['FRESHA', 'TREATWELL']);
+  assert.ok(f.log.indexOf('diary') >= 0 && f.log.indexOf('diary') < f.log.indexOf('audit:tx'), 'the diary copy goes too, before the audit');
   assert.ok(f.log.includes('invalidate:after-commit'));
 });
 

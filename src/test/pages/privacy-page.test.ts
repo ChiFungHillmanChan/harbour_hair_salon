@@ -13,6 +13,7 @@ import { UNSUBSCRIBE_TOKEN_TTL_DAYS } from '../../app/lib/unsubscribe-token';
 import { EMAIL_SEND_DAILY_POLICY } from '../../app/lib/rate-limit';
 import { LATE_ARRIVAL_CANCEL_MINUTES } from '../../app/lib/booking-constants';
 import { GOOGLE_RETENTION_MONTHS } from '../../app/services/google-calendar-push';
+import { GOOGLE_DIARY_RETENTION_DAYS } from '../../app/services/google-diary-classify';
 
 type Element = { type: unknown; props: Record<string, unknown> };
 
@@ -165,4 +166,13 @@ test('the notice names Google Calendar as the appointment diary and says how lon
     const stated = [...body.matchAll(/(\d+) (?:months after the appointment|個月，其後刪除)/g)].map((match) => Number(match[1]));
     assert.deepEqual(stated, [GOOGLE_RETENTION_MONTHS], 'one Google retention period, the enforced one');
   }
+});
+
+// Google diary mirror: the website keeps a staff-only copy of the diary's titles for 30 days.
+test('the notice says the website keeps a copy of the salon diary, for whom and how long', async () => {
+  const en = (await privacyPage('en-GB')).text;
+  assert.ok(en.includes('so our staff see it in one place and online booking does not clash with it'));
+  assert.ok(en.includes(`deleted ${GOOGLE_DIARY_RETENTION_DAYS} days after the entry ends`));
+  const zh = (await privacyPage('zh-HK')).text;
+  assert.ok(zh.includes(`於記錄結束後 ${GOOGLE_DIARY_RETENTION_DAYS} 日刪除`));
 });

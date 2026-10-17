@@ -12,7 +12,7 @@ import { OPERATIONS_MESSAGES } from './operations-messages';
 
 const CONFIG = { calendarId: 'cal@group.calendar.google.com', clientEmail: 'sa@harbour.iam.gserviceaccount.com', privateKey: 'k', webhookSecret: 's' };
 const PUSHED = { written: 2, deleted: 0, unchanged: 5, failed: 0 };
-const PULLED = { reverted: 0, blocks: 1, changed: false };
+const PULLED = { reverted: 0, blocks: 1, entries: 1, changed: false, diaryChanged: false };
 const HOUR = 60 * 60_000;
 type SyncState = { channelId: string | null; channelExpiresAt: Date | null; lastPullAt: Date | null; lastPullSuccessAt: Date | null };
 /** A live channel and a check of Google that has just succeeded. */
@@ -25,7 +25,7 @@ type Options = {
   enabled?: boolean;
   channel?: 'created' | 'renewed' | 'current' | Error;
   push?: typeof PUSHED & { stopped?: 'setup' } | Error;
-  pull?: { reverted: number; blocks: number; changed: boolean; failed?: true } | Error;
+  pull?: { reverted: number; blocks: number; entries: number; changed: boolean; diaryChanged: boolean; failed?: true } | Error;
   /** The single-flight lock was held: the holder pulls, this caller does not. */
   deferred?: boolean;
   jobRowFails?: boolean;

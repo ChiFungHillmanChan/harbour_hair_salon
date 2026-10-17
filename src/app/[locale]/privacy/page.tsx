@@ -15,7 +15,7 @@ const LAST_UPDATED = '2026-10-16';
 const COLLECTED = ['account', 'google', 'bookings', 'payments', 'patchTests', 'staffBookings', 'emails', 'reviews', 'marketing', 'security', 'visits', 'tryColour'] as const;
 const USES = ['service', 'payments', 'safety', 'reviewRequests', 'reviewsPublished', 'marketing', 'security', 'improvement', 'records'] as const;
 const PROVIDERS = ['vercel', 'neon', 'resend', 'upstash', 'square', 'google', 'marketplaces'] as const;
-const RETENTION = ['account', 'bookings', 'payments', 'security', 'reviews', 'emails', 'googleCalendar', 'rateLimits', 'links', 'marketing'] as const;
+const RETENTION = ['account', 'bookings', 'payments', 'security', 'reviews', 'emails', 'googleCalendar', 'googleDiary', 'rateLimits', 'links', 'marketing'] as const;
 const RIGHTS = ['access', 'rectification', 'erasure', 'restriction', 'objection', 'portability', 'consent'] as const;
 const COOKIES = ['session', 'sessionHint', 'loginDevice', 'googleState', 'locale'] as const;
 

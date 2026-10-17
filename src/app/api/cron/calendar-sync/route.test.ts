@@ -284,7 +284,7 @@ async function routeWithRealJob(options: { enabled: boolean; pushThrows?: boolea
       if (options.pushThrows) throw new Error('database unavailable');
       return { written: 0, deleted: 0, unchanged: 0, failed: 0 };
     } }),
-    './google-calendar-pull': counted({ pullGoogleCalendar: async () => { order.push('pull'); return { reverted: 0, blocks: 0, changed: false }; } }),
+    './google-calendar-pull': counted({ pullGoogleCalendar: async () => { order.push('pull'); return { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false }; } }),
   });
   const route = loadServerModule<{ GET: typeof GET }>('src/app/api/cron/calendar-sync/route.ts', {
     '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => true },

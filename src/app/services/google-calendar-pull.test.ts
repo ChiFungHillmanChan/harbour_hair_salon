@@ -4,6 +4,7 @@ import { loadServerModule } from '../../test/load-server-module';
 import { GoogleCalendarError, type GoogleEvent } from './google-calendar-gateway';
 import { googleEventIdFor, GOOGLE_APPOINTMENT_PROPERTY } from './google-calendar-event';
 import { googleBusyBlocks, googleBusyHash } from './google-busy-mapping';
+import { diaryEntriesFrom } from './google-diary-classify';
 import { renderAppointment, type PushAppointment } from './google-calendar-push';
 import { OPERATIONS_MESSAGES } from './operations-messages';
 
@@ -12,11 +13,12 @@ const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
 const DAY = 24 * 60;
 const CONFIG = { calendarId: 'cal@group.calendar.google.com', clientEmail: 'sa@harbour.iam.gserviceaccount.com', privateKey: 'k', webhookSecret: 's' };
 const STYLISTS = [
-  { id: 's1', name: 'Ivan', isActive: true },
-  { id: 's2', name: 'Lox', isActive: true },
-  { id: 's3', name: 'Chan', isActive: false },
+  { id: 's1', name: 'Ivan', isActive: true, googleColorId: '1', googleAliases: null },
+  { id: 's2', name: 'Lox', isActive: true, googleColorId: '5', googleAliases: 'L' },
+  { id: 's3', name: 'Chan', isActive: false, googleColorId: null, googleAliases: null },
 ];
 const ACTIVE = STYLISTS.filter((stylist) => stylist.isActive);
+const CONFIG_DIARY = { stylists: ACTIVE.map(({ id, name, googleColorId, googleAliases }) => ({ id, name, googleColorId, googleAliases })), unassignedColorId: '11', leaveColorId: '8' };
 
 type EventRow = {
   appointmentId: string; eventId: string; syncedHash: string | null; syncedAt: Date | null;
@@ -30,6 +32,7 @@ type Appt = {
   paymentAttempt: null;
 };
 type Block = { source: string; stylistId: string; externalUid: string; start: Date; end: Date; summary: string | null; lastSyncAt: Date };
+type Diary = { id: string; googleEventId: string; kind: string; stylistIdsJson: string; title: string; colorId: string | null; start: Date; end: Date; allDay: boolean; htmlLink: string | null; lastSyncAt: Date };
 type State = {
   id: string; channelId: string | null; resourceId: string | null; channelExpiresAt: Date | null;
   lastPullAt: Date | null; lastPullSuccessAt: Date | null; lastPullError: string | null; busyHash: string | null;
@@ -61,7 +64,7 @@ function block(overrides: Partial<Block> & Pick<Block, 'externalUid'>): Block {
   return { source: 'GOOGLE', stylistId: 's1', start: at(60), end: at(120), summary: null, lastSyncAt: at(-DAY), ...overrides };
 }
 
-/** The Prisma filters the pull uses: equality, null, `is`, `not`, `in`, `gte`, `gt`, `lt`, `OR`, nested relations. */
+/** The Prisma filters the pull uses: equality, null, `is`, `not`, `in`, `gte`, `gt`, `lt`, `lte`, `OR`, nested relations. */
 function matches(record: unknown, where: Record<string, unknown>): boolean {
   if (!record || typeof record !== 'object') return false;
   const row = record as Record<string, unknown>;
@@ -80,6 +83,7 @@ function matches(record: unknown, where: Record<string, unknown>): boolean {
       if (op === 'gte') return a >= b;
       if (op === 'gt') return a > b;
       if (op === 'lt') return a < b;
+      if (op === 'lte') return a <= b;
       throw new Error(`unsupported operator ${op}`);
     });
   });
@@ -97,10 +101,15 @@ function applyData(row: Record<string, unknown>, data: Record<string, unknown>) 
 
 function fakeDb(
   appointments: Appt[],
-  options: { events?: EventRow[]; blocks?: Block[]; state?: Partial<State>; failCreate?: boolean; failStateWrite?: boolean } = {},
+  options: {
+    events?: EventRow[]; blocks?: Block[]; diary?: Diary[]; state?: Partial<State>;
+    failCreate?: boolean; failDiaryCreate?: boolean; failStateWrite?: boolean;
+  } = {},
 ) {
   const rows = new Map((options.events ?? []).map((row) => [row.appointmentId, { ...row }]));
   let blocks: Block[] = (options.blocks ?? []).map((row) => ({ ...row }));
+  let diary: Diary[] = (options.diary ?? []).map((row) => ({ ...row }));
+  let diarySeq = 0;
   const emptyState: State = {
     id: 'singleton', channelId: null, resourceId: null, channelExpiresAt: null,
     lastPullAt: null, lastPullSuccessAt: null, lastPullError: null, busyHash: null,
@@ -135,7 +144,7 @@ function fakeDb(
     stylist: {
       async findMany(args: { where?: { isActive?: boolean } } = {}) {
         const list = args.where?.isActive === undefined ? STYLISTS : STYLISTS.filter((s) => s.isActive === args.where!.isActive);
-        return list.map(({ id, name }) => ({ id, name }));
+        return list.map(({ id, name, googleColorId, googleAliases }) => ({ id, name, googleColorId, googleAliases }));
       },
     },
     contentTranslation: { async findMany() { return []; } },
@@ -161,6 +170,24 @@ function fakeDb(
         return { count: args.data.length };
       },
     },
+    googleDiaryEntry: {
+      async findMany(args: { where: Record<string, unknown>; select: Record<string, boolean> }) {
+        return diary.filter((row) => matches(row, args.where)).map((row) => Object.fromEntries(Object.keys(args.select).map((key) => [key, row[key as keyof Diary]])));
+      },
+      async deleteMany(args: { where: Record<string, unknown> }) {
+        const before = diary.length;
+        diary = diary.filter((row) => !matches(row, args.where));
+        return { count: before - diary.length };
+      },
+      async createMany(args: { data: Omit<Diary, 'id'>[] }) {
+        if (options.failDiaryCreate) throw new Error('database unavailable');
+        for (const row of args.data) {
+          if (diary.some((d) => d.googleEventId === row.googleEventId)) throw new Error('Unique constraint failed on (googleEventId)');
+          diary.push({ id: `d${++diarySeq}`, ...row });
+        }
+        return { count: args.data.length };
+      },
+    },
     googleCalendarSyncState: {
       async findUnique() { return state ? { ...state } : null; },
       async upsert(args: { where: { id: string }; create: Partial<State>; update: Partial<State> }) {
@@ -172,12 +199,13 @@ function fakeDb(
     /** All or nothing, like the real one. */
     async $transaction<T>(fn: (tx: unknown) => Promise<T>) {
       log.transactions += 1;
-      const saved = { blocks: blocks.map((row) => ({ ...row })), state: state ? { ...state } : null };
+      const saved = { blocks: blocks.map((row) => ({ ...row })), state: state ? { ...state } : null, diary: diary.map((row) => ({ ...row })) };
       try {
         return await fn(db);
       } catch (error) {
         blocks = saved.blocks;
         state = saved.state;
+        diary = saved.diary;
         throw error;
       }
     },
@@ -186,6 +214,7 @@ function fakeDb(
     db, rows, log,
     get blocks() { return blocks; },
     get state() { return state; },
+    get diary() { return diary; },
   };
 }
 
@@ -239,9 +268,9 @@ const EMPTY_HASH = googleBusyHash([]);
 test('sync switched off: nothing is read, nothing is listed', async () => {
   const google = fakeGoogle([foreign('e1', 'Ivan: dentist', 60, 120)]);
   const { pull, invalidations } = load(null);
-  assert.deepEqual(await run(pull, untouchable, google.gateway), { reverted: 0, blocks: 0, changed: false, skipped: 'disabled' });
+  assert.deepEqual(await run(pull, untouchable, google.gateway), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, skipped: 'disabled' });
   // Without an injected client the default one is never imported either.
-  assert.deepEqual(await pull.pullGoogleCalendar({ gateway: google.gateway as never }), { reverted: 0, blocks: 0, changed: false, skipped: 'disabled' });
+  assert.deepEqual(await pull.pullGoogleCalendar({ gateway: google.gateway as never }), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, skipped: 'disabled' });
   assert.equal(google.lists.length, 0);
   assert.equal(invalidations.count, 0);
 });
@@ -258,7 +287,7 @@ test('website events are never busy blocks, whatever their state', async () => {
     { ...rendered(live).event, id: 'copyofa1', start: { dateTime: at(DAY + 120).toISOString() }, end: { dateTime: at(DAY + 180).toISOString() } },
   ]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.deepEqual(store.blocks, []);
   assert.deepEqual(google.calls, [], 'equal, already deleted, unknown or copied website events need no write');
   assert.equal(store.log.transactions, 0, 'no busy time, none stored: nothing to write');
@@ -272,7 +301,7 @@ test('a website event moved in Google is written back once; the next pull finds 
   const google = fakeGoogle([moved]);
   const { pull, invalidations } = load();
 
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.equal(google.calls.length, 1);
   assert.equal(google.calls[0].op, 'put');
   assert.deepEqual(google.calls[0].event, expected.event);
@@ -284,7 +313,7 @@ test('a website event moved in Google is written back once; the next pull finds 
 
   // Our own write comes back as a change notification: Google now lists the reverted event.
   google.listing = [google.calls[0].event!];
-  assert.deepEqual(await run(pull, store.db, google.gateway, at(1)), { reverted: 0, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway, at(1)), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.equal(google.calls.length, 1, 'the revert is idempotent');
   assert.equal(store.log.transactions, 0);
   assert.equal(invalidations.count, 0);
@@ -301,7 +330,7 @@ test('a website event deleted in Google while its booking is open is put back; a
     { ...rendered(completed).event, description: 'cleared by staff' },
   ]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 3, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 3, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.deepEqual(google.calls.map((call) => [call.op, call.id]), [
     ['put', googleEventIdFor('a1')], ['put', googleEventIdFor('a2')], ['put', googleEventIdFor('a3')],
   ]);
@@ -328,7 +357,7 @@ test('a cancelled booking\'s event restored in Google is deleted again; bookings
     { ...rendered(old).event, start: { dateTime: at(DAY).toISOString() }, end: { dateTime: at(DAY + 60).toISOString() } },
   ]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.deepEqual(google.calls, [{ op: 'delete', id: googleEventIdFor('a1') }]);
   const row = store.rows.get('a1')!;
   assert.deepEqual({ removed: row.removed, syncedHash: row.syncedHash, syncedAt: row.syncedAt, lastError: row.lastError }, { removed: true, syncedHash: null, syncedAt: NOW, lastError: null });
@@ -342,32 +371,32 @@ test('a Google-only "Ivan: dentist" blocks Ivan alone; an unchanged second pull 
   const google = fakeGoogle(listing);
   const { pull, invalidations } = load();
 
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, changed: true });
-  assert.deepEqual(google.lists, [{ timeMin: at(-DAY), timeMax: at(90 * DAY) }]);
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, entries: 1, changed: true, diaryChanged: true });
+  assert.deepEqual(google.lists, [{ timeMin: at(-30 * DAY), timeMax: at(90 * DAY) }]);
   assert.equal(store.blocks.length, 1);
   const [stored] = store.blocks;
   assert.deepEqual(
     { source: stored.source, stylistId: stored.stylistId, start: stored.start, end: stored.end, summary: stored.summary, lastSyncAt: stored.lastSyncAt },
     { source: 'GOOGLE', stylistId: 's1', start: at(60), end: at(120), summary: null, lastSyncAt: NOW },
   );
-  assert.equal(stored.externalUid, googleBusyBlocks(listing, ACTIVE)[0].externalUid);
+  assert.equal(stored.externalUid, googleBusyBlocks(diaryEntriesFrom(listing, CONFIG_DIARY))[0].externalUid);
   assert.equal(store.log.transactions, 1);
   assert.equal(invalidations.count, 1, 'the busy feeds are dropped after the commit');
-  assert.equal(store.state!.busyHash, googleBusyHash(googleBusyBlocks(listing, ACTIVE)));
+  assert.equal(store.state!.busyHash, googleBusyHash(googleBusyBlocks(diaryEntriesFrom(listing, CONFIG_DIARY))));
   assert.deepEqual(
     { lastPullAt: store.state!.lastPullAt, lastPullSuccessAt: store.state!.lastPullSuccessAt, lastPullError: store.state!.lastPullError },
     { lastPullAt: NOW, lastPullSuccessAt: NOW, lastPullError: null },
   );
 
   const later = at(30);
-  assert.deepEqual(await run(pull, store.db, google.gateway, later), { reverted: 0, blocks: 1, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway, later), { reverted: 0, blocks: 1, entries: 1, changed: false, diaryChanged: false });
   assert.equal(store.log.transactions, 1, 'an equal hash writes nothing');
   assert.equal(invalidations.count, 1);
   assert.equal(store.blocks[0].lastSyncAt.getTime(), NOW.getTime());
   assert.equal(store.state!.lastPullSuccessAt!.getTime(), later.getTime());
 });
 
-test('only busy time that has not ended counts: an event ending, or leaving the look-back window, writes nothing and keeps the feeds cached', async () => {
+test('only busy time that has not ended counts: an event ending, or leaving Google after it ended, rewrites no busy time and keeps the feeds cached', async () => {
   // Stored by an earlier pull: one block that ended an hour ago, one to come.
   const listing = [foreign('ended', 'Ivan: dentist', -120, -60), foreign('coming', 'Lox: lunch', 60, 120)];
   const store = fakeDb([]);
@@ -377,10 +406,10 @@ test('only busy time that has not ended counts: an event ending, or leaving the 
   assert.equal(store.blocks.length, 2);
   assert.equal(invalidations.count, 1);
 
-  // Later: the ended event has left Google's listing (look-back window, or deleted after the fact).
+  // Later: the ended event is deleted in Google after the fact. The diary drops it; the busy time is not rewritten.
   google.listing = [listing[1]];
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, changed: false });
-  assert.equal(store.log.transactions, 1, 'no second write');
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, entries: 1, changed: false, diaryChanged: true });
+  assert.deepEqual(store.log.createBatches, [2], 'no second busy write');
   assert.equal(invalidations.count, 1, 'Fresha\'s next poll is not turned into a database wake');
 
   // The block to come ends while Google still lists it: still nothing to write.
@@ -390,36 +419,108 @@ test('only busy time that has not ended counts: an event ending, or leaving the 
   // Busy time still to come changes: written and the feeds dropped.
   google.listing = [foreign('coming', 'Lox: lunch', 60, 150)];
   assert.equal((await run(pull, store.db, google.gateway)).changed, true);
-  assert.equal(store.log.transactions, 2);
+  assert.deepEqual(store.log.createBatches, [2, 1]);
   assert.equal(invalidations.count, 2);
-  assert.equal(store.blocks.find((row) => row.externalUid === googleBusyBlocks(google.listing, ACTIVE)[0].externalUid)!.end.getTime(), at(150).getTime());
+  assert.equal(store.blocks.find((row) => row.externalUid === googleBusyBlocks(diaryEntriesFrom(google.listing, CONFIG_DIARY))[0].externalUid)!.end.getTime(), at(150).getTime());
 });
 
 test('blocks deleted outside the pull ("Clear Google busy time") are stored again by the next pull while the sync is on', async () => {
   const listing = [foreign('evt1', 'Ivan: dentist', 60, 120)];
   // The hash says nothing changed, but the rows are gone: the rows decide.
-  const store = fakeDb([], { state: { busyHash: googleBusyHash(googleBusyBlocks(listing, ACTIVE)) } });
+  const store = fakeDb([], { state: { busyHash: googleBusyHash(googleBusyBlocks(diaryEntriesFrom(listing, CONFIG_DIARY))) } });
   const google = fakeGoogle(listing);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, changed: true });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, entries: 1, changed: true, diaryChanged: true });
   assert.equal(store.blocks.length, 1);
 });
 
-test('an event naming no stylist blocks every active stylist; free and cancelled events block nothing', async () => {
-  const store = fakeDb([]);
+test('an event naming no stylist is a note and blocks nothing; a cancelled one is not stored at all', async () => {
+  const store = fakeDb([], { state: { busyHash: EMPTY_HASH } });
   const google = fakeGoogle([
     foreign('training', 'Salon training', 60, 180),
-    foreign('free', 'Ivan: lunch', 60, 90, { transparency: 'transparent' }),
     foreign('called-off', 'Lox: dentist', 60, 90, { status: 'cancelled' }),
   ]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 2, changed: true });
-  assert.deepEqual(store.blocks.map((row) => row.stylistId).sort(), ['s1', 's2'], 'an inactive stylist gets no block');
+  const result = await run(pull, store.db, google.gateway);
+  assert.deepEqual([result.blocks, result.entries, result.changed, result.diaryChanged], [0, 1, false, true]);
+  assert.deepEqual(store.blocks, []);
+  assert.deepEqual(store.diary.map((row) => [row.googleEventId, row.kind]), [['training', 'NOTE']]);
+});
+
+test('the diary is stored with its kinds; only STYLIST and LEAVE entries become busy blocks', async () => {
+  const store = fakeDb([], { state: { busyHash: EMPTY_HASH } });
+  const google = fakeGoogle([
+    foreign('amy', 'Amy 07700 900123', 60, 120, { colorId: '1', htmlLink: 'https://www.google.com/calendar/event?eid=YW15' }),
+    foreign('walkin', 'Cut - Erin(W)', 60, 120, { colorId: '11' }),
+    foreign('late', '遲返 (L)', 0, 60, { colorId: '8' }),
+    foreign('note', '卡機', 30, 60, { colorId: '8' }),
+  ]);
+  const { pull, invalidations } = load();
+  const result = await run(pull, store.db, google.gateway);
+  assert.deepEqual(result, { reverted: 0, blocks: 2, entries: 4, changed: true, diaryChanged: true });
+  assert.deepEqual(store.blocks.map((row) => row.stylistId).sort(), ['s1', 's2']);
+  assert.deepEqual(store.diary.map((row) => [row.googleEventId, row.kind, JSON.parse(row.stylistIdsJson), row.title, row.colorId]).sort(), [
+    ['amy', 'STYLIST', ['s1'], 'Amy 07700 900123', '1'],
+    ['late', 'LEAVE', ['s2'], '遲返 (L)', '8'],
+    ['note', 'NOTE', [], '卡機', '8'],
+    ['walkin', 'UNASSIGNED', [], 'Cut - Erin(W)', '11'],
+  ]);
+  assert.equal(store.diary.find((row) => row.googleEventId === 'amy')!.htmlLink, 'https://www.google.com/calendar/event?eid=YW15');
+  assert.equal(store.log.transactions, 1, 'busy time and diary in one transaction');
+  assert.equal(invalidations.count, 1);
+});
+
+test('a transparent all-day leave blocks Lox (transparency is ignored)', async () => {
+  const tomorrow = new Date(NOW.getTime() + DAY * 60_000).toISOString().slice(0, 10);
+  const store = fakeDb([], { state: { busyHash: EMPTY_HASH } });
+  const google = fakeGoogle([{ id: 'loxoff', status: 'confirmed', summary: 'LoxOff', colorId: '8', transparency: 'transparent', start: { date: tomorrow } }]);
+  const { pull } = load();
+  assert.equal((await run(pull, store.db, google.gateway)).blocks, 1);
+  assert.deepEqual(store.blocks.map((row) => row.stylistId), ['s2']);
+  assert.equal(store.diary[0].allDay, true);
+});
+
+test('a renamed walk-in rewrites the diary but not the busy time, and the busy feeds stay cached', async () => {
+  const store = fakeDb([], { state: { busyHash: EMPTY_HASH } });
+  const google = fakeGoogle([foreign('walkin', 'Walk-in', 60, 120, { colorId: '11' })]);
+  const { pull, invalidations } = load();
+  await run(pull, store.db, google.gateway);
+  google.listing = [foreign('walkin', 'Walk-in Mrs Chan', 60, 120, { colorId: '11' })];
+  const second = await run(pull, store.db, google.gateway, at(1));
+  assert.deepEqual([second.changed, second.diaryChanged], [false, true]);
+  assert.equal(store.diary[0].title, 'Walk-in Mrs Chan');
+  assert.equal(invalidations.count, 0, 'no busy block changed');
+  // Unchanged third pull: no transaction at all.
+  const transactions = store.log.transactions;
+  assert.deepEqual(await run(pull, store.db, google.gateway, at(2)), { reverted: 0, blocks: 0, entries: 1, changed: false, diaryChanged: false });
+  assert.equal(store.log.transactions, transactions);
+});
+
+test('the listing starts 30 days back; entries that ended before that are deleted', async () => {
+  const old = { id: 'old', googleEventId: 'old', kind: 'NOTE', stylistIdsJson: '[]', title: 'old', colorId: null, start: at(-32 * DAY), end: at(-31 * DAY), allDay: false, htmlLink: null, lastSyncAt: at(-31 * DAY) };
+  const recent = { ...old, id: 'recent', googleEventId: 'recent', start: at(-29 * DAY), end: at(-29 * DAY + 60) };
+  const store = fakeDb([], { state: { busyHash: EMPTY_HASH }, diary: [old, recent] });
+  const google = fakeGoogle([foreign('recent', 'old', -29 * DAY, -29 * DAY + 60)]);
+  const { pull } = load();
+  await run(pull, store.db, google.gateway);
+  assert.equal(google.lists[0].timeMin.getTime(), at(-30 * DAY).getTime());
+  assert.equal(google.lists[0].timeMax.getTime(), at(90 * DAY).getTime());
+  assert.deepEqual(store.diary.map((row) => row.googleEventId), ['recent']);
+});
+
+test('a failure writing the diary rolls the busy time back with it', async () => {
+  const store = fakeDb([], { state: { busyHash: EMPTY_HASH }, failDiaryCreate: true });
+  const google = fakeGoogle([foreign('evt1', 'Ivan off', 60, 120)]);
+  const { pull } = load();
+  const result = await run(pull, store.db, google.gateway);
+  assert.equal(result.failed, true);
+  assert.deepEqual([store.blocks, store.diary], [[], []]);
+  assert.equal(store.state!.lastPullError, OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED);
 });
 
 test('the replace swaps every GOOGLE block in the window at once; other sources and older GOOGLE blocks stay', async () => {
   const listing = [foreign('evt1', 'Ivan: dentist', 60, 120)];
-  const [fresh] = googleBusyBlocks(listing, ACTIVE);
+  const [fresh] = googleBusyBlocks(diaryEntriesFrom(listing, CONFIG_DIARY));
   const store = fakeDb([], {
     blocks: [
       block({ externalUid: 'stale', start: at(DAY), end: at(DAY + 60) }),
@@ -433,7 +534,7 @@ test('the replace swaps every GOOGLE block in the window at once; other sources 
   });
   const google = fakeGoogle(listing);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, changed: true });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 1, entries: 1, changed: true, diaryChanged: true });
   assert.deepEqual(store.blocks.map((row) => `${row.source}:${row.externalUid}`).sort(), [
     'FRESHA:fresha-1', `GOOGLE:${fresh.externalUid}`, 'GOOGLE:history',
   ].sort());
@@ -450,7 +551,7 @@ test('a failing listing is recorded, never thrown; stored busy time is kept', as
   const { pull, invalidations } = load();
 
   // Reported as failed too, so the job running it (google-calendar-job.ts) records the failure.
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false, failed: true });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, failed: true });
   assert.deepEqual(
     { lastPullAt: store.state!.lastPullAt, lastPullSuccessAt: store.state!.lastPullSuccessAt, lastPullError: store.state!.lastPullError, busyHash: store.state!.busyHash },
     { lastPullAt: NOW, lastPullSuccessAt: earlier, lastPullError: OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED, busyHash: 'h' },
@@ -474,7 +575,7 @@ test('a database failure in the replace rolls it back and is recorded; even a fa
   const store = fakeDb([], { blocks: [kept], state: { busyHash: 'h' }, failCreate: true });
   const google = fakeGoogle([foreign('evt1', 'Ivan: dentist', 60, 120)]);
   const { pull, invalidations } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false, failed: true });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, failed: true });
   assert.deepEqual(store.blocks, [kept]);
   assert.equal(store.state!.busyHash, 'h');
   assert.equal(store.state!.lastPullError, OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED);
@@ -483,7 +584,7 @@ test('a database failure in the replace rolls it back and is recorded; even a fa
   const broken = fakeDb([], { failStateWrite: true });
   const failing = fakeGoogle([]);
   failing.listError = new GoogleCalendarError('auth', 401);
-  assert.deepEqual(await run(pull, broken.db, failing.gateway), { reverted: 0, blocks: 0, changed: false, failed: true });
+  assert.deepEqual(await run(pull, broken.db, failing.gateway), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, failed: true });
 });
 
 test('a revert Google fails is recorded on the booking\'s row for the push to retry; the pull itself succeeds', async () => {
@@ -495,7 +596,7 @@ test('a revert Google fails is recorded on the booking\'s row for the push to re
     (call) => (call.id === googleEventIdFor('a1') ? new GoogleCalendarError('retryable', 503) : undefined),
   );
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.deepEqual(
     { attempts: store.rows.get('a1')!.attempts, lastError: store.rows.get('a1')!.lastError },
     { attempts: 1, lastError: OPERATIONS_MESSAGES.GOOGLE_PUSH_FAILED },
@@ -516,8 +617,8 @@ test('a synced open booking missing from the listing (deleted, purged or moved a
   const missing = appt('a1');
   const neverWritten = appt('a2');
   const removed = appt('a3');
-  // Before the listed range: absent from the listing whether or not it was deleted, so left alone.
-  const earlier = appt('a4', { date: at(-2 * DAY) });
+  // Before the listed range (30 days back): absent from the listing whether or not it was deleted, so left alone.
+  const earlier = appt('a4', { date: at(-31 * DAY) });
   const cancelled = appt('a5', { status: 'CANCELLED' });
   const store = fakeDb([missing, neverWritten, removed, earlier, cancelled], {
     events: [syncedRow(missing), syncedRow(removed, { removed: true, syncedHash: null }), syncedRow(earlier), syncedRow(cancelled)],
@@ -525,7 +626,7 @@ test('a synced open booking missing from the listing (deleted, purged or moved a
   });
   const google = fakeGoogle([]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.equal(google.calls.length, 1);
   assert.equal(google.calls[0].op, 'put');
   assert.deepEqual(google.calls[0].event, rendered(missing).event);
@@ -540,14 +641,14 @@ test('a website event whose private property was stripped in Google is written b
   const store = fakeDb([booking], { events: [syncedRow(booking)] });
   const google = fakeGoogle([stripped]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.deepEqual(store.blocks, [], 'its id gives it away: no block, no clash with itself');
   assert.deepEqual(google.calls.map((call) => [call.op, call.id]), [['put', googleEventIdFor('a1')]]);
   assert.deepEqual(google.calls[0].event!.extendedProperties, { private: { [GOOGLE_APPOINTMENT_PROPERTY]: 'a1' } });
   // Written back: the next pull finds it equal.
   google.listing = [google.calls[0].event!];
   store.rows.get('a1')!.syncedAt = at(-60);
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.equal(google.calls.length, 1);
 });
 
@@ -556,7 +657,7 @@ test('a website event listed as a bare deleted id is put back', async () => {
   const store = fakeDb([booking], { events: [syncedRow(booking)], state: { busyHash: EMPTY_HASH } });
   const google = fakeGoogle([{ id: googleEventIdFor('a1'), status: 'cancelled' }]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.deepEqual(google.calls.map((call) => [call.op, call.id]), [['put', googleEventIdFor('a1')]]);
   assert.equal(google.calls[0].event!.status, 'confirmed');
 });
@@ -570,20 +671,20 @@ test('loop breaker: a listing that still differs just after the website wrote th
   const google = fakeGoogle([normalised]);
   const { pull } = load();
 
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.equal(google.calls.length, 0);
   assert.equal(store.rows.get('a1')!.lastError, OPERATIONS_MESSAGES.GOOGLE_EVENT_NOT_KEPT);
   assert.equal(store.rows.get('a1')!.syncedAt!.getTime(), at(-2).getTime());
 
   // Eleven minutes after that write: written back once.
   store.rows.get('a1')!.syncedAt = at(-11);
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.equal(google.calls.length, 1);
   assert.deepEqual(google.calls[0].event, expected.event);
   assert.deepEqual({ syncedAt: store.rows.get('a1')!.syncedAt, lastError: store.rows.get('a1')!.lastError }, { syncedAt: NOW, lastError: null });
 
   // Google changes it again at once: the very next pull writes nothing.
-  assert.deepEqual(await run(pull, store.db, google.gateway, at(1)), { reverted: 0, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway, at(1)), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.equal(google.calls.length, 1);
   assert.equal(store.rows.get('a1')!.lastError, OPERATIONS_MESSAGES.GOOGLE_EVENT_NOT_KEPT);
 });
@@ -604,7 +705,7 @@ test('a "not kept" note clears once Google holds the website\'s own rendering ag
   });
   const google = fakeGoogle([expected.event, rendered(appt('a2')).event, rendered(appt('a3')).event]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.equal(google.calls.length, 0, 'nothing is written: Google already holds it');
   assert.deepEqual(
     [...store.rows.values()].map((row) => [row.appointmentId, row.lastError, row.attempts]),
@@ -618,19 +719,19 @@ test('loop breaker never holds back a real booking change: a new rendering is wr
   const store = fakeDb([after], { events: [syncedRow(before, { syncedAt: at(-2) })], state: { busyHash: EMPTY_HASH } });
   const google = fakeGoogle([rendered(before).event]);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, changed: false });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
   assert.deepEqual(google.calls[0].event, rendered(after).event);
   assert.equal(store.rows.get('a1')!.syncedHash, rendered(after).hash);
 });
 
 test('150 Google-only events are stored in two batches, each clearing its own keys first', async () => {
   const listing = Array.from({ length: 150 }, (_, i) => foreign(`evt${i}`, 'Ivan: busy', i * 30, i * 30 + 30));
-  const expected = googleBusyBlocks(listing, ACTIVE);
+  const expected = googleBusyBlocks(diaryEntriesFrom(listing, CONFIG_DIARY));
   // Event 120 (second batch) once stored before the window, now moved into it.
   const store = fakeDb([], { blocks: [block({ externalUid: expected[120].externalUid, start: at(-3 * DAY), end: at(-3 * DAY + 30) })] });
   const google = fakeGoogle(listing);
   const { pull } = load();
-  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 150, changed: true });
+  assert.deepEqual(await run(pull, store.db, google.gateway), { reverted: 0, blocks: 150, entries: 150, changed: true, diaryChanged: true });
   assert.deepEqual(store.log.createBatches, [100, 50]);
   assert.equal(store.log.transactions, 1);
   assert.equal(store.blocks.length, 150);

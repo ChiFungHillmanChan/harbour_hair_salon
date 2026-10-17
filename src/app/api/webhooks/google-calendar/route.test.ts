@@ -24,7 +24,7 @@ function harness(options: { config?: typeof CONFIG | null } = {}) {
       runPullSingleFlight: async (pull: () => Promise<unknown>) => { counts.singleFlights++; await pull(); },
     },
     '@/app/services/google-calendar-pull': {
-      pullGoogleCalendar: async (...args: unknown[]) => { assert.deepEqual(args, [], 'the default client and clock'); counts.pulls++; return { reverted: 0, blocks: 0, changed: false }; },
+      pullGoogleCalendar: async (...args: unknown[]) => { assert.deepEqual(args, [], 'the default client and clock'); counts.pulls++; return { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false }; },
     },
     // Never reached: a push from here would close a loop (push → notification → pull → push).
     '@/app/services/google-calendar-push': { pushGoogleCalendar: async () => { counts.pushes++; } },

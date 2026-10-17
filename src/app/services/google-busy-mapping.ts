@@ -1,17 +1,14 @@
-// Pure mapping of the salon Google Calendar's own events to stylist busy
-// blocks (spec §6). Nothing here reads the database.
+// Busy blocks for the stylists the diary names (spec §5 of the diary mirror
+// design, docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md),
+// and the interval of a Google event. Nothing here reads the database.
 
 import { createHash } from 'node:crypto';
 import { fromZonedTime } from 'date-fns-tz';
 import type { GoogleEvent } from './google-calendar-gateway';
+import type { DiaryEntry } from './google-diary-classify';
 import { SALON_TIMEZONE } from './salon-time';
-import { isWebsiteEvent } from './google-calendar-event';
 
 export type GoogleBusyBlock = { externalUid: string; stylistId: string; start: Date; end: Date };
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -48,29 +45,20 @@ export function eventInterval(event: GoogleEvent): { start: Date; end: Date } | 
   return { start, end };
 }
 
-export function googleBusyBlocks(events: GoogleEvent[], stylists: { id: string; name: string }[]): GoogleBusyBlock[] {
-  // Longest name first, so "Lox Chan holiday" is Lox Chan's and not Lox's.
-  const matchers = stylists
-    .filter((s) => s.name.trim().length > 0)
-    .sort((a, b) => b.name.trim().length - a.name.trim().length)
-    .map((s) => ({ id: s.id, re: new RegExp('^' + escapeRegExp(s.name.trim()) + '(?=$|[\\s:：\\-·])', 'i') }));
-
+/**
+ * STYLIST and LEAVE entries block their stylists, exactly as #72 stored them
+ * (one row per event and stylist). UNASSIGNED entries are the chair rule's
+ * (diary-chair-rule.ts) and NOTE entries block nothing: neither is ever a busy
+ * block, so neither reaches a Fresha busy feed.
+ */
+export function googleBusyBlocks(entries: readonly DiaryEntry[]): GoogleBusyBlock[] {
   const blocks: GoogleBusyBlock[] = [];
-  for (const event of events) {
-    // Echo guard: an event the website wrote (its private property, or its id
-    // should the property be stripped) is never a block, whatever its state,
-    // or every booking would clash with itself.
-    if (isWebsiteEvent(event)) continue;
-    if (event.status === 'cancelled' || event.transparency === 'transparent') continue;
-    const interval = eventInterval(event);
-    if (!interval) continue;
-    const title = (event.summary ?? '').trim();
-    const named = title ? matchers.find((m) => m.re.test(title)) : undefined;
-    const targets = named ? [named.id] : stylists.map((s) => s.id);
-    for (const stylistId of targets) {
+  for (const entry of entries) {
+    if (entry.kind !== 'STYLIST' && entry.kind !== 'LEAVE') continue;
+    for (const stylistId of new Set(entry.stylistIds)) {
       blocks.push({
-        externalUid: createHash('sha256').update(`${event.id}::${stylistId}`).digest('hex'),
-        stylistId, start: interval.start, end: interval.end,
+        externalUid: createHash('sha256').update(`${entry.googleEventId}::${stylistId}`).digest('hex'),
+        stylistId, start: entry.start, end: entry.end,
       });
     }
   }
