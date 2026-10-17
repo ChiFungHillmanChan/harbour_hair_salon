@@ -1403,7 +1403,18 @@ async function main() {
       await db.stylist.update({ where: { id: ids.stylist }, data: { showOnWebsite: false } });
       assert.equal(await slotAvailable(gDay(3), '10:00'), true, 'a hidden stylist still reads by name');
       assert.ok(!(await booking.getAvailableSlotsUnion(gDay(3), 60)).some(slot => slot.available), '"Anyone" never offers a hidden stylist');
-      await assert.rejects(create(gDay(3), '10:00'), /no longer available/, 'a new booking for a hidden stylist is refused');
+      // With nobody left to book online, the go-live gate closes booking (NO_STYLISTS)…
+      await assert.rejects(create(gDay(3), '10:00'), /Online booking is closed/, 'no stylist shown: booking closed');
+      // …and with another stylist shown, the hidden one is refused by name.
+      const shownPeer = 'lifecycle-shown-peer';
+      await db.stylist.create({ data: { id: shownPeer, name: 'Synthetic Shown Stylist', role: 'Stylist',
+        availabilities: { create: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '18:00', isOff: false })) } } });
+      try {
+        await assert.rejects(create(gDay(3), '10:00'), /stylist is no longer available/, 'a new booking for a hidden stylist is refused');
+      } finally {
+        await db.availability.deleteMany({ where: { stylistId: shownPeer } });
+        await db.stylist.delete({ where: { id: shownPeer } });
+      }
       await db.stylist.update({ where: { id: ids.stylist }, data: { showOnWebsite: true } });
       // (c) The busy feed Fresha imports exports the GOOGLE blocks, and nothing else of the diary.
       const googleFeed = await readFeed();
