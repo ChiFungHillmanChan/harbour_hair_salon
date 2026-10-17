@@ -178,6 +178,7 @@ async function main() {
     const existing = await Promise.all([
       db.user.count(), db.stylist.count(), db.service.count(), db.appointment.count(),
       db.calendarConnection.count(), db.externalBusyBlock.count(), db.offer.count(), db.discountCode.count(),
+      db.googleDiaryEntry.count(),
     ]);
     assert.ok(existing.every(count => count === 0), 'Use an empty disposable database; existing business data must not be touched.');
     previousSettings = await db.siteSettings.findUnique({ where: { id: 'singleton' } });
@@ -1225,10 +1226,13 @@ async function main() {
     // (`googleCalendarEvent: { is: null }`, a nested `is` inside `OR`) and its
     // retention pages ordered by the RELATED appointment's date (keyset across a
     // page boundary, a tie on that date included); the pull's replace of the
-    // GOOGLE blocks in one transaction (`createMany`, rolled back whole when it
-    // fails) and its own relation filter; a GOOGLE block closing the slot in the
-    // real availability code; the busy feed exporting it; and "Clear Google busy
-    // time" over a real transaction. Google is a fake at the gateway seam that
+    // GOOGLE blocks and the diary (GoogleDiaryEntry, diary mirror spec §5–§7) in
+    // one transaction (`createMany`, rolled back whole when its last write
+    // fails), the 30-day retention and its own relation filter; a GOOGLE block
+    // closing the slot in the real availability code, and a walk-in closing one
+    // through the chair rule; the busy feed exporting the blocks and never the
+    // walk-in; "Clear Google busy time" over a real transaction; and the
+    // calendar change guard (spec §8). Google is a fake at the gateway seam that
     // behaves like Google: a PUT of an unknown id is 404, an insert of a known id
     // 409, a delete leaves the event listed as cancelled, and the listing returns
     // what was written.
@@ -1240,6 +1244,10 @@ async function main() {
         privateKey: 'synthetic-never-used', webhookSecret: 'synthetic-never-used',
       };
       const googleSettings = { googleCalendarConfig: () => googleConfig };
+      // The rows below belong to this calendar: record it, or the calendar change guard starts over.
+      await db.googleCalendarSyncState.upsert({ where: { id: 'singleton' }, create: { id: 'singleton', calendarId: googleConfig.calendarId }, update: { calendarId: googleConfig.calendarId } });
+      // The stylist's Google colour: their website events are written in it, their diary events are theirs.
+      await db.stylist.update({ where: { id: ids.stylist }, data: { googleColorId: '5' } });
       const googlePush = loadServerModule<typeof import('../src/app/services/google-calendar-push')>('src/app/services/google-calendar-push.ts', {
         '@/app/lib/google-calendar-config': googleSettings, './google-calendar-gateway': googleGatewayModule,
       });
@@ -1309,6 +1317,7 @@ async function main() {
       }
       // Written for the first time: PUT (404), then insert at the booking's own id.
       assert.deepEqual(googleCalls.filter((call) => call.id === googleEventIdFor(neverWritten)).map((call) => call.op), ['put', 'insert']);
+      assert.equal(googleStore.get(googleEventIdFor(neverWritten))?.colorId, '5', 'the stylist’s Google colour');
       assert.equal(await rowOf(cancelledNeverWritten), null, 'a cancelled booking never written is never picked');
       assert.ok(!googleStore.has(googleEventIdFor(cancelledNeverWritten)));
       assert.equal((await rowOf(settled))?.syncedHash, 'settled-rendering', 'synced and unchanged for hours: not selected by the recent run');
@@ -1335,13 +1344,25 @@ async function main() {
       assert.ok((await rowOf(settled))?.syncedHash !== 'settled-rendering', 'the daily run re-renders the whole window');
       console.log('PASS: Google push over PostgreSQL — the recent run selects never-written, failing and owed bookings through the relation filters (and never a cancelled one never written); the daily run deletes 101 expired copies in pages ordered by the related appointment date, the tie across the page boundary included. Google was a fake.');
 
-      // (b) The pull: Google-only events become GOOGLE blocks in one transaction; website events never do.
+      // (b) The pull: Google-only events become the diary, and its stylist and leave
+      // entries GOOGLE blocks, in one transaction; website events never do.
       googleOnly.push(
-        { id: 'salondentist01', status: 'confirmed', summary: 'Synthetic Stylist: dentist',
+        // LEAVE: no colour, names the stylist; "Show as available", which no longer matters.
+        { id: 'salondentist01', status: 'confirmed', summary: 'Synthetic Stylist: dentist', transparency: 'transparent',
           start: { dateTime: instant(gDay(3), '11:00').toISOString() }, end: { dateTime: instant(gDay(3), '12:00').toISOString() } },
-        { id: 'salonstocktake', status: 'confirmed', summary: 'Stock take',
+        // STYLIST: a diary customer in the stylist's colour.
+        { id: 'salondiaryamy1', status: 'confirmed', summary: 'Amy 07700 900123', colorId: '5',
+          start: { dateTime: instant(gDay(3), '09:00').toISOString() }, end: { dateTime: instant(gDay(3), '10:00').toISOString() } },
+        // UNASSIGNED: a walk-in in the no-stylist colour (takes a chair; never a busy block).
+        { id: 'salonwalkin001', status: 'confirmed', summary: 'Cut - Erin(W)', colorId: '11',
           start: { dateTime: instant(gDay(3), '15:00').toISOString() }, end: { dateTime: instant(gDay(3), '16:00').toISOString() } },
+        // NOTE: names nobody, blocks nothing.
+        { id: 'salonnote00001', status: 'confirmed', summary: '卡機', colorId: '8',
+          start: { dateTime: instant(gDay(3), '13:00').toISOString() }, end: { dateTime: instant(gDay(3), '13:30').toISOString() } },
       );
+      // An entry that ended 31 days ago: before the window, deleted by the pull.
+      await db.googleDiaryEntry.create({ data: { googleEventId: 'ancient-entry', kind: 'NOTE', title: 'Old note',
+        start: new Date(googleNow.getTime() - 32 * 86_400_000), end: new Date(googleNow.getTime() - 31 * 86_400_000) } });
       // Someone stripped the website's private property from one booking's event.
       const strippedId = googleEventIdFor(neverWritten);
       googleStore.set(strippedId, { ...googleStore.get(strippedId)!, extendedProperties: undefined });
@@ -1350,37 +1371,46 @@ async function main() {
       const invalidationsBeforePull = invalidatedTags.length;
       const callsBeforePull = googleCalls.length;
       const pulled = await googlePull.pullGoogleCalendar({ db, gateway: fakeGoogle, now: pullNow });
-      assert.deepEqual(pulled, { reverted: 1, blocks: 2, changed: true }, 'website events are never blocks; the stripped one is written back');
+      assert.deepEqual(pulled, { reverted: 1, blocks: 2, entries: 4, changed: true, diaryChanged: true }, 'website events are never blocks; the stripped one is written back');
       assert.deepEqual(googleCalls.slice(callsBeforePull), [{ op: 'put', id: strippedId }]);
       assert.equal(googleStore.get(strippedId)?.extendedProperties?.private?.[GOOGLE_APPOINTMENT_PROPERTY], neverWritten);
       const googleBlocks = () => db.externalBusyBlock.findMany({ where: { source: 'GOOGLE' }, orderBy: { start: 'asc' } });
       const stored = await googleBlocks();
       assert.deepEqual(stored.map((block) => [block.stylistId, block.start.getTime(), block.end.getTime(), block.summary]), [
+        [ids.stylist, instant(gDay(3), '09:00').getTime(), instant(gDay(3), '10:00').getTime(), null],
         [ids.stylist, instant(gDay(3), '11:00').getTime(), instant(gDay(3), '12:00').getTime(), null],
-        [ids.stylist, instant(gDay(3), '15:00').getTime(), instant(gDay(3), '16:00').getTime(), null],
       ]);
+      const diary = await db.googleDiaryEntry.findMany({ orderBy: { start: 'asc' } });
+      assert.deepEqual(diary.map((row) => [row.googleEventId, row.kind, JSON.parse(row.stylistIdsJson), row.title, row.colorId]), [
+        ['salondiaryamy1', 'STYLIST', [ids.stylist], 'Amy 07700 900123', '5'],
+        ['salondentist01', 'LEAVE', [ids.stylist], 'Synthetic Stylist: dentist', null],
+        ['salonnote00001', 'NOTE', [], '卡機', '8'],
+        ['salonwalkin001', 'UNASSIGNED', [], 'Cut - Erin(W)', '11'],
+      ]);
+      assert.equal(await db.googleDiaryEntry.count({ where: { googleEventId: 'ancient-entry' } }), 0, 'past the 30-day window: deleted');
       assert.ok(invalidatedTags.slice(invalidationsBeforePull).includes('stylist-ical-feed'), 'the busy feeds are dropped after the commit');
       const syncState = await db.googleCalendarSyncState.findUniqueOrThrow({ where: { id: 'singleton' } });
       assert.deepEqual([syncState.lastPullSuccessAt?.getTime(), syncState.lastPullError], [pullNow.getTime(), null]);
-      // The real availability code: the stylist's 11:00 and the salon's 15:00 are taken; the edges touch.
-      for (const time of ['10:30', '11:00', '11:30', '14:30', '15:00', '15:30']) assert.equal(await slotAvailable(gDay(3), time), false, `${time} overlaps Google busy time`);
-      for (const time of ['10:00', '12:00', '14:00', '16:00']) assert.equal(await slotAvailable(gDay(3), time), true, `${time} only touches it`);
-      // (c) The busy feed Fresha imports exports the GOOGLE blocks.
+      // The real availability code: diary customer and leave block the stylist; the walk-in takes the only chair (chair rule); the note blocks nothing.
+      for (const time of ['09:00', '09:30', '10:30', '11:00', '11:30', '14:30', '15:00', '15:30']) assert.equal(await slotAvailable(gDay(3), time), false, `${time} is taken`);
+      for (const time of ['10:00', '12:00', '13:00', '14:00', '16:00']) assert.equal(await slotAvailable(gDay(3), time), true, `${time} is free`);
+      // (c) The busy feed Fresha imports exports the GOOGLE blocks, and nothing else of the diary.
       const googleFeed = await readFeed();
       for (const block of stored) {
         assert.ok(googleFeed.includes(`UID:g-${block.externalUid}@harbourhair.co.uk`), 'the GOOGLE block is in the feed');
         assert.ok(googleFeed.includes(`DTSTART:${icalDate(block.start)}`));
       }
-      assert.ok(!googleFeed.includes('dentist') && !googleFeed.includes('Stock take'), 'only "Busy", never the title');
+      assert.ok(!googleFeed.includes(`DTSTART:${icalDate(instant(gDay(3), '15:00'))}`), 'the walk-in (UNASSIGNED) is never exported to Fresha');
+      for (const word of ['dentist', 'Amy', 'Erin', '卡機']) assert.ok(!googleFeed.includes(word), word);
 
       // Unchanged: no write, the feeds stay cached.
       const invalidationsBeforeRepeat = invalidatedTags.length;
-      assert.deepEqual(await googlePull.pullGoogleCalendar({ db, gateway: fakeGoogle, now: new Date(pullNow.getTime() + 60_000) }), { reverted: 0, blocks: 2, changed: false });
+      assert.deepEqual(await googlePull.pullGoogleCalendar({ db, gateway: fakeGoogle, now: new Date(pullNow.getTime() + 60_000) }), { reverted: 0, blocks: 2, entries: 4, changed: false, diaryChanged: false });
       assert.equal(invalidatedTags.length, invalidationsBeforeRepeat);
       assert.deepEqual((await googleBlocks()).map((block) => block.id), stored.map((block) => block.id));
 
-      // The dentist moves to 12:00, and the replace fails inside its transaction: the
-      // deletes are rolled back with it, so the 11:00 block stays exactly as it was.
+      // The dentist moves to 12:00, and the transaction's LAST write (the diary's) fails:
+      // the busy time is rolled back with it, so the 11:00 block and entry stay exactly as they were.
       googleOnly[0] = { ...googleOnly[0], start: { dateTime: instant(gDay(3), '12:00').toISOString() }, end: { dateTime: instant(gDay(3), '13:00').toISOString() } };
       const failingCreate = new Proxy(db, {
         get(target, prop) {
@@ -1389,10 +1419,10 @@ async function main() {
           return (fn: (tx: Prisma.TransactionClient) => Promise<unknown>, options?: { timeout?: number; maxWait?: number }) => target.$transaction((tx) => fn(new Proxy(tx, {
             get(client, key) {
               const member = Reflect.get(client, key);
-              if (key !== 'externalBusyBlock') return typeof member === 'function' ? member.bind(client) : member;
+              if (key !== 'googleDiaryEntry') return typeof member === 'function' ? member.bind(client) : member;
               return new Proxy(member as object, {
                 get(delegate, method) {
-                  if (method === 'createMany') return async () => { throw new Error('Synthetic failure inside the busy-time transaction'); };
+                  if (method === 'createMany') return async () => { throw new Error('Synthetic failure writing the diary'); };
                   const original = Reflect.get(delegate, method);
                   return typeof original === 'function' ? original.bind(delegate) : original;
                 },
@@ -1411,14 +1441,15 @@ async function main() {
       }
       assert.equal(rolledBack.failed, true);
       assert.deepEqual(await googleBlocks(), stored, 'one transaction: the old GOOGLE blocks are untouched');
+      assert.equal((await db.googleDiaryEntry.findUniqueOrThrow({ where: { googleEventId: 'salondentist01' } })).start.getTime(), instant(gDay(3), '11:00').getTime(), 'the diary rolled back with the busy time');
       assert.equal((await db.googleCalendarSyncState.findUniqueOrThrow({ where: { id: 'singleton' } })).lastPullError, OPERATIONS_MESSAGES.GOOGLE_PULL_FAILED);
       assert.equal(await slotAvailable(gDay(3), '11:00'), false);
       // The next pull stores the move.
       assert.equal((await googlePull.pullGoogleCalendar({ db, gateway: fakeGoogle, now: new Date(pullNow.getTime() + 180_000) })).changed, true);
-      assert.deepEqual((await googleBlocks()).map((block) => block.start.getTime()), [instant(gDay(3), '12:00').getTime(), instant(gDay(3), '15:00').getTime()]);
+      assert.deepEqual((await googleBlocks()).map((block) => block.start.getTime()), [instant(gDay(3), '09:00').getTime(), instant(gDay(3), '12:00').getTime()]);
       assert.equal(await slotAvailable(gDay(3), '11:00'), true);
       assert.equal(await slotAvailable(gDay(3), '12:00'), false);
-      console.log('PASS: Google pull over PostgreSQL — Google-only events stored as GOOGLE blocks in one transaction (a failure inside it leaves the old blocks exactly), website events never blocks and a stripped one written back, an unchanged pull writes nothing, the blocks close slots in the real availability code and are exported in the busy feed. Google was a fake.');
+      console.log('PASS: Google pull over PostgreSQL — Google-only events stored as the diary with their kinds (stylist, leave, walk-in, note; "Show as available" ignored), and the stylist and leave entries as GOOGLE blocks, in one transaction (a failure at its last write leaves the old blocks and diary exactly); entries past the 30-day window deleted; website events never blocks and a stripped one written back; an unchanged pull writes nothing; the blocks close slots in the real availability code and are exported in the busy feed; the walk-in closes its slot through the chair rule and never reaches the feed; no diary title leaves the website. Google was a fake.');
 
       // "Clear Google busy time" over a real transaction: GOOGLE blocks only, audited.
       await sync(icalFeed([{ uid: 'synthetic-fresha-during-google', start: instant(gDay(4), '10:00'), end: instant(gDay(4), '11:00') }]));
@@ -1436,19 +1467,40 @@ async function main() {
       assert.equal((await db.googleCalendarSyncState.findUniqueOrThrow({ where: { id: 'singleton' } })).busyHash, null);
       const clearedAudit = await db.auditEvent.findFirstOrThrow({ where: { action: 'INTEGRATION.GOOGLE_BUSY_CLEARED', actorUserId: ids.admin } });
       assert.equal(JSON.parse(clearedAudit.metadataJson ?? '{}').removed, 2);
+      assert.equal(JSON.parse(clearedAudit.metadataJson ?? '{}').diaryRemoved, 4);
+      assert.equal(await db.googleDiaryEntry.count(), 0);
       assert.ok(invalidatedTags.slice(invalidationsBeforeClear).includes('stylist-ical-feed'));
       assert.ok(!(await readFeed()).includes('UID:g-'), 'gone from the busy feed');
       assert.equal(await slotAvailable(gDay(3), '12:00'), true);
+      assert.equal(await slotAvailable(gDay(3), '15:00'), true, 'the walk-in left with the diary');
       await sync(icalFeed([]));
       while (afterResponse.length) await afterResponse.shift()!();
 
-      // This section's own rows: the bookings (their Google rows cascade) and the sync state.
+      // The calendar change guard over PostgreSQL (diary mirror spec §8).
+      const guard = loadServerModule<typeof import('../src/app/services/google-calendar-guard')>('src/app/services/google-calendar-guard.ts', {});
+      assert.equal(await guard.guardGoogleCalendarChange(db, googleConfig.calendarId), 'same');
+      assert.ok(await db.googleCalendarEvent.count() > 0);
+      await db.googleCalendarSyncState.update({ where: { id: 'singleton' }, data: { channelId: 'synthetic-channel', resourceId: 'synthetic-resource', channelExpiresAt: new Date(googleNow.getTime() + 86_400_000) } });
+      const realConsoleInfo = console.info;
+      console.info = () => {}; // the guard logs its own (expected) switch
+      try {
+        assert.equal(await guard.guardGoogleCalendarChange(db, 'primary-synthetic@example.invalid'), 'switched');
+      } finally {
+        console.info = realConsoleInfo;
+      }
+      assert.equal(await db.googleCalendarEvent.count(), 0, 'rows about the old calendar are gone');
+      const switched = await db.googleCalendarSyncState.findUniqueOrThrow({ where: { id: 'singleton' } });
+      assert.deepEqual([switched.calendarId, switched.channelId, switched.resourceId, switched.channelExpiresAt], ['primary-synthetic@example.invalid', null, null, null]);
+      assert.equal(await guard.guardGoogleCalendarChange(db, 'primary-synthetic@example.invalid'), 'same', 'a second caller clears nothing');
+
+      // This section's own rows: the bookings (their Google rows cascade), the diary and the sync state.
       await db.googleCalendarEvent.deleteMany({});
+      await db.googleDiaryEntry.deleteMany({});
       await db.appointment.deleteMany({ where: { id: { in: [neverWritten, request, cancelledNeverWritten, failing, settled, owedBeforeWindow, ...retentionIds] } } });
       if (googleStateBefore) await db.googleCalendarSyncState.update({ where: { id: 'singleton' }, data: googleStateBefore });
       else await db.googleCalendarSyncState.deleteMany({ where: { id: 'singleton' } });
       googleStateBefore = undefined;
-      console.log('PASS: "Clear Google busy time" deletes only GOOGLE blocks, forgets the busy hash and is audited in one real transaction, then drops the busy feeds.');
+      console.log('PASS: "Clear Google busy time" deletes only GOOGLE blocks and the diary (the walk-in leaves with it), forgets the busy hash and is audited in one real transaction, then drops the busy feeds; the calendar change guard leaves the recorded calendar alone, and on a change forgets every booking row and the watch channel once, so a second caller clears nothing.');
     }
   } finally {
     try {
@@ -1471,8 +1523,10 @@ async function main() {
         else await db.siteSettings.deleteMany({ where: { id: 'singleton' } });
         if (previousDiagnostics) await db.backgroundJobState.update({ where: { name: 'operations-readiness' }, data: previousDiagnostics });
         else await db.backgroundJobState.deleteMany({ where: { name: 'operations-readiness' } });
-        // The Google section stopped part-way: its booking rows went with the appointments above.
+        // The Google section stopped part-way: its booking rows went with the appointments above;
+        // every diary row is its own (the database held none when the run started).
         if (googleStateBefore !== undefined) {
+          await db.googleDiaryEntry.deleteMany({});
           if (googleStateBefore) await db.googleCalendarSyncState.update({ where: { id: 'singleton' }, data: googleStateBefore });
           else await db.googleCalendarSyncState.deleteMany({ where: { id: 'singleton' } });
         }
