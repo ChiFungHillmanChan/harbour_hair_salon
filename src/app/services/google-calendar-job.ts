@@ -26,7 +26,10 @@ import 'server-only';
 // sync's health (spec §8; the database is already awake): no live watch
 // channel, or no successful check of Google for 24 hours. Given the caller's
 // deadline, the pull is skipped (and said so, not failed) when too little time
-// is left for it.
+// is left for it. Before any step, the calendar change guard
+// (services/google-calendar-guard.ts, diary mirror spec §8) settles a changed
+// GOOGLE_CALENDAR_ID, so the channel a daily run (or Sync now) makes is never
+// cleared by the push's own guard straight after.
 
 import type { PrismaClient } from '@prisma/client';
 import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
@@ -73,7 +76,9 @@ export type GoogleCalendarSteps = {
 
 export type GoogleCalendarJobResult = { skipped: 'disabled' } | GoogleCalendarSteps | { ok: false; error: true };
 
-type JobDb = Pick<PrismaClient, 'backgroundJobState' | 'googleCalendarSyncState'>;
+/** What the job reads and writes itself: its job row, the sync state, and the calendar change guard's rows. */
+export type GoogleCalendarJobDb = Pick<PrismaClient, 'backgroundJobState' | 'googleCalendarSyncState' | 'googleCalendarEvent' | '$transaction'>;
+type JobDb = GoogleCalendarJobDb;
 
 function logStep(step: string) {
   return (error: unknown) => {
@@ -175,12 +180,19 @@ export async function runGoogleCalendarJob(
   options: { db?: JobDb; deadline?: number; renew?: boolean } = {},
 ): Promise<GoogleCalendarJobResult> {
   // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
-  if (!googleCalendarConfig()) return { skipped: 'disabled' };
+  const config = googleCalendarConfig();
+  if (!config) return { skipped: 'disabled' };
   const name = run === 'daily' ? GOOGLE_CALENDAR_DAILY_JOB : GOOGLE_CALENDAR_JOB;
   let db: JobDb | undefined = options.db;
   try {
     db ??= (await import('@/app/lib/prisma')).default;
     await db.backgroundJobState.upsert({ where: { name }, create: { name, lastStartedAt: new Date() }, update: { lastStartedAt: new Date() } });
+    // Before the channel step: a switch clears the rows and the old channel first, so the
+    // channel made below is recorded for the configured calendar and the push's and pull's
+    // own guards find it the same. A guard that fails stops the run (recorded below): no
+    // channel is made while it is unknown which calendar the rows belong to.
+    const { guardGoogleCalendarChange } = await import('./google-calendar-guard');
+    await guardGoogleCalendarChange(db, config.calendarId);
     const steps = await runSteps(db, run, options.deadline, options.renew === true);
     const lastError = failureOf(steps);
     await db.backgroundJobState.update({ where: { name }, data: {

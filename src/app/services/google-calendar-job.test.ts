@@ -31,6 +31,8 @@ type Options = {
   jobRowFails?: boolean;
   /** GoogleCalendarSyncState as the 30-minute run reads it (null: no row yet). */
   state?: SyncState | null;
+  /** The calendar change guard (services/google-calendar-guard.ts) throws this. */
+  guard?: Error;
 };
 
 function harness(options: Options = {}) {
@@ -73,6 +75,13 @@ function harness(options: Options = {}) {
   const job = loadServerModule<typeof import('./google-calendar-job')>('src/app/services/google-calendar-job.ts', {
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => (options.enabled === false ? null : CONFIG) },
     '@/app/lib/prisma': counted({ __esModule: true, default: db }),
+    './google-calendar-guard': counted({
+      guardGoogleCalendarChange: async (_db: unknown, calendarId: string) => {
+        assert.equal(calendarId, CONFIG.calendarId, 'the configured calendar');
+        order.push('guard');
+        return outcome(options.guard, 'same');
+      },
+    }),
     './google-calendar-channel': counted({
       ensureGoogleWatchChannel: async (input: unknown) => {
         order.push(`channel:${JSON.stringify(input)}`);
@@ -113,7 +122,7 @@ test('with the sync off nothing is imported, queried or called, for either run',
 test('calendar-sync: pushes what changed recently, pulls single-flight, then checks health, in its own job row', async () => {
   const h = harness();
   const result = await h.job.runGoogleCalendarJob('calendar-sync');
-  assert.deepEqual(h.order, ['job:start', 'push:recent', 'single-flight', 'pull', 'health', 'job:end']);
+  assert.deepEqual(h.order, ['job:start', 'guard', 'push:recent', 'single-flight', 'pull', 'health', 'job:end']);
   assert.deepEqual(result, { ok: true, push: PUSHED, pull: PULLED, health: HEALTHY });
   assert.ok(h.jobRows.every((row) => row.name === 'google-calendar'));
   const row = h.finalRow()!;
@@ -125,7 +134,7 @@ test('calendar-sync: pushes what changed recently, pulls single-flight, then che
 test('daily: keeps the watch channel alive, reconciles the whole window, then pulls — in its own job row, no health read', async () => {
   const h = harness({ channel: 'renewed' });
   const result = await h.job.runGoogleCalendarJob('daily');
-  assert.deepEqual(h.order, ['job:start', 'channel:{"renew":false}', 'push:all', 'single-flight', 'pull', 'job:end']);
+  assert.deepEqual(h.order, ['job:start', 'guard', 'channel:{"renew":false}', 'push:all', 'single-flight', 'pull', 'job:end']);
   assert.deepEqual(result, { ok: true, channel: 'renewed', push: PUSHED, pull: PULLED });
   assert.ok(h.jobRows.every((row) => row.name === 'google-calendar-daily'));
   assert.ok(h.finalRow()!.lastSucceededAt instanceof Date);
@@ -199,7 +208,7 @@ test('health ranks after a step that could not complete, and before the channel 
 test('renew: true (Sync now) replaces the watch channel at once; the crons never ask for it', async () => {
   const renewed = harness({ channel: 'renewed' });
   await renewed.job.runGoogleCalendarJob('daily', { renew: true });
-  assert.deepEqual(renewed.order, ['job:start', 'channel:{"renew":true}', 'push:all', 'single-flight', 'pull', 'job:end']);
+  assert.deepEqual(renewed.order, ['job:start', 'guard', 'channel:{"renew":true}', 'push:all', 'single-flight', 'pull', 'job:end']);
   // Housekeeping passes no renew: the nightly run must not replace the channel every night.
   const nightly = harness();
   await nightly.job.runGoogleCalendarJob('daily', { renew: false });
@@ -210,10 +219,76 @@ test('renew: true (Sync now) replaces the watch channel at once; the crons never
   assert.ok(!cron.order.some((step) => step.startsWith('channel:')));
 });
 
+test('a calendar switch is settled before Sync now makes a channel: the new channel stays recorded, the push and pull clear nothing', async (t) => {
+  t.mock.method(console, 'info', () => {});
+  // The real guard against a stateful sync row; the channel, push and pull stand-ins share it.
+  const guard = loadServerModule<typeof import('./google-calendar-guard')>('src/app/services/google-calendar-guard.ts', {});
+  for (const recorded of [null, 'old@group.calendar.google.com']) {
+    const order: string[] = [];
+    const state = { calendarId: recorded as string | null, channelId: 'old-channel' as string | null, resourceId: 'old-resource' as string | null };
+    let eventRows = 3;
+    const db = {
+      googleCalendarSyncState: {
+        findUnique: async () => ({ calendarId: state.calendarId }),
+        updateMany: async ({ where, data }: { where: { OR: { calendarId: null | { not: string } }[] }; data: Partial<typeof state> }) => {
+          const differs = where.OR.some(({ calendarId }) => (calendarId === null ? state.calendarId === null : state.calendarId !== null && state.calendarId !== calendarId.not));
+          if (!differs) return { count: 0 };
+          Object.assign(state, { calendarId: data.calendarId, channelId: data.channelId, resourceId: data.resourceId });
+          return { count: 1 };
+        },
+        upsert: async () => { throw new Error('the row exists'); },
+      },
+      googleCalendarEvent: { deleteMany: async () => { order.push('rows-cleared'); const count = eventRows; eventRows = 0; return { count }; } },
+      $transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(db),
+      backgroundJobState: { upsert: async () => ({}), update: async () => ({}) },
+    };
+    const job = loadServerModule<typeof import('./google-calendar-job')>('src/app/services/google-calendar-job.ts', {
+      '@/app/lib/google-calendar-config': { googleCalendarConfig: () => CONFIG },
+      '@/app/lib/prisma': new Proxy({}, { get(_target, key) { throw new Error(`default client used: ${String(key)}`); } }),
+      './google-calendar-guard': guard,
+      './google-calendar-channel': {
+        ensureGoogleWatchChannel: async (input: unknown) => {
+          order.push(`channel:${JSON.stringify(input)}`);
+          Object.assign(state, { channelId: 'new-channel', resourceId: 'new-resource' });
+          return 'renewed';
+        },
+        runPullSingleFlight: async (pull: () => Promise<unknown>) => { await pull(); },
+      },
+      './google-calendar-push': {
+        pushGoogleCalendar: async (input: { mode: string }) => {
+          order.push(`push:${input.mode}:${await guard.guardGoogleCalendarChange(db as never, CONFIG.calendarId)}`);
+          return PUSHED;
+        },
+      },
+      './google-calendar-pull': {
+        pullGoogleCalendar: async () => {
+          order.push(`pull:${await guard.guardGoogleCalendarChange(db as never, CONFIG.calendarId)}`);
+          return PULLED;
+        },
+      },
+    });
+    const result = await job.runGoogleCalendarJob('daily', { db: db as never, renew: true });
+    assert.deepEqual(order, ['rows-cleared', 'channel:{"renew":true}', 'push:all:same', 'pull:same'], String(recorded));
+    assert.deepEqual(state, { calendarId: CONFIG.calendarId, channelId: 'new-channel', resourceId: 'new-resource' }, 'the channel Sync now made is still recorded');
+    assert.equal(eventRows, 0);
+    assert.deepEqual(result, { ok: true, channel: 'renewed', push: PUSHED, pull: PULLED });
+  }
+});
+
+test('a guard that cannot read the sync state stops the run before any channel, push or pull, and flags the job row', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  for (const run of ['calendar-sync', 'daily'] as const) {
+    const h = harness({ guard: new Error('connect ECONNREFUSED db.internal:5432') });
+    assert.deepEqual(await h.job.runGoogleCalendarJob(run, { renew: true }), { ok: false, error: true });
+    assert.deepEqual(h.order, ['job:start', 'guard', 'job:end'], run);
+    assert.equal(h.finalRow()!.lastError, OPERATIONS_MESSAGES.GOOGLE_SYNC_FAILED);
+  }
+});
+
 test('a pull already running elsewhere covers this one: recorded as deferred, not as a failure', async () => {
   const h = harness({ deferred: true });
   const result = await h.job.runGoogleCalendarJob('calendar-sync');
-  assert.deepEqual(h.order, ['job:start', 'push:recent', 'single-flight', 'health', 'job:end']);
+  assert.deepEqual(h.order, ['job:start', 'guard', 'push:recent', 'single-flight', 'health', 'job:end']);
   assert.deepEqual(result, { ok: true, push: PUSHED, pull: 'deferred', health: HEALTHY });
   assert.equal(h.finalRow()!.lastError, null);
 });
@@ -223,7 +298,7 @@ test('a watch channel that cannot be made is recorded in the job row; the push a
   t.mock.method(console, 'error', (...args: unknown[]) => { logged.push(args); });
   const h = harness({ channel: new Error('Google refused: https://www.googleapis.com/calendar/v3/calendars/secret-id') });
   const result = await h.job.runGoogleCalendarJob('daily');
-  assert.deepEqual(h.order, ['job:start', 'channel:{"renew":false}', 'push:all', 'single-flight', 'pull', 'job:end']);
+  assert.deepEqual(h.order, ['job:start', 'guard', 'channel:{"renew":false}', 'push:all', 'single-flight', 'pull', 'job:end']);
   assert.deepEqual(result, { ok: false, channel: 'failed', push: PUSHED, pull: PULLED });
   const row = h.finalRow()!;
   assert.ok(row.lastFailedAt instanceof Date);
@@ -236,7 +311,7 @@ test('a push that throws never stops the pull; the job row says the step could n
   t.mock.method(console, 'error', () => {});
   const h = harness({ push: new Error('database unavailable') });
   const result = await h.job.runGoogleCalendarJob('calendar-sync');
-  assert.deepEqual(h.order, ['job:start', 'push:recent', 'single-flight', 'pull', 'health', 'job:end']);
+  assert.deepEqual(h.order, ['job:start', 'guard', 'push:recent', 'single-flight', 'pull', 'health', 'job:end']);
   assert.deepEqual(result, { ok: false, push: 'failed', pull: PULLED, health: HEALTHY });
   assert.equal(h.finalRow()!.lastError, OPERATIONS_MESSAGES.GOOGLE_SYNC_FAILED);
 });

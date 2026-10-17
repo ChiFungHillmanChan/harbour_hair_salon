@@ -117,6 +117,8 @@ function housekeepingWithRealJob(options: { enabled: boolean; channelThrows?: bo
   const job = loadServerModule('src/app/services/google-calendar-job.ts', {
     '@/app/lib/google-calendar-config': { googleCalendarConfig: () => (options.enabled ? { calendarId: 'c', clientEmail: 'e', privateKey: 'k', webhookSecret: 's' } : null) },
     '@/app/lib/prisma': counted({ __esModule: true, default: db }),
+    // The calendar change guard (services/google-calendar-guard.ts): the configured calendar is the recorded one.
+    './google-calendar-guard': counted({ guardGoogleCalendarChange: async () => 'same' }),
     './google-calendar-channel': counted({
       ensureGoogleWatchChannel: async (input: unknown) => {
         order.push(`channel:${JSON.stringify(input)}`);
