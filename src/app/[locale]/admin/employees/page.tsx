@@ -1,3 +1,4 @@
+import { AdminResponsiveTable } from '@/components/admin/AdminResponsiveTable';
 import { requireAdmin } from '@/app/lib/session';
 import Link from '@/i18n/link';
 import { getT } from '@/i18n/server';
@@ -25,21 +26,28 @@ export default async function AdminEmployeesPage() {
     .filter((id): id is string => Boolean(id));
 
   return (
-    <div className="p-4 sm:p-6 space-y-8">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-8">
       <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">{t('employees.title')}</h1>
-      <KioskModeButton />
-      <KioskSessions sessions={kiosks} />
+      <details className="rounded-lg border border-zinc-200 bg-white">
+        <summary className="min-h-11 cursor-pointer px-4 py-3 font-medium text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2">{t('employees.addTitle')}</summary>
+        <div className="border-t border-zinc-100 p-3 sm:p-4">
+          <EmployeeForm action={createEmployee} stylists={stylists} linkedStylistIds={linkedStylistIds} />
+        </div>
+      </details>
 
-      <section>
-        <h2 className="text-xl mb-3">{t('employees.addTitle')}</h2>
-        <EmployeeForm action={createEmployee} stylists={stylists} linkedStylistIds={linkedStylistIds} />
-      </section>
+      <details className="rounded-lg border border-zinc-200 bg-white">
+        <summary className="min-h-11 cursor-pointer px-4 py-3 font-medium text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2">{t('kioskDevices.title')}</summary>
+        <div className="space-y-4 border-t border-zinc-100 p-3 sm:p-4">
+          <KioskModeButton />
+          <KioskSessions sessions={kiosks} />
+        </div>
+      </details>
 
       <section>
         <h2 className="text-xl mb-3">{t('employees.teamTitle')}</h2>
         <p className="text-sm text-zinc-600 mb-3">{t('employees.teamIntro')}</p>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+          <AdminResponsiveTable className="text-sm border-collapse">
             <thead>
               <tr className="text-left border-b">
                 <th className="p-2">{t('employees.columns.name')}</th><th className="p-2">{t('employees.columns.title')}</th><th className="p-2">{t('employees.columns.payType')}</th>
@@ -49,11 +57,11 @@ export default async function AdminEmployeesPage() {
             <tbody>
               {employees.map((e) => (
                 <tr key={e.id} className="border-b align-top">
-                  <td className="p-2">{e.name}</td>
-                  <td className="p-2">{e.title}</td>
-                  <td className="p-2">{t.dynamic(`payType.${e.payType}`, undefined, e.payType)}</td>
-                  <td className="p-2">{e.stylist?.name ?? '—'}</td>
-                  <td className="p-2">
+                  <td data-label={t('employees.columns.name')} data-primary className="p-2 font-medium">{e.name}</td>
+                  <td data-label={t('employees.columns.title')} className="p-2">{e.title}</td>
+                  <td data-label={t('employees.columns.payType')} className="p-2">{t.dynamic(`payType.${e.payType}`, undefined, e.payType)}</td>
+                  <td data-label={t('employees.columns.stylist')} className="p-2">{e.stylist?.name ?? '—'}</td>
+                  <td data-label={t('employees.columns.status')} className="p-2">
                     {e.isActive ? (
                       t('employees.active')
                     ) : (
@@ -62,11 +70,11 @@ export default async function AdminEmployeesPage() {
                       </span>
                     )}
                   </td>
-                  <td className="p-2">
+                  <td data-label={t('employees.columns.actions')} data-actions className="p-2">
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                       <Link
                         href={`/admin/employees/${e.id}/edit`}
-                        className="text-sm text-zinc-700 hover:text-zinc-900 font-medium underline"
+                        className="inline-flex min-h-11 items-center text-sm text-zinc-700 hover:text-zinc-900 font-medium underline"
                       >
                         {t('employees.edit')}
                       </Link>
@@ -74,7 +82,7 @@ export default async function AdminEmployeesPage() {
                         action={setEmployeeActive.bind(null, e.id, !e.isActive)}
                         label={e.isActive ? t('employees.deactivate') : t('employees.activate')}
                         pendingLabel={e.isActive ? t('employees.deactivating') : t('employees.activating')}
-                        buttonClassName="text-sm text-zinc-700 hover:text-zinc-900 font-medium"
+                        buttonClassName="min-h-11 text-sm text-zinc-700 hover:text-zinc-900 font-medium"
                       />
                       <EmployeePinReset action={resetEmployeePin.bind(null, e.id)} employeeName={e.name} />
                     </div>
@@ -87,7 +95,7 @@ export default async function AdminEmployeesPage() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </AdminResponsiveTable>
         </div>
       </section>
     </div>

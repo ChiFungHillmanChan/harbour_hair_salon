@@ -24,10 +24,10 @@ export default async function NewServicePage() {
   ]);
 
   return (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">{t('serviceForm.newTitle')}</h1>
-        <p className="text-zinc-700 mt-2">{t('serviceForm.newIntro')}</p>
+    <div className="p-3 sm:p-8 max-w-4xl mx-auto">
+      <div className="mb-4 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('serviceForm.newTitle')}</h1>
+        <p className="text-zinc-700 mt-1 text-sm sm:mt-2 sm:text-base">{t('serviceForm.newIntro')}</p>
       </div>
       <ServiceForm mode="create" action={createService} existingCategories={existingCategories} offerings={offerings} />
     </div>

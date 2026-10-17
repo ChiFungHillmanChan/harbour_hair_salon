@@ -31,7 +31,7 @@ type Props =
   | { mode: 'edit'; type: ContentEntityType; entityId: string; initial: EditorSnapshot; sharedPrice?: SharedPrice }
   | { mode: 'create'; type: ContentEntityType; initial?: Partial<BilingualFields> };
 
-const inputClass = 'w-full border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
+const inputClass = 'min-h-11 min-w-0 w-full max-w-full border border-zinc-300 rounded px-3 py-2 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
 
 /**
  * Edits one record's customer-facing text in BOTH languages. The content
@@ -98,7 +98,7 @@ export function BilingualContentEditor(props: Props) {
   const other = (locale: Locale): Locale => (locale === 'en-GB' ? 'zh-HK' : 'en-GB');
 
   return (
-    <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5" aria-labelledby={`${key}-title`}>
+    <section className="bg-white border border-zinc-200 rounded-lg min-w-0 p-4 sm:p-6 space-y-4 sm:space-y-5" aria-labelledby={`${key}-title`}>
       <div>
         <h2 id={`${key}-title`} className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('editor.title')}</h2>
         <p className="mt-1 text-xs leading-5 text-zinc-500">{props.mode === 'edit' ? t('editor.intro') : t('editor.createHelp')}</p>
@@ -115,7 +115,7 @@ export function BilingualContentEditor(props: Props) {
         )}
       </div>
 
-      <div role="tablist" aria-label={t('editor.contentLanguage')} className="flex gap-2 border-b border-zinc-200">
+      <div role="tablist" aria-label={t('editor.contentLanguage')} className="flex min-w-0 gap-1 border-b border-zinc-200 sm:gap-2">
         {LOCALES.map((locale) => {
           const status = liveStatus.locales[locale];
           return (
@@ -127,7 +127,7 @@ export function BilingualContentEditor(props: Props) {
               aria-selected={tab === locale}
               aria-controls={`${key}-panel-${locale}`}
               onClick={() => setTab(locale)}
-              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === locale ? 'border-zinc-900 text-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-800'}`}
+              className={`-mb-px min-h-11 min-w-0 flex-1 border-b-2 px-2 py-2 text-sm sm:flex-none sm:px-3 font-medium ${tab === locale ? 'border-zinc-900 text-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-800'}`}
             >
               <span lang={locale}>{t.dynamic(`editor.tabs.${locale}`)}</span>
               <span
@@ -171,7 +171,7 @@ export function BilingualContentEditor(props: Props) {
                   type="button"
                   disabled={pending || dirty || !snapshot!.hasDraft || !status.complete}
                   onClick={() => run(() => markContentReviewedAction(props.type, props.entityId, locale))}
-                  className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:opacity-50"
+                  className="min-h-11 rounded border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:opacity-50"
                 >
                   {t('editor.actions.markChecked', { language: t.dynamic(`editor.tabs.${locale}`) })}
                 </button>
@@ -202,8 +202,8 @@ export function BilingualContentEditor(props: Props) {
       {props.mode === 'create' ? (
         <div className="space-y-2">
           <input type="hidden" name="contentJson" value={JSON.stringify(working)} />
-          <label className="flex items-start gap-3 text-sm text-zinc-700">
-            <input type="checkbox" name="contentReviewed" data-no-preserve checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4" />
+          <label className="flex min-h-11 items-start gap-3 text-sm text-zinc-700">
+            <input type="checkbox" name="contentReviewed" data-no-preserve checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{t('editor.createConfirm')}</span>
           </label>
           {!evaluation.publishable && <p className="text-xs text-zinc-500">{t('editor.publishBlocked')}</p>}
@@ -214,7 +214,7 @@ export function BilingualContentEditor(props: Props) {
             type="button"
             disabled={pending || !dirty}
             onClick={() => run(() => saveContentDraftAction(props.type, props.entityId, working, props.sharedPrice?.editable ? { price } : undefined))}
-            className="rounded bg-zinc-900 px-5 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50"
+            className="min-h-11 rounded bg-zinc-900 px-5 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50"
           >
             {pending ? t('editor.actions.saving') : t('editor.actions.saveDraft')}
           </button>
@@ -222,7 +222,7 @@ export function BilingualContentEditor(props: Props) {
             type="button"
             disabled={pending || dirty || !snapshot!.hasDraft || !evaluation.publishable}
             onClick={() => run(() => publishContentAction(props.type, props.entityId))}
-            className="rounded border border-zinc-900 px-5 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 disabled:opacity-50"
+            className="min-h-11 rounded border border-zinc-900 px-5 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 disabled:opacity-50"
           >
             {pending ? t('editor.actions.publishing') : t('editor.actions.publish')}
           </button>
@@ -233,7 +233,7 @@ export function BilingualContentEditor(props: Props) {
               onClick={() => {
                 if (window.confirm(t('editor.actions.discardConfirm'))) run(() => discardContentDraftAction(props.type, props.entityId));
               }}
-              className="text-sm text-zinc-600 underline hover:text-zinc-900 disabled:opacity-50"
+              className="min-h-11 px-2 text-sm text-zinc-600 underline hover:text-zinc-900 disabled:opacity-50"
             >
               {t('editor.actions.discard')}
             </button>
@@ -288,18 +288,18 @@ function FieldEditor({ spec, value, onChange, idPrefix }: { spec: FieldSpec; val
       const rows = (Array.isArray(value) ? value : []) as Record<string, string>[];
       const set = (index: number, field: string, text: string) => onChange(rows.map((row, i) => (i === index ? { ...row, [field]: text } : row)));
       return (
-        <fieldset>
+        <fieldset className="min-w-0">
           <legend className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-1">{t.dynamic(`fields.${spec.key}`, undefined, spec.key)}</legend>
           <ol className="space-y-3">
             {rows.map((row, index) => (
               <li key={index} className="rounded border border-zinc-200 p-3 space-y-2">
                 <input aria-label={t.dynamic(`fields.${a}`)} type="text" value={row[a] ?? ''} onChange={(event) => set(index, a, event.target.value)} className={inputClass} />
                 <textarea aria-label={t.dynamic(`fields.${b}`)} rows={2} value={row[b] ?? ''} onChange={(event) => set(index, b, event.target.value)} className={inputClass} />
-                <button type="button" onClick={() => onChange(rows.filter((_, i) => i !== index))} className="text-xs text-zinc-600 underline">{t('editor.actions.removeItem')}</button>
+                <button type="button" onClick={() => onChange(rows.filter((_, i) => i !== index))} className="min-h-11 px-2 text-sm sm:text-xs text-zinc-600 underline">{t('editor.actions.removeItem')}</button>
               </li>
             ))}
           </ol>
-          <button type="button" onClick={() => onChange([...rows, { [a]: '', [b]: '' }])} className="mt-2 text-sm text-zinc-800 underline">{t('editor.actions.addItem')}</button>
+          <button type="button" onClick={() => onChange([...rows, { [a]: '', [b]: '' }])} className="min-h-11 mt-2 px-2 text-sm text-zinc-800 underline">{t('editor.actions.addItem')}</button>
         </fieldset>
       );
     }
@@ -322,7 +322,7 @@ function BlogSectionsField({ value, onChange, legend }: { value: unknown; onChan
     onChange(next);
   };
   return (
-    <fieldset>
+    <fieldset className="min-w-0">
       <legend className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-1">{legend}</legend>
       <ol className="space-y-3">
         {sections.map((section, index) => (
@@ -337,7 +337,7 @@ function BlogSectionsField({ value, onChange, legend }: { value: unknown; onChan
                   else if (choice === 'list') set(index, { type: 'list', items: section.items ?? (section.text ? [section.text] : []) });
                   else set(index, { type: choice as Section['type'], text: section.text ?? section.items?.join('\n') ?? '' });
                 }}
-                className="border border-zinc-300 rounded px-2 py-1 text-sm"
+                className="min-h-11 border border-zinc-300 rounded px-2 py-2 text-base sm:text-sm"
               >
                 <option value="paragraph">¶</option>
                 <option value="heading-2">H2</option>
@@ -345,9 +345,9 @@ function BlogSectionsField({ value, onChange, legend }: { value: unknown; onChan
                 <option value="list">•</option>
                 <option value="quote">“ ”</option>
               </select>
-              <button type="button" onClick={() => move(index, -1)} className="text-xs underline">{t('editor.actions.moveUp')}</button>
-              <button type="button" onClick={() => move(index, 1)} className="text-xs underline">{t('editor.actions.moveDown')}</button>
-              <button type="button" onClick={() => onChange(sections.filter((_, i) => i !== index))} className="text-xs underline">{t('editor.actions.removeItem')}</button>
+              <button type="button" onClick={() => move(index, -1)} className="min-h-11 px-2 text-sm sm:text-xs underline">{t('editor.actions.moveUp')}</button>
+              <button type="button" onClick={() => move(index, 1)} className="min-h-11 px-2 text-sm sm:text-xs underline">{t('editor.actions.moveDown')}</button>
+              <button type="button" onClick={() => onChange(sections.filter((_, i) => i !== index))} className="min-h-11 px-2 text-sm sm:text-xs underline">{t('editor.actions.removeItem')}</button>
             </div>
             {section.type === 'list' ? (
               <textarea aria-label={legend} rows={3} value={(section.items ?? []).join('\n')} onChange={(event) => set(index, { type: 'list', items: event.target.value.split('\n') })} className={inputClass} />
@@ -367,7 +367,7 @@ function BlogSectionsField({ value, onChange, legend }: { value: unknown; onChan
           </li>
         ))}
       </ol>
-      <button type="button" onClick={() => onChange([...sections, { type: 'paragraph', text: '' }])} className="mt-2 text-sm text-zinc-800 underline">{t('editor.actions.addItem')}</button>
+      <button type="button" onClick={() => onChange([...sections, { type: 'paragraph', text: '' }])} className="min-h-11 mt-2 px-2 text-sm text-zinc-800 underline">{t('editor.actions.addItem')}</button>
     </fieldset>
   );
 }

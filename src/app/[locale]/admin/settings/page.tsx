@@ -46,10 +46,10 @@ export default async function AdminSettingsPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
-      <div className="mb-8">
+    <div className="p-3 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+      <div className="mb-4 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('settings.title')}</h1>
-        <p className="text-zinc-700 mt-2">
+        <p className="text-sm text-zinc-700 mt-1 sm:text-base sm:mt-2">
           {rich(t('settings.intro'), {
             link: (text) => (
               <Link href="/" className="underline hover:text-zinc-900">
@@ -59,11 +59,20 @@ export default async function AdminSettingsPage() {
           })}
         </p>
       </div>
+      <details className="mb-4 rounded-lg border border-zinc-200 bg-white px-3">
+        <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-zinc-900">{t('settings.jumpTo')}</summary>
+        <nav aria-label={t('settings.jumpTo')} className="grid gap-1 pb-3 sm:grid-cols-2">
+          {(['booking', 'deposits', 'lateArrivals', 'contact', 'notifications', 'social', 'search'] as const).map(section => (
+            <a key={section} href={`#settings-${section}`} className="flex min-h-11 items-center rounded px-3 text-sm text-zinc-700 hover:bg-zinc-50">{t(`settings.${section}.title`)}</a>
+          ))}
+          <a href="#home-hero-title" className="flex min-h-11 items-center rounded px-3 text-sm text-zinc-700 hover:bg-zinc-50">{t('settings.hero.title')}</a>
+        </nav>
+      </details>
       <SiteSettingsForm settings={operational} bookingLockedForPayments={isOnlineBookingLockedForPayments()} />
 
       <section className="mt-10 space-y-4" aria-labelledby="home-hero-title">
         <div>
-          <h2 id="home-hero-title" className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.hero.title')}</h2>
+          <h2 id="home-hero-title" className="scroll-mt-20 text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.hero.title')}</h2>
           <p className="text-xs text-zinc-500 mt-1">{t('settings.hero.help')}</p>
         </div>
         {hero ? (

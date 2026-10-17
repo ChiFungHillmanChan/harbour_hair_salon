@@ -170,6 +170,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       retry: '重試失敗的 API 工作',
     },
     google: {
+      details: '連線詳情',
       title: 'Google 日曆',
       intro: '預約會寫入店舖的 Google 日曆。在 Google 日曆加入的忙碌時段，會同時封鎖網站及 Fresha 忙碌訂閱中的相同時間。',
       off: 'Google 日曆同步未啟用。只有在 Vercel 設定好 Google 日曆的環境變數後（僅限正式網站），才會啟用。',
@@ -406,6 +407,7 @@ const adminOps: Localized<Messages['adminOps']> = {
       system: '系統',
     },
     controls: {
+      title: '檢查及通知工具',
       diagnosticsTitle: '檢查連線',
       diagnosticsHelp: '檢查資料庫、電郵網域及共用 Redis 連線。此操作只會讀取平台狀態並儲存報告。',
       runDiagnostics: '執行唯讀診斷',

@@ -28,13 +28,13 @@ export async function CustomerErasureSection({ query }: { query: string }) {
 
   return (
     <section aria-labelledby="customer-erasure-title" className="mt-8 rounded-lg border border-zinc-200 bg-white shadow">
-      <div className="border-b border-zinc-200 p-6">
+      <div className="border-b border-zinc-200 p-3 sm:p-6">
         <h2 id="customer-erasure-title" className="text-lg font-bold text-zinc-900">{t('users.erasure.title')}</h2>
         <p className="mt-1 text-sm text-zinc-600">{t('users.erasure.intro')}</p>
       </div>
-      <form action={localizeHref(locale, '/admin/users')} className="flex flex-wrap items-center gap-3 p-6">
-        <input name="erase" defaultValue={query} maxLength={100} aria-label={t('users.erasure.searchLabel')} placeholder={t('users.erasure.searchPlaceholder')} className="rounded border px-3 py-2" />
-        <button type="submit" className="underline">{t('users.erasure.search')}</button>
+      <form action={localizeHref(locale, '/admin/users')} className="flex flex-wrap items-center gap-3 p-3 sm:p-6">
+        <input name="erase" defaultValue={query} maxLength={100} aria-label={t('users.erasure.searchLabel')} placeholder={t('users.erasure.searchPlaceholder')} className="min-h-11 min-w-0 w-full rounded border px-3 py-2 text-base sm:flex-1" />
+        <button type="submit" className="min-h-11 rounded border border-zinc-300 px-4 py-2 text-sm font-medium">{t('users.erasure.search')}</button>
         <span className="text-xs text-zinc-500">{t('users.erasure.searchHint')}</span>
       </form>
       {term && (customers.length === 0 ? (
@@ -50,8 +50,8 @@ export async function CustomerErasureSection({ query }: { query: string }) {
               t('users.erasure.appointments', { count: customer._count.appointments }),
             ].filter(Boolean).join(' · ');
             return (
-              <li key={customer.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
-                <div className="text-sm">
+              <li key={customer.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-4 sm:px-6">
+                <div className="min-w-0 text-sm [overflow-wrap:anywhere]">
                   <p className="font-medium text-zinc-900">{name}</p>
                   <p className="text-zinc-500">{contact}</p>
                 </div>

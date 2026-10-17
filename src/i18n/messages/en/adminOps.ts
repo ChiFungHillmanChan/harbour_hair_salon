@@ -173,6 +173,7 @@ const adminOps = {
       retry: 'Retry failed API jobs',
     },
     google: {
+      details: 'Connection details',
       title: 'Google Calendar',
       intro: "Bookings are written to the salon's Google Calendar. Busy time added there blocks those hours on the website and in the Fresha busy feed.",
       off: 'Google Calendar sync is off. It turns on once the Google Calendar settings are configured in Vercel, on the live site only.',
@@ -414,6 +415,7 @@ const adminOps = {
       system: 'System',
     },
     controls: {
+      title: 'Checks & notification tools',
       diagnosticsTitle: 'Check connections',
       diagnosticsHelp: 'Check the database, email domain and shared Redis connection. This only reads provider status and saves the report.',
       runDiagnostics: 'Run read-only diagnostics',

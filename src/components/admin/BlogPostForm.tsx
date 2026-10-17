@@ -53,7 +53,7 @@ function toDateTimeLocal(date: Date): string {
   return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
 }
 
-const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
+const fieldClass = 'min-h-11 min-w-0 w-full max-w-full border border-zinc-300 rounded px-4 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
 const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2';
 
 /**
@@ -80,7 +80,7 @@ export function BlogPostForm({ mode, action, post, saved }: BlogPostFormProps) {
   const showSavedBanner = state.status === 'success' || (!!saved && state.status !== 'error');
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-8 pb-16">
+    <form ref={formRef} action={formAction} className="space-y-4 sm:space-y-8 pb-16">
       {mode === 'edit' && post && <input type="hidden" name="id" value={post.id} />}
       {showSavedBanner && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded text-sm" role="status">
@@ -96,7 +96,7 @@ export function BlogPostForm({ mode, action, post, saved }: BlogPostFormProps) {
 
       {mode === 'create' && <BilingualContentEditor mode="create" type="BLOG_POST" initial={{ 'en-GB': { authorRole: 'Harbour Hair Salon, Leeds' } }} />}
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg min-w-0 p-4 sm:p-6 space-y-4 sm:space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('blog.form.settingsTitle')}</h2>
           <p className="mt-1 text-xs leading-5 text-zinc-500">{t('blog.form.settingsHelp')}</p>
@@ -119,7 +119,7 @@ export function BlogPostForm({ mode, action, post, saved }: BlogPostFormProps) {
       </section>
 
       {/* Cover image */}
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg min-w-0 p-4 sm:p-6 space-y-4 sm:space-y-5">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('blog.form.coverTitle')}</h2>
 
         <div>
@@ -140,7 +140,7 @@ export function BlogPostForm({ mode, action, post, saved }: BlogPostFormProps) {
       </section>
 
       {/* Author + publishing */}
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg min-w-0 p-4 sm:p-6 space-y-4 sm:space-y-5">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('blog.form.publishingTitle')}</h2>
 
         <div className="grid md:grid-cols-2 gap-5">
@@ -222,28 +222,28 @@ export function BlogPostForm({ mode, action, post, saved }: BlogPostFormProps) {
           />
         </div>
 
-        <fieldset>
+        <fieldset className="min-w-0">
           <legend className={labelClass}>
             {t('blog.form.status')} *
           </legend>
           <div className="flex flex-wrap gap-3">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex min-h-11 items-center gap-2 text-sm">
               <input
                 type="radio"
                 name="status"
                 value="DRAFT"
                 defaultChecked={post?.status !== 'PUBLISHED'}
-                className="w-4 h-4"
+                className="shrink-0 w-4 h-4"
               />
               <span>{t('blog.form.statusDraft')}</span>
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex min-h-11 items-center gap-2 text-sm">
               <input
                 type="radio"
                 name="status"
                 value="PUBLISHED"
                 defaultChecked={post?.status === 'PUBLISHED'}
-                className="w-4 h-4"
+                className="shrink-0 w-4 h-4"
               />
               <span>{t('blog.form.statusPublished')}</span>
             </label>
@@ -253,17 +253,17 @@ export function BlogPostForm({ mode, action, post, saved }: BlogPostFormProps) {
       </section>
 
       {/* Submit */}
-      <div className="flex items-center justify-between gap-4 sticky bottom-0 bg-zinc-50 py-4 border-t border-zinc-200">
+      <div className="grid grid-cols-2 items-center gap-3 sticky bottom-0 bg-zinc-50 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-zinc-200 sm:flex sm:justify-between sm:gap-4 sm:py-4">
         <Link
           href="/admin/blog"
-          className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
+          className="inline-flex min-h-11 min-w-0 items-center text-sm font-medium text-zinc-600 hover:text-zinc-900"
         >
           ← {t('blog.form.backToList')}
         </Link>
         <button
           type="submit"
           disabled={pending}
-          className="bg-zinc-900 hover:bg-zinc-800 text-white px-8 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          className="min-h-11 min-w-0 bg-zinc-900 hover:bg-zinc-800 text-white px-3 sm:px-8 py-3 text-sm sm:uppercase sm:tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {pending ? tc('actions.saving') : mode === 'create' ? t('blog.form.create') : t('blog.form.saveSettings')}
         </button>

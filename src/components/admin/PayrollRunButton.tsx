@@ -23,7 +23,7 @@ export function PayrollRunButton({ year, month }: { year: number; month: number 
       <button
         type="submit"
         disabled={pending}
-        className="bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded transition-colors disabled:opacity-50"
+        className="min-h-11 w-full sm:w-auto bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded transition-colors disabled:opacity-50"
       >
         {pending ? t('payroll.run.running') : t('payroll.run.button')}
       </button>

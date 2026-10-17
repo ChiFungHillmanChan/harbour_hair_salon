@@ -26,7 +26,7 @@ interface CategoryContentFormProps {
   existingCategories: string[];
 }
 
-const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
+const fieldClass = 'min-w-0 w-full border border-zinc-300 rounded px-3 sm:px-4 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
 const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2';
 
 /**
@@ -59,7 +59,7 @@ export function CategoryContentForm({
   const showSavedBanner = state.status === 'success' || (!!saved && state.status !== 'error');
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-6 pb-16">
+    <form ref={formRef} action={formAction} className="min-w-0 space-y-4 sm:space-y-6 pb-16">
       {mode === 'edit' && content && <input type="hidden" name="id" value={content.id} />}
 
       {showSavedBanner && (
@@ -75,13 +75,13 @@ export function CategoryContentForm({
 
       {mode === 'create' && <BilingualContentEditor mode="create" type="CATEGORY_CONTENT" />}
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-6 space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('categories.form.settingsTitle')}</h2>
           <p className="mt-1 text-xs leading-5 text-zinc-500">{t('categories.form.settingsHelp')}</p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-5">
+        <div className="grid [&>*]:min-w-0 md:grid-cols-2 gap-5">
           <div>
             <label htmlFor="category-slug" className={labelClass}>
               {t('categories.form.slug')} * <span className="text-zinc-400 normal-case tracking-normal">{t('categories.form.slugHint')}</span>
@@ -123,7 +123,7 @@ export function CategoryContentForm({
         </div>
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-6 space-y-5">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('categories.form.navigationTitle')}</h2>
 
         <div>
@@ -158,14 +158,14 @@ export function CategoryContentForm({
         </div>
       </section>
 
-      <div className="flex items-center justify-between gap-4 sticky bottom-0 bg-zinc-50 py-4 border-t border-zinc-200">
-        <Link href="/admin/categories" className="text-sm font-medium text-zinc-600 hover:text-zinc-900">
+      <div className="flex flex-col-reverse items-stretch justify-between gap-2 sm:flex-row sm:items-center sm:gap-4 sticky bottom-0 bg-zinc-50 py-4 border-t border-zinc-200">
+        <Link href="/admin/categories" className="inline-flex min-h-11 items-center justify-center text-sm font-medium text-zinc-600 hover:text-zinc-900 sm:justify-start">
           ← {t('categories.form.backToList')}
         </Link>
         <button
           type="submit"
           disabled={pending}
-          className="bg-zinc-900 hover:bg-zinc-800 text-white px-8 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          className="min-h-11 bg-zinc-900 hover:bg-zinc-800 text-white px-4 sm:px-8 py-3 text-sm sm:uppercase sm:tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {pending ? tc('actions.saving') : mode === 'create' ? t('categories.form.create') : t('categories.form.saveSettings')}
         </button>

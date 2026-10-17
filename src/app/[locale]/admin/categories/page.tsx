@@ -1,3 +1,4 @@
+import { AdminResponsiveTable } from '@/components/admin/AdminResponsiveTable';
 import { requireAdmin } from '@/app/lib/session';
 import Link from '@/i18n/link';
 import { getAllCategoryContent } from '@/app/services/category-content-service';
@@ -30,11 +31,11 @@ export default async function AdminCategoriesPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="flex items-start justify-between mb-8 gap-6">
-        <div>
+    <div className="p-3 sm:p-6 lg:p-8">
+      <div className="flex flex-wrap items-start justify-between mb-4 gap-3 sm:mb-8 sm:gap-6">
+        <div className="min-w-0 flex-1 basis-52">
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('categories.list.title')}</h1>
-          <p className="text-zinc-700 mt-2">
+          <p className="text-zinc-700 mt-1 text-sm sm:mt-2 sm:text-base">
             {rich(t('categories.list.intro'), {
               code: (text) => <code className="bg-zinc-100 px-1.5 py-0.5 rounded text-xs">{text}</code>,
             })}
@@ -42,19 +43,19 @@ export default async function AdminCategoriesPage() {
         </div>
         <Link
           href="/admin/categories/new"
-          className="shrink-0 bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded"
+          className="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-2.5 text-sm sm:px-6 sm:py-3 sm:uppercase sm:tracking-[0.15em] font-bold transition-colors rounded"
         >
           + {t('categories.list.new')}
         </Link>
       </div>
 
       {contents.length === 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-lg p-12 text-center">
+        <div className="bg-white border border-zinc-200 rounded-lg p-5 sm:p-12 text-center">
           <p className="text-zinc-500">{t('categories.list.empty')}</p>
         </div>
       ) : (
         <div className="bg-white border border-zinc-200 rounded-lg overflow-x-auto">
-          <table className="w-full">
+          <AdminResponsiveTable>
             <thead className="border-b border-zinc-200 bg-zinc-50">
               <tr>
                 <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-6 py-3">
@@ -79,12 +80,12 @@ export default async function AdminCategoriesPage() {
                 const hasMatchingServices = (serviceCounts.get(c.category) ?? 0) > 0;
                 return (
                   <tr key={c.id} className="hover:bg-zinc-50">
-                    <td className="px-6 py-4">
+                    <td data-label={t('categories.list.columns.title')} data-primary className="px-6 py-4">
                       <p className="font-medium text-zinc-900">{c.title}</p>
                       <p className="text-xs text-zinc-500 font-mono mt-0.5">/services/{c.slug}</p>
                       <ContentStatusBadges status={contentStatus.get(c.id)} labels={statusLabels} />
                     </td>
-                    <td className="px-4 py-4 text-sm">
+                    <td data-label={t('categories.list.columns.category')} className="px-4 py-4 text-sm">
                       <span
                         title={hasMatchingServices ? undefined : t('categories.list.noServices')}
                         className={`inline-block px-2.5 py-1 text-xs uppercase tracking-wider font-bold rounded-full ${
@@ -96,24 +97,24 @@ export default async function AdminCategoriesPage() {
                         {c.category}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-right text-sm text-zinc-600">
+                    <td data-label={t('categories.list.columns.services')} className="px-4 py-4 text-right text-sm text-zinc-600">
                       {serviceCounts.get(c.category) ?? 0}
                     </td>
-                    <td className="px-4 py-4 text-right text-sm text-zinc-600 font-mono">
+                    <td data-label={t('categories.list.columns.order')} className="px-4 py-4 text-right text-sm text-zinc-600 font-mono">
                       {c.displayOrder}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <td data-label={t('categories.list.columns.actions')} data-actions className="px-6 py-4 text-right">
+                      <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
                         <Link
                           href={`/services/${c.slug}`}
                           target="_blank"
-                          className="text-xs font-medium text-zinc-600 hover:text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                          className="inline-flex min-h-11 items-center text-sm sm:min-h-0 sm:text-xs font-medium text-zinc-600 hover:text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
                         >
                           {t('categories.list.view')}
                         </Link>
                         <Link
                           href={`/admin/categories/${c.id}/edit`}
-                          className="text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                          className="inline-flex min-h-11 items-center text-sm sm:min-h-0 sm:text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
                         >
                           {tc('actions.edit')}
                         </Link>
@@ -121,7 +122,7 @@ export default async function AdminCategoriesPage() {
                           action={deleteCategoryContent.bind(null, c.id)}
                           label={tc('actions.delete')}
                           pendingLabel={tc('actions.deleting')}
-                          buttonClassName="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                          buttonClassName="min-h-11 text-sm sm:min-h-0 sm:text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
                           confirmMessage={t('categories.list.deleteConfirm', { title: c.title })}
                         />
                       </div>
@@ -130,7 +131,7 @@ export default async function AdminCategoriesPage() {
                 );
               })}
             </tbody>
-          </table>
+          </AdminResponsiveTable>
         </div>
       )}
     </div>

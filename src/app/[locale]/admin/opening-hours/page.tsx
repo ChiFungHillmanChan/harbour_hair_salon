@@ -54,8 +54,8 @@ export default async function OpeningHoursPage() {
   }));
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-6">
+    <div className="p-3 sm:p-6 lg:p-8">
+      <div className="mb-4 sm:mb-6">
         <h1 className="font-serif text-2xl font-bold text-zinc-900 sm:text-3xl">{t('openingHours.title')}</h1>
         <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-zinc-600">
           {t('openingHours.intro')}

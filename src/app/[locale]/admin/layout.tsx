@@ -21,7 +21,7 @@ export default async function AdminLayout({
     <ClientMessages namespaces={['admin', 'adminSchedule', 'adminCatalog', 'adminContent', 'adminOps', 'adminStaff', 'pricing', 'errors']}>
       <div className="min-h-screen bg-zinc-50 lg:flex">
         <AdminSidebar userId={session.userId} />
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-w-0 flex-1 max-sm:[&_input:not([type=checkbox]):not([type=radio]):not([type=hidden])]:text-base max-sm:[&_select]:text-base max-sm:[&_textarea]:text-base">{children}</main>
       </div>
     </ClientMessages>
   );

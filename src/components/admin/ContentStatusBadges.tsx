@@ -10,14 +10,14 @@ type Labels = { chineseMissing: string; draftPending: string };
 export function ContentStatusBadges({ status, labels }: { status: ContentStatus | undefined; labels: Labels }) {
   if (!status || (status.chinesePublished && !status.draftPending)) return null;
   return (
-    <span className="inline-flex flex-wrap gap-1.5 mt-1">
+    <span className="inline-flex max-w-full flex-wrap gap-1.5 mt-1">
       {!status.chinesePublished && (
-        <span className="inline-block px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+        <span className="inline-block max-w-full break-words px-2 py-0.5 text-[11px] sm:text-[10px] font-medium uppercase tracking-wider rounded-full bg-amber-50 text-amber-800 border border-amber-200">
           {labels.chineseMissing}
         </span>
       )}
       {status.draftPending && (
-        <span className="inline-block px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
+        <span className="inline-block max-w-full break-words px-2 py-0.5 text-[11px] sm:text-[10px] font-medium uppercase tracking-wider rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
           {labels.draftPending}
         </span>
       )}

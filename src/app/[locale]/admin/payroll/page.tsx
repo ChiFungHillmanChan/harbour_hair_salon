@@ -1,3 +1,4 @@
+import { AdminResponsiveTable } from '@/components/admin/AdminResponsiveTable';
 import { requireAdmin } from '@/app/lib/session';
 // src/app/admin/payroll/page.tsx
 import prisma from '@/app/lib/prisma';
@@ -53,7 +54,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   const csvHref = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">{t('payroll.title', { period: formatMonth(locale, year, month) })}</h1>
       <p className="text-sm text-zinc-500">{t('payroll.intro')}</p>
 
@@ -64,7 +65,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
       {period && (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
+            <AdminResponsiveTable className="text-sm border-collapse">
               <thead>
                 <tr className="text-left border-b">
                   <th className="p-2">{t('payroll.columns.employee')}</th><th className="p-2">{t('payroll.columns.hours')}</th><th className="p-2">{t('payroll.columns.base')}</th>
@@ -74,27 +75,27 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
               <tbody>
                 {period.lines.map((l) => (
                   <tr key={l.id} className="border-b">
-                    <td className="p-2">{l.employee.name}</td>
-                    <td className="p-2">{Number(l.totalHours.toString()).toFixed(2)}</td>
-                    <td className="p-2">{money(l.basePay)}</td>
-                    <td className="p-2">{money(l.overtimePay)}</td>
-                    <td className="p-2">{money(l.commissionPay)}</td>
-                    <td className="p-2">
+                    <td data-label={t('payroll.columns.employee')} data-primary className="p-2 font-medium">{l.employee.name}</td>
+                    <td data-label={t('payroll.columns.hours')} className="p-2">{Number(l.totalHours.toString()).toFixed(2)}</td>
+                    <td data-label={t('payroll.columns.base')} className="p-2">{money(l.basePay)}</td>
+                    <td data-label={t('payroll.columns.overtime')} className="p-2">{money(l.overtimePay)}</td>
+                    <td data-label={t('payroll.columns.commission')} className="p-2">{money(l.commissionPay)}</td>
+                    <td data-label={t('payroll.columns.adjustments')} data-actions className="p-2">
                       {period.status === 'DRAFT' ? (
                         <PayrollAdjustmentForm lineId={l.id} amount={Number(l.adjustments.toString())} note={l.adjustmentNote ?? ''} />
                       ) : (
                         <span>{money(l.adjustments)}</span>
                       )}
                     </td>
-                    <td className="p-2 font-bold">{money(l.grossPay)}</td>
+                    <td data-label={t('payroll.columns.gross')} className="p-2 font-bold">{money(l.grossPay)}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </AdminResponsiveTable>
           </div>
 
-          <div className="flex flex-wrap gap-4 items-center">
-            <a href={csvHref} download={`payroll-${year}-${String(month).padStart(2, '0')}.csv`} aria-describedby="payroll-csv-help" className="border border-zinc-300 text-zinc-900 px-4 py-2 rounded">
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <a href={csvHref} download={`payroll-${year}-${String(month).padStart(2, '0')}.csv`} aria-describedby="payroll-csv-help" className="inline-flex min-h-11 items-center justify-center border border-zinc-300 text-zinc-900 px-4 py-2 rounded">
               {t('payroll.csv.download')}
             </a>
             {period.status === 'DRAFT' ? (
@@ -102,7 +103,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
                 action={finalizePayrollAction.bind(null, period.id)}
                 label={t('payroll.finalize')}
                 pendingLabel={t('payroll.finalizing')}
-                buttonClassName="bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded font-bold transition-colors"
+                buttonClassName="min-h-11 w-full sm:w-auto bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded font-bold transition-colors"
                 confirmMessage={t('payroll.finalizeConfirm')}
               />
             ) : (
@@ -112,7 +113,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
                   action={reopenPayrollAction.bind(null, period.id)}
                   label={t('payroll.reopen')}
                   pendingLabel={t('payroll.reopening')}
-                  buttonClassName="border border-zinc-300 text-zinc-700 hover:bg-zinc-50 px-4 py-2 rounded"
+                  buttonClassName="min-h-11 w-full sm:w-auto border border-zinc-300 text-zinc-700 hover:bg-zinc-50 px-4 py-2 rounded"
                   confirmMessage={t('payroll.reopenConfirm')}
                 />
               </>

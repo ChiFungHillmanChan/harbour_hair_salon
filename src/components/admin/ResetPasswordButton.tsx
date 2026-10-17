@@ -33,7 +33,7 @@ export function ResetPasswordButton({ userId, userName }: ResetPasswordButtonPro
   return (
     <button
       onClick={handleResetPassword}
-      className="text-zinc-700 hover:text-zinc-900 mr-4"
+      className="min-h-11 rounded border border-zinc-200 px-3 py-2 text-zinc-700 hover:text-zinc-900"
     >
       {t('users.resetPassword.button')}
     </button>

@@ -444,6 +444,7 @@ const adminContent: Localized<Messages['adminContent']> = {
     },
   },
   settings: {
+    jumpTo: '跳至設定部分',
     title: '網站設定',
     intro: '社交媒體連結、驗證碼及聯絡資料。變更會同步到主頁的 <link>HairSalon 結構化資料</link>及全站元資料。',
     saved: '設定已儲存。',

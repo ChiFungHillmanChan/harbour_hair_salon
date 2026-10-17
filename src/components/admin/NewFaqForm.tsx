@@ -27,7 +27,7 @@ export function NewFaqForm({ action, existingKeys, presetKey }: NewFaqFormProps)
   });
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-6">
+    <form ref={formRef} action={formAction} className="space-y-4 sm:space-y-6">
       {state.status === 'error' && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm" role="alert">
           {state.message}
@@ -36,7 +36,7 @@ export function NewFaqForm({ action, existingKeys, presetKey }: NewFaqFormProps)
 
       <BilingualContentEditor mode="create" type="FAQ" />
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg min-w-0 p-4 sm:p-6 space-y-4 sm:space-y-5">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('faqs.form.placementTitle')}</h2>
         <div>
           <label htmlFor="faq-key" className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
@@ -50,7 +50,7 @@ export function NewFaqForm({ action, existingKeys, presetKey }: NewFaqFormProps)
             list="faq-keys"
             defaultValue={presetKey ?? ''}
             placeholder={t('faqs.form.keyPlaceholder')}
-            className="w-full border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+            className="min-h-11 min-w-0 w-full max-w-full border border-zinc-300 rounded px-4 py-3 text-base sm:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
           />
           <datalist id="faq-keys">
             {existingKeys.map((k) => (
@@ -71,7 +71,7 @@ export function NewFaqForm({ action, existingKeys, presetKey }: NewFaqFormProps)
             min={0}
             max={10000}
             defaultValue={0}
-            className="w-32 border border-zinc-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+            className="min-h-11 min-w-0 w-32 max-w-full border border-zinc-300 rounded px-4 py-3 text-base sm:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
           />
         </div>
       </section>

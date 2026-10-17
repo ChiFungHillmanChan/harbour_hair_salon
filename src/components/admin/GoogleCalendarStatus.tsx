@@ -3,6 +3,7 @@ import { stylistSwatch } from '@/app/lib/calendar-colors';
 import { operationsMessageKey } from '@/app/services/operations-messages';
 import type { GoogleCalendarStatus as Status } from '@/app/services/google-calendar-status';
 import type { DiaryConfig } from '@/app/services/google-diary-classify';
+import { MobileScheduleDisclosure } from '@/components/admin/MobileScheduleDisclosure';
 import { GoogleColorPicker } from '@/components/admin/GoogleColorPicker';
 import { GoogleClearBusyButton } from '@/components/admin/GoogleClearBusyButton';
 import { GoogleSyncButton } from '@/components/admin/GoogleSyncButton';
@@ -25,45 +26,56 @@ export async function GoogleCalendarStatus({ status, colours }: { status: Status
     const key = operationsMessageKey(text);
     return key ? t(`operations.messages.${key}`) : <span lang="en">{text}</span>;
   };
-  return <section className="rounded-xl border border-zinc-200 bg-white p-5" data-testid="google-calendar-status">
-    <h2 className="text-xl font-semibold">{t('integrations.google.title')}</h2>
-    <p className="mt-2 text-sm leading-6 text-zinc-600">{t('integrations.google.intro')}</p>
+  return <section className="min-w-0 rounded-xl border border-zinc-200 bg-white p-3 sm:p-5" data-testid="google-calendar-status">
+    <h2 className="text-lg sm:text-xl font-semibold">{t('integrations.google.title')}</h2>
     <p className="mt-3 rounded bg-zinc-50 p-3 text-sm">{status.enabled ? t('integrations.google.on') : t('integrations.google.off')}</p>
-    {status.enabled && <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
-      <dt className="text-zinc-500">{t('integrations.google.calendar')}</dt><dd><code className="text-xs">{status.calendarId}</code></dd>
-      <dt className="text-zinc-500">{t('integrations.google.channel')}</dt><dd>{status.channelExpiresAt ? formatSalonDateTime(locale, status.channelExpiresAt) : t('integrations.google.channelNone')}</dd>
-      <dt className="text-zinc-500">{t('integrations.google.lastPull')}</dt><dd>{timestamp(status.lastPullAt)}</dd>
-      <dt className="text-zinc-500">{t('integrations.google.lastSuccess')}</dt><dd>{timestamp(status.lastPullSuccessAt)}</dd>
-      <dt className="text-zinc-500">{t('integrations.google.lastError')}</dt><dd>{problem(status.lastPullError)}</dd>
-      <dt className="text-zinc-500">{t('integrations.google.failedEvents')}</dt><dd>{status.failedEvents}</dd>
-    </dl>}
+    {status.enabled && <p className="mt-2 text-xs text-zinc-600">{t('integrations.google.lastSuccess')}: {timestamp(status.lastPullSuccessAt)}</p>}
+    {status.enabled && status.lastPullError && <p role="alert" className="mt-3 break-words rounded bg-red-50 p-3 text-sm text-red-800">{t('integrations.google.lastError')}: {problem(status.lastPullError)}</p>}
+    {status.enabled && status.failedEvents > 0 && <p className="mt-2 text-sm font-medium text-amber-800">{t('integrations.google.failedEvents')}: {status.failedEvents}</p>}
     <form action={syncGoogleCalendarNow} className="mt-4">
       <GoogleSyncButton label={t('integrations.google.syncNow')} busy={t('integrations.google.syncing')} disabled={!status.enabled} />
       <p className="mt-2 text-xs leading-5 text-zinc-500">{status.enabled ? t('integrations.google.syncNowHelp') : t('integrations.google.syncNowOff')}</p>
     </form>
-    <form action={saveGoogleDiaryColours} className="mt-5 space-y-4 border-t border-zinc-100 pt-4">
-      <h3 className="text-sm font-semibold">{t('integrations.google.colours.title')}</h3>
-      <p className="text-xs leading-5 text-zinc-500">{t('integrations.google.colours.intro')}</p>
-      <GoogleColorPicker name="googleUnassignedColorId" label={t('integrations.google.colours.unassigned')} help={t('integrations.google.colours.unassignedHelp')} initial={colours.unassignedColorId} allowNone={false} />
-      <GoogleColorPicker name="googleLeaveColorId" label={t('integrations.google.colours.leave')} help={t('integrations.google.colours.leaveHelp')} initial={colours.leaveColorId} allowNone={false} />
-      <div>
-        <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-600">{t('integrations.google.colours.stylists')}</h4>
-        <ul className="space-y-1 text-sm">
-          {colours.stylists.map((stylist) => <li key={stylist.id} className="flex items-center gap-2">
-            {stylist.googleColorId
-              ? <span aria-hidden="true" className={`inline-block h-3 w-3 rounded-full ${stylistSwatch({ calendarColor: null, googleColorId: stylist.googleColorId }).swatch}`} />
-              : <span className="text-xs text-zinc-400">{t('integrations.google.colours.stylistNone')}</span>}
-            <span>{stylist.name}</span>
-            {stylist.googleAliases && <span className="text-xs text-zinc-500">({stylist.googleAliases})</span>}
-          </li>)}
-        </ul>
-      </div>
-      <button type="submit" className="rounded bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800">{t('integrations.google.colours.save')}</button>
-    </form>
-    <form action={clearGoogleBusyTime} className="mt-5 border-t border-zinc-100 pt-4">
-      <h3 className="text-sm font-semibold">{t('integrations.google.clear.title')}</h3>
-      <p className="mb-3 mt-1 text-xs leading-5 text-zinc-500">{status.enabled ? t('integrations.google.clear.helpOn') : t('integrations.google.clear.helpOff')}</p>
-      <GoogleClearBusyButton label={t('integrations.google.clear.button')} busy={t('integrations.google.clear.clearing')} confirm={t('integrations.google.clear.confirm')} />
-    </form>
+    <div className="mt-4">
+      <MobileScheduleDisclosure label={t('integrations.google.details')}>
+        <p className="text-sm leading-6 text-zinc-600">{t('integrations.google.intro')}</p>
+        {status.enabled && <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_minmax(0,1fr)] [&_dd]:min-w-0 [&_dd]:break-words">
+          <dt className="text-zinc-500">{t('integrations.google.calendar')}</dt><dd><code className="text-xs">{status.calendarId}</code></dd>
+          <dt className="text-zinc-500">{t('integrations.google.channel')}</dt><dd>{status.channelExpiresAt ? formatSalonDateTime(locale, status.channelExpiresAt) : t('integrations.google.channelNone')}</dd>
+          <dt className="text-zinc-500">{t('integrations.google.lastPull')}</dt><dd>{timestamp(status.lastPullAt)}</dd>
+          <dt className="text-zinc-500">{t('integrations.google.lastSuccess')}</dt><dd>{timestamp(status.lastPullSuccessAt)}</dd>
+          <dt className="text-zinc-500">{t('integrations.google.lastError')}</dt><dd>{problem(status.lastPullError)}</dd>
+          <dt className="text-zinc-500">{t('integrations.google.failedEvents')}</dt><dd>{status.failedEvents}</dd>
+        </dl>}
+      </MobileScheduleDisclosure>
+    </div>
+    <details className="mt-4 border-t border-zinc-100 pt-2">
+      <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">{t('integrations.google.colours.title')}</summary>
+      <form action={saveGoogleDiaryColours} className="mt-3 space-y-4">
+        <p className="text-xs leading-5 text-zinc-500">{t('integrations.google.colours.intro')}</p>
+        <GoogleColorPicker name="googleUnassignedColorId" label={t('integrations.google.colours.unassigned')} help={t('integrations.google.colours.unassignedHelp')} initial={colours.unassignedColorId} allowNone={false} />
+        <GoogleColorPicker name="googleLeaveColorId" label={t('integrations.google.colours.leave')} help={t('integrations.google.colours.leaveHelp')} initial={colours.leaveColorId} allowNone={false} />
+        <div>
+          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-600">{t('integrations.google.colours.stylists')}</h4>
+          <ul className="space-y-1 text-sm">
+            {colours.stylists.map((stylist) => <li key={stylist.id} className="flex flex-wrap items-center gap-2 break-words">
+              {stylist.googleColorId
+                ? <span aria-hidden="true" className={`inline-block h-3 w-3 shrink-0 rounded-full ${stylistSwatch({ calendarColor: null, googleColorId: stylist.googleColorId }).swatch}`} />
+                : <span className="text-xs text-zinc-400">{t('integrations.google.colours.stylistNone')}</span>}
+              <span>{stylist.name}</span>
+              {stylist.googleAliases && <span className="text-xs text-zinc-500">({stylist.googleAliases})</span>}
+            </li>)}
+          </ul>
+        </div>
+        <button type="submit" className="min-h-11 rounded bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800">{t('integrations.google.colours.save')}</button>
+      </form>
+    </details>
+    <details className="mt-2 border-t border-zinc-100 pt-2">
+      <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">{t('integrations.google.clear.title')}</summary>
+      <form action={clearGoogleBusyTime}>
+        <p className="mb-3 mt-1 text-xs leading-5 text-zinc-500">{status.enabled ? t('integrations.google.clear.helpOn') : t('integrations.google.clear.helpOff')}</p>
+        <GoogleClearBusyButton label={t('integrations.google.clear.button')} busy={t('integrations.google.clear.clearing')} confirm={t('integrations.google.clear.confirm')} />
+      </form>
+    </details>
   </section>;
 }

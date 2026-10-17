@@ -61,28 +61,28 @@ export default function EmployeeForm({
   const f = (key: Parameters<typeof t>[0]) => ({ placeholder: t(key), 'aria-label': t(key) });
 
   return (
-    <form ref={formRef} action={onSubmit} className="space-y-4 max-w-xl">
+    <form ref={formRef} action={onSubmit} className="space-y-4 w-full min-w-0 max-w-xl">
       {error && <p className="text-red-600 text-sm" role="alert">{error}</p>}
       {saved && !error && (
         <p className="text-green-700 text-sm" role="status">{employee ? t('employees.form.saved') : t('employees.form.added')}</p>
       )}
-      <input name="name" defaultValue={employee?.name} {...f('employees.form.name')} required className="w-full border p-2 rounded" />
-      <input name="title" defaultValue={employee?.title} {...f('employees.form.title')} required className="w-full border p-2 rounded" />
-      <select name="payType" defaultValue={employee?.payType ?? 'HOURLY'} aria-label={t('employees.form.payType')} className="w-full border p-2 rounded">
+      <input name="name" defaultValue={employee?.name} {...f('employees.form.name')} required className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm" />
+      <input name="title" defaultValue={employee?.title} {...f('employees.form.title')} required className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm" />
+      <select name="payType" defaultValue={employee?.payType ?? 'HOURLY'} aria-label={t('employees.form.payType')} className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm">
         {PAY_TYPES.map((type) => <option key={type} value={type}>{t.dynamic(`payType.${type}`)}</option>)}
       </select>
-      <input name="hourlyRate" type="number" step="0.01" defaultValue={employee?.hourlyRate ?? ''} {...f('employees.form.hourlyRate')} className="w-full border p-2 rounded" />
-      <input name="monthlySalary" type="number" step="0.01" defaultValue={employee?.monthlySalary ?? ''} {...f('employees.form.monthlySalary')} className="w-full border p-2 rounded" />
-      <input name="commissionRate" type="number" step="0.01" min="0" max="1" defaultValue={employee?.commissionRate ?? ''} {...f('employees.form.commissionRate')} className="w-full border p-2 rounded" />
-      <label className="flex items-center gap-2">
-        <input name="overtimeEnabled" type="checkbox" defaultChecked={employee?.overtimeEnabled} /> {t('employees.form.overtimeEnabled')}
+      <input name="hourlyRate" type="number" step="0.01" defaultValue={employee?.hourlyRate ?? ''} {...f('employees.form.hourlyRate')} className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm" />
+      <input name="monthlySalary" type="number" step="0.01" defaultValue={employee?.monthlySalary ?? ''} {...f('employees.form.monthlySalary')} className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm" />
+      <input name="commissionRate" type="number" step="0.01" min="0" max="1" defaultValue={employee?.commissionRate ?? ''} {...f('employees.form.commissionRate')} className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm" />
+      <label className="flex min-h-11 items-center gap-3 text-sm">
+        <input name="overtimeEnabled" type="checkbox" className="size-5 shrink-0 accent-zinc-900" defaultChecked={employee?.overtimeEnabled} /> {t('employees.form.overtimeEnabled')}
       </label>
-      <input name="overtimeThresholdHours" type="number" step="0.5" defaultValue={employee?.overtimeThresholdHours ?? ''} {...f('employees.form.overtimeThreshold')} className="w-full border p-2 rounded" />
-      <input name="overtimeMultiplier" type="number" step="0.1" min="1" defaultValue={employee?.overtimeMultiplier ?? ''} {...f('employees.form.overtimeMultiplier')} className="w-full border p-2 rounded" />
-      <input name="unpaidBreakMinutes" type="number" min="0" max="480" step="5" defaultValue={employee?.unpaidBreakMinutes ?? ''} {...f('employees.form.unpaidBreak')} className="w-full border p-2 rounded" />
+      <input name="overtimeThresholdHours" type="number" step="0.5" defaultValue={employee?.overtimeThresholdHours ?? ''} {...f('employees.form.overtimeThreshold')} className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm" />
+      <input name="overtimeMultiplier" type="number" step="0.1" min="1" defaultValue={employee?.overtimeMultiplier ?? ''} {...f('employees.form.overtimeMultiplier')} className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm" />
+      <input name="unpaidBreakMinutes" type="number" min="0" max="480" step="5" defaultValue={employee?.unpaidBreakMinutes ?? ''} {...f('employees.form.unpaidBreak')} className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm" />
       {/* Keyed by the saved link: a select keeps its first defaultValue, so after
           "Also add as stylist" it would still show none and a second save would unlink. */}
-      <select key={employee?.stylistId ?? 'none'} name="stylistId" defaultValue={employee?.stylistId ?? ''} disabled={addAsStylist} aria-label={t('employees.form.stylist')} className="w-full border p-2 rounded disabled:opacity-50">
+      <select key={employee?.stylistId ?? 'none'} name="stylistId" defaultValue={employee?.stylistId ?? ''} disabled={addAsStylist} aria-label={t('employees.form.stylist')} className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm disabled:opacity-50">
         <option value="">{t('employees.form.noStylist')}</option>
         {selectableStylists.map((s) => (
           <option key={s.id} value={s.id}>{s.name}</option>
@@ -91,17 +91,17 @@ export default function EmployeeForm({
       {/* Only for someone with no stylist yet: a new employee, or one never linked. */}
       {!employee?.stylistId && (
         <div>
-          <label className="flex items-center gap-2">
-            <input name="addAsStylist" type="checkbox" data-no-preserve checked={addAsStylist} onChange={(event) => setAddAsStylist(event.target.checked)} />
+          <label className="flex min-h-11 items-center gap-3 text-sm">
+            <input name="addAsStylist" type="checkbox" className="size-5 shrink-0 accent-zinc-900" data-no-preserve checked={addAsStylist} onChange={(event) => setAddAsStylist(event.target.checked)} />
             {t('employees.form.addAsStylist')}
           </label>
           <p className="text-xs text-zinc-500 mt-1">{t('employees.form.addAsStylistHelp')}</p>
         </div>
       )}
       {!employee && (
-        <input name="pin" inputMode="numeric" pattern="\d{4,6}" {...f('employees.form.pin')} required autoComplete="off" data-no-preserve className="w-full border p-2 rounded" />
+        <input name="pin" inputMode="numeric" pattern="\d{4,6}" {...f('employees.form.pin')} required autoComplete="off" data-no-preserve className="w-full min-w-0 min-h-11 border p-2 rounded text-base sm:text-sm" />
       )}
-      <button type="submit" disabled={pending} className="bg-zinc-900 text-white px-6 py-3 uppercase tracking-[0.15em] font-bold hover:bg-black transition-colors disabled:opacity-50">
+      <button type="submit" disabled={pending} className="w-full sm:w-auto min-h-11 bg-zinc-900 text-white px-6 py-3 text-sm font-bold hover:bg-black transition-colors disabled:opacity-50">
         {pending ? t('employees.form.saving') : employee ? t('employees.form.save') : t('employees.form.add')}
       </button>
     </form>
@@ -126,7 +126,7 @@ export function EmployeePinReset({
   const inputId = useId();
 
   return (
-    <form action={formAction} className="flex items-center gap-1">
+    <form action={formAction} className="flex min-w-0 flex-wrap items-center gap-2">
       <label className="sr-only" htmlFor={inputId}>{t('employees.pinReset.label', { name: employeeName })}</label>
       <input
         id={inputId}
@@ -136,12 +136,12 @@ export function EmployeePinReset({
         required
         autoComplete="off"
         placeholder={t('employees.pinReset.placeholder')}
-        className="w-24 border p-1 rounded text-sm"
+        className="min-h-11 w-28 min-w-0 border px-2 py-2 rounded text-base sm:text-sm"
       />
       <button
         type="submit"
         disabled={pending}
-        className="text-sm text-zinc-700 hover:text-zinc-900 font-medium disabled:opacity-50"
+        className="min-h-11 px-2 text-sm text-zinc-700 hover:text-zinc-900 font-medium disabled:opacity-50"
       >
         {pending ? t('employees.pinReset.saving') : t('employees.pinReset.set')}
       </button>

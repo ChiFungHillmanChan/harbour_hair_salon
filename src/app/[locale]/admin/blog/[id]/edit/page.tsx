@@ -25,10 +25,10 @@ export default async function EditBlogPostPage({
   const editor = await prisma.$transaction((tx) => getEditorState(tx, 'BLOG_POST', post.id));
 
   return (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto space-y-8">
+    <div className="p-3 sm:p-8 max-w-4xl mx-auto space-y-4 sm:space-y-8">
       <div>
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">{t('blog.form.editTitle')}</h1>
-        <p className="text-zinc-700 mt-2 font-mono text-sm">/{post.slug}</p>
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('blog.form.editTitle')}</h1>
+        <p className="break-all text-zinc-700 mt-2 font-mono text-sm">/{post.slug}</p>
       </div>
       <BilingualContentEditor
         mode="edit"

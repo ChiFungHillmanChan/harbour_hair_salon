@@ -25,7 +25,7 @@ interface SiteSettingsFormProps {
 }
 
 const DRAFT_KEY = 'site-settings-form';
-const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
+const fieldClass = 'min-h-11 min-w-0 w-full border border-zinc-300 rounded px-3 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
 const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2';
 
 /**
@@ -123,13 +123,13 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
         </div>
       )}
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section id="settings-booking" className="scroll-mt-20 bg-white border border-zinc-200 rounded-lg p-3 space-y-4 sm:p-6 sm:space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.booking.title')}</h2>
           <p className="text-xs text-zinc-500 mt-1">{t('settings.booking.help')}</p>
         </div>
 
-        <label className="flex items-start gap-3 cursor-pointer">
+        <label className="flex min-h-11 items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
             name="bookingEnabled"
@@ -174,13 +174,13 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
         )}
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section id="settings-deposits" className="scroll-mt-20 bg-white border border-zinc-200 rounded-lg p-3 space-y-4 sm:p-6 sm:space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.deposits.title')}</h2>
           <p className="text-xs text-zinc-500 mt-1">{t('settings.deposits.help')}</p>
         </div>
 
-        <label className="flex items-start gap-3 cursor-pointer">
+        <label className="flex min-h-11 items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
             name="depositsEnabled"
@@ -221,12 +221,12 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
         </p>
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section id="settings-lateArrivals" className="scroll-mt-20 bg-white border border-zinc-200 rounded-lg p-3 space-y-4 sm:p-6 sm:space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.lateArrivals.title')}</h2>
           <p className="text-xs text-zinc-500 mt-1">{t('settings.lateArrivals.help', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })}</p>
         </div>
-        <label className="flex items-start gap-3 cursor-pointer">
+        <label className="flex min-h-11 items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
             name="lateAutoCancelEnabled"
@@ -240,7 +240,7 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
         </label>
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section id="settings-contact" className="scroll-mt-20 bg-white border border-zinc-200 rounded-lg p-3 space-y-4 sm:p-6 sm:space-y-5">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.contact.title')}</h2>
 
         <div>
@@ -259,7 +259,7 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
         </div>
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section id="settings-notifications" className="scroll-mt-20 bg-white border border-zinc-200 rounded-lg p-3 space-y-4 sm:p-6 sm:space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.notifications.title')}</h2>
           <p className="text-xs text-zinc-500 mt-1">{t('settings.notifications.help')}</p>
@@ -284,7 +284,7 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
         </div>
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section id="settings-social" className="scroll-mt-20 bg-white border border-zinc-200 rounded-lg p-3 space-y-4 sm:p-6 sm:space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('settings.social.title')}</h2>
           <p className="text-xs text-zinc-500 mt-1">{t('settings.social.help')}</p>
@@ -298,7 +298,7 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
         {urlField('booksyUrl', 'https://booksy.com/...')}
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section id="settings-search" className="scroll-mt-20 bg-white border border-zinc-200 rounded-lg p-3 space-y-4 sm:p-6 sm:space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">
             {t('settings.search.title')}
@@ -342,7 +342,7 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
         <button
           type="submit"
           disabled={pending}
-          className="bg-zinc-900 hover:bg-zinc-800 text-white px-8 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          className="min-h-11 w-full sm:w-auto bg-zinc-900 hover:bg-zinc-800 text-white px-8 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {pending ? tc('actions.saving') : t('settings.save')}
         </button>

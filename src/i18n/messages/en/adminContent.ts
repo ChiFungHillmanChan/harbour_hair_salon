@@ -444,6 +444,7 @@ const adminContent = {
     },
   },
   settings: {
+    jumpTo: 'Jump to section',
     title: 'Site settings',
     intro: 'Social links, verification codes and contact details. Changes propagate to the home page <link>HairSalon schema</link> and site-wide metadata.',
     saved: 'Settings saved.',

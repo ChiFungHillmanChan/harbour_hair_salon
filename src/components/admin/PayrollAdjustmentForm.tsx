@@ -38,15 +38,15 @@ export default function PayrollAdjustmentForm({ lineId, amount, note }: { lineId
   }
 
   return (
-    <div className="space-y-1">
-      <div className="flex gap-2 items-center">
-        <input type="number" step="0.01" value={a} onChange={(e) => setA(e.target.value)} aria-label={t('payroll.adjustment.amount')} className="border p-1 w-24 rounded" />
-        <input type="text" value={n} onChange={(e) => setN(e.target.value)} placeholder={t('payroll.adjustment.notePlaceholder')} aria-label={t('payroll.adjustment.note')} className="border p-1 rounded" />
+    <div className="min-w-0 space-y-2">
+      <div className="flex min-w-0 flex-col items-stretch gap-2 md:flex-row md:items-center">
+        <input type="number" step="0.01" value={a} onChange={(e) => setA(e.target.value)} aria-label={t('payroll.adjustment.amount')} className="min-h-11 w-full min-w-0 border px-2 py-2 rounded text-base md:w-24 md:text-sm" />
+        <input type="text" value={n} onChange={(e) => setN(e.target.value)} placeholder={t('payroll.adjustment.notePlaceholder')} aria-label={t('payroll.adjustment.note')} className="min-h-11 w-full min-w-0 border px-2 py-2 rounded text-base md:w-44 md:text-sm" />
         <button
           type="button"
           disabled={saving}
           onClick={save}
-          className="text-zinc-900 underline disabled:opacity-50"
+          className="min-h-11 px-3 text-sm text-zinc-900 underline disabled:opacity-50"
         >
           {saving ? t('payroll.adjustment.saving') : t('payroll.adjustment.save')}
         </button>

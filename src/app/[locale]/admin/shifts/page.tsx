@@ -1,3 +1,4 @@
+import { AdminResponsiveTable } from '@/components/admin/AdminResponsiveTable';
 import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { deleteShift } from '@/app/actions/shifts';
@@ -39,18 +40,20 @@ export default async function AdminShiftsPage({ searchParams }: { searchParams: 
   const shifts = rows.slice(0, 25);
 
   return (
-    <div className="p-4 sm:p-6 space-y-8">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-8">
       <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">{t('shifts.title')}</h1>
 
-      <section>
-        <h2 className="text-xl mb-3">{t('shifts.addTitle')}</h2>
-        <ShiftForm employees={employees} />
-      </section>
+      <details className="rounded-lg border border-zinc-200 bg-white">
+        <summary className="min-h-11 cursor-pointer px-4 py-3 font-medium text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2">{t('shifts.addTitle')}</summary>
+        <div className="border-t border-zinc-100 p-3 sm:p-4">
+          <ShiftForm employees={employees} />
+        </div>
+      </details>
 
       <section>
         <h2 className="text-xl mb-3">{t('shifts.upcomingTitle')}</h2>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+          <AdminResponsiveTable className="text-sm border-collapse">
             <thead>
               <tr className="text-left border-b">
                 <th className="p-2">{t('shifts.columns.employee')}</th>
@@ -69,16 +72,16 @@ export default async function AdminShiftsPage({ searchParams }: { searchParams: 
 
                 return (
                   <tr key={s.id} className="border-b">
-                    <td className="p-2">{s.employee.name}</td>
-                    <td className="p-2">{dateStr}</td>
-                    <td className="p-2">{s.startTime}</td>
-                    <td className="p-2">{s.endTime}</td>
-                    <td className="p-2">
+                    <td data-label={t('shifts.columns.employee')} data-primary className="p-2 font-medium">{s.employee.name}</td>
+                    <td data-label={t('shifts.columns.date')} className="p-2">{dateStr}</td>
+                    <td data-label={t('shifts.columns.start')} className="p-2">{s.startTime}</td>
+                    <td data-label={t('shifts.columns.end')} className="p-2">{s.endTime}</td>
+                    <td data-label={t('shifts.columns.actions')} data-actions className="p-2">
                       <RowActionButton
                         action={deleteShift.bind(null, s.id)}
                         label={t('shifts.delete')}
                         pendingLabel={t('shifts.deleting')}
-                        buttonClassName="text-red-600 hover:text-red-800 text-xs font-medium"
+                        buttonClassName="min-h-11 text-red-600 hover:text-red-800 text-sm font-medium"
                         confirmMessage={t('shifts.deleteConfirm', { name: s.employee.name, date: dateStr, start: s.startTime, end: s.endTime })}
                       />
                     </td>
@@ -93,7 +96,7 @@ export default async function AdminShiftsPage({ searchParams }: { searchParams: 
                 </tr>
               )}
             </tbody>
-          </table>
+          </AdminResponsiveTable>
         </div>
         <Pagination path="/admin/shifts" page={page} hasMore={rows.length > 25} />
       </section>

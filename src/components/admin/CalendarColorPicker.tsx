@@ -24,7 +24,7 @@ export function CalendarColorPicker({ name, label, help, initial }: CalendarColo
   const t = useT('adminSchedule');
 
   return (
-    <fieldset>
+    <fieldset className="min-w-0">
       <legend className="block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2">
         {label}
       </legend>
@@ -36,7 +36,7 @@ export function CalendarColorPicker({ name, label, help, initial }: CalendarColo
           aria-pressed={selected === ''}
           title={t('colors.none')}
           aria-label={t('colors.none')}
-          className={`h-9 w-9 rounded-full border-2 bg-white flex items-center justify-center text-xs text-zinc-400 transition
+          className={`h-11 w-11 sm:h-9 sm:w-9 rounded-full border-2 bg-white flex items-center justify-center text-xs text-zinc-400 transition
             ${selected === '' ? 'border-zinc-900 ring-2 ring-zinc-900/20' : 'border-zinc-300 hover:border-zinc-500'}`}
         >
           ✕
@@ -52,7 +52,7 @@ export function CalendarColorPicker({ name, label, help, initial }: CalendarColo
               onClick={() => setSelected(key)}
               aria-pressed={isSelected}
               title={name}
-              className={`h-9 w-9 rounded-full border-2 transition ${swatch.swatch}
+              className={`h-11 w-11 sm:h-9 sm:w-9 rounded-full border-2 transition ${swatch.swatch}
                 ${isSelected ? 'border-zinc-900 ring-2 ring-zinc-900/20' : 'border-transparent hover:border-zinc-400'}`}
             >
               <span className="sr-only">{name}</span>

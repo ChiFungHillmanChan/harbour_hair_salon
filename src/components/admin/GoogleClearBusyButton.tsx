@@ -13,5 +13,5 @@ export function GoogleClearBusyButton({ label, busy, confirm }: { label: string;
   const ask = (event: MouseEvent<HTMLButtonElement>) => {
     if (!window.confirm(confirm)) event.preventDefault();
   };
-  return <button onClick={ask} disabled={pending} aria-busy={pending} className="rounded border border-zinc-900 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50">{pending ? busy : label}</button>;
+  return <button onClick={ask} disabled={pending} aria-busy={pending} className="min-h-11 max-w-full rounded border border-zinc-900 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50">{pending ? busy : label}</button>;
 }

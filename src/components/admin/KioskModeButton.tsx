@@ -12,22 +12,22 @@ export default function KioskModeButton() {
   const [typedName, setTypedName] = useDraftState<string | null>('kiosk-device-name', null);
   const deviceName = typedName ?? t('kioskDevices.defaultName');
   return (
-    <div className="flex flex-wrap items-end gap-3">
+    <div className="flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end">
       <form action={async () => {
         const result = await enableKioskMode(deviceName);
         if (result?.error) setMsg({ error: result.error });
-      }} className="flex flex-wrap items-end gap-3">
-        <label className="text-sm text-zinc-700">
+      }} className="flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <label className="min-w-0 text-sm text-zinc-700">
           {t('kioskDevices.deviceName')}
-          <input value={deviceName} onChange={(event) => setTypedName(event.target.value)} maxLength={80} required className="mt-1 block rounded border border-zinc-300 px-3 py-2" />
+          <input value={deviceName} onChange={(event) => setTypedName(event.target.value)} maxLength={80} required className="mt-1 block min-h-11 w-full min-w-0 rounded border border-zinc-300 px-3 py-2 text-base sm:text-sm" />
         </label>
-        <button type="submit" className="bg-zinc-900 text-white px-4 py-2 rounded">
+        <button type="submit" className="min-h-11 bg-zinc-900 text-white px-4 py-2 rounded">
           {t('kioskDevices.open')}
         </button>
       </form>
       <button
         onClick={async () => { await disableKioskMode(); setMsg('disabled'); }}
-        className="border px-4 py-2 rounded"
+        className="min-h-11 border px-4 py-2 rounded"
       >
         {t('kioskDevices.disableThis')}
       </button>

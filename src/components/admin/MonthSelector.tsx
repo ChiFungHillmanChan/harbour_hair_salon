@@ -22,17 +22,17 @@ export async function MonthSelector({ basePath, year, month }: { basePath: strin
   const next = shiftMonth(year, month, 1);
   const href = (p: { year: number; month: number }) => `${basePath}?year=${p.year}&month=${p.month}`;
   const years = [year - 2, year - 1, year, year + 1];
-  const linkClass = 'border border-zinc-300 text-zinc-700 hover:bg-zinc-50 px-3 py-1.5 rounded text-sm whitespace-nowrap';
-  const selectClass = 'border border-zinc-300 rounded px-2 py-1.5 text-sm';
+  const linkClass = 'inline-flex min-h-11 min-w-0 items-center justify-center border border-zinc-300 text-zinc-700 hover:bg-zinc-50 px-3 py-2 rounded text-sm whitespace-nowrap';
+  const selectClass = 'w-full min-w-0 min-h-11 border border-zinc-300 rounded px-2 py-2 text-base sm:text-sm';
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
       <Link href={href(prev)} className={linkClass} aria-label={t('monthSelector.previous', { period: formatMonth(locale, prev.year, prev.month) })}>
         ◀ {monthName(prev.month)}
       </Link>
 
-      <form method="get" action={localizeHref(locale, basePath)} className="flex items-center gap-2">
-        <label>
+      <form method="get" action={localizeHref(locale, basePath)} className="order-first col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_5rem_auto] items-center gap-2 sm:order-none sm:flex">
+        <label className="min-w-0">
           <span className="sr-only">{t('monthSelector.month')}</span>
           <select name="month" defaultValue={month} className={selectClass}>
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
@@ -40,7 +40,7 @@ export async function MonthSelector({ basePath, year, month }: { basePath: strin
             ))}
           </select>
         </label>
-        <label>
+        <label className="min-w-0">
           <span className="sr-only">{t('monthSelector.year')}</span>
           <select name="year" defaultValue={year} className={selectClass}>
             {years.map((y) => (
@@ -48,7 +48,7 @@ export async function MonthSelector({ basePath, year, month }: { basePath: strin
             ))}
           </select>
         </label>
-        <button type="submit" className="bg-zinc-900 hover:bg-black text-white px-3 py-1.5 rounded text-sm font-medium transition-colors">
+        <button type="submit" className="min-h-11 bg-zinc-900 hover:bg-black text-white px-3 py-1.5 rounded text-sm font-medium transition-colors">
           {t('monthSelector.go')}
         </button>
       </form>

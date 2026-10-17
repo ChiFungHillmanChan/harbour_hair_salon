@@ -21,16 +21,16 @@ export default async function EditOfferTextPage({ params }: { params: Promise<{ 
   const editor = await prisma.$transaction((tx) => getEditorState(tx, 'OFFER', offer.id));
 
   return (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto space-y-8">
+    <div className="p-3 sm:p-8 max-w-4xl mx-auto space-y-4 sm:space-y-8">
       <div>
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">{t('offers.editPage.title')}</h1>
-        <p className="text-zinc-700 mt-2 text-sm">{offer.title}</p>
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('offers.editPage.title')}</h1>
+        <p className="break-words text-zinc-700 mt-2 text-sm">{offer.title}</p>
       </div>
       {DISCOUNTS_PAUSED && (
-        <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900" role="note">
-          <p className="font-semibold">{t('promotions.paused.offersTitle')}</p>
-          <p className="mt-1">{t('promotions.paused.offersBody')}</p>
-        </div>
+        <details className="rounded-lg border border-amber-300 bg-amber-50 text-sm text-amber-900">
+          <summary className="min-h-11 cursor-pointer px-3 py-3 font-semibold">{t('promotions.paused.offersTitle')}</summary>
+          <p className="px-3 pb-3 leading-6">{t('promotions.paused.offersBody')}</p>
+        </details>
       )}
       <BilingualContentEditor
         mode="edit"
@@ -45,7 +45,7 @@ export default async function EditOfferTextPage({ params }: { params: Promise<{ 
           draftUpdatedAt: editor.draftUpdatedAt,
         }}
       />
-      <Link href="/admin/offers" className="inline-block text-sm text-zinc-600 hover:text-zinc-900">
+      <Link href="/admin/offers" className="inline-flex min-h-11 items-center text-sm text-zinc-600 hover:text-zinc-900">
         ← {t('offers.editPage.back')}
       </Link>
     </div>

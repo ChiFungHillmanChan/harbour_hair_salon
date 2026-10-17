@@ -46,7 +46,7 @@ interface ServiceFormProps {
   offerings: { id: string; key: string; name: string }[];
 }
 
-const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
+const fieldClass = 'min-w-0 w-full border border-zinc-300 rounded px-3 sm:px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
 const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2';
 
 /**
@@ -78,7 +78,7 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
   const showSavedBanner = saved || state.status === 'success';
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-6">
+    <form ref={formRef} action={formAction} className="min-w-0 space-y-4 sm:space-y-6">
       {mode === 'edit' && service && <input type="hidden" name="id" value={service.id} />}
 
       {showSavedBanner && (
@@ -96,20 +96,20 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
       {mode === 'create' && (
         <>
           <BilingualContentEditor mode="create" type="SERVICE" />
-          <section className="bg-white border border-zinc-200 rounded-lg p-6">
+          <section className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-6">
             <label htmlFor="service-price" className={labelClass}>{t('serviceForm.price')} *</label>
             <input id="service-price" type="text" inputMode="decimal" name="price" required pattern="\d{1,6}(\.\d{1,2})?" placeholder="0.00" className={`${fieldClass} max-w-48 font-mono`} />
           </section>
         </>
       )}
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-6 space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('serviceForm.settingsTitle')}</h2>
           <p className="mt-1 text-xs leading-5 text-zinc-500">{t('serviceForm.settingsHelp')}</p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-5">
+        <div className="grid [&>*]:min-w-0 md:grid-cols-3 gap-5">
           <div>
             <label htmlFor="service-duration" className={labelClass}>{t('serviceForm.duration')} *</label>
             {/* min must be a multiple of step: with min=1 the browser's valid
@@ -129,14 +129,14 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
             <p className="text-xs text-zinc-500 mt-1">{t('serviceForm.categoryHelp')}</p>
           </div>
           <div>
-            <label className="flex items-center gap-3 cursor-pointer mt-7">
-              <input type="checkbox" name="durationConfirmed" defaultChecked={service?.durationConfirmed ?? true} className="h-4 w-4 rounded border-zinc-300" />
+            <label className="flex min-h-11 items-center gap-3 cursor-pointer md:mt-7">
+              <input type="checkbox" name="durationConfirmed" defaultChecked={service?.durationConfirmed ?? true} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4 rounded border-zinc-300" />
               <span className="text-sm text-zinc-700">{t('serviceForm.durationConfirmed')}</span>
             </label>
           </div>
         </div>
 
-        <fieldset className="grid md:grid-cols-3 gap-5">
+        <fieldset className="min-w-0 grid [&>*]:min-w-0 md:grid-cols-3 gap-5">
           <legend className={labelClass}>{t('serviceForm.optionTitle')}</legend>
           <div>
             <label htmlFor="service-offering" className="block text-xs text-zinc-600 mb-1">{t('serviceForm.offering')}</label>
@@ -175,14 +175,14 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
           )}
         </fieldset>
 
-        <fieldset className="space-y-3">
+        <fieldset className="min-w-0 space-y-3">
           <legend className={labelClass}>{t('serviceForm.availabilityTitle')}</legend>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" name="isPublic" defaultChecked={service?.isPublic ?? true} className="h-4 w-4 rounded border-zinc-300" />
+          <label className="flex min-h-11 items-center gap-3 cursor-pointer">
+            <input type="checkbox" name="isPublic" defaultChecked={service?.isPublic ?? true} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4 rounded border-zinc-300" />
             <span className="text-sm text-zinc-700">{t('serviceForm.isPublic')}</span>
           </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" name="isBookable" defaultChecked={service?.isBookable ?? true} className="h-4 w-4 rounded border-zinc-300" />
+          <label className="flex min-h-11 items-center gap-3 cursor-pointer">
+            <input type="checkbox" name="isBookable" defaultChecked={service?.isBookable ?? true} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4 rounded border-zinc-300" />
             <span className="text-sm text-zinc-700">{t('serviceForm.isBookable')}</span>
           </label>
           <p className="text-xs text-zinc-500">{t('serviceForm.availabilityHelp')}</p>
@@ -192,32 +192,32 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
           <label htmlFor="service-image" className={labelClass}>
             {t('serviceForm.imageUrl')} <span className="text-zinc-400 normal-case tracking-normal">{t('serviceForm.optional')}</span>
           </label>
-          <input id="service-image" type="text" name="imageUrl" maxLength={500} defaultValue={service?.imageUrl ?? ''} placeholder={t('serviceForm.imageUrlPlaceholder')} className={`${fieldClass} text-sm font-mono`} />
+          <input id="service-image" type="text" name="imageUrl" maxLength={500} defaultValue={service?.imageUrl ?? ''} placeholder={t('serviceForm.imageUrlPlaceholder')} className={`${fieldClass} font-mono`} />
         </div>
 
         <div className="space-y-3 pt-2">
           <p className="text-xs font-medium uppercase tracking-wider text-zinc-600">{t('serviceForm.colourFlags')}</p>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" name="requiresPatchTest" defaultChecked={service?.requiresPatchTest ?? false} className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900" />
+          <label className="flex min-h-11 items-center gap-3 cursor-pointer">
+            <input type="checkbox" name="requiresPatchTest" defaultChecked={service?.requiresPatchTest ?? false} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900" />
             <span className="text-sm text-zinc-700">{t('serviceForm.requiresPatchTest')} <span className="text-zinc-400">{t('serviceForm.requiresPatchTestHelp')}</span></span>
           </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" name="isPatchTest" defaultChecked={service?.isPatchTest ?? false} className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900" />
+          <label className="flex min-h-11 items-center gap-3 cursor-pointer">
+            <input type="checkbox" name="isPatchTest" defaultChecked={service?.isPatchTest ?? false} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900" />
             <span className="text-sm text-zinc-700">{t('serviceForm.isPatchTest')}</span>
           </label>
           <p className="text-xs font-medium uppercase tracking-wider text-zinc-600 pt-2">{t('serviceForm.consultationGate')}</p>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" name="requiresConsultation" defaultChecked={service?.requiresConsultation ?? false} className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900" />
+          <label className="flex min-h-11 items-center gap-3 cursor-pointer">
+            <input type="checkbox" name="requiresConsultation" defaultChecked={service?.requiresConsultation ?? false} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900" />
             <span className="text-sm text-zinc-700">{t('serviceForm.requiresConsultation')} <span className="text-zinc-400">{t('serviceForm.requiresConsultationHelp')}</span></span>
           </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" name="isConsultation" defaultChecked={service?.isConsultation ?? false} className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900" />
+          <label className="flex min-h-11 items-center gap-3 cursor-pointer">
+            <input type="checkbox" name="isConsultation" defaultChecked={service?.isConsultation ?? false} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900" />
             <span className="text-sm text-zinc-700">{t('serviceForm.isConsultation')}</span>
           </label>
         </div>
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-6 space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('serviceForm.depositTitle')}</h2>
           <p id="service-deposit-help" className="mt-1 text-xs leading-5 text-zinc-500">{t('serviceForm.depositHelp')}</p>
@@ -240,7 +240,7 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
         </div>
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-6 space-y-5">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('serviceForm.scheduleBoard')}</h2>
         <CalendarColorPicker
           name="calendarColor"
@@ -250,7 +250,7 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
         />
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-6 space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('serviceForm.integrations')}</h2>
           <p className="mt-1 text-xs leading-5 text-zinc-500">{t('serviceForm.integrationsHelp')}</p>
@@ -259,18 +259,18 @@ export function ServiceForm({ mode, action, service, saved, existingCategories, 
           <label htmlFor="service-treatwell" className={labelClass}>
             {t('serviceForm.treatwellId')} <span className="text-zinc-400 normal-case tracking-normal">{t('serviceForm.treatwellIdHint')}</span>
           </label>
-          <input id="service-treatwell" type="text" name="treatwellExternalId" maxLength={200} defaultValue={service?.treatwellExternalId ?? ''} className={`${fieldClass} text-sm font-mono`} />
+          <input id="service-treatwell" type="text" name="treatwellExternalId" maxLength={200} defaultValue={service?.treatwellExternalId ?? ''} className={`${fieldClass} font-mono`} />
         </div>
       </section>
 
-      <div className="flex items-center justify-between gap-4 bg-zinc-50 py-4 border-t border-zinc-200">
-        <Link href="/admin/services" className="text-sm font-medium text-zinc-600 hover:text-zinc-900">
+      <div className="flex flex-col-reverse items-stretch justify-between gap-2 sm:flex-row sm:items-center sm:gap-4 bg-zinc-50 py-4 border-t border-zinc-200">
+        <Link href="/admin/services" className="inline-flex min-h-11 items-center justify-center text-sm font-medium text-zinc-600 hover:text-zinc-900 sm:justify-start">
           ← {t('serviceForm.backToList')}
         </Link>
         <button
           type="submit"
           disabled={pending}
-          className="bg-zinc-900 hover:bg-zinc-800 text-white px-8 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          className="min-h-11 bg-zinc-900 hover:bg-zinc-800 text-white px-4 sm:px-8 py-3 text-sm sm:uppercase sm:tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {pending ? tc('actions.saving') : mode === 'create' ? t('serviceForm.create') : t('serviceForm.saveSettings')}
         </button>

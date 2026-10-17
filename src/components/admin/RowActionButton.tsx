@@ -42,7 +42,7 @@ export function RowActionButton({ action, label, pendingLabel, buttonClassName, 
         }
       }}
     >
-      <button type="submit" disabled={pending} className={`${buttonClassName} disabled:opacity-50`}>
+      <button type="submit" disabled={pending} className={`${buttonClassName} min-h-11 inline-flex items-center justify-center disabled:opacity-50`}>
         {pending ? pendingLabel : label}
       </button>
       {state.error && (

@@ -37,7 +37,7 @@ export function FaqInlineEditor({ faq, action }: FaqInlineEditorProps) {
     <form ref={formRef} action={formAction} className="space-y-2">
       <input type="hidden" name="id" value={faq.id} />
 
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_6rem] items-end gap-3 sm:flex sm:flex-wrap">
         <div>
           <label htmlFor={`faq-key-${faq.id}`} className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500 mb-1">
             {t('faqs.form.key')}
@@ -48,7 +48,7 @@ export function FaqInlineEditor({ faq, action }: FaqInlineEditorProps) {
             name="key"
             required
             defaultValue={faq.key}
-            className="w-56 border border-zinc-300 rounded px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            className="min-h-11 min-w-0 w-full sm:w-56 border border-zinc-300 rounded px-3 py-2 text-base sm:text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
           />
         </div>
         <div>
@@ -62,13 +62,13 @@ export function FaqInlineEditor({ faq, action }: FaqInlineEditorProps) {
             min={0}
             max={10000}
             defaultValue={faq.sortOrder}
-            className="w-24 border border-zinc-300 rounded px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            className="min-h-11 min-w-0 w-full sm:w-24 border border-zinc-300 rounded px-3 py-2 text-base sm:text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
           />
         </div>
         <button
           type="submit"
           disabled={pending}
-          className="text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-1.5 rounded transition-colors disabled:opacity-50"
+          className="col-span-2 min-h-11 text-sm sm:text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-1.5 rounded transition-colors disabled:opacity-50"
         >
           {pending ? tc('actions.saving') : t('faqs.list.savePlacement')}
         </button>

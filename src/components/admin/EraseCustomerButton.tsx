@@ -26,7 +26,7 @@ export function EraseCustomerButton({ userId, name, expected }: { userId: string
       type="button"
       onClick={erase}
       disabled={pending}
-      className="rounded border border-red-300 px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+      className="min-h-11 rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
     >
       {pending ? t('users.erasure.erasing') : t('users.erasure.button')}
     </button>

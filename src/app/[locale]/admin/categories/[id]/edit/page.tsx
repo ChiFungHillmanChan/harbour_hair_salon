@@ -35,10 +35,10 @@ export default async function EditCategoryPage({
   const editor = await prisma.$transaction((tx) => getEditorState(tx, 'CATEGORY_CONTENT', content.id));
 
   return (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto space-y-8">
+    <div className="p-3 sm:p-8 max-w-4xl mx-auto space-y-4 sm:space-y-8">
       <div>
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">{t('categories.form.editTitle')}</h1>
-        <p className="text-zinc-700 mt-2 font-mono text-sm">/services/{content.slug}</p>
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('categories.form.editTitle')}</h1>
+        <p className="break-words text-zinc-700 mt-1 text-sm sm:mt-2 font-mono">/services/{content.slug}</p>
       </div>
       <BilingualContentEditor
         mode="edit"

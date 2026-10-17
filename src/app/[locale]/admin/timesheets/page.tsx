@@ -1,3 +1,4 @@
+import { AdminResponsiveTable } from '@/components/admin/AdminResponsiveTable';
 import { requireAdmin } from '@/app/lib/session';
 import prisma from '@/app/lib/prisma';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
@@ -84,7 +85,7 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
   const timeInput = (d: Date) => format(toZonedTime(d, SALON_TIMEZONE), 'HH:mm');
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <h1 className="font-serif text-2xl sm:text-3xl text-zinc-900">{t('timesheets.title', { period: formatMonth(locale, year, month) })}</h1>
 
       <MonthSelector basePath="/admin/timesheets" year={year} month={month} />
@@ -92,7 +93,7 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
       <ApproveMonthButton year={year} month={month} />
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <AdminResponsiveTable className="text-sm border-collapse">
           <thead>
             <tr className="text-left border-b">
               <th className="p-2 whitespace-nowrap">{t('timesheets.columns.employee')}</th><th className="p-2 whitespace-nowrap">{t('timesheets.columns.clockIn')}</th><th className="p-2 whitespace-nowrap">{t('timesheets.columns.clockOut')}</th>
@@ -106,12 +107,12 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
               const ev = shiftMap.get(evalKey);
               return (
                 <tr key={e.id} className="border-b">
-                  <td className="p-2 align-top">{e.employee.name}</td>
-                  <td className="p-2 align-top whitespace-nowrap">{fmt(e.clockIn)}</td>
-                  <td className="p-2 align-top whitespace-nowrap">{e.clockOut ? fmt(e.clockOut) : <span className="text-zinc-900">{t('timesheets.open')}</span>}</td>
-                  <td className="p-2 align-top whitespace-nowrap">{hours}</td>
-                  <td className="p-2 align-top whitespace-nowrap">{t.dynamic(`timesheets.status.${e.status}`, undefined, e.status)}</td>
-                  <td className="p-2 align-top space-x-1 whitespace-nowrap">
+                  <td data-label={t('timesheets.columns.employee')} data-primary className="p-2 align-top font-medium">{e.employee.name}</td>
+                  <td data-label={t('timesheets.columns.clockIn')} className="p-2 align-top whitespace-nowrap">{fmt(e.clockIn)}</td>
+                  <td data-label={t('timesheets.columns.clockOut')} className="p-2 align-top whitespace-nowrap">{e.clockOut ? fmt(e.clockOut) : <span className="text-zinc-900">{t('timesheets.open')}</span>}</td>
+                  <td data-label={t('timesheets.columns.hours')} className="p-2 align-top whitespace-nowrap">{hours}</td>
+                  <td data-label={t('timesheets.columns.status')} className="p-2 align-top whitespace-nowrap">{t.dynamic(`timesheets.status.${e.status}`, undefined, e.status)}</td>
+                  <td data-label={t('timesheets.columns.shift')} className="p-2 align-top space-x-1 whitespace-nowrap">
                     {ev?.late && (
                       <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
                         {t('timesheets.late', { minutes: ev.lateByMin })}
@@ -123,14 +124,14 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
                       </span>
                     )}
                   </td>
-                  <td className="p-2 align-top">
-                    <div className="flex flex-col items-start gap-1">
+                  <td data-label={t('timesheets.columns.actions')} data-actions className="p-2 align-top">
+                    <div className="flex flex-wrap items-start gap-x-4 gap-y-1 md:flex-col">
                       {e.clockOut && e.status !== 'APPROVED' && (
                         <RowActionButton
                           action={approveTimeEntry.bind(null, e.id)}
                           label={t('timesheets.approve')}
                           pendingLabel={t('timesheets.approving')}
-                          buttonClassName="text-sm text-zinc-900 underline"
+                          buttonClassName="min-h-11 text-sm text-zinc-900 underline"
                         />
                       )}
                       {e.status === 'APPROVED' && (
@@ -138,11 +139,11 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
                           action={unapproveTimeEntry.bind(null, e.id)}
                           label={t('timesheets.unapprove')}
                           pendingLabel={t('timesheets.unapproving')}
-                          buttonClassName="text-sm text-zinc-700 hover:text-zinc-900 underline"
+                          buttonClassName="min-h-11 text-sm text-zinc-700 hover:text-zinc-900 underline"
                         />
                       )}
-                      <details>
-                        <summary className="cursor-pointer text-sm text-zinc-700 hover:text-zinc-900 underline">{t('timesheets.edit')}</summary>
+                      <details className="w-full min-w-0 md:w-auto">
+                        <summary className="min-h-11 cursor-pointer py-3 text-sm text-zinc-700 hover:text-zinc-900 underline">{t('timesheets.edit')}</summary>
                         <TimeEntryEditForm
                           entryId={e.id}
                           date={dateInput(e.clockIn)}
@@ -156,7 +157,7 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
                         action={deleteTimeEntry.bind(null, e.id)}
                         label={t('timesheets.delete')}
                         pendingLabel={t('timesheets.deleting')}
-                        buttonClassName="text-sm text-red-600 hover:text-red-800"
+                        buttonClassName="min-h-11 text-sm text-red-600 hover:text-red-800"
                         confirmMessage={t('timesheets.deleteConfirm')}
                       />
                     </div>
@@ -166,7 +167,7 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
             })}
             {entries.length === 0 && <tr><td className="p-2" colSpan={7}>{t('timesheets.empty')}</td></tr>}
           </tbody>
-        </table>
+        </AdminResponsiveTable>
       </div>
     </div>
   );

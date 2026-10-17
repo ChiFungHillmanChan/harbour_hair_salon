@@ -21,10 +21,10 @@ export default async function EditFaqPage({ params }: { params: Promise<{ id: st
   const editor = await prisma.$transaction((tx) => getEditorState(tx, 'FAQ', faq.id));
 
   return (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto space-y-8">
+    <div className="p-3 sm:p-8 max-w-4xl mx-auto space-y-4 sm:space-y-8">
       <div>
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">{t('faqs.form.editTitle')}</h1>
-        <p className="text-zinc-700 mt-2 text-sm">
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('faqs.form.editTitle')}</h1>
+        <p className="break-words text-zinc-700 mt-2 text-sm">
           {faqKeyLabel(faq.key, t)} · <span className="font-mono">{faq.key}</span>
         </p>
       </div>
@@ -41,14 +41,14 @@ export default async function EditFaqPage({ params }: { params: Promise<{ id: st
           draftUpdatedAt: editor.draftUpdatedAt,
         }}
       />
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-3">
+      <section className="bg-white border border-zinc-200 rounded-lg p-4 sm:p-6 space-y-3">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('faqs.form.placementTitle')}</h2>
           <p className="mt-1 text-xs leading-5 text-zinc-500">{t('faqs.form.placementHelp')}</p>
         </div>
         <FaqInlineEditor faq={{ id: faq.id, key: faq.key, sortOrder: faq.sortOrder }} action={updateFaq} />
       </section>
-      <Link href="/admin/faqs" className="inline-block text-sm text-zinc-600 hover:text-zinc-900">
+      <Link href="/admin/faqs" className="inline-flex min-h-11 items-center text-sm text-zinc-600 hover:text-zinc-900">
         ← {t('faqs.form.backToList')}
       </Link>
     </div>

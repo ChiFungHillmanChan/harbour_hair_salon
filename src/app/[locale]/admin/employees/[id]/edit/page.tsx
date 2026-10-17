@@ -50,13 +50,13 @@ export default async function EditEmployeePage({
     .filter((stylistId): stylistId is string => Boolean(stylistId));
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-6">
+    <div className="p-3 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-4 sm:space-y-6">
       <div>
-        <Link href="/admin/employees" className="text-sm text-zinc-600 hover:text-zinc-900 underline">
+        <Link href="/admin/employees" className="inline-flex min-h-11 items-center text-sm text-zinc-600 hover:text-zinc-900 underline">
           ← {t('employees.editPage.back')}
         </Link>
         <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900 mt-2">{t('employees.editPage.title')}</h1>
-        <p className="text-zinc-700 mt-2">{employee.name} — {employee.title}</p>
+        <p className="break-words text-sm sm:text-base text-zinc-700 mt-2">{employee.name} — {employee.title}</p>
       </div>
 
       <EmployeeForm

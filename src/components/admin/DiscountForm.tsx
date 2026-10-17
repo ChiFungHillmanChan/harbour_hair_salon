@@ -22,13 +22,13 @@ export function DiscountForm() {
     }
   }, [state, formRef]);
 
-  const input = 'w-full px-3 py-2 border border-zinc-300 rounded-md focus:outline-none focus:ring-1 focus:ring-zinc-900';
+  const input = 'min-h-11 min-w-0 w-full max-w-full px-3 py-2 text-base sm:text-sm border border-zinc-300 rounded-md focus:outline-none focus:ring-1 focus:ring-zinc-900';
   const label = 'block text-sm font-medium text-zinc-700 mb-1';
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow border border-zinc-200 mb-8">
-      <h3 className="text-lg font-bold mb-4">{t('discounts.form.createTitle')}</h3>
-      <form ref={formRef} action={formAction} className="space-y-4">
+    <details className="bg-white rounded-lg border border-zinc-200 mb-4 sm:mb-8">
+      <summary className="min-h-11 cursor-pointer px-4 py-3 text-sm font-semibold sm:px-6 sm:text-base">{t('discounts.form.createTitle')}</summary>
+      <form ref={formRef} action={formAction} className="space-y-4 border-t border-zinc-200 p-4 sm:p-6">
         {state.error && (
           <div
             className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm"
@@ -88,17 +88,17 @@ export function DiscountForm() {
             />
           </div>
         </div>
-        <div className="flex justify-end items-center gap-3">
+        <div className="flex flex-wrap justify-end items-center gap-3">
           {state.success && <span className="text-xs text-emerald-600" role="status">✓ {t('discounts.form.created')}</span>}
           <button
             type="submit"
             disabled={pending}
-            className="bg-zinc-900 text-white px-6 py-2 rounded-md hover:bg-zinc-800 transition-colors text-sm font-medium disabled:opacity-50"
+            className="min-h-11 bg-zinc-900 text-white px-6 py-2 rounded-md hover:bg-zinc-800 transition-colors text-sm font-medium disabled:opacity-50"
           >
             {pending ? t('discounts.form.creating') : t('discounts.form.create')}
           </button>
         </div>
       </form>
-    </div>
+    </details>
   );
 }

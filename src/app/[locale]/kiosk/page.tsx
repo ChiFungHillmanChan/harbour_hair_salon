@@ -15,14 +15,14 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function KioskPage() {
   const [roster, t] = await Promise.all([getKioskRoster(), getT('kiosk')]);
   return (
-    <main className="min-h-screen bg-zinc-900 text-white p-8">
+    <main className="min-h-dvh bg-zinc-900 text-white p-4 sm:p-8">
       {/* The kiosk language is a device preference: switching only changes
           this device's URL and remembered choice, never an employee record. */}
       <ClientMessages namespaces={['kiosk']}>
-        <div className="flex justify-end -mt-4 mb-4">
+        <div className="flex justify-end sm:-mt-4 mb-4">
           <LanguageSwitcher />
         </div>
-        <h1 className="font-serif text-3xl mb-8 text-center">{t('title')}</h1>
+        <h1 className="font-serif text-2xl sm:text-3xl mb-5 sm:mb-8 text-center">{t('title')}</h1>
         <KioskClock roster={roster} />
       </ClientMessages>
     </main>

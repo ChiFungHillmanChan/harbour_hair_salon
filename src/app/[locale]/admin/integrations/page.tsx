@@ -4,6 +4,7 @@ import { verifySession } from '@/app/lib/session';
 import { retryFailedTreatwellBookingsAction } from '@/app/actions/admin-integrations';
 import { getIntegrationReadiness, listCalendarConnectionsForAdmin } from '@/app/services/integration-readiness';
 import { CalendarConnectionsSetup } from '@/components/admin/CalendarConnectionsSetup';
+import { MobileScheduleDisclosure } from '@/components/admin/MobileScheduleDisclosure';
 import { GoogleCalendarStatus } from '@/components/admin/GoogleCalendarStatus';
 import { getGoogleCalendarStatus } from '@/app/services/google-calendar-status';
 import { loadDiaryConfig } from '@/app/services/google-diary-config';
@@ -18,7 +19,7 @@ export const maxDuration = 300;
 
 type SearchParams = { ical?: string; feeds?: string; failed?: string; skipped?: string; upserted?: string; retry?: string; feedToken?: string; calendar?: string; calendarError?: string; gcal?: string };
 function ConfigRow({ label, ready, readyText, missingText }: { label: string; ready: boolean; readyText: string; missingText: string }) {
-  return <li className="flex items-center justify-between gap-4 border-b border-zinc-100 py-2 last:border-0"><code className="text-xs text-zinc-700">{label}</code><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ready ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{ready ? readyText : missingText}</span></li>;
+  return <li className="flex items-center justify-between gap-4 border-b border-zinc-100 py-2 last:border-0"><code className="min-w-0 break-all text-xs text-zinc-700">{label}</code><span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${ready ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{ready ? readyText : missingText}</span></li>;
 }
 export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireAdmin();
@@ -48,8 +49,8 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   // The action redirects with a stable code; anything else (an old bookmarked
   // link) gets the general advice.
   const calendarErrorCode = query.calendarError && /^[A-Z_]{1,40}$/.test(query.calendarError) ? query.calendarError : 'INVALID_INPUT';
-  return <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-10">
-    <header><p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-900">{t('integrations.eyebrow')}</p><h1 className="mt-2 text-3xl font-serif font-bold text-zinc-900">{t('integrations.title')}</h1><p className="mt-2 text-sm leading-6 text-zinc-600">{t('integrations.intro')}</p></header>
+  return <div className="mx-auto min-w-0 max-w-6xl space-y-3 p-3 sm:space-y-6 sm:p-6 md:p-10">
+    <header><p className="hidden text-xs font-semibold uppercase tracking-[0.2em] sm:block text-zinc-900">{t('integrations.eyebrow')}</p><h1 className="text-2xl sm:mt-2 sm:text-3xl font-serif font-bold text-zinc-900">{t('integrations.title')}</h1><p className="mt-1 text-sm leading-5 text-zinc-600 sm:mt-2 sm:leading-6">{t('integrations.intro')}</p></header>
     {query.calendarError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{t('integrations.calendarError', { reason: t.dynamic(`integrations.calendarErrors.${calendarErrorCode}`, undefined, t('integrations.calendarErrors.INVALID_INPUT')) })}</div>}
     {(query.ical || query.calendar || query.feedToken || query.retry) && <div role="status" className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
       {query.ical === 'complete'
@@ -64,26 +65,30 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
     </div>}
     {(query.gcal === 'done' || query.gcal === 'disabled' || query.gcal === 'cleared' || query.gcal === 'coloursSaved') && <div role="status" className="rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">{t(`integrations.google.status.${query.gcal}`)}</div>}
     {(query.gcal === 'error' || query.gcal === 'clearError' || query.gcal === 'coloursSame' || query.gcal === 'coloursTaken' || query.gcal === 'coloursInvalid') && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{t(`integrations.google.status.${query.gcal}`)}</div>}
-    <section className={`rounded-lg border p-5 ${treatwell.syncCoverage.safeToEnableOnlineBooking ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
-      <h2 className="font-semibold">{treatwell.syncCoverage.safeToEnableOnlineBooking ? t('integrations.coverage.pass') : t('integrations.coverage.attention')}</h2>
-      {setupChecks.length > 0 && <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">{setupChecks.map((check) => <li key={check.key} lang={check.lang}>{check.text}</li>)}</ul>}
-      <p className="mt-3 text-sm leading-6">{rich(t('integrations.coverage.note', { minutes: CALENDAR_FRESHNESS_MINUTES }), {
-        link: (text) => <Link href="/admin/opening-hours" className="font-semibold underline">{text}</Link>,
-      })}</p>
-    </section>
-    <section className="rounded-xl border border-zinc-200 bg-white p-5">
-      <h2 className="text-xl font-semibold">{t('integrations.setup.title')}</h2>
-      <p className="mt-2 text-sm leading-6 text-zinc-600">{t('integrations.setup.direction')}</p>
-      <p className="mt-3 text-sm leading-6 text-zinc-600">{t('integrations.setup.loops')}</p>
-      <p className="mt-3 text-sm leading-6 text-zinc-600">{t('integrations.setup.format')}</p>
-      <p className="mt-3 rounded bg-zinc-50 p-3 text-sm">{scheduledSyncEnabled ? t('integrations.setup.scheduledOn') : t('integrations.setup.scheduledOff')}</p>
-    </section>
-    <CalendarConnectionsSetup stylists={stylists} />
+    <MobileScheduleDisclosure label={treatwell.syncCoverage.safeToEnableOnlineBooking ? t('integrations.coverage.pass') : t('integrations.coverage.attention')} count={setupChecks.length} attention={!treatwell.syncCoverage.safeToEnableOnlineBooking}>
+      <section className={`rounded-lg border p-3 sm:p-5 ${treatwell.syncCoverage.safeToEnableOnlineBooking ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
+        <h2 className="font-semibold">{treatwell.syncCoverage.safeToEnableOnlineBooking ? t('integrations.coverage.pass') : t('integrations.coverage.attention')}</h2>
+        {setupChecks.length > 0 && <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">{setupChecks.map((check) => <li key={check.key} lang={check.lang}>{check.text}</li>)}</ul>}
+        <p className="mt-3 text-sm leading-6">{rich(t('integrations.coverage.note', { minutes: CALENDAR_FRESHNESS_MINUTES }), {
+          link: (text) => <Link href="/admin/opening-hours" className="font-semibold underline">{text}</Link>,
+        })}</p>
+      </section>
+    </MobileScheduleDisclosure>
+    <MobileScheduleDisclosure label={t('integrations.setup.title')}>
+      <section className="rounded-xl border border-zinc-200 bg-white p-3 sm:p-5">
+        <h2 className="text-lg sm:text-xl font-semibold">{t('integrations.setup.title')}</h2>
+        <p className="mt-2 text-sm leading-6 text-zinc-600">{t('integrations.setup.direction')}</p>
+        <p className="mt-3 text-sm leading-6 text-zinc-600">{t('integrations.setup.loops')}</p>
+        <p className="mt-3 text-sm leading-6 text-zinc-600">{t('integrations.setup.format')}</p>
+        <p className="mt-3 rounded bg-zinc-50 p-3 text-sm">{scheduledSyncEnabled ? t('integrations.setup.scheduledOn') : t('integrations.setup.scheduledOff')}</p>
+      </section>
+    </MobileScheduleDisclosure>
     <GoogleCalendarStatus status={googleStatus} colours={diaryColours} />
-    <div className="grid gap-6 lg:grid-cols-2">
-      <section className="rounded-xl border border-zinc-200 bg-white p-6"><h2 className="text-xl font-semibold">{t('integrations.resend.title')}</h2><ul className="mt-4">{config('RESEND_API_KEY', resend.apiKeyConfigured)}{config('EMAIL_FROM', resend.fromAddressConfigured)}{config('EMAIL_REPLY_TO', resend.replyToConfigured)}{config('RESEND_AUDIENCE_ID', resend.audienceConfigured)}</ul><p className="mt-4 text-xs leading-5 text-zinc-500">{t('integrations.resend.note')}</p></section>
-      <section className="rounded-xl border border-zinc-200 bg-white p-6"><h2 className="text-xl font-semibold">{t('integrations.cdn.title')}</h2><p className="mt-2 text-sm text-zinc-600">{t('integrations.cdn.note', { minutes: cdn.homeRevalidateSeconds / 60 })}</p><ul className="mt-4">{config('NEXT_PUBLIC_SITE_URL', cdn.siteUrlConfigured)}</ul></section>
+    <CalendarConnectionsSetup stylists={stylists} />
+    <div className="grid gap-3 sm:gap-6 lg:grid-cols-2">
+      <section className="rounded-xl border border-zinc-200 min-w-0 bg-white p-3 sm:p-6"><h2 className="text-xl font-semibold">{t('integrations.resend.title')}</h2><ul className="mt-4">{config('RESEND_API_KEY', resend.apiKeyConfigured)}{config('EMAIL_FROM', resend.fromAddressConfigured)}{config('EMAIL_REPLY_TO', resend.replyToConfigured)}{config('RESEND_AUDIENCE_ID', resend.audienceConfigured)}</ul><p className="mt-4 text-xs leading-5 text-zinc-500">{t('integrations.resend.note')}</p></section>
+      <section className="rounded-xl border border-zinc-200 min-w-0 bg-white p-3 sm:p-6"><h2 className="text-xl font-semibold">{t('integrations.cdn.title')}</h2><p className="mt-2 text-sm text-zinc-600">{t('integrations.cdn.note', { minutes: cdn.homeRevalidateSeconds / 60 })}</p><ul className="mt-4">{config('NEXT_PUBLIC_SITE_URL', cdn.siteUrlConfigured)}</ul></section>
     </div>
-    <details className="rounded-xl border border-zinc-200 bg-white p-5"><summary className="cursor-pointer font-semibold">{t('integrations.api.summary')}</summary><p className="mt-3 text-sm leading-6 text-zinc-600">{t('integrations.api.note')}</p><p className="mt-3 text-sm">{t('integrations.api.queue', { pending: treatwell.outbound.pending, failed: treatwell.outbound.failed, synced: treatwell.outbound.synced })}</p>{treatwell.outbound.failed > 0 && <form action={retryFailedTreatwellBookingsAction} className="mt-3"><button className="text-sm font-semibold text-zinc-900 underline">{t('integrations.api.retry')}</button></form>}</details>
+    <details className="rounded-xl border border-zinc-200 bg-white p-3 sm:p-5"><summary className="min-h-11 cursor-pointer py-2 font-semibold">{t('integrations.api.summary')}</summary><p className="mt-3 text-sm leading-6 text-zinc-600">{t('integrations.api.note')}</p><p className="mt-3 text-sm">{t('integrations.api.queue', { pending: treatwell.outbound.pending, failed: treatwell.outbound.failed, synced: treatwell.outbound.synced })}</p>{treatwell.outbound.failed > 0 && <form action={retryFailedTreatwellBookingsAction} className="mt-3"><button className="min-h-11 text-sm font-semibold text-zinc-900 underline">{t('integrations.api.retry')}</button></form>}</details>
   </div>;
 }

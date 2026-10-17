@@ -11,6 +11,7 @@ import { useT } from '@/i18n/client';
 import { formatCalendarDay } from '@/i18n/dates';
 import { useDraftState } from '@/i18n/draft-store';
 import { rich } from '@/i18n/rich';
+import { MobileScheduleDisclosure } from './MobileScheduleDisclosure';
 
 export type DayRow = {
   dayOfWeek: number;
@@ -105,20 +106,22 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
   );
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-3 sm:space-y-5">
       {!bookingEnabled && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-5 py-4">
-          <p className="text-sm leading-6 text-amber-900">
-            {rich(t('openingHours.bookingOff'), {
-              strong: (text) => <strong>{text}</strong>,
-              link: (text) => (
-                <Link href="/admin/settings" className="font-semibold underline">
-                  {text}
-                </Link>
-              ),
-            })}
-          </p>
-        </div>
+        <MobileScheduleDisclosure label={t('openingHours.bookingOffSummary')} attention>
+          <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 sm:px-5 sm:py-4">
+            <p className="text-sm leading-6 text-amber-900">
+              {rich(t('openingHours.bookingOff'), {
+                strong: (text) => <strong>{text}</strong>,
+                link: (text) => (
+                  <Link href="/admin/settings" className="font-semibold underline">
+                    {text}
+                  </Link>
+                ),
+              })}
+            </p>
+          </div>
+        </MobileScheduleDisclosure>
       )}
 
       {state.status === 'success' && (
@@ -136,7 +139,7 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
       )}
 
       {/* Stylist tabs */}
-      <div role="group" aria-label={t('openingHours.stylistsLabel')} className="flex gap-5 overflow-x-auto border-b border-zinc-200">
+      <div role="group" aria-label={t('openingHours.stylistsLabel')} className="flex min-w-0 gap-3 sm:gap-5 overflow-x-auto border-b border-zinc-200">
         {stylists.map((s) => {
           const on = s.id === activeId;
           const openDays = (weeks[s.id] ?? []).filter((d) => !d.isOff).length;
@@ -165,11 +168,11 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
         })}
       </div>
 
-      <form action={formAction} className="space-y-5">
+      <form action={formAction} className="space-y-3 sm:space-y-5">
         <input type="hidden" name="stylistId" value={activeId} />
 
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
-          <div className="hidden gap-0 border-b border-zinc-200 bg-zinc-100 px-6 py-3 sm:grid sm:grid-cols-[150px_120px_1fr_140px]">
+          <div className="hidden gap-0 border-b border-zinc-200 bg-zinc-100 px-6 py-3 xl:grid xl:grid-cols-[150px_100px_minmax(0,1fr)_140px]">
             {[t('openingHours.columns.day'), t('openingHours.columns.open'), t('openingHours.columns.hours'), t('openingHours.columns.slots')].map((h, i) => (
               <div
                 key={h}
@@ -190,20 +193,20 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
             return (
               <div
                 key={dayOfWeek}
-                className={`grid grid-cols-1 items-center gap-3 px-6 py-4 sm:grid-cols-[150px_120px_1fr_140px] sm:gap-0 ${
+                className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-3 sm:px-6 sm:py-4 xl:grid-cols-[150px_100px_minmax(0,1fr)_140px] xl:gap-0 ${
                   i < DISPLAY_ORDER.length - 1 ? 'border-b border-zinc-100' : ''
                 } ${open ? '' : 'bg-zinc-50'}`}
               >
-                <div className="flex flex-col">
+                <div className="min-w-0 flex flex-col">
                   <span
                     className={`text-[15px] font-semibold ${open ? 'text-zinc-900' : 'text-zinc-400'}`}
                   >
                     {dayName(dayOfWeek)}
                   </span>
-                  <span className="text-[11px] text-zinc-400">{t('openingHours.dayCode', { day: dayOfWeek })}</span>
+                  <span className="hidden text-[11px] text-zinc-400 xl:block">{t('openingHours.dayCode', { day: dayOfWeek })}</span>
                 </div>
 
-                <label className="flex min-h-11 items-center gap-3 sm:min-h-0">
+                <label className="flex min-h-11 items-center gap-3 xl:min-h-0">
                   <input
                     type="checkbox"
                     name={`open-${dayOfWeek}`}
@@ -212,10 +215,10 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
                     aria-label={t('openingHours.openFor', { day: dayName(dayOfWeek) })}
                     className="h-5 w-5 rounded border-zinc-300 text-zinc-900 focus:ring-2 focus:ring-zinc-900"
                   />
-                  <span className="text-sm text-zinc-600 sm:hidden">{t('openingHours.openLabel')}</span>
+                  <span className="text-sm text-zinc-600 xl:hidden">{t('openingHours.openLabel')}</span>
                 </label>
 
-                <div className="flex items-center gap-2.5">
+                <div className="col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 xl:col-span-1 xl:pr-3">
                   {open ? (
                     <>
                       <input
@@ -224,7 +227,7 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
                         value={day.startTime}
                         aria-label={t('openingHours.opensAt', { day: dayName(dayOfWeek) })}
                         onChange={(e) => patchDay(dayOfWeek, { startTime: e.target.value })}
-                        className="min-h-11 w-[128px] rounded border border-zinc-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        className="min-h-11 min-w-0 w-full rounded border border-zinc-300 px-2 py-2 text-base sm:text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-zinc-900"
                       />
                       <span className="text-sm text-zinc-400">{t('openingHours.to')}</span>
                       <input
@@ -233,7 +236,7 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
                         value={day.endTime}
                         aria-label={t('openingHours.closesAt', { day: dayName(dayOfWeek) })}
                         onChange={(e) => patchDay(dayOfWeek, { endTime: e.target.value })}
-                        className="min-h-11 w-[128px] rounded border border-zinc-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        className="min-h-11 min-w-0 w-full rounded border border-zinc-300 px-2 py-2 text-base sm:text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-zinc-900"
                       />
                     </>
                   ) : (
@@ -242,14 +245,14 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
                           its hours instead of losing them. */}
                       <input type="hidden" name={`start-${dayOfWeek}`} value={day.startTime} />
                       <input type="hidden" name={`end-${dayOfWeek}`} value={day.endTime} />
-                      <span className="text-sm italic text-zinc-400">
+                      <span className="col-span-3 text-sm italic text-zinc-400">
                         {t('openingHours.closed')}
                       </span>
                     </>
                   )}
                 </div>
 
-                <div className="sm:text-right">
+                <div className="col-span-2 text-right xl:col-span-1">
                   <span
                     className={`text-sm tabular-nums ${open ? 'text-zinc-600' : 'text-zinc-300'}`}
                   >
@@ -261,17 +264,17 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
           })}
         </div>
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <button
             type="button"
             onClick={copyFirstOpenDayToAll}
             disabled={!firstOpen}
-            className="inline-flex min-h-11 items-center justify-center rounded border border-zinc-300 bg-white px-5 text-[13px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center rounded border border-zinc-300 bg-white px-3 py-2 sm:px-5 text-[13px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50"
           >
             {t('openingHours.copy', { day: dayName(firstOpen ? firstOpen.dayOfWeek : 1) })}
           </button>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <span
               className={`text-[13px] ${dirty ? 'font-semibold text-amber-700' : 'text-zinc-500'}`}
             >
@@ -282,7 +285,7 @@ export function OpeningHoursForm({ stylists, bookingEnabled }: OpeningHoursFormP
             <button
               type="submit"
               disabled={pending}
-              className="min-h-11 rounded bg-zinc-900 px-8 text-[13px] font-bold uppercase tracking-[0.15em] text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
+              className="min-h-11 shrink-0 rounded bg-zinc-900 px-4 py-2 sm:px-8 text-sm sm:text-[13px] font-bold uppercase tracking-[0.15em] text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
             >
               {pending ? t('openingHours.saving') : t('openingHours.save')}
             </button>

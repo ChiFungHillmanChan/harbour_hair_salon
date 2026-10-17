@@ -1,3 +1,4 @@
+import { AdminResponsiveTable } from '@/components/admin/AdminResponsiveTable';
 import { requireAdmin } from '@/app/lib/session';
 import Link from '@/i18n/link';
 import { unstable_rethrow } from 'next/navigation';
@@ -95,11 +96,11 @@ export default async function AdminServicesPage() {
     : 0;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="flex items-start justify-between mb-8 gap-6">
-        <div>
+    <div className="p-3 sm:p-6 lg:p-8">
+      <div className="flex flex-wrap items-start justify-between mb-4 gap-3 sm:mb-8 sm:gap-6">
+        <div className="min-w-0 flex-1 basis-52">
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('servicesList.title')}</h1>
-          <p className="text-zinc-700 mt-2">
+          <p className="text-zinc-700 mt-1 text-sm sm:mt-2 sm:text-base">
             {rich(t('servicesList.intro'), {
               link: (text) => (
                 <Link href="/services" className="underline hover:text-zinc-900">
@@ -111,29 +112,29 @@ export default async function AdminServicesPage() {
         </div>
         <Link
           href="/admin/services/new"
-          className="shrink-0 bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded"
+          className="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-2.5 text-sm sm:px-6 sm:py-3 sm:uppercase sm:tracking-[0.15em] font-bold transition-colors rounded"
         >
           + {t('servicesList.newService')}
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('servicesList.stats.total')}</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{services.length}</p>
+      <div className="grid grid-cols-3 gap-2 mb-4 sm:gap-4 sm:mb-8">
+        <div className="min-w-0 bg-white p-2.5 sm:p-5 rounded-lg sm:shadow border border-zinc-200">
+          <p className="text-[11px] leading-4 text-zinc-500 font-medium sm:text-sm sm:uppercase sm:tracking-wider">{t('servicesList.stats.total')}</p>
+          <p className="text-xl sm:text-3xl font-bold text-zinc-900 mt-1">{services.length}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('servicesList.stats.categories')}</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{grouped.size}</p>
+        <div className="min-w-0 bg-white p-2.5 sm:p-5 rounded-lg sm:shadow border border-zinc-200">
+          <p className="text-[11px] leading-4 text-zinc-500 font-medium sm:text-sm sm:uppercase sm:tracking-wider">{t('servicesList.stats.categories')}</p>
+          <p className="text-xl sm:text-3xl font-bold text-zinc-900 mt-1">{grouped.size}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('servicesList.stats.avgPrice')}</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{money(averagePence)}</p>
+        <div className="min-w-0 bg-white p-2.5 sm:p-5 rounded-lg sm:shadow border border-zinc-200">
+          <p className="text-[11px] leading-4 text-zinc-500 font-medium sm:text-sm sm:uppercase sm:tracking-wider">{t('servicesList.stats.avgPrice')}</p>
+          <p className="text-xl sm:text-3xl font-bold text-zinc-900 mt-1">{money(averagePence)}</p>
         </div>
       </div>
 
       {services.length === 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-lg p-12 text-center">
+        <div className="bg-white border border-zinc-200 rounded-lg p-5 sm:p-12 text-center">
           <p className="text-zinc-500 mb-6">{t('servicesList.empty')}</p>
           <Link
             href="/admin/services/new"
@@ -146,14 +147,14 @@ export default async function AdminServicesPage() {
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([category, items]) => (
             <div key={category} className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
-              <div className="bg-zinc-50 border-b border-zinc-200 px-6 py-3 flex items-center justify-between">
+              <div className="bg-zinc-50 border-b border-zinc-200 px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-700">
                   {tp.dynamic(`categories.${category}`, undefined, category)}
                 </h2>
                 <span className="text-xs text-zinc-500">{t('servicesList.count', { count: items.length })}</span>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <AdminResponsiveTable>
                   <thead className="border-b border-zinc-100">
                     <tr>
                       <th className="text-left text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-6 py-2">
@@ -185,7 +186,7 @@ export default async function AdminServicesPage() {
                       const bookable = service.isBookable && service.durationConfirmed;
                       return (
                         <tr key={service.id} className={`hover:bg-zinc-50 ${service.isPublic ? '' : 'bg-zinc-50/60'}`}>
-                          <td className="px-6 py-3">
+                          <td data-label={t('servicesList.columns.name')} data-primary className="px-6 py-3">
                             <div>
                               <p className="font-medium text-zinc-900 text-sm">{service.name}</p>
                               {service.description && (
@@ -194,7 +195,7 @@ export default async function AdminServicesPage() {
                               <ContentStatusBadges status={contentStatus.get(service.id)} labels={statusLabels} />
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-xs text-zinc-600">
+                          <td data-label={t('servicesList.columns.option')} className="px-4 py-3 text-xs text-zinc-600">
                             <p className="text-zinc-800">{service.offering?.name ?? t('servicesList.standalone')}</p>
                             <p className="mt-0.5">
                               {[
@@ -203,7 +204,7 @@ export default async function AdminServicesPage() {
                               ].filter(Boolean).join(' · ')}
                             </p>
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td data-label={t('servicesList.columns.price')} className="px-4 py-3 text-right">
                             <p className="font-mono font-bold text-zinc-900">{money(toPence(service.price))}</p>
                             {service.vatDisplay === 'EXCLUDED' && (
                               <p className="text-[11px] text-zinc-500 mt-0.5">{tp('vatExcluded')}</p>
@@ -212,13 +213,13 @@ export default async function AdminServicesPage() {
                               <p className="text-[11px] text-zinc-500 mt-0.5">{tp('subjectToConsultation')}</p>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-right text-sm text-zinc-600">
+                          <td data-label={t('servicesList.columns.duration')} className="px-4 py-3 text-right text-sm text-zinc-600">
                             {tp('minutes', { count: service.duration })}
                           </td>
-                          <td className="px-4 py-3 text-right text-sm text-zinc-600">
+                          <td data-label={t('servicesList.columns.bookings')} className="px-4 py-3 text-right text-sm text-zinc-600">
                             {bookings}
                           </td>
-                          <td className="px-4 py-3">
+                          <td data-label={t('servicesList.columns.status')} className="px-4 py-3">
                             <div className="flex flex-wrap gap-1.5">
                               <span className={`${badge} ${service.isPublic ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-zinc-100 text-zinc-600 border-zinc-300'}`}>
                                 {service.isPublic ? t('servicesList.badges.listed') : t('servicesList.badges.hidden')}
@@ -233,11 +234,11 @@ export default async function AdminServicesPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-6 py-3 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <td data-label={t('servicesList.columns.actions')} data-actions className="px-6 py-3 text-right">
+                            <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
                               <Link
                                 href={`/admin/services/${service.id}/edit`}
-                                className="text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                                className="inline-flex min-h-11 items-center text-sm sm:min-h-0 sm:text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
                               >
                                 {tc('actions.edit')}
                               </Link>
@@ -246,7 +247,7 @@ export default async function AdminServicesPage() {
                                   action={deleteServiceRow.bind(null, service.id)}
                                   label={tc('actions.delete')}
                                   pendingLabel={tc('actions.deleting')}
-                                  buttonClassName="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                                  buttonClassName="min-h-11 text-sm sm:min-h-0 sm:text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
                                   confirmMessage={t('servicesList.deleteConfirm', { name: service.name })}
                                 />
                               ) : (
@@ -263,7 +264,7 @@ export default async function AdminServicesPage() {
                       );
                     })}
                   </tbody>
-                </table>
+                </AdminResponsiveTable>
               </div>
             </div>
           ))}

@@ -368,6 +368,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     },
   },
   openingHours: {
+    bookingOffSummary: '網上預約已關閉',
     metaTitle: '營業時間',
     title: '營業時間',
     intro: '每位髮型師可供預約的時間。網站只會按這些時段向顧客提供預約——時段以外的時間一律不會開放。',

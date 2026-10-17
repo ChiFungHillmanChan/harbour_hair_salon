@@ -221,6 +221,8 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 ## Components (responsive shell)
 - `src/components/layout/HeaderClient.tsx`, `MobileNav.tsx`, `MobileMenuOverlay.tsx` — public header uses compact navigation below `xl` (1280px), with a direct booking button from `sm`; the native modal menu scrolls on short screens, supports Escape and keyboard focus isolation, and closes on navigation or resizing to desktop.
 - `src/components/admin/AdminSidebar.tsx` — admin nav shell: hamburger top bar + slide-in drawer < lg, sticky sidebar ≥ lg; closes on backdrop/✕/Escape/route change
+- `src/components/admin/AdminResponsiveTable.tsx` — one set of records and actions renders as labelled two-column cards below `md` and a conventional table above it. Cells use `data-label`, `data-primary` and `data-actions`; long values wrap and action rows stay together. Used throughout catalogue, content, staff, users and operations lists.
+- Admin mobile pages use compact statistics, expandable creation/setup sections and 44px touch controls. `MobileScheduleDisclosure.tsx` keeps operational status visible while collapsing supporting detail on phones; Site Settings has section links, while all settings fields stay available in its existing save form.
 - `src/components/layout/FooterSwitcher.tsx` — client-side gate (usePathname) that hides the marketing footer+book bar on /auth pages (which get no footer at all), so soft navigation swaps chrome correctly
 
 

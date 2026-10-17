@@ -57,11 +57,11 @@ export default async function AdminFaqsPage({
   ) => Promise<FaqActionState> = updateFaq;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="flex items-start justify-between mb-8 gap-6">
+    <div className="p-3 sm:p-6 lg:p-8">
+      <div className="flex flex-wrap items-start justify-between mb-4 gap-3 sm:mb-8 sm:gap-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('faqs.list.title')}</h1>
-          <p className="text-zinc-700 mt-2">
+          <p className="text-sm text-zinc-700 mt-1 sm:mt-2 sm:text-base">
             {rich(t('faqs.list.intro'), {
               code: (text) => <code className="bg-zinc-100 px-1 rounded">{text}</code>,
             })}
@@ -69,7 +69,7 @@ export default async function AdminFaqsPage({
         </div>
         <Link
           href="/admin/faqs/new"
-          className="shrink-0 bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded"
+          className="inline-flex min-h-11 shrink-0 items-center bg-zinc-900 hover:bg-zinc-800 text-white px-4 sm:px-6 py-3 text-sm sm:uppercase sm:tracking-[0.15em] font-bold transition-colors rounded"
         >
           + {t('faqs.list.new')}
         </Link>
@@ -82,52 +82,59 @@ export default async function AdminFaqsPage({
       )}
 
       {keys.length > 0 && (
-        <div className="mb-6 flex flex-wrap gap-2 text-xs">
-          <span className="text-zinc-500 uppercase tracking-wider font-medium mr-2">
-            {t('faqs.list.existingKeys')}
-          </span>
-          {keys.map((k) => (
-            <span
-              key={k}
-              className={`inline-block px-2 py-1 rounded border ${
-                focusKey === k
-                  ? 'bg-zinc-900 text-white border-zinc-900'
-                  : 'bg-white border-zinc-200 text-zinc-600'
-              }`}
-            >
-              {k}
-            </span>
-          ))}
-        </div>
+        <details className="mb-4 rounded-lg border border-zinc-200 bg-white">
+          <summary className="min-h-11 cursor-pointer px-3 py-3 text-sm font-medium text-zinc-700">
+            {t('faqs.list.existingKeys')} <span className="text-zinc-500">({keys.length})</span>
+          </summary>
+          <div className="flex flex-wrap gap-2 px-3 pb-3 text-xs">
+            {keys.map((k) => (
+              <span
+                key={k}
+                className={`inline-block max-w-full break-all px-2 py-1 rounded border ${
+                  focusKey === k
+                    ? 'bg-zinc-900 text-white border-zinc-900'
+                    : 'bg-white border-zinc-200 text-zinc-600'
+                }`}
+              >
+                {k}
+              </span>
+            ))}
+          </div>
+        </details>
       )}
 
       {grouped.size === 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-lg p-12 text-center">
+        <div className="bg-white border border-zinc-200 rounded-lg p-6 sm:p-12 text-center">
           <p className="text-zinc-500">{t('faqs.list.empty')}</p>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-4 sm:space-y-8">
           {Array.from(grouped.entries()).map(([key, items]) => (
             <section key={key} className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between bg-zinc-50 border-b border-zinc-200 px-6 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-zinc-50 border-b border-zinc-200 px-4 sm:px-6 py-3">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-700">
                   {faqKeyLabel(key, t)}
                 </h2>
-                <span className="text-xs text-zinc-500 font-mono">{key}</span>
+                <span className="text-xs text-zinc-500 font-mono break-all">{key}</span>
               </div>
               <ul className="divide-y divide-zinc-100">
                 {items.map((faq) => (
-                  <li key={faq.id} className="p-6 space-y-4">
+                  <li key={faq.id} className="p-4 sm:p-6 space-y-3 sm:space-y-4">
                     <div>
-                      <p className="font-medium text-zinc-900">{faq.question}</p>
-                      <p className="text-sm text-zinc-600 mt-1 line-clamp-3">{faq.answer}</p>
+                      <p className="break-words font-medium text-zinc-900">{faq.question}</p>
+                      <p className="text-sm text-zinc-600 mt-1 line-clamp-3 break-words">{faq.answer}</p>
                       <ContentStatusBadges status={contentStatus.get(faq.id)} labels={statusLabels} />
                     </div>
-                    <FaqInlineEditor faq={{ id: faq.id, key: faq.key, sortOrder: faq.sortOrder }} action={updateFaqAction} />
+                    <details className="rounded border border-zinc-200">
+                      <summary className="min-h-11 cursor-pointer px-3 py-3 text-sm font-medium text-zinc-700">{t('faqs.form.placementTitle')}</summary>
+                      <div className="border-t border-zinc-200 p-3">
+                        <FaqInlineEditor faq={{ id: faq.id, key: faq.key, sortOrder: faq.sortOrder }} action={updateFaqAction} />
+                      </div>
+                    </details>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <Link
                         href={`/admin/faqs/${faq.id}/edit`}
-                        className="text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                        className="inline-flex min-h-11 items-center text-sm sm:text-xs font-medium text-zinc-900 px-3 py-2 rounded hover:bg-zinc-100 transition-colors"
                       >
                         {t('faqs.list.editText')}
                       </Link>
@@ -135,7 +142,7 @@ export default async function AdminFaqsPage({
                         action={deleteFaqById.bind(null, faq.id)}
                         label={tc('actions.delete')}
                         pendingLabel={tc('actions.deleting')}
-                        buttonClassName="text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded transition-colors"
+                        buttonClassName="min-h-11 text-sm sm:text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded transition-colors"
                         confirmMessage={t('faqs.list.deleteConfirm', { question: faq.question })}
                       />
                     </div>

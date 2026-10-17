@@ -40,7 +40,7 @@ interface StylistFormProps {
   showOnWebsite?: boolean;
 }
 
-const fieldClass = 'w-full border border-zinc-300 rounded px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
+const fieldClass = 'min-w-0 w-full border border-zinc-300 rounded px-3 sm:px-4 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent';
 const labelClass = 'block text-xs font-medium uppercase tracking-wider text-zinc-600 mb-2';
 
 /**
@@ -66,7 +66,7 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
   const showSavedBanner = state.status === 'success' || (!!saved && state.status !== 'error');
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-6 pb-16">
+    <form ref={formRef} action={formAction} className="min-w-0 space-y-4 sm:space-y-6 pb-16">
       {mode === 'edit' && stylist && <input type="hidden" name="id" value={stylist.id} />}
 
       {showSavedBanner && (
@@ -80,13 +80,13 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
         </div>
       )}
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-6 space-y-5">
         <div>
           <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('stylists.form.settingsTitle')}</h2>
           <p className="mt-1 text-xs leading-5 text-zinc-500">{t('stylists.form.settingsHelp')}</p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-5">
+        <div className="grid [&>*]:min-w-0 md:grid-cols-2 gap-5">
           <div>
             <label htmlFor="stylist-name" className={labelClass}>
               {t('stylists.form.name')} *
@@ -152,7 +152,7 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
 
       {mode === 'create' && <BilingualContentEditor mode="create" type="STYLIST" initial={{ 'en-GB': { languages: ['English'] } }} />}
 
-      <section className="bg-white rounded-lg border border-zinc-200 p-6 space-y-4">
+      <section className="bg-white rounded-lg border border-zinc-200 p-3 sm:p-6 space-y-4">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('stylists.form.scheduleBoard')}</h2>
         <CalendarColorPicker
           name="calendarColor"
@@ -162,7 +162,7 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
         />
       </section>
 
-      <section className="bg-white rounded-lg border border-zinc-200 p-6 space-y-4">
+      <section className="bg-white rounded-lg border border-zinc-200 p-3 sm:p-6 space-y-4">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('stylists.form.googleDiary')}</h2>
         <GoogleColorPicker name="googleColorId" label={t('stylists.form.googleColour')} initial={googleColorId ?? null} help={t('stylists.form.googleColourHelp')} allowNone />
         <div>
@@ -172,25 +172,25 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
         </div>
       </section>
 
-      <section className="bg-white rounded-lg border border-zinc-200 p-6 space-y-4">
+      <section className="bg-white rounded-lg border border-zinc-200 p-3 sm:p-6 space-y-4">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('stylists.form.websiteAndBooking')}</h2>
         <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
-            <input type="checkbox" name="showOnWebsite" defaultChecked={showOnWebsite} className="h-4 w-4" />
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-zinc-900">
+            <input type="checkbox" name="showOnWebsite" defaultChecked={showOnWebsite} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4" />
             {t('stylists.form.showOnWebsite')}
           </label>
           <p className="text-xs text-zinc-500 mt-1">{t('stylists.form.showOnWebsiteHelp')}</p>
         </div>
         <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-zinc-900">
-            <input type="checkbox" name="takesWalkIns" defaultChecked={takesWalkIns} className="h-4 w-4" />
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-zinc-900">
+            <input type="checkbox" name="takesWalkIns" defaultChecked={takesWalkIns} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4" />
             {t('stylists.form.takesWalkIns')}
           </label>
           <p className="text-xs text-zinc-500 mt-1">{t('stylists.form.takesWalkInsHelp')}</p>
         </div>
       </section>
 
-      <section className="bg-white border border-zinc-200 rounded-lg p-6 space-y-5">
+      <section className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-6 space-y-5">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('stylists.form.integrations')}</h2>
         <p className="text-sm text-zinc-600">
           {rich(t('stylists.form.integrationsIntro'), {
@@ -218,14 +218,14 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
         </div>
       </section>
 
-      <div className="flex items-center justify-between gap-4 sticky bottom-0 bg-zinc-50 py-4 border-t border-zinc-200">
-        <Link href="/admin/stylists" className="text-sm font-medium text-zinc-600 hover:text-zinc-900">
+      <div className="flex flex-col-reverse items-stretch justify-between gap-2 sm:flex-row sm:items-center sm:gap-4 sticky bottom-0 bg-zinc-50 py-4 border-t border-zinc-200">
+        <Link href="/admin/stylists" className="inline-flex min-h-11 items-center justify-center text-sm font-medium text-zinc-600 hover:text-zinc-900 sm:justify-start">
           ← {t('stylists.form.backToList')}
         </Link>
         <button
           type="submit"
           disabled={pending}
-          className="bg-zinc-900 hover:bg-zinc-800 text-white px-8 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          className="min-h-11 bg-zinc-900 hover:bg-zinc-800 text-white px-4 sm:px-8 py-3 text-sm sm:uppercase sm:tracking-[0.15em] font-bold transition-colors rounded disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {pending ? tc('actions.saving') : mode === 'create' ? t('stylists.form.create') : t('stylists.form.saveSettings')}
         </button>

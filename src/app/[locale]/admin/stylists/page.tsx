@@ -1,3 +1,4 @@
+import { AdminResponsiveTable } from '@/components/admin/AdminResponsiveTable';
 import { requireAdmin } from '@/app/lib/session';
 import Link from '@/i18n/link';
 import { unstable_rethrow } from 'next/navigation';
@@ -41,7 +42,7 @@ async function deleteStylistRow(id: string): Promise<RowActionResult> {
 
 /** A row switch: filled when on, outlined when off. One click flips it. */
 function switchClass(on: boolean) {
-  return `text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${on
+  return `min-h-11 text-sm sm:min-h-0 sm:text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${on
     ? 'bg-zinc-900 text-white hover:bg-zinc-700'
     : 'border border-zinc-300 text-zinc-600 hover:border-zinc-900 hover:text-zinc-900'}`;
 }
@@ -66,11 +67,11 @@ export default async function AdminStylistsPage() {
   for (const row of counts) appointmentCount.set(row.stylistId, row._count._all);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="flex items-start justify-between mb-8 gap-6">
-        <div>
+    <div className="p-3 sm:p-6 lg:p-8">
+      <div className="flex flex-wrap items-start justify-between mb-4 gap-3 sm:mb-8 sm:gap-6">
+        <div className="min-w-0 flex-1 basis-52">
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('stylists.list.title')}</h1>
-          <p className="text-zinc-700 mt-2">
+          <p className="text-zinc-700 mt-1 text-sm sm:mt-2 sm:text-base">
             {rich(t('stylists.list.intro'), {
               link: (text) => (
                 <Link href="/stylists" className="underline hover:text-zinc-900">
@@ -83,14 +84,14 @@ export default async function AdminStylistsPage() {
         </div>
         <Link
           href="/admin/stylists/new"
-          className="shrink-0 bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded"
+          className="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-2.5 text-sm sm:px-6 sm:py-3 sm:uppercase sm:tracking-[0.15em] font-bold transition-colors rounded"
         >
           + {t('stylists.list.new')}
         </Link>
       </div>
 
       {stylists.length === 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-lg p-12 text-center">
+        <div className="bg-white border border-zinc-200 rounded-lg p-5 sm:p-12 text-center">
           <p className="text-zinc-500 mb-6">{t('stylists.list.empty')}</p>
           <Link
             href="/admin/stylists/new"
@@ -101,7 +102,7 @@ export default async function AdminStylistsPage() {
         </div>
       ) : (
         <div className="bg-white border border-zinc-200 rounded-lg overflow-x-auto">
-          <table className="w-full">
+          <AdminResponsiveTable>
             <thead className="border-b border-zinc-200 bg-zinc-50">
               <tr>
                 <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-6 py-3">
@@ -132,14 +133,14 @@ export default async function AdminStylistsPage() {
                 const bookings = appointmentCount.get(s.id) ?? 0;
                 return (
                   <tr key={s.id} className="hover:bg-zinc-50">
-                    <td className="px-6 py-4">
+                    <td data-label={t('stylists.list.columns.stylist')} data-primary className="px-6 py-4">
                       <p className="font-medium text-zinc-900">{s.name}</p>
                       {s.tagline && <p className="text-xs text-zinc-500 italic mt-0.5">{s.tagline}</p>}
                       <ContentStatusBadges status={contentStatus.get(s.id)} labels={statusLabels} />
                     </td>
-                    <td className="px-4 py-4 text-sm text-zinc-600">{s.role}</td>
-                    <td className="px-4 py-4 text-xs text-zinc-500 font-mono">/{s.slug}</td>
-                    <td className="px-4 py-4">
+                    <td data-label={t('stylists.list.columns.role')} className="px-4 py-4 text-sm text-zinc-600">{s.role}</td>
+                    <td data-label={t('stylists.list.columns.slug')} className="px-4 py-4 text-xs text-zinc-500 font-mono">/{s.slug}</td>
+                    <td data-label={t('stylists.list.columns.website')} className="px-4 py-4">
                       <RowActionButton
                         action={setStylistSwitch.bind(null, s.id, 'showOnWebsite', !s.showOnWebsite)}
                         label={s.showOnWebsite ? t('stylists.list.shown') : t('stylists.list.hidden')}
@@ -147,7 +148,7 @@ export default async function AdminStylistsPage() {
                         buttonClassName={switchClass(s.showOnWebsite)}
                       />
                     </td>
-                    <td className="px-4 py-4">
+                    <td data-label={t('stylists.list.columns.walkIns')} className="px-4 py-4">
                       <RowActionButton
                         action={setStylistSwitch.bind(null, s.id, 'takesWalkIns', !s.takesWalkIns)}
                         label={s.takesWalkIns ? t('stylists.list.walkIns') : t('stylists.list.noWalkIns')}
@@ -155,22 +156,22 @@ export default async function AdminStylistsPage() {
                         buttonClassName={switchClass(s.takesWalkIns)}
                       />
                     </td>
-                    <td className="px-4 py-4 text-right text-sm text-zinc-600">{bookings}</td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <td data-label={t('stylists.list.columns.bookings')} className="px-4 py-4 text-right text-sm text-zinc-600">{bookings}</td>
+                    <td data-label={t('stylists.list.columns.actions')} data-actions className="px-6 py-4 text-right">
+                      <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
                         {/* A hidden stylist has no public page to view. */}
                         {s.showOnWebsite && (
                           <Link
                             href={`/stylists/${s.slug}`}
                             target="_blank"
-                            className="text-xs font-medium text-zinc-600 hover:text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                            className="inline-flex min-h-11 items-center text-sm sm:min-h-0 sm:text-xs font-medium text-zinc-600 hover:text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
                           >
                             {t('stylists.list.view')}
                           </Link>
                         )}
                         <Link
                           href={`/admin/stylists/${s.id}/edit`}
-                          className="text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                          className="inline-flex min-h-11 items-center text-sm sm:min-h-0 sm:text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
                         >
                           {tc('actions.edit')}
                         </Link>
@@ -179,7 +180,7 @@ export default async function AdminStylistsPage() {
                             action={deleteStylistRow.bind(null, s.id)}
                             label={tc('actions.delete')}
                             pendingLabel={tc('actions.deleting')}
-                            buttonClassName="text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                            buttonClassName="min-h-11 text-sm sm:min-h-0 sm:text-xs font-medium px-3 py-1.5 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
                             confirmMessage={t('stylists.list.deleteConfirm', { name: s.name })}
                           />
                         ) : (
@@ -193,7 +194,7 @@ export default async function AdminStylistsPage() {
                 );
               })}
             </tbody>
-          </table>
+          </AdminResponsiveTable>
         </div>
       )}
     </div>

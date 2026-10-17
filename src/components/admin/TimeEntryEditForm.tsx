@@ -18,7 +18,7 @@ interface TimeEntryEditFormProps {
   note: string;
 }
 
-const fieldClass = 'border border-zinc-300 rounded px-2 py-1 text-sm w-full';
+const fieldClass = 'border border-zinc-300 rounded px-2 py-2 text-base sm:text-sm w-full min-w-0 min-h-11';
 
 /**
  * Per-row correction form for a time entry. Saving flips the entry to EDITED,
@@ -38,7 +38,7 @@ export function TimeEntryEditForm({ entryId, date, clockInTime, clockOutTime, br
   }, [state.success, draftKey]);
 
   return (
-    <form ref={formRef} action={action} className="mt-2 w-56 space-y-2 whitespace-normal">
+    <form ref={formRef} action={action} className="mt-2 w-full min-w-0 space-y-3 whitespace-normal md:w-56">
       <div>
         <label className="block text-xs font-medium text-zinc-700" htmlFor={`date-${entryId}`}>{t('timesheets.editForm.date')}</label>
         <input id={`date-${entryId}`} type="date" name="date" defaultValue={date} required className={fieldClass} />
@@ -65,7 +65,7 @@ export function TimeEntryEditForm({ entryId, date, clockInTime, clockOutTime, br
       <button
         type="submit"
         disabled={pending}
-        className="bg-zinc-900 hover:bg-black text-white px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
+        className="min-h-11 w-full md:w-auto bg-zinc-900 hover:bg-black text-white px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
       >
         {pending ? t('timesheets.editForm.saving') : t('timesheets.editForm.save')}
       </button>

@@ -386,6 +386,7 @@ const adminSchedule = {
     },
   },
   openingHours: {
+    bookingOffSummary: 'Online booking is off',
     metaTitle: 'Opening Hours',
     title: 'Opening Hours',
     intro: 'The hours each stylist is bookable. This is exactly what the website offers customers — nothing outside these windows is ever sold.',

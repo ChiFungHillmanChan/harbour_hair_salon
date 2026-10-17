@@ -4,6 +4,7 @@ import { getAllPostsForAdmin } from '@/app/services/blog-service';
 import { deleteBlogPost, toggleBlogPostStatus } from '@/app/actions/admin-blog';
 import { RowActionButton } from '@/components/admin/RowActionButton';
 import { ContentStatusBadges } from '@/components/admin/ContentStatusBadges';
+import { AdminResponsiveTable } from '@/components/admin/AdminResponsiveTable';
 import { Pagination } from '@/components/admin/Pagination';
 import { loadContentStatus } from '@/app/services/admin-content-status';
 import { pageNumber } from '@/app/lib/pagination';
@@ -26,11 +27,11 @@ export default async function AdminBlogListPage({ searchParams }: { searchParams
   const statusLabels = { chineseMissing: t('contentStatus.chineseMissing'), draftPending: t('contentStatus.draftPending') };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="flex items-start justify-between mb-8 gap-6">
+    <div className="p-3 sm:p-6 lg:p-8">
+      <div className="flex flex-wrap items-start justify-between mb-4 gap-3 sm:mb-8 sm:gap-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('blog.list.title')}</h1>
-          <p className="text-zinc-700 mt-2">
+          <p className="text-sm text-zinc-700 mt-1 sm:mt-2 sm:text-base">
             {rich(t('blog.list.intro'), {
               link: (text) => (
                 <Link href="/blog" className="underline hover:text-zinc-900">
@@ -42,29 +43,29 @@ export default async function AdminBlogListPage({ searchParams }: { searchParams
         </div>
         <Link
           href="/admin/blog/new"
-          className="shrink-0 bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-3 text-sm uppercase tracking-[0.15em] font-bold transition-colors rounded"
+          className="inline-flex min-h-11 shrink-0 items-center bg-zinc-900 hover:bg-zinc-800 text-white px-4 sm:px-6 py-3 text-sm sm:uppercase sm:tracking-[0.15em] font-bold transition-colors rounded"
         >
           + {t('blog.list.new')}
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('blog.list.stats.total')}</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{total}</p>
+      <div className="grid grid-cols-3 gap-2 mb-4 sm:gap-4 sm:mb-8">
+        <div className="bg-white min-w-0 p-3 sm:p-5 rounded-lg shadow border border-zinc-200">
+          <p className="text-[11px] leading-4 text-zinc-500 font-medium sm:text-sm sm:uppercase sm:tracking-wider">{t('blog.list.stats.total')}</p>
+          <p className="text-2xl sm:text-3xl font-bold text-zinc-900 mt-1">{total}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('blog.list.stats.published')}</p>
-          <p className="text-3xl font-bold text-emerald-600 mt-1">{publishedCount}</p>
+        <div className="bg-white min-w-0 p-3 sm:p-5 rounded-lg shadow border border-zinc-200">
+          <p className="text-[11px] leading-4 text-zinc-500 font-medium sm:text-sm sm:uppercase sm:tracking-wider">{t('blog.list.stats.published')}</p>
+          <p className="text-2xl sm:text-3xl font-bold text-emerald-600 mt-1">{publishedCount}</p>
         </div>
-        <div className="bg-white p-5 rounded-lg shadow border border-zinc-200">
-          <p className="text-sm text-zinc-500 uppercase tracking-wider font-medium">{t('blog.list.stats.drafts')}</p>
-          <p className="text-3xl font-bold text-zinc-900 mt-1">{draftCount}</p>
+        <div className="bg-white min-w-0 p-3 sm:p-5 rounded-lg shadow border border-zinc-200">
+          <p className="text-[11px] leading-4 text-zinc-500 font-medium sm:text-sm sm:uppercase sm:tracking-wider">{t('blog.list.stats.drafts')}</p>
+          <p className="text-2xl sm:text-3xl font-bold text-zinc-900 mt-1">{draftCount}</p>
         </div>
       </div>
 
       {posts.length === 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-lg p-12 text-center">
+        <div className="bg-white border border-zinc-200 rounded-lg p-6 sm:p-12 text-center">
           <p className="text-zinc-500 mb-6">{page > 1 ? t('blog.list.emptyPage') : t('blog.list.empty')}</p>
           <Link
             href="/admin/blog/new"
@@ -74,8 +75,8 @@ export default async function AdminBlogListPage({ searchParams }: { searchParams
           </Link>
         </div>
       ) : (
-        <div className="bg-white border border-zinc-200 rounded-lg overflow-x-auto">
-          <table className="w-full">
+        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden md:overflow-x-auto">
+          <AdminResponsiveTable>
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-50">
                 <th className="text-left text-xs uppercase tracking-wider text-zinc-500 font-medium px-6 py-3 whitespace-nowrap">
@@ -95,14 +96,14 @@ export default async function AdminBlogListPage({ searchParams }: { searchParams
             <tbody className="divide-y divide-zinc-100">
               {posts.map((post) => (
                 <tr key={post.id} className="hover:bg-zinc-50">
-                  <td className="px-6 py-4">
+                  <td data-label={t('blog.list.columns.title')} data-primary className="px-6 py-4">
                     <div>
                       <p className="font-medium text-zinc-900">{post.title}</p>
-                      <p className="text-xs text-zinc-500 mt-0.5 font-mono">/{post.slug}</p>
+                      <p className="text-xs text-zinc-500 mt-0.5 font-mono break-all">/{post.slug}</p>
                       <ContentStatusBadges status={contentStatus.get(post.id)} labels={statusLabels} />
                     </div>
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
+                  <td data-label={t('blog.list.columns.status')} className="px-4 py-4 whitespace-nowrap">
                     <span
                       className={`inline-block px-2.5 py-1 text-xs uppercase tracking-wider font-bold rounded-full ${
                         post.status === 'PUBLISHED'
@@ -113,23 +114,23 @@ export default async function AdminBlogListPage({ searchParams }: { searchParams
                       {t.dynamic(`blog.list.status.${post.status}`, undefined, post.status)}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-sm text-zinc-600 whitespace-nowrap">
+                  <td data-label={t('blog.list.columns.published')} className="px-4 py-4 text-sm text-zinc-600 whitespace-nowrap">
                     {formatSalonMediumDate(locale, post.publishedAt)}
                   </td>
-                  <td className="px-6 py-4 text-right whitespace-nowrap">
-                    <div className="flex items-center justify-end gap-2">
+                  <td data-label={t('blog.list.columns.actions')} data-actions className="px-6 py-4 text-right whitespace-nowrap">
+                    <div className="flex flex-wrap items-center justify-start gap-1 sm:justify-end sm:gap-2">
                       {post.status === 'PUBLISHED' && (
                         <Link
                           href={`/blog/${post.slug}`}
                           target="_blank"
-                          className="text-xs font-medium text-zinc-600 hover:text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                          className="inline-flex min-h-11 items-center text-sm sm:text-xs font-medium text-zinc-600 hover:text-zinc-900 px-3 py-2 rounded hover:bg-zinc-100 transition-colors"
                         >
                           {t('blog.list.view')}
                         </Link>
                       )}
                       <Link
                         href={`/admin/blog/${post.id}/edit`}
-                        className="text-xs font-medium text-zinc-900 px-3 py-1.5 rounded hover:bg-zinc-100 transition-colors"
+                        className="inline-flex min-h-11 items-center text-sm sm:text-xs font-medium text-zinc-900 px-3 py-2 rounded hover:bg-zinc-100 transition-colors"
                       >
                         {tc('actions.edit')}
                       </Link>
@@ -141,13 +142,13 @@ export default async function AdminBlogListPage({ searchParams }: { searchParams
                         )}
                         label={post.status === 'PUBLISHED' ? t('blog.list.unpublish') : t('blog.list.publish')}
                         pendingLabel={post.status === 'PUBLISHED' ? t('blog.list.unpublishing') : t('blog.list.publishing')}
-                        buttonClassName="text-xs font-medium px-3 py-1.5 rounded transition-colors text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                        buttonClassName="min-h-11 text-sm sm:text-xs font-medium px-3 py-2 rounded transition-colors text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
                       />
                       <RowActionButton
                         action={deleteBlogPost.bind(null, post.id)}
                         label={tc('actions.delete')}
                         pendingLabel={tc('actions.deleting')}
-                        buttonClassName="text-xs font-medium px-3 py-1.5 rounded transition-colors text-red-600 hover:text-red-700 hover:bg-red-50"
+                        buttonClassName="min-h-11 text-sm sm:text-xs font-medium px-3 py-2 rounded transition-colors text-red-600 hover:text-red-700 hover:bg-red-50"
                         confirmMessage={t('blog.list.deleteConfirm', { title: post.title })}
                       />
                     </div>
@@ -155,7 +156,7 @@ export default async function AdminBlogListPage({ searchParams }: { searchParams
                 </tr>
               ))}
             </tbody>
-          </table>
+          </AdminResponsiveTable>
         </div>
       )}
       <Pagination path="/admin/blog" page={page} hasMore={hasMore} />

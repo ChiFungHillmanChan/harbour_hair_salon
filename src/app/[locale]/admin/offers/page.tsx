@@ -38,22 +38,22 @@ export default async function AdminOffersPage() {
   ) => Promise<OfferActionState> = updateOffer;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-8">
+    <div className="p-3 sm:p-6 lg:p-8">
+      <div className="mb-4 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('offers.title')}</h1>
-        <p className="text-zinc-600 mt-2">{t('offers.intro')}</p>
+        <p className="text-sm text-zinc-600 mt-1 sm:mt-2 sm:text-base">{t('offers.intro')}</p>
       </div>
 
       {DISCOUNTS_PAUSED && (
-        <div className="mb-8 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900" role="note">
-          <p className="font-semibold">{t('promotions.paused.offersTitle')}</p>
-          <p className="mt-1">{t('promotions.paused.offersBody')}</p>
-        </div>
+        <details className="mb-3 sm:mb-6 rounded-lg border border-amber-300 bg-amber-50 text-sm text-amber-900">
+          <summary className="min-h-11 cursor-pointer px-3 py-3 font-semibold">{t('promotions.paused.offersTitle')}</summary>
+          <p className="px-3 pb-3 leading-6">{t('promotions.paused.offersBody')}</p>
+        </details>
       )}
 
       <OfferForm latestOfferId={offers[0]?.id ?? null} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
         {offers.map((offer) => {
           const offerLite = {
             id: offer.id,
@@ -68,8 +68,8 @@ export default async function AdminOffersPage() {
             : offer.isActive ? 'superseded' : 'inactive';
 
           return (
-            <div key={offer.id} className="bg-white rounded-lg shadow border border-zinc-200 p-6">
-              <div className="flex justify-between items-start mb-4 gap-2">
+            <div key={offer.id} className="bg-white rounded-lg shadow min-w-0 border border-zinc-200 p-4 sm:p-6">
+              <div className="flex flex-wrap justify-between items-start mb-3 gap-2 sm:mb-4">
                 {offer.isGlobal && (
                   <span
                     title={t.dynamic(`offers.card.global.${globalState}Help`)}
@@ -88,13 +88,13 @@ export default async function AdminOffersPage() {
               </div>
 
               <div className="mb-4 border-b border-zinc-100 pb-4">
-                <p className="font-medium text-zinc-900">{offer.title}</p>
-                {offer.description && <p className="mt-1 text-sm text-zinc-600">{offer.description}</p>}
+                <p className="break-words font-medium text-zinc-900">{offer.title}</p>
+                {offer.description && <p className="mt-1 break-words text-sm text-zinc-600">{offer.description}</p>}
                 <ContentStatusBadges status={contentStatus.get(offer.id)} labels={statusLabels} />
                 <div className="mt-2">
                   <Link
                     href={`/admin/offers/${offer.id}/edit`}
-                    className="text-xs font-medium text-zinc-900 underline hover:text-zinc-700"
+                    className="inline-flex min-h-11 items-center text-sm sm:text-xs font-medium text-zinc-900 underline hover:text-zinc-700"
                   >
                     {t('offers.card.editText')}
                   </Link>
@@ -103,18 +103,18 @@ export default async function AdminOffersPage() {
 
               <OfferInlineEditor offer={offerLite} action={updateOfferAction} />
 
-              <div className="flex justify-between items-start pt-4 mt-4 border-t border-zinc-100">
+              <div className="flex flex-wrap gap-3 justify-between items-start pt-3 mt-3 sm:pt-4 sm:mt-4 border-t border-zinc-100">
                   <RowActionButton
                     action={toggleOfferStatus.bind(null, offer.id, !offer.isActive)}
                     label={offer.isActive ? t('promotions.deactivate') : t('promotions.activate')}
                     pendingLabel={offer.isActive ? t('promotions.deactivating') : t('promotions.activating')}
-                    buttonClassName="text-sm text-zinc-700 hover:text-zinc-900 font-medium"
+                    buttonClassName="min-h-11 px-3 py-2 text-sm text-zinc-700 hover:text-zinc-900 font-medium"
                   />
                   <RowActionButton
                     action={deleteOffer.bind(null, offer.id)}
                     label={tc('actions.delete')}
                     pendingLabel={tc('actions.deleting')}
-                    buttonClassName="text-sm text-red-600 hover:text-red-800 font-medium"
+                    buttonClassName="min-h-11 px-3 py-2 text-sm text-red-600 hover:text-red-800 font-medium"
                     confirmMessage={t('offers.card.deleteConfirm')}
                   />
               </div>
@@ -122,7 +122,7 @@ export default async function AdminOffersPage() {
           );
         })}
         {offers.length === 0 && (
-            <div className="col-span-2 text-center text-zinc-500 py-8">{t('offers.empty')}</div>
+            <div className="md:col-span-2 text-center text-zinc-500 py-8">{t('offers.empty')}</div>
         )}
       </div>
     </div>

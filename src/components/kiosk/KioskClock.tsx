@@ -64,8 +64,8 @@ export default function KioskClock({ roster }: { roster: RosterEntry[] }) {
 
   if (selected) {
     return (
-      <div className="max-w-xs mx-auto text-center">
-        <p className="text-xl mb-2">{selected.name}</p>
+      <div className="w-full min-w-0 max-w-xs mx-auto text-center">
+        <p className="text-xl mb-2 break-words">{selected.name}</p>
         <p className="mb-4 opacity-80">{selected.isClockedIn ? t('pin.clockOut') : t('pin.clockIn')}</p>
         <input
           autoFocus
@@ -77,7 +77,7 @@ export default function KioskClock({ roster }: { roster: RosterEntry[] }) {
           onKeyDown={(e) => { if (e.key === 'Enter' && pin.length >= 4 && !busy) submit(); }}
           aria-label={t('pin.label', { name: selected.name })}
           placeholder={t('pin.placeholder')}
-          className="w-full text-center text-2xl tracking-[0.5em] p-4 rounded text-black"
+          className="w-full min-w-0 bg-white text-center text-2xl tracking-[0.5em] p-4 rounded text-black"
         />
         <div className="flex gap-3 mt-4">
           <button onClick={reset} className="flex-1 border border-white/40 py-3 rounded">{t('pin.back')}</button>
@@ -93,15 +93,15 @@ export default function KioskClock({ roster }: { roster: RosterEntry[] }) {
   return (
     <div>
       {messageText && <p className="text-center text-zinc-300 text-xl mb-6" role="status">{messageText}</p>}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 max-w-3xl mx-auto">
         {roster.map((r) => (
           <button
             key={r.id}
             onClick={() => setSelectedId(r.id)}
-            className="bg-white/10 hover:bg-white/20 transition-colors rounded-lg p-6 text-center"
+            className="bg-white/10 hover:bg-white/20 transition-colors rounded-lg min-h-28 min-w-0 p-3 sm:p-6 text-center"
           >
-            <span className="block text-lg font-bold">{r.name}</span>
-            <span className="block text-sm opacity-70">{r.title}</span>
+            <span className="block break-words text-base sm:text-lg font-bold">{r.name}</span>
+            <span className="block break-words text-sm opacity-70">{r.title}</span>
             <span className={`block text-xs mt-2 ${r.isClockedIn ? 'text-green-300' : 'text-white/50'}`}>
               {r.isClockedIn ? t('roster.onShift') : t('roster.off')}
             </span>

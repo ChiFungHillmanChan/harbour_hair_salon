@@ -18,10 +18,10 @@ export default async function NewFaqPage({
   const [existingKeys, t] = await Promise.all([getAllFaqKeys(), getT('adminContent')]);
 
   return (
-    <div className="p-4 sm:p-8 max-w-3xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-zinc-900">{t('faqs.form.newTitle')}</h1>
-        <p className="text-zinc-700 mt-2">
+    <div className="p-3 sm:p-8 max-w-3xl mx-auto">
+      <div className="mb-4 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-zinc-900">{t('faqs.form.newTitle')}</h1>
+        <p className="text-sm text-zinc-700 mt-1 sm:mt-2 sm:text-base">
           {rich(t('faqs.form.newIntro'), {
             code: (text) => <code className="bg-zinc-100 px-1 rounded">{text}</code>,
           })}
@@ -29,7 +29,7 @@ export default async function NewFaqPage({
       </div>
       <NewFaqForm action={createFaq} existingKeys={existingKeys} presetKey={presetKey} />
       <div className="mt-6">
-        <Link href="/admin/faqs" className="text-sm text-zinc-600 hover:text-zinc-900">
+        <Link href="/admin/faqs" className="inline-flex min-h-11 items-center text-sm text-zinc-600 hover:text-zinc-900">
           ← {t('faqs.form.backToList')}
         </Link>
       </div>
