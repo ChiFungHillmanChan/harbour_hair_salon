@@ -261,6 +261,8 @@ const adminContent: Localized<Messages['adminContent']> = {
       googleColourHelp: '此髮型師的客人在本店 Google 日曆中使用的顏色。該顏色的活動會在網站及 Fresha 封鎖此髮型師的時間，此髮型師的網上預約亦會以此顏色寫入日曆。下次 Google 日曆同步後生效。',
       googleNames: 'Google 名稱',
       googleNamesHelp: '記事簿中對此髮型師的其他稱呼，以逗號分隔，例如 F 或 天。單一英文字母只在括號內才算，例如「早走(L)」。髮型師本身的名字一定會算。',
+      takesWalkIns: '接 walk-in 客人',
+      takesWalkInsHelp: '計算日曆中紅色（未指定髮型師）的預約時，此人算作一個空位：網上預約會保留足夠的空位接待這些客人。助理等不接 walk-in 客人的員工請取消勾選——他們不會被算作空位，他們自己的預約亦不會佔用 walk-in 的位置。',
       integrations: '整合設定',
       integrationsIntro: '於<link>整合設定</link>管理日曆連接及查看同步狀態。',
       treatwellId: 'Treatwell 員工編號',

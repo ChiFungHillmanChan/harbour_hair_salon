@@ -64,3 +64,11 @@ test('maxConcurrent counts the most walk-ins at one instant (half-open intervals
   assert.equal(maxConcurrent([red('10:00', '11:00'), red('10:30', '11:30'), red('11:00', '12:00')]), 2);
   assert.equal(maxConcurrent([red('10:00', '11:00'), red('11:00', '12:00')]), 1);
 });
+
+test('a stylist who takes no walk-ins (left out of the context) is never a chair: never counted free, and their own booking uses none', () => {
+  // Only Lox and Funky take walk-ins, and both are booked: nobody can take it…
+  const walkIn = ctx({ unassigned: [red('15:00', '16:00')], busy: { funky: [booked('15:00')], lox: [booked('15:00')] } });
+  assert.equal(diaryChairAllows(walkIn, 'lox', at('15:30'), 30), false);
+  // …yet Shania (an assistant) is still bookable: she was never one of the chairs, so her booking takes none.
+  assert.equal(diaryChairAllows(walkIn, 'shania', at('15:00'), 60), true);
+});

@@ -27,7 +27,7 @@ export default async function EditStylistPage({
   const [integration, editor] = await Promise.all([
     prisma.stylist.findUnique({
       where: { id },
-      select: { treatwellExternalId: true, calendarColor: true, googleColorId: true, googleAliases: true },
+      select: { treatwellExternalId: true, calendarColor: true, googleColorId: true, googleAliases: true, takesWalkIns: true },
     }),
     prisma.$transaction((tx) => getEditorState(tx, 'STYLIST', stylist.id)),
   ]);
@@ -68,6 +68,7 @@ export default async function EditStylistPage({
         calendarColor={integration?.calendarColor ?? null}
         googleColorId={integration?.googleColorId ?? null}
         googleAliases={integration?.googleAliases ?? null}
+        takesWalkIns={integration?.takesWalkIns ?? true}
       />
     </div>
   );

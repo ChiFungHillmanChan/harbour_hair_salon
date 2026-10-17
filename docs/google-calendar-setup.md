@@ -113,12 +113,16 @@ they are applied by the next sync.
 - **Admin → Stylists**, each stylist → Google colour and Google names (comma-separated; the
   stylist's own name always counts):
 
-  | Stylist | Google colour | Google names |
-  |---|---|---|
-  | Ivan | Lavender | |
-  | Funky | Sage | `F` |
-  | Lox | Banana | `L` |
-  | Shania | none | `天` |
+  | Stylist | Google colour | Google names | Takes walk-ins |
+  |---|---|---|---|
+  | Ivan | Lavender | | ✓ |
+  | Funky | Sage | `F` | ✓ |
+  | Lox | Banana | `L` | ✓ |
+  | Shania | none | `天` | – (assistant; owner, 2026-10-17) |
+
+  **Takes walk-ins** (on by default, so a new stylist counts) decides who is a chair for red
+  (no-stylist) events: online booking keeps enough of them free. Untick it for staff who take no
+  walk-ins: they are never counted free, and their own bookings use no walk-in chair.
 
   Each active stylist needs a colour of their own, and the no-stylist and leave colours below
   cannot be a stylist's. A stylist with no colour (Shania) is blocked only by events whose

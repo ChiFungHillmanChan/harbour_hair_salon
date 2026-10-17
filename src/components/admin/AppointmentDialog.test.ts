@@ -520,3 +520,23 @@ test('Save is disabled while the consultation credit is being checked, and only 
   const edit = dialog(colourBooking(RECORDED), { edit: refused }, WITH_COLOUR, () => CHECKING);
   assert.equal(submitButton(edit.render()).props.disabled, true);
 });
+
+test('clearing the minutes leaves the box empty, so typing a new length never shows a leading 0', async () => {
+  const { render, calls } = dialog({ mode: 'create', dateStr: '2099-09-15', time: '10:00' }, {
+    create: async () => ({ success: true, appointmentId: 'new' }),
+  });
+  const minutes = () => render().find((node) => node.props.id === 'appt-duration')!;
+  const type = (value: string) => (minutes().props.onChange as (event: unknown) => void)({ target: { value } });
+  assert.equal(minutes().props.value, 45);
+
+  // A number box shown 0 keeps it when typing on: "0" then "120" reads "0120".
+  type('');
+  assert.equal(minutes().props.value, '');
+  type('120');
+  assert.equal(minutes().props.value, 120);
+
+  const nodes = render();
+  (nodes.find((node) => node.type === 'input' && node.props.placeholder === 'Search name, phone or email…')!.props.onChange as (event: unknown) => void)({ target: { value: 'Mei' } });
+  await (submitButton(render()).props.onClick as () => Promise<void>)();
+  assert.equal(calls[0].durationMin, 120);
+});

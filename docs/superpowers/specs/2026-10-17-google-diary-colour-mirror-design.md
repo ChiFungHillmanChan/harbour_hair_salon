@@ -110,10 +110,17 @@ still be served by **other** stylists:
 
 - Let `R` be the UNASSIGNED intervals overlapping `[s, e)`, clipped to it, and `k` the most of
   them that overlap at any one instant.
-- Let `F` be the active stylists other than X who **work that day over the whole clipped span**
-  of `R` (`Availability`, not off) and have **no appointment or busy block** overlapping it.
+- Let `F` be the active stylists other than X who **take walk-ins** (`Stylist.takesWalkIns`), **work
+  that day over the whole clipped span** of `R` (`Availability`, not off) and have **no
+  appointment or busy block** overlapping it.
 - Allowed when `k ≤ |F|`. This is deliberately conservative: a stylist free for only part of the
   span does not count.
+- A booking for a stylist who is no chair (takes no walk-ins, or has no working hours at all) is
+  always allowed: they were never counted free, so the booking leaves every chair as it was.
+
+Amended 2026-10-17 (owner: Shania, an assistant on the rota, does not count): **Admin → Stylists →
+"Takes walk-ins"**, a checkbox per stylist, on by default (`Stylist.takesWalkIns Boolean
+@default(true)`, migration `20261017150000_stylist_takes_walk_ins`).
 
 Where it applies:
 

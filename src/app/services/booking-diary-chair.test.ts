@@ -14,19 +14,24 @@ const at = (time: string) => resolveSalonDateTime(DAY, time).utc;
 type Where = Record<string, unknown>;
 const idsOf = (value: unknown) => (typeof value === 'string' ? [value] : (value as { in: string[] }).in);
 
-function fixture(input: { funkyBusyAt?: string; funkyUntil?: string; ivan?: boolean } = {}) {
+function fixture(input: { funkyBusyAt?: string; funkyUntil?: string; ivan?: boolean; shania?: boolean } = {}) {
   const hours = [
     { stylistId: 'lox', dayOfWeek: 2, startTime: '10:00', endTime: '19:00' },
     { stylistId: 'funky', dayOfWeek: 2, startTime: '10:00', endTime: input.funkyUntil ?? '19:00' },
     ...(input.ivan ? [{ stylistId: 'ivan', dayOfWeek: 2, startTime: '10:00', endTime: '19:00' }] : []),
+    // An assistant on the rota who takes no walk-ins (Stylist.takesWalkIns false).
+    ...(input.shania ? [{ stylistId: 'shania', dayOfWeek: 2, startTime: '10:00', endTime: '19:00' }] : []),
   ];
+  const takesWalkIns = (stylistId: string) => stylistId !== 'shania';
   const appointments = input.funkyBusyAt
     ? [{ id: 'f1', stylistId: 'funky', date: at(input.funkyBusyAt), durationAtBooking: 60, service: { duration: 60 } }]
     : [];
   const walkIn = { start: at('15:00'), end: at('16:00') };
   const db = {
     availability: {
-      findMany: async ({ where }: { where: Where }) => hours.filter((row) => !where.stylistId || row.stylistId === where.stylistId),
+      findMany: async ({ where }: { where: Where & { stylist?: { takesWalkIns?: boolean } } }) => hours.filter((row) =>
+        (!where.stylistId || row.stylistId === where.stylistId)
+        && (where.stylist?.takesWalkIns === undefined || takesWalkIns(row.stylistId) === where.stylist.takesWalkIns)),
       findFirst: async ({ where }: { where: Where }) => hours.find((row) => row.stylistId === where.stylistId && row.dayOfWeek === where.dayOfWeek) ?? null,
     },
     appointment: {
@@ -125,4 +130,12 @@ test('customer paths never skip the chair rule: createBooking, precheckBookingRe
   assert.equal(anyone.match(/assertAppointmentSlotAvailable\(/g)?.length, 1);
   assert.match(anyone, /const \{ stylistId, blocking \} = await chooseFreeStylist\(/);
   assert.match(anyone, /\{ chairRule: false \}\);/);
+});
+
+test('a rostered assistant who takes no walk-ins never covers one, and stays bookable over it herself', async () => {
+  // Shania is free all afternoon, but only Lox and Funky take walk-ins: with Funky booked, Lox's 15:00 stays taken.
+  const { service } = fixture({ funkyBusyAt: '15:00', shania: true });
+  assert.equal(slot(await service.getBookingDays('lox', [DAY], 60), '15:00'), false);
+  // Her own booking uses no walk-in chair.
+  assert.equal(slot(await service.getBookingDays('shania', [DAY], 60), '15:00'), true);
 });

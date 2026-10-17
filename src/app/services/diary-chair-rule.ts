@@ -2,9 +2,10 @@
 // Pure: no database. A booking for stylist X over [s, e) is allowed only when the
 // red (UNASSIGNED) diary events overlapping it can still be served by OTHER
 // stylists: k = the most of them, clipped to [s, e), at any one instant; F = the
-// active stylists other than X who work that day over the whole clipped span and
-// have no appointment or busy block overlapping it. Allowed when k <= |F|.
-// Deliberately conservative: a stylist free for only part of the span does not count.
+// active stylists other than X who take walk-ins, work that day over the whole
+// clipped span and have no appointment or busy block overlapping it. Allowed when
+// k <= |F|. Deliberately conservative: a stylist free for only part of the span
+// does not count. Booking a stylist who takes no walk-ins is always allowed.
 
 import type { WorkingHours } from './booking-days';
 import type { BookedInterval } from './scheduling';
@@ -14,7 +15,10 @@ export type ChairInterval = { start: Date; end: Date };
 export type ChairContext = {
   /** UNASSIGNED diary entries overlapping the window read. */
   unassigned: readonly ChairInterval[];
-  /** Every active stylist's working rows (isOff false), by stylist id. */
+  /**
+   * The chairs: every active stylist who takes walk-ins (Stylist.takesWalkIns),
+   * with their working rows (isOff false), by stylist id.
+   */
   hoursByStylist: ReadonlyMap<string, readonly WorkingHours[]>;
   /** Every active stylist's appointments and busy blocks, by stylist id. */
   busyByStylist: ReadonlyMap<string, readonly BookedInterval[]>;
@@ -37,6 +41,9 @@ export function maxConcurrent(intervals: readonly ChairInterval[]): number {
 
 export function checkDiaryChair(ctx: ChairContext | null, stylistId: string, start: Date, durationMin: number): ChairCheck {
   if (!ctx || ctx.unassigned.length === 0) return { allowed: true };
+  // A stylist who is no chair (takes no walk-ins, or has no working hours at all)
+  // was never counted free, so booking them leaves every chair as it was.
+  if (!ctx.hoursByStylist.has(stylistId)) return { allowed: true };
   const startMs = start.getTime();
   const endMs = startMs + durationMin * 60_000;
   const clipped = ctx.unassigned

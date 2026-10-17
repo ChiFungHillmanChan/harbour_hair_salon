@@ -49,3 +49,16 @@ test('the stylist form offers a Google colour (none allowed) and Google names, i
     assert.ok(nodes.some((node) => text(node) === words.names), locale);
   }
 });
+
+test('"Takes walk-ins" is a checkbox, ticked for a new stylist and as saved for an existing one, in English and Chinese', () => {
+  for (const [locale, label] of [['en-GB', 'Takes walk-ins'], ['zh-HK', '接 walk-in']] as const) {
+    const { StylistForm } = loadForm(locale);
+    const box = (props: Record<string, unknown>) => elements(StylistForm({ action: async () => ({ status: 'idle' }), ...props } as never)).find((node) => node.props.name === 'takesWalkIns')!;
+    const fresh = box({ mode: 'create' });
+    assert.deepEqual([fresh.props.type, fresh.props.defaultChecked], ['checkbox', true], locale);
+    const assistant = box({ mode: 'edit', stylist: { id: 'shania', name: 'Shania', slug: 'shania', imageUrl: null, yearsExperience: null }, takesWalkIns: false });
+    assert.equal(assistant.props.defaultChecked, false, locale);
+    const nodes = elements(StylistForm({ mode: 'create', action: async () => ({ status: 'idle' }) }));
+    assert.ok(nodes.some((node) => text(node).includes(label)), locale);
+  }
+});

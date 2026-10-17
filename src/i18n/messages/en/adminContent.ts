@@ -261,6 +261,8 @@ const adminContent = {
       googleColourHelp: 'The colour this stylist’s customers have in the salon’s Google Calendar. Events in it block this stylist on the website and in Fresha, and website bookings for this stylist are written in it. Applied by the next Google Calendar sync.',
       googleNames: 'Google names',
       googleNamesHelp: 'Other names the diary uses for this stylist, separated by commas, e.g. F or 天. A single letter counts only in brackets, as in “早走(L)”. The stylist’s own name always counts.',
+      takesWalkIns: 'Takes walk-ins',
+      takesWalkInsHelp: 'Counts as a free chair for the diary’s no-stylist (red) bookings: online booking keeps enough of these stylists free to take them. Untick for staff who take no walk-ins, such as an assistant: they are never counted free, and their own bookings use no walk-in chair.',
       integrations: 'Integrations',
       integrationsIntro: 'Manage calendar connections and check sync status in <link>Integrations</link>.',
       treatwellId: 'Treatwell staff ID',
