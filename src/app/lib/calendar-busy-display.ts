@@ -12,7 +12,7 @@ export type CalendarBusyBlock = Pick<ExternalBusyBlock, 'id' | 'stylistId' | 'so
 };
 
 /** Clip to the London wall-clock day, including overnight and all-day events. */
-export function calendarBusyForDay(blocks: CalendarBusyBlock[], dayKey: string) {
+export function calendarBusyForDay<T extends { start: string; end: string }>(blocks: readonly T[], dayKey: string): (T & { startMin: number; endMin: number })[] {
   return blocks.flatMap((block) => {
     const start = new Date(block.start);
     const end = new Date(block.end);

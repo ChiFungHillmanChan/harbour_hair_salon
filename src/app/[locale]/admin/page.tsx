@@ -38,7 +38,7 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
   ]);
   const { dateStr, view, appointments, pendingAppointments, pendingCount, pendingNext,
     pendingHasPrevious, monthCounts, periodCount, todayStats, syncCoverage, stylists, busyBlocks,
-    services, rescheduleRequests, rescheduleRequestCount } = calendar;
+    diaryEntries, services, rescheduleRequests, rescheduleRequestCount } = calendar;
 
   const todayConfirmed = todayStats.find(s => s.status === 'CONFIRMED')?._count ?? 0;
   const todayCancelled = todayStats.find(s => s.status === 'CANCELLED')?._count ?? 0;
@@ -82,7 +82,7 @@ async function ScheduleContent({ searchParams }: { searchParams: Promise<Calenda
 
       <LateArrivalPanel board={arrivals} />
 
-      <ScheduleCalendar loadedAt={calendar.loadedAt} dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} rescheduleRequests={rescheduleRequests} stylists={stylists} busyBlocks={busyBlocks} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} />
+      <ScheduleCalendar loadedAt={calendar.loadedAt} dateStr={dateStr} view={view} appointments={appointments} pendingAppointments={pendingAppointments} rescheduleRequests={rescheduleRequests} stylists={stylists} busyBlocks={busyBlocks} diaryEntries={diaryEntries} services={services} monthCounts={monthCounts} pendingNext={pendingNext} pendingHasPrevious={pendingHasPrevious} />
     </>
   );
 }

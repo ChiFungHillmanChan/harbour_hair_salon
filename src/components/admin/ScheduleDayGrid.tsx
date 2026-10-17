@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { resolveCalendarColor } from '@/app/lib/calendar-colors';
+import { googleEventSwatch, resolveCalendarColor, stylistSwatch } from '@/app/lib/calendar-colors';
 import type { DepositView } from '@/app/lib/deposit-display';
 import { DepositChip } from './DepositChip';
 import {
@@ -17,9 +17,11 @@ import { overlaps } from '@/app/services/scheduling';
 import type { MoveClash } from '@/app/services/admin-move-clashes';
 import { describeClash } from '@/app/lib/describe-clash';
 import { calendarBusyForDay, calendarBusyLabel, isWholeDayBlock, salonWorkingWindow, type CalendarBusyBlock } from '@/app/lib/calendar-busy-display';
+import { diaryForDay, diaryLanes, diaryRange, type CalendarDiaryEntry, type PlacedDiaryEntry } from '@/app/lib/calendar-diary-display';
 import { useT } from '@/i18n/client';
 import { formatCalendarDay } from '@/i18n/dates';
 import { MoveConfirmDialog, type MoveChange } from './MoveConfirmDialog';
+import { GoogleDiaryNotes } from './GoogleDiaryNotes';
 
 /** 15 minutes = 18px. Tall enough to grab an edge, short enough to fit a day. */
 const PX_PER_MINUTE = 1.2;
@@ -28,6 +30,8 @@ export type GridStylist = {
   id: string;
   name: string;
   calendarColor: string | null;
+  /** The stylist's Google event colour: their bookings are drawn in it, as in the salon's Google diary. */
+  googleColorId?: string | null;
   /** Working hours for the day being shown; null when off. */
   availability: { startTime: string; endTime: string } | null;
 };
@@ -64,6 +68,9 @@ interface ScheduleDayGridProps {
   stylists: GridStylist[];
   appointments: GridAppointment[];
   busyBlocks: GridBusyBlock[];
+  /** The salon's Google diary (read-only): drawn in Google's colours, opened with onSelectDiary. */
+  diaryEntries?: CalendarDiaryEntry[];
+  onSelectDiary?: (entry: CalendarDiaryEntry) => void;
   onMove: (input: {
     appointmentId: string;
     dateStr: string;
@@ -77,6 +84,9 @@ interface ScheduleDayGridProps {
   onSelect: (appointment: GridAppointment) => void;
   onCreate: (dateStr: string, time: string, stylistId: string) => void;
 }
+
+/** One stable empty diary, so a board without one does not recompute its day on every render. */
+const NO_DIARY: CalendarDiaryEntry[] = [];
 
 type DragMode = 'move' | 'top' | 'bottom';
 
@@ -123,6 +133,8 @@ export function ScheduleDayGrid({
   stylists,
   appointments,
   busyBlocks,
+  diaryEntries = NO_DIARY,
+  onSelectDiary,
   onMove,
   onMoved,
   onSelect,
@@ -146,6 +158,11 @@ export function ScheduleDayGrid({
     () => calendarBusyForDay(busyBlocks, dayKey),
     [busyBlocks, dayKey],
   );
+  // The salon's Google diary for the day: notes go to the strip above the grid,
+  // walk-ins (no stylist yet) to their own column, the rest to their stylists.
+  const dayDiary = useMemo(() => diaryForDay(diaryEntries, dayKey), [diaryEntries, dayKey]);
+  const walkIns = dayDiary.placed.filter((entry) => entry.kind === 'UNASSIGNED');
+  const showNoStylist = walkIns.length > 0;
   // A stylist who is off in our rota can still have a Fresha "Pause" that day;
   // it is judged against the salon's working day instead.
   const salonWindow = useMemo(() => salonWorkingWindow(stylists.map((stylist) => stylist.availability)), [stylists]);
@@ -173,9 +190,16 @@ export function ScheduleDayGrid({
       start = Math.min(start, block.startMin);
       end = Math.max(end, block.endMin);
     }
+    // All-day diary entries are drawn clamped to these bounds: they never
+    // stretch the grid to midnight.
+    for (const entry of dayDiary.placed) {
+      if (entry.allDay) continue;
+      start = Math.min(start, entry.startMin);
+      end = Math.max(end, entry.endMin);
+    }
     // Round out to whole hours so the time gutter reads cleanly.
     return { startMin: Math.floor(start / 60) * 60, endMin: Math.ceil(end / 60) * 60 };
-  }, [stylists, dayAppointments, dayBusy]);
+  }, [stylists, dayAppointments, dayBusy, dayDiary]);
 
   const hours = useMemo(() => {
     const list: number[] = [];
@@ -361,6 +385,44 @@ export function ScheduleDayGrid({
     onCreate(dayKey, timeLabel(snapped), stylistId);
   };
 
+  /**
+   * A Google diary entry: Google's colour, Google's title and a "Google" badge.
+   * Read-only — no drag handle, and a click opens the diary panel instead of
+   * starting a booking. Website bookings (z-10) stay clickable above one.
+   */
+  const diaryBlock = (entry: PlacedDiaryEntry, place: { left: string; width: string } = { left: '0%', width: '100%' }) => {
+    const swatch = googleEventSwatch(entry.colorId);
+    const startMin = Math.max(entry.startMin, bounds.startMin);
+    const endMin = Math.min(entry.endMin, bounds.endMin);
+    const label = t('diary.detail', { title: entry.title || t('diary.noTitle'), range: entry.allDay ? t('diary.allDay') : diaryRange(entry) });
+    return (
+      <div
+        key={`diary-${entry.id}`}
+        role="button"
+        tabIndex={0}
+        aria-label={label}
+        title={label}
+        onClick={(event) => { event.stopPropagation(); onSelectDiary?.(entry); }}
+        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectDiary?.(entry); } }}
+        className={`absolute overflow-hidden rounded px-1 text-[10px] leading-tight z-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-zinc-900 ${swatch.fill} ${swatch.text}`}
+        style={{ top: minutesToOffset(startMin, bounds.startMin, PX_PER_MINUTE), height: Math.max(18, (endMin - startMin) * PX_PER_MINUTE), left: place.left, width: place.width }}
+      >
+        <span className="mr-1 rounded bg-white/80 px-0.5 font-semibold text-zinc-900">{t('diary.google')}</span>
+        <span className="font-semibold">{entry.title || t('diary.noTitle')}</span>
+        <span className="block tabular-nums opacity-90">{entry.allDay ? t('diary.allDay') : diaryRange(entry)}</span>
+      </div>
+    );
+  };
+
+  /** Overlapping entries side by side, as Google draws them. */
+  const lanedDiary = (entries: PlacedDiaryEntry[]) => {
+    const { lane, laneCount } = diaryLanes(entries);
+    return entries.map((entry) => diaryBlock(entry, {
+      left: `${(lane.get(entry.id) ?? 0) * 100 / laneCount}%`,
+      width: `${100 / laneCount}%`,
+    }));
+  };
+
   if (stylists.length === 0) {
     return <div className="p-12 text-center text-zinc-500 bg-white rounded-lg border border-zinc-200">{t('grid.noStylists')}</div>;
   }
@@ -417,7 +479,7 @@ export function ScheduleDayGrid({
       <div className="flex border-b border-zinc-200 bg-zinc-50">
         <div className="w-14 flex-shrink-0" />
         {stylists.map((stylist) => {
-          const colour = resolveCalendarColor(stylist.calendarColor);
+          const colour = stylistSwatch(stylist);
           return (
             <div key={stylist.id} className="flex-1 min-w-0 px-2 py-2 text-center border-l border-zinc-200">
               <div className="flex items-center justify-center gap-2">
@@ -430,7 +492,15 @@ export function ScheduleDayGrid({
             </div>
           );
         })}
+        {showNoStylist && (
+          <div className="flex-1 min-w-0 px-2 py-2 text-center border-l border-zinc-200">
+            <div className="text-xs font-bold text-zinc-800 truncate">{t('diary.noStylist')}</div>
+          </div>
+        )}
       </div>
+
+      {/* Google diary notes: they block nothing, so they never sit in a column. */}
+      {dayDiary.notes.length > 0 && <GoogleDiaryNotes notes={dayDiary.notes} onSelect={onSelectDiary} />}
 
       {/* Body */}
       <div
@@ -455,7 +525,7 @@ export function ScheduleDayGrid({
         </div>
 
         {stylists.map((stylist) => {
-          const stylistColour = resolveCalendarColor(stylist.calendarColor);
+          const stylistColour = stylistSwatch(stylist);
           return (
             <div
               key={stylist.id}
@@ -537,6 +607,10 @@ export function ScheduleDayGrid({
                   );
                 })}
 
+              {/* The Google diary's own bookings and leave for this stylist (a leave naming two sits in both columns) */}
+              {lanedDiary(dayDiary.placed.filter((entry) =>
+                (entry.kind === 'STYLIST' || entry.kind === 'LEAVE') && entry.stylistIds.includes(stylist.id)))}
+
               {/* Appointments */}
               {dayAppointments
                 .filter((appt) => appt.status !== 'CANCELLED')
@@ -590,6 +664,21 @@ export function ScheduleDayGrid({
             </div>
           );
         })}
+
+        {/* Google diary bookings without a stylist yet. No booking is created or
+            dropped here: the column has no click handler and no drop target. */}
+        {showNoStylist && (
+          <div className="flex-1 min-w-0 relative border-l border-zinc-200">
+            {hours.map((minute) => (
+              <div
+                key={minute}
+                className="absolute left-0 right-0 border-t border-zinc-100"
+                style={{ top: minutesToOffset(minute, bounds.startMin, PX_PER_MINUTE) }}
+              />
+            ))}
+            {lanedDiary(walkIns)}
+          </div>
+        )}
       </div>
 
       <div className="px-4 py-2 text-[11px] text-zinc-500 border-t border-zinc-200 bg-zinc-50">

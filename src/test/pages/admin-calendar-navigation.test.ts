@@ -53,6 +53,7 @@ async function renderCalendar(query: Query, rows: Row[] = []) {
       stylist: { findMany: async () => [] },
       service: { findMany: async () => [] },
       externalBusyBlock: { findMany: async () => [] },
+      googleDiaryEntry: { findMany: async () => [] },
     } },
     }),
   });
@@ -166,7 +167,7 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
   const urls: string[] = [];
   const statuses: string[][] = [];
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
-    react: { useEffect: () => undefined, useTransition: () => [false, (run: () => void) => run()] },
+    react: { useEffect: () => undefined, useState: (value: unknown) => [value, () => undefined], useTransition: () => [false, (run: () => void) => run()] },
     // The localized router adds /zh-hk on Chinese pages; the board itself only
     // ever asks for language-free /admin URLs.
     '@/i18n/navigation': { useLocalizedRouter: () => ({ push: (url: string) => urls.push(url), refresh: () => undefined }) },
@@ -175,6 +176,7 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     './ScheduleDayGrid': { ScheduleDayGrid: () => null },
     './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
     './AppointmentDialog': { AppointmentDialog: () => null },
+    './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
     './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': { updateAppointmentStatus: async (id: string, status: string) => { statuses.push([id, status]); return { success: true }; } },
@@ -367,13 +369,14 @@ test('an outstanding request outside the current month can be opened and approve
 test('the Chinese board translates its periods and controls but keeps language-free navigation URLs', () => {
   const urls: string[] = [];
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
-    react: { useEffect: () => undefined, useTransition: () => [false, (run: () => void) => run()] },
+    react: { useEffect: () => undefined, useState: (value: unknown) => [value, () => undefined], useTransition: () => [false, (run: () => void) => run()] },
     '@/i18n/navigation': { useLocalizedRouter: () => ({ push: (url: string) => urls.push(url), refresh: () => undefined }) },
     '@/i18n/client': { useT: (namespace: Namespace) => translator('zh-HK', namespace), useLocale: () => 'zh-HK' },
     '@/i18n/draft-store': { useDraftState: (_key: string, initial: unknown) => [initial, () => undefined] },
     './ScheduleDayGrid': { ScheduleDayGrid: () => null },
     './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
     './AppointmentDialog': { AppointmentDialog: () => null },
+    './GoogleDiaryPanel': { GoogleDiaryPanel: () => null },
     './RescheduleRequestActions': { RescheduleRequestActions: () => null },
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': {},
