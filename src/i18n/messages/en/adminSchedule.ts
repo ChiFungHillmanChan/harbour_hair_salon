@@ -212,6 +212,7 @@ const adminSchedule = {
     outsideHours: 'Outside working hours ({start}–{end})',
     dayOff: 'This stylist does not work on this day',
     externalBusy: 'Clashes with synced busy time at {time}',
+    diaryChair: 'Leaves too few stylists for the Google diary’s bookings without a stylist at {range} ({needed} needed, {free} free)',
     patchExpired: 'The customer’s patch test has expired for this date',
     patchTooSoon: 'The patch test is less than 48 hours before this date',
     patchMissing: 'No completed patch test on file for this colour service',

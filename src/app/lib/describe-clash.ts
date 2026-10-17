@@ -26,6 +26,12 @@ export function describeClash(clash: MoveClash, t: Translate<Messages['adminSche
         : t('clash.dayOff');
     case 'EXTERNAL_BUSY':
       return t('clash.externalBusy', { time: formatSalonClock(t.locale, new Date(clash.start)) });
+    case 'DIARY_CHAIR':
+      return t('clash.diaryChair', {
+        range: `${formatSalonClock(t.locale, new Date(clash.start))}–${formatSalonClock(t.locale, new Date(clash.end))}`,
+        needed: clash.needed,
+        free: clash.free,
+      });
     case 'PATCH_TEST':
       return clash.reason === 'expired'
         ? t('clash.patchExpired')

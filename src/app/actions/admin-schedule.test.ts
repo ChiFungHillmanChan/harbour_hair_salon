@@ -99,6 +99,7 @@ function fixture(options: {
       } : null,
     },
     availability: { findFirst: async () => ({ startTime: '09:00', endTime: '18:00' }) },
+    googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [] },
   };
 

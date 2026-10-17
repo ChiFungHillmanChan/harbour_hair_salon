@@ -196,6 +196,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     outsideHours: '超出工作時間（{start}–{end}）',
     dayOff: '這位髮型師當天不上班',
     externalBusy: '與 {time} 已同步的忙碌時段衝突',
+    diaryChair: '{range} Google 日曆中未指定髮型師的預約將沒有足夠空閒髮型師（需要 {needed} 位，空閒 {free} 位）',
     patchExpired: '顧客的皮膚敏感測試於此日期已過期',
     patchTooSoon: '皮膚敏感測試距離此日期不足 48 小時',
     patchMissing: '此染髮服務沒有已完成的皮膚敏感測試記錄',

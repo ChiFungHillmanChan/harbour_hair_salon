@@ -20,6 +20,10 @@ function matches(row: Row, where: Row): boolean {
     if (expected && typeof expected === 'object' && 'not' in (expected as Row)) {
       return actual !== (expected as Row).not;
     }
+    if (expected && typeof expected === 'object' && 'in' in (expected as Row)) {
+      return ((expected as Row).in as unknown[]).includes(actual);
+    }
+    if (typeof expected === 'string') return actual === expected;
     return true;
   });
 }
@@ -29,6 +33,8 @@ function fakeDb(options: {
   appointments?: Row[];
   externalBusy?: Row[];
   patchTests?: { date: Date; status: string }[];
+  roster?: Row[];
+  diary?: { start: Date; end: Date }[];
 } = {}) {
   const calls: { availabilityWhere?: Row; appointmentWhere?: Row } = {};
   return {
@@ -41,7 +47,9 @@ function fakeDb(options: {
             ? { startTime: '09:00', endTime: '18:00' }
             : options.availability;
         },
+        findMany: async () => options.roster ?? [],
       },
+      googleDiaryEntry: { findMany: async () => options.diary ?? [] },
       appointment: {
         findMany: async ({ where }: { where: Row }) => {
           // Only the patch-test lookup filters on `service`; everything else is
@@ -231,4 +239,32 @@ test('several independent clashes are all reported at once', async () => {
   const clashes = await describeAdminMoveClashes(db as never, baseInput);
 
   assert.deepEqual(kinds(clashes), ['EXTERNAL_BUSY', 'OUTSIDE_HOURS', 'OVERLAP']);
+});
+
+const AT_11_00 = new Date(AT_10_00.getTime() + 60 * 60_000);
+const ROSTER = [
+  { stylistId: 'stylist-1', dayOfWeek: 2, startTime: '09:00', endTime: '18:00' },
+  { stylistId: 'stylist-2', dayOfWeek: 2, startTime: '09:00', endTime: '18:00' },
+];
+
+test('a Google walk-in left with no free stylist is a DIARY_CHAIR warning, never a refusal', async () => {
+  const { db } = fakeDb({
+    roster: ROSTER,
+    appointments: [{ id: 'busy-2', stylistId: 'stylist-2', date: AT_10_00, durationAtBooking: 60, status: 'CONFIRMED', user: { name: 'Mei L.' }, service: { duration: 60 } }],
+    diary: [{ start: AT_10_00, end: AT_11_00 }],
+  });
+  const clashes = await describeAdminMoveClashes(db as never, baseInput);
+  assert.deepEqual(kinds(clashes), ['DIARY_CHAIR']);
+  const [chair] = clashes;
+  assert.ok(chair.kind === 'DIARY_CHAIR');
+  assert.deepEqual([chair.needed, chair.free, chair.start.toISOString(), chair.end.toISOString()], [1, 0, AT_10_00.toISOString(), AT_11_00.toISOString()]);
+});
+
+test('moving stylist-2’s own booking to stylist-1 frees stylist-2 for the walk-in: no warning', async () => {
+  const { db } = fakeDb({
+    roster: ROSTER,
+    appointments: [{ id: 'busy-2', stylistId: 'stylist-2', date: AT_10_00, durationAtBooking: 60, status: 'CONFIRMED', user: { name: 'Mei L.' }, service: { duration: 60 } }],
+    diary: [{ start: AT_10_00, end: AT_11_00 }],
+  });
+  assert.deepEqual(await describeAdminMoveClashes(db as never, { ...baseInput, appointmentId: 'busy-2' }), []);
 });

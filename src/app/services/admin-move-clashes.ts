@@ -1,5 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { evaluatePatchTestEligibility, type EligibilityReason } from './patch-test-eligibility';
+import { checkDiaryChair } from './diary-chair-rule';
+import { loadChairContext } from './diary-chair-load';
 import { loadExternalBusy } from './external-busy';
 import {
   formatSalonTime,
@@ -26,7 +28,8 @@ export type MoveClash =
   | { kind: 'OVERLAP'; appointmentId: string; customerName: string | null; start: Date; end: Date }
   | { kind: 'OUTSIDE_HOURS'; availability: { startTime: string; endTime: string } | null }
   | { kind: 'EXTERNAL_BUSY'; source: string; start: Date; end: Date }
-  | { kind: 'PATCH_TEST'; reason: EligibilityReason };
+  | { kind: 'PATCH_TEST'; reason: EligibilityReason }
+  | { kind: 'DIARY_CHAIR'; needed: number; free: number; start: Date; end: Date };
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -107,6 +110,13 @@ export async function describeAdminMoveClashes(db: Db, target: MoveTarget): Prom
       clashes.push({ kind: 'EXTERNAL_BUSY', source: 'CALENDAR', start: block.start, end: block.end });
     }
   }
+
+  // The diary chair rule (spec §6), as a warning: staff may book anyway.
+  const chair = checkDiaryChair(
+    await loadChairContext(db, window, { excludeAppointmentId: target.appointmentId || undefined }),
+    target.stylistId, target.start, target.durationMin,
+  );
+  if (!chair.allowed) clashes.push({ kind: 'DIARY_CHAIR', needed: chair.needed, free: chair.free, start: chair.start, end: chair.end });
 
   // Only ask about patch tests when the service actually needs one — this is an
   // extra query on a path that already runs inside a Serializable transaction.
