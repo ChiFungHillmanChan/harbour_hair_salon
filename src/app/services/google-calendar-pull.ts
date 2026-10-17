@@ -192,22 +192,25 @@ async function revertWebsiteEvents(
     const appointmentId = websiteAppointmentId(event);
     if (appointmentId && event.id === googleEventIdFor(appointmentId)) named.add(appointmentId);
   }
+  // Only bookings in the push window (7 days back) are ever written back: the listing reaches
+  // 30 days back for the diary, so the range alone would load bookings only to discard them.
+  const from = windowStart(now);
+  const since = from > range.timeMin ? from : range.timeMin;
   const appointments = await db.appointment.findMany({
     where: {
       OR: [
         { id: { in: [...named] } },
-        // Every open booking in the listed range whose event the website wrote: one missing from the
-        // listing (or listed as deleted) was deleted, purged or moved out of the range in Google.
+        // Every open booking in the listed range and the push window whose event the website wrote: one
+        // missing from the listing (or listed as deleted) was deleted, purged or moved out of the range in Google.
         {
           status: { in: OPEN_STATUSES },
-          date: { gte: range.timeMin, lt: range.timeMax },
+          date: { gte: since, lt: range.timeMax },
           googleCalendarEvent: { is: { removed: false, syncedHash: { not: null } } },
         },
       ],
     },
     select: appointmentSelect,
   });
-  const from = windowStart(now);
   const open = appointments.filter((appointment) => OPEN_STATUSES.includes(appointment.status) && appointment.date >= from);
   const context = open.length > 0 ? await loadRenderContext(db, open) : null;
 

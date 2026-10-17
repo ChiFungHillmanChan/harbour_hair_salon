@@ -94,3 +94,35 @@ test('staff paths in actions/admin.ts never apply the chair rule (confirming a r
   assert.equal(calls.length, 4);
   assert.equal(exempt.length, calls.length);
 });
+
+/** The source of one top-level function, from its declaration to its closing brace. */
+function functionSource(source: string, name: string): string {
+  const start = source.search(new RegExp(`^(export )?async function ${name}\\(`, 'm'));
+  assert.ok(start >= 0, name);
+  return source.slice(start, source.indexOf('\n}\n', start));
+}
+
+// The mirror of the staff-path pin: the customer paths always apply the chair rule.
+test('customer paths never skip the chair rule: createBooking, precheckBookingRequest and requestReschedule', () => {
+  const service = readFileSync('src/app/services/booking-service.ts', 'utf8');
+  const actions = readFileSync('src/app/actions/booking.ts', 'utf8');
+  for (const [name, source] of [['createBooking', service], ['requestReschedule', actions]] as const) {
+    const body = functionSource(source, name);
+    assert.equal(body.match(/assertAppointmentSlotAvailable\(/g)?.length, 1, name);
+    assert.doesNotMatch(body, /chairRule/, name);
+  }
+  // "Anyone" (the pre-check and the booking): chooseFreeStylist applies the rule to every candidate,
+  // so the slot re-check for the stylist it chose is the only call allowed to pass { chairRule: false }.
+  assert.match(functionSource(service, 'chooseFreeStylist'), /diaryChairAllows\(/);
+  const afterChoosing = /const \{ stylistId, blocking \} = await chooseFreeStylist\([^;]*\);\s*(\/\/[^\n]*\s*)?await assertAppointmentSlotAvailable\([^;]*\{ chairRule: false \}\);/;
+  const precheck = functionSource(service, 'precheckBookingRequest');
+  const calls = precheck.match(/assertAppointmentSlotAvailable\([^;]*\);/g) ?? [];
+  assert.equal(calls.length, 2);
+  assert.equal(calls.filter((call) => call.includes('chairRule')).length, 1, 'only the "Anyone" re-check');
+  assert.doesNotMatch(calls[1], /chairRule/, 'a named stylist');
+  assert.match(precheck, afterChoosing);
+  const anyone = functionSource(service, 'createBookingForFirstAvailable');
+  assert.equal(anyone.match(/assertAppointmentSlotAvailable\(/g)?.length, 1);
+  assert.match(anyone, /const \{ stylistId, blocking \} = await chooseFreeStylist\(/);
+  assert.match(anyone, /\{ chairRule: false \}\);/);
+});

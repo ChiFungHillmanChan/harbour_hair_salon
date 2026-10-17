@@ -649,6 +649,28 @@ test('a synced open booking missing from the listing (deleted, purged or moved a
   assert.equal(store.log.appointmentQueries, 1);
 });
 
+// The listing reaches 30 days back, the push only 7 (windowStart): a booking between the two is
+// neither loaded nor written back, so a pull never reads a month of bookings to discard them.
+test('a synced open booking missing from the listing is written back within the push window (3 days back), never before it (10 days back)', async () => {
+  const recent = appt('a1', { date: at(-3 * DAY) });
+  const older = appt('a2', { date: at(-10 * DAY) });
+  const store = fakeDb([recent, older], { events: [syncedRow(recent), syncedRow(older)], state: { busyHash: EMPTY_HASH } });
+  const loaded: string[] = [];
+  const findMany = store.db.appointment.findMany;
+  store.db.appointment.findMany = async (args) => {
+    const found = await findMany(args);
+    loaded.push(...found.map((row) => row.id));
+    return found;
+  };
+  const google = fakeGoogle([]);
+  assert.deepEqual(await run(load().pull, store.db, google.gateway), { reverted: 1, blocks: 0, entries: 0, changed: false, diaryChanged: false });
+  assert.deepEqual(google.calls.map((call) => [call.op, call.id]), [['put', googleEventIdFor('a1')]]);
+  assert.deepEqual(google.calls[0].event, rendered(recent).event);
+  assert.equal(store.rows.get('a1')!.syncedAt!.getTime(), NOW.getTime());
+  assert.equal(store.rows.get('a2')!.syncedAt!.getTime(), at(-DAY).getTime(), 'the older row is untouched');
+  assert.deepEqual(loaded, ['a1'], 'the booking before the push window is not even loaded');
+});
+
 test('a website event whose private property was stripped in Google is written back, and is never busy time', async () => {
   const booking = appt('a1');
   const expected = rendered(booking);
