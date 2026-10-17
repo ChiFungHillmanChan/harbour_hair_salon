@@ -92,15 +92,15 @@ test('retired stylists are excluded before they can reach the booking gate', asy
   const readiness = await readFile(new URL('./integration-readiness.ts', import.meta.url), 'utf8');
   const coverageQuery = readiness.slice(readiness.indexOf('export async function getCalendarSyncCoverage'));
   const body = coverageQuery.slice(0, coverageQuery.indexOf('return evaluateSyncCoverage'));
-  assert.match(body, /where:\s*\{\s*isActive:\s*true\s*\}/,
-    'getCalendarSyncCoverage must load only active stylists.');
+  assert.match(body, /where:\s*\{\s*isActive:\s*true,\s*showOnWebsite:\s*true\s*\}/,
+    'getCalendarSyncCoverage must load only active stylists shown on the website.');
 
   // The same row would otherwise still be sold on the public site. The home
   // page lists stylists through the shared public helper (stylists/slug.ts).
   for (const page of ['../stylists/slug.ts', '../[locale]/book/page.tsx']) {
     const source = await readFile(new URL(page, import.meta.url), 'utf8');
     const query = source.slice(source.indexOf('stylist.findMany'));
-    assert.match(query.slice(0, 200), /isActive:\s*true/, `${page} must not list retired stylists.`);
+    assert.match(query.slice(0, 200), /isActive:\s*true,\s*showOnWebsite:\s*true/, `${page} must not list retired or hidden stylists.`);
   }
   const home = await readFile(new URL('../[locale]/page.tsx', import.meta.url), 'utf8');
   assert.match(home, /getAllStylistsWithSlug\(/, 'the home page must list stylists through the active-only helper');
@@ -109,6 +109,23 @@ test('retired stylists are excluded before they can reach the booking gate', asy
 // A retired stylist keeps their rows, so a stale marketplace URL left on one
 // would otherwise be polled every cron cycle: pure Neon compute spend on a feed
 // that cannot affect a single bookable slot.
+// A stylist hidden from the website (Admin → Stylists, e.g. a new assistant with
+// no rota or Fresha feed yet) cannot be booked online, so the coverage gate must
+// not wait for their feeds — or adding one would close booking for everyone.
+// Every public query leaves them out too.
+test('hidden stylists stay out of the booking gate and every public stylist query', async () => {
+  const slug = await readFile(new URL('../stylists/slug.ts', import.meta.url), 'utf8');
+  // Everything before the admin-only lookups (getStylistById, getStylistsForAdmin) is public.
+  const publicPart = slug.slice(0, slug.indexOf('export async function getStylistById'));
+  for (const where of publicPart.match(/where: \{[^}]*\}/g) ?? []) assert.match(where, /showOnWebsite: true/, where);
+  assert.equal(publicPart.match(/where: \{/g)?.length, 5, 'every public stylist query was checked');
+  // …while Admin's own lookups keep them, or hiding someone would drop them from Admin → Stylists.
+  const adminPart = slug.slice(slug.indexOf('export async function getStylistById'));
+  assert.deepEqual(adminPart.match(/where: \{[^}]*\}/g), ['where: { id }', 'where: { isActive: true }']);
+  const sitemap = await readFile(new URL('../sitemap.ts', import.meta.url), 'utf8');
+  assert.match(sitemap, /stylist\.findMany\(\{ where: \{ isActive: true, showOnWebsite: true \}/);
+});
+
 test('the calendar-sync cron skips connections belonging to retired stylists', async () => {
   const source = await readFile(new URL('./calendar-sync-service.ts', import.meta.url), 'utf8');
   const query = source.slice(source.indexOf('calendarConnection.findMany'));

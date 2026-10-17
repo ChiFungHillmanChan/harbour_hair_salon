@@ -64,7 +64,10 @@ export async function getCalendarSyncCoverage(db: Pick<Prisma.TransactionClient,
     // complete, valid week and a covered feed from every stylist it is handed,
     // so leaving a retired one in would make `safeToEnableOnlineBooking` false
     // forever and close booking for the whole salon.
-    where: { isActive: true },
+    // Hidden stylists too (Admin → Stylists → Show on website off): customers
+    // cannot book them online, and a new one with no rota or feed yet would
+    // otherwise close booking for everyone.
+    where: { isActive: true, showOnWebsite: true },
     select: {
       id: true, name: true, icalToken: true,
       availabilities: { select: { dayOfWeek: true, isOff: true, startTime: true, endTime: true } },

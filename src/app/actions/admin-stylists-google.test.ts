@@ -31,7 +31,7 @@ function load(holders: Holder[] = [], settings: { googleUnassignedColorId: strin
     for (const [key, value] of Object.entries(fields)) form.set(key, value);
     return actions.updateStylist({ status: 'idle' }, form);
   };
-  return { save, updates };
+  return { save, updates, actions };
 }
 
 test('a Google colour and names are saved, the names normalised', async () => {
@@ -69,4 +69,23 @@ test('"Takes walk-ins" saves from its checkbox: ticked is true, unticked (absent
   await f.save({ takesWalkIns: 'on' });
   await f.save({});
   assert.deepEqual(f.updates.map((data) => data.takesWalkIns), [true, false]);
+});
+
+test('"Show on website" saves from its checkbox like "Takes walk-ins"', async () => {
+  const f = load();
+  await f.save({ showOnWebsite: 'on' });
+  await f.save({});
+  assert.deepEqual(f.updates.map((data) => data.showOnWebsite), [true, false]);
+});
+
+test('the Stylists list switches flip exactly one flag; anything else is refused and nothing is written', async () => {
+  const f = load();
+  assert.deepEqual(await f.actions.setStylistSwitch('lox', 'showOnWebsite', false), { success: true });
+  assert.deepEqual(await f.actions.setStylistSwitch('lox', 'takesWalkIns', true), { success: true });
+  assert.deepEqual(f.updates, [{ showOnWebsite: false }, { takesWalkIns: true }]);
+  for (const [name, on] of [['isActive', false], ['showOnWebsite', 'yes']] as const) {
+    const refused = await f.actions.setStylistSwitch('lox', name as never, on as never);
+    assert.ok(refused.error, name);
+  }
+  assert.equal(f.updates.length, 2);
 });

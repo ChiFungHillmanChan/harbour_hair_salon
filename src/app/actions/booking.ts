@@ -267,10 +267,11 @@ export async function fetchBookingDays(
 }
 
 // Stylists available on a given weekday/time, in display (name) order — the
-// candidate pool for resolving an "Anyone / first available" booking.
+// candidate pool for resolving an "Anyone / first available" booking. Only
+// stylists shown on the website (Admin → Stylists) are ever candidates.
 async function eligibleStylistIds(salon: SalonDateTime, durationMinutes: number): Promise<string[]> {
   const stylists = await prisma.stylist.findMany({
-    where: { isActive: true, availabilities: { some: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
+    where: { isActive: true, showOnWebsite: true, availabilities: { some: { dayOfWeek: salon.dayOfWeek, isOff: false } } },
     orderBy: { name: 'asc' },
     select: {
       id: true,

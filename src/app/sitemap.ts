@@ -20,7 +20,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     prisma.service.findFirst({ orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
     prisma.offer.findFirst({ orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
     prisma.service.groupBy({ by: ['category'], _max: { updatedAt: true } }),
-    prisma.stylist.findMany({ where: { isActive: true }, select: { slug: true, name: true, updatedAt: true } }),
+    prisma.stylist.findMany({ where: { isActive: true, showOnWebsite: true }, select: { slug: true, name: true, updatedAt: true } }),
     prisma.blogPost.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, publishedAt: true, updatedAt: true } }),
     prisma.serviceCategoryContent.findMany({ select: { slug: true, category: true, updatedAt: true } }),
     prisma.siteSettings.findUnique({ where: { id: 'singleton' }, select: { updatedAt: true } }),
