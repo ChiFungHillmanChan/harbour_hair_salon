@@ -2,7 +2,7 @@
 
 import Link from '@/i18n/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useT } from '@/i18n/client';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import { clearLocalAccountState } from '@/app/lib/sign-out';
@@ -64,6 +64,8 @@ function SignOutButton({ pending }: { pending: boolean }) {
 export function AdminSidebar({ userId }: AdminSidebarProps) {
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
   const path = stripLocale(pathname);
   const t = useT('admin');
@@ -77,8 +79,24 @@ export function AdminSidebar({ userId }: AdminSidebarProps) {
   // While open: Escape closes, and the page behind the drawer must not scroll.
   useEffect(() => {
     if (!open) return;
+    const drawer = drawerRef.current;
+    const menuButton = menuButtonRef.current;
+    const focusable = () => Array.from(drawer?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([type="hidden"])') ?? [])
+      .filter(element => element.getClientRects().length > 0);
+    focusable()[0]?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Tab') return;
+      const controls = focusable();
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (e.shiftKey && (document.activeElement === first || !drawer?.contains(document.activeElement))) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !drawer?.contains(document.activeElement))) {
+        e.preventDefault();
+        first?.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
     const previousOverflow = document.body.style.overflow;
@@ -86,6 +104,7 @@ export function AdminSidebar({ userId }: AdminSidebarProps) {
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
+      if (menuButton?.getClientRects().length) menuButton.focus();
     };
   }, [open]);
 
@@ -105,20 +124,22 @@ export function AdminSidebar({ userId }: AdminSidebarProps) {
   return (
     <>
       {/* Mobile top bar */}
-      <div className="sticky top-0 z-30 flex items-center gap-2 bg-zinc-900 px-4 py-2.5 text-white lg:hidden">
+      <div className="sticky top-0 z-30 flex min-h-16 items-center gap-1.5 bg-zinc-900 px-3 py-2 text-white lg:hidden">
         <button
+          ref={menuButtonRef}
           type="button"
           onClick={() => setOpen(true)}
           aria-label={t('sidebar.openMenu')}
           aria-expanded={open}
-          className="-ml-2 flex h-11 w-11 items-center justify-center rounded hover:bg-zinc-800 transition-colors"
+          aria-controls="admin-navigation-drawer"
+          className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded hover:bg-zinc-800 transition-colors"
         >
           <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h2 className="text-lg font-serif font-bold tracking-wider">{t('sidebar.title')}</h2>
-        <LanguageSwitcher tone="dark" className="ml-auto" />
+        <h2 className="min-w-0 flex-1 font-serif text-sm font-bold leading-tight tracking-wide sm:text-lg">{t('sidebar.title')}</h2>
+        <LanguageSwitcher tone="dark" className="ml-auto shrink-0" />
       </div>
 
       {/* Backdrop while the drawer is open */}
@@ -132,11 +153,16 @@ export function AdminSidebar({ userId }: AdminSidebarProps) {
 
       {/* Sidebar: off-canvas drawer < lg, sticky viewport-height column ≥ lg */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-zinc-900 text-white transition-[transform,visibility] duration-200 ease-in-out lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-64 lg:translate-x-0 ${
+        ref={drawerRef}
+        id="admin-navigation-drawer"
+        role={open ? 'dialog' : undefined}
+        aria-modal={open ? true : undefined}
+        aria-label={t('sidebar.navLabel')}
+        className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-72 max-w-[85vw] flex-col bg-zinc-900 text-white transition-transform duration-200 ease-in-out motion-reduce:transition-none lg:sticky lg:top-0 lg:z-auto lg:w-64 lg:shrink-0 lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full invisible lg:visible'
         }`}
       >
-        <div className="border-b border-zinc-800 px-6 pb-2 pt-6">
+        <div className="shrink-0 border-b border-zinc-800 px-6 pb-2 pt-4 lg:pt-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-serif font-bold tracking-wider">{t('sidebar.title')}</h2>
             <button
@@ -153,7 +179,7 @@ export function AdminSidebar({ userId }: AdminSidebarProps) {
           <LanguageSwitcher tone="dark" className="-ml-1" />
         </div>
 
-        <nav aria-label={t('sidebar.navLabel')} className="flex-1 space-y-1 overflow-y-auto p-4">
+        <nav aria-label={t('sidebar.navLabel')} className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-4">
           {NAV_LINKS.map(({ href, label }) => {
             const active = isActive(path, href);
             return (
@@ -170,7 +196,7 @@ export function AdminSidebar({ userId }: AdminSidebarProps) {
           })}
         </nav>
 
-        <div className="border-t border-zinc-800 p-4">
+        <div className="shrink-0 border-t border-zinc-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="mb-4 px-4">
             <p className="text-xs uppercase text-zinc-500">{t('sidebar.loggedInAs')}</p>
             <p className="truncate text-sm font-medium">{userId}</p>

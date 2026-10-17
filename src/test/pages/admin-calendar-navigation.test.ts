@@ -163,7 +163,7 @@ test('invalid and duplicate query parameters fall back to a valid salon date and
   }
 });
 
-function renderClient(dateStr: string, view: string, pendingAppointments: Record<string, unknown>[] = [], appointments: Record<string, unknown>[] = [], locale: 'en-GB' | 'zh-HK' = 'en-GB') {
+function renderClient(dateStr: string, view: string, pendingAppointments: Record<string, unknown>[] = [], appointments: Record<string, unknown>[] = [], locale: 'en-GB' | 'zh-HK' = 'en-GB', options: { props?: Record<string, unknown>; stylistFilter?: string } = {}) {
   const urls: string[] = [];
   const statuses: string[][] = [];
   const calendar = loadServerModule<{ ScheduleCalendar: (props: Record<string, unknown>) => unknown }>('src/components/admin/ScheduleCalendar.tsx', {
@@ -172,7 +172,7 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     // ever asks for language-free /admin URLs.
     '@/i18n/navigation': { useLocalizedRouter: () => ({ push: (url: string) => urls.push(url), refresh: () => undefined }) },
     '@/i18n/client': { useT: (namespace: Namespace) => translator(locale, namespace), useLocale: () => locale },
-    '@/i18n/draft-store': { useDraftState: (_key: string, initial: unknown) => [initial, () => undefined] },
+    '@/i18n/draft-store': { useDraftState: (key: string, initial: unknown) => [key === 'schedule-board:stylist' ? options.stylistFilter ?? '' : initial, () => undefined] },
     './ScheduleDayGrid': { ScheduleDayGrid: () => null },
     './ScheduleWeekGrid': { ScheduleWeekGrid: () => null },
     './AppointmentDialog': { AppointmentDialog: () => null },
@@ -181,7 +181,7 @@ function renderClient(dateStr: string, view: string, pendingAppointments: Record
     '@/app/actions/admin-schedule': {},
     '@/app/actions/admin': { updateAppointmentStatus: async (id: string, status: string) => { statuses.push([id, status]); return { success: true }; } },
   });
-  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments, pendingAppointments, rescheduleRequests: [], stylists: [], busyBlocks: [] }), urls, statuses };
+  return { rendered: calendar.ScheduleCalendar({ dateStr, view, appointments, pendingAppointments, rescheduleRequests: [], stylists: [], busyBlocks: [], ...options.props }), urls, statuses };
 }
 
 /** A board row (CalendarAppointment) for the client renderer. */
@@ -409,5 +409,44 @@ test('the day list shows a booking’s recorded consultation credit, in both lan
     assert.equal(days.length, 1);
     const shown = text(run(days[0]));
     assert.equal(shown.split(words).length - 1, 1, 'once, for the live booking that has a credit only');
+  }
+});
+
+
+test('phone day and week diary retain chronological sources, visible mapped stylists and booking actions', () => {
+  const stylist = { id: 'stylist', name: 'Alex', calendarColor: 'teal', googleColorId: '2', availabilities: [] };
+  const google = { id: 'same', kind: 'STYLIST', title: 'Diary customer', stylistIds: ['stylist'], colorId: '2', start: '2026-09-16T08:00:00Z', end: '2026-09-16T09:00:00Z', allDay: false, htmlLink: null };
+  const block = { id: 'same', stylistId: 'stylist', source: 'FRESHA', summary: 'booking', start: '2026-09-16T09:00:00Z', end: '2026-09-16T09:30:00Z', lastSyncAt: '2026-09-16T07:00:00Z' };
+  const booking = { ...boardAppointment('same', 'PENDING', '2026-09-16T10:00:00Z'), stylist };
+  for (const view of ['day', 'week']) {
+    const { rendered } = renderClient('2026-09-16', view, [], [booking], 'en-GB', { props: { stylists: [stylist], busyBlocks: [block], diaryEntries: [google] } });
+    const day = byName(elements(rendered), 'DayView').find(element => element.props.dateStr === '2026-09-16');
+    assert.ok(day);
+    const content = elements(run(day));
+    const ordered = content.filter(element => (typeof element.type === 'function' && ['DiaryAgenda', 'BusyAgenda'].includes(element.type.name)) || (element.type === 'button' && element.props.children === 'Edit booking'));
+    assert.deepEqual(ordered.map(element => typeof element.type === 'function' ? element.type.name : 'Website'), ['DiaryAgenda', 'BusyAgenda', 'Website']);
+    const diary = ordered[0];
+    assert.ok(elements(run(diary)).some(element => element.props.children === 'Alex'));
+    const pending = byName(content, 'PendingActions');
+    assert.equal(pending.length, 1, 'pending actions remain on the phone in either view');
+    assert.equal(pending[0].props.apptId, 'same');
+    (ordered[2].props.onClick as () => void)();
+  }
+});
+
+test('stylist filtering affects day/week diary props but leaves global pending and reschedule queues actionable', () => {
+  const other = { id: 'other', name: 'Bo', calendarColor: null, googleColorId: null, availabilities: [] };
+  const chosen = { id: 'stylist', name: 'Alex', calendarColor: null, googleColorId: null, availabilities: [] };
+  const appointment = { ...boardAppointment('visible', 'CONFIRMED', '2099-12-01T10:00:00Z'), stylist: chosen };
+  const hidden = { ...boardAppointment('hidden', 'PENDING', '2099-12-01T11:00:00Z'), stylistId: 'other', stylist: other };
+  const request = { ...hidden, requestedAt: '2099-11-01T10:00:00Z', requestedDate: '2099-12-01T12:00:00Z', expired: false };
+  for (const view of ['day', 'week']) {
+    const { rendered } = renderClient('2099-12-01', view, [hidden], [appointment, hidden], 'en-GB', { stylistFilter: 'stylist', props: { stylists: [chosen, other], rescheduleRequests: [request] } });
+    const nodes = elements(rendered);
+    const day = byName(nodes, 'DayView').find(element => element.props.dateStr === '2099-12-01');
+    assert.ok(day);
+    assert.deepEqual((day.props.dayAppts as { id: string }[]).map(row => row.id), ['visible']);
+    assert.ok(byName(nodes, 'PendingActions').some(element => element.props.apptId === 'hidden'));
+    assert.ok(byName(nodes, 'RescheduleRequestActions').some(element => element.props.appointmentId === 'hidden'));
   }
 });

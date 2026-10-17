@@ -13,6 +13,9 @@ import type { BoardPrice } from '@/app/lib/board-price';
 import { adminDepositView, adminDepositViewSelect, depositView, depositViewSelect } from '@/app/lib/deposit-display';
 import { parseDiaryStylistIds } from '@/app/lib/calendar-diary-display';
 import type { DiaryKind } from './google-diary-classify';
+import { DEFAULT_LOCALE, type Locale } from '@/i18n/config';
+import { loadPublishedTranslations, overlay } from './content/translations';
+import type { ContentFields } from './content/fields';
 
 // The service's CURRENT price is deliberately not selected: an appointment
 // shows only the price recorded when it was booked (unknown when none was).
@@ -70,12 +73,19 @@ export type CalendarAppointment = ReturnType<typeof serializeCalendarAppointment
 const dialogServiceSelect = {
   id: true, name: true, duration: true, price: true, category: true, requiresPatchTest: true, requiresConsultation: true,
   priceVersion: true, priceType: true, hairLength: true, vatDisplay: true, priceNature: true,
-  isBookable: true, offeringId: true,
+  isBookable: true, offeringId: true, offering: { select: { name: true } },
 } satisfies Prisma.ServiceSelect;
 type DialogServiceRow = Prisma.ServiceGetPayload<{ select: typeof dialogServiceSelect }>;
 
-function serializeDialogService({ price, ...row }: DialogServiceRow) {
-  return { ...row, amountPence: toPence(price) };
+function serializeDialogService({ price, offering, ...row }: DialogServiceRow, serviceFields?: ContentFields, offeringFields?: ContentFields) {
+  const localized = overlay(row, serviceFields, ['name']);
+  const localizedOffering = offering ? overlay(offering, offeringFields, ['name']) : null;
+  return {
+    ...localized,
+    searchText: `${row.name} ${localized.name}`,
+    offering: localizedOffering ? { name: localizedOffering.name, searchText: `${offering!.name} ${localizedOffering.name}` } : null,
+    amountPence: toPence(price),
+  };
 }
 export type CalendarDialogService = ReturnType<typeof serializeDialogService>;
 
@@ -121,7 +131,7 @@ async function yearCounts(year: number) {
   return Array.from({ length: 12 }, (_, month) => Number(row?.[`month${month}`] ?? 0));
 }
 
-export async function getAdminCalendarData(query: CalendarQuery & { pending?: string | string[] }) {
+export async function getAdminCalendarData(query: CalendarQuery & { pending?: string | string[] }, locale: Locale = DEFAULT_LOCALE) {
   await requireAdmin();
   const now = new Date();
   const { dateStr, view, range } = resolveAdminCalendarRange(query, now);
@@ -169,10 +179,14 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
       select: rescheduleRequestSelect, orderBy: [{ rescheduleRequestedAt: 'asc' }, { id: 'asc' }], take: 50,
     }),
   ]);
+  const [serviceTranslations, offeringTranslations] = await Promise.all([
+    loadPublishedTranslations(prisma, 'SERVICE', services.map((row) => row.id), locale),
+    loadPublishedTranslations(prisma, 'SERVICE_OFFERING', services.flatMap((row) => row.offeringId ? [row.offeringId] : []), locale),
+  ]);
   const page = pendingRows.slice(0, 25);
   return {
     dateStr, view, todayStats, syncCoverage, stylists, pendingCount, monthCounts, loadedAt: new Date().toISOString(),
-    services: services.map(serializeDialogService),
+    services: services.map((row) => serializeDialogService(row, serviceTranslations.get(row.id), row.offeringId ? offeringTranslations.get(row.offeringId) : undefined)),
     periodCount: view === 'year' ? monthCounts.reduce((sum, count) => sum + count, 0) : appointments.length,
     appointments: appointments.map((row) => serializeCalendarAppointment(row, view === 'day')),
     busyBlocks: busyBlocks.map((row) => ({ ...row, start: row.start.toISOString(), end: row.end.toISOString(), lastSyncAt: row.lastSyncAt.toISOString() })),

@@ -52,12 +52,10 @@ function render(view: 'Day' | 'Week', entries = ENTRIES, locale: Locale = 'en-GB
 }
 const labelled = (nodes: Element[], words: string) => nodes.filter((node) => String(node.props['aria-label'] ?? '').includes(words));
 
-test('day view: a No stylist column for a walk-in, in Google’s tomato with its Google title and badge', () => {
+test('day view: a No stylist column for a walk-in, with its Google title and badge', () => {
   const nodes = render('Day');
   assert.ok(nodes.some((node) => text(node) === 'No stylist'));
   const [walkIn] = labelled(nodes, 'Cut - Erin(W)');
-  assert.match(String(walkIn.props.className), /bg-\[#d50000\]/);
-  assert.match(String(walkIn.props.className), /text-white/);
   assert.ok(elements(walkIn).some((node) => text(node) === 'Google'));
 });
 
@@ -120,15 +118,16 @@ test('day view: Google entries are read-only; a click opens the panel and never 
   assert.deepEqual(selected.map((e) => e.id), ['amy']);
 });
 
-test('day view: a website booking takes its stylist’s Google colour', () => {
+test('day view: website bookings remain editable beside the read-only diary', () => {
   const booking = render('Day').find((node) => node.props.onPointerDown && String(node.props.className).includes('cursor-grab'))!;
-  assert.match(String(booking.props.className), /bg-\[#f6bf26\]/);
-  assert.match(String(booking.props.className), /text-zinc-950/);
+  assert.equal(typeof booking.props.onPointerDown, 'function');
+  assert.ok(text(booking).includes('Web Customer'));
+  assert.ok(text(booking).includes('Cut'));
 });
 
-test('week view: the same entries, compact, in their Google colours', () => {
+test('week view: the same diary entries remain separate from notes', () => {
   const nodes = render('Week');
-  assert.match(String(labelled(nodes, 'Cut - Erin(W)')[0].props.className), /bg-\[#d50000\]/);
+  assert.equal(labelled(nodes, 'Cut - Erin(W)').length, 1);
   assert.equal(labelled(nodes, '遲返 (L)(F)').length, 1, 'one block per entry in the week');
   assert.deepEqual((strip(nodes)!.props.notes as CalendarDiaryEntry[]).map((e) => e.id), ['note']);
 });
@@ -179,9 +178,12 @@ function renderCalendar(view: 'day' | 'week', locale: Locale, busyBlocks: unknow
 
 for (const view of ['day', 'week'] as const) {
   test(`${view} phone agenda: the day's count includes its Google diary bookings, not its leave or notes`, () => {
-    assert.ok(renderCalendar(view, 'en-GB').includes('0 appointments · 3 Google diary bookings'));
-    assert.ok(renderCalendar(view, 'zh-HK').includes('0 個預約 · 3 個 Google 日曆預約'));
+    const english = renderCalendar(view, 'en-GB');
+    assert.ok(english.includes('0 website bookings · 3 Google diary bookings'));
+    assert.ok(english.includes('No stylist'), 'unassigned rows show a short stylist label');
+    assert.equal(english.filter(line => line === 'Google · No stylist yet: takes a chair').length, 1, 'the chair explanation appears once on its source line');
+    assert.ok(renderCalendar(view, 'zh-HK').includes('0 個網站預約 · 3 個 Google 日曆預約'));
     const imported = [{ id: 'fresha', stylistId: 'lox', source: 'FRESHA', start: '2026-10-23T08:00:00Z', end: '2026-10-23T08:30:00Z', lastSyncAt: '2026-10-20T00:00:00Z' }];
-    assert.ok(renderCalendar(view, 'en-GB', imported).includes('0 appointments · 1 imported · 3 Google diary bookings'));
+    assert.ok(renderCalendar(view, 'en-GB', imported).includes('0 website bookings · 1 imported · 3 Google diary bookings'));
   });
 }

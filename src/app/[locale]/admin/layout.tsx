@@ -21,7 +21,7 @@ export default async function AdminLayout({
     <ClientMessages namespaces={['admin', 'adminSchedule', 'adminCatalog', 'adminContent', 'adminOps', 'adminStaff', 'pricing', 'errors']}>
       <div className="min-h-screen bg-zinc-50 lg:flex">
         <AdminSidebar userId={session.userId} />
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="min-w-0 flex-1">{children}</main>
       </div>
     </ClientMessages>
   );

@@ -25,6 +25,7 @@ import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useLocale, useT } from '@/i18n/client';
 import { DEFAULT_LOCALE, HTML_LANG, LOCALE_LABEL, LOCALES, isLocale, type Locale } from '@/i18n/config';
 import { clearDraft, useDraftState } from '@/i18n/draft-store';
+import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 
 /** One row of the dialog's service menu (see admin-calendar-data). */
 export type DialogService = {
@@ -44,6 +45,9 @@ export type DialogService = {
   /** False for retired/unverified options: never offered for a new booking or a service change. */
   isBookable: boolean;
   offeringId: string | null;
+  offering?: { name: string; searchText: string } | null;
+  /** Both the original and translated name, for local bilingual search. */
+  searchText?: string;
 };
 
 export type DialogStylist = { id: string; name: string };
@@ -84,10 +88,12 @@ export type DialogTarget =
  */
 type DialogForm = {
   serviceId: string;
+  serviceSearch?: string;
+  serviceCategory?: string;
   stylistId: string;
   dateStr: string;
   time: string;
-  durationMin: number;
+  durationMin: string | number;
   notes: string;
   status: 'CONFIRMED' | 'PENDING';
   notifyCustomer: boolean;
@@ -110,8 +116,8 @@ type DialogForm = {
 };
 
 const inputClass =
-  'w-full rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900';
-const labelClass = 'block text-xs font-semibold uppercase tracking-wide text-zinc-600 mb-1';
+  'min-w-0 w-full rounded-md border border-zinc-300 px-3 py-2 text-base sm:text-sm text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900';
+const labelClass = 'mb-1 block text-sm font-medium text-zinc-700';
 
 /** Round up to the next quarter hour, the grain the whole board snaps to. */
 function nextQuarterHour(time: string): string {
@@ -152,7 +158,7 @@ export function AppointmentDialog({
     stylistId: target.stylistId ?? stylists[0]?.id ?? '',
     dateStr: target.dateStr,
     time: isEdit ? target.time : nextQuarterHour(target.time),
-    durationMin: isEdit ? target.durationMin : bookable[0]?.duration ?? 30,
+    durationMin: String(isEdit ? target.durationMin : bookable[0]?.duration ?? 30),
     notes: isEdit ? target.notes : '',
     status: 'CONFIRMED',
     notifyCustomer: true,
@@ -170,6 +176,13 @@ export function AppointmentDialog({
   }));
   const update = (patch: Partial<DialogForm>) => setForm((previous) => ({ ...previous, ...patch }));
   const { serviceId, stylistId, dateStr, time, durationMin, notes, status, notifyCustomer, customerQuery, picked, name, email, phone, customerLocale, priceChange } = form;
+  // Old locale-switch drafts stored minutes as a number; new edits keep text.
+  const durationText = String(durationMin);
+  const parsedDuration = /^\d+$/.test(durationText) ? Number(durationText) : NaN;
+  const validDuration = Number.isInteger(parsedDuration) && parsedDuration >= MIN_DURATION_MINUTES && parsedDuration <= 720;
+  const startsAt = resolveSalonDateTime(dateStr, time).utc;
+  const endsAt = validDuration && !Number.isNaN(startsAt.getTime())
+    ? new Date(startsAt.getTime() + parsedDuration * 60_000) : null;
   // A draft saved before this field existed has none: refund, the default.
   const refundDeposit = form.refundDeposit !== false;
 
@@ -228,7 +241,7 @@ export function AppointmentDialog({
     // 45-minute slot left over from the previous choice is never what they want.
     // A price confirmation belongs to the service it was shown for.
     const next = services.find((s) => s.id === id);
-    update({ serviceId: id, priceChange: null, ...(next ? { durationMin: next.duration } : {}) });
+    update({ serviceId: id, priceChange: null, ...(next ? { durationMin: String(next.duration) } : {}) });
   };
 
   // Consultation credit (spec §2.3): only a consultation-required service takes
@@ -276,6 +289,7 @@ export function AppointmentDialog({
   };
 
   const submit = async (overrideClashes: boolean) => {
+    if (!validDuration) return;
     setSaving(true);
     setError(null);
     try {
@@ -284,7 +298,7 @@ export function AppointmentDialog({
           appointmentId: target.appointmentId,
           dateStr,
           time,
-          durationMin,
+          durationMin: parsedDuration,
           stylistId,
           serviceId,
           notes,
@@ -314,7 +328,7 @@ export function AppointmentDialog({
         stylistId,
         dateStr,
         time,
-        durationMin,
+        durationMin: parsedDuration,
         status,
         notes,
         notifyCustomer,
@@ -396,16 +410,32 @@ export function AppointmentDialog({
     // the menu reads the same in either language.
     const tags = [
       service.hairLength ? tp.dynamic(`hairLength.${service.hairLength}`, undefined, '') : '',
-      service.priceType === 'NHS' ? tp('priceType.NHS') : '',
+      tp.dynamic(`priceType.${service.priceType}`, undefined, service.priceType),
     ].filter(Boolean);
     const label = t('dialog.option', {
-      label: [service.name, ...tags].join(' · '),
+      label: service.offering ? tags.join(' · ') : [service.name, ...tags].join(' · '),
       duration: tp('minutes', { count: service.duration }),
       price: formatPrice(service.amountPence),
     });
     return service.isBookable ? label : t('dialog.retiredOption', { label });
   };
   const categories = [...new Set(offered.map((service) => service.category))];
+  // Group by the stable relation only. Legacy standalone services keep their own row.
+  const groups = new Map<string, { id: string; name: string; category: string; options: DialogService[] }>();
+  for (const service of offered) {
+    const id = service.offeringId ? `offering:${service.offeringId}` : `service:${service.id}`;
+    const group = groups.get(id) ?? { id, name: service.offering?.name ?? service.name, category: service.category, options: [] };
+    group.options.push(service);
+    groups.set(id, group);
+  }
+  const serviceSearch = form.serviceSearch ?? '';
+  const serviceCategory = form.serviceCategory ?? '';
+  const serviceNeedle = serviceSearch.trim().toLocaleLowerCase();
+  const visibleGroups = [...groups.values()].filter((group) =>
+    (!serviceCategory || group.category === serviceCategory) && (!serviceNeedle ||
+      [group.name, ...group.options.flatMap((option) => [option.name, option.searchText ?? '', option.offering?.searchText ?? ''])]
+        .join(' ').toLocaleLowerCase().includes(serviceNeedle)));
+  const selectedGroup = visibleGroups.find((group) => group.options.some((option) => option.id === serviceId));
 
   // What the price panel shows: the recorded price while the service is
   // unchanged, otherwise the listed price of the chosen option (or the newer
@@ -459,16 +489,16 @@ export function AppointmentDialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-lg bg-white shadow-xl"
+        className="flex max-h-[92dvh] w-full min-w-0 flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:max-w-lg sm:rounded-2xl"
       >
-        <div className="sticky top-0 flex items-center justify-between border-b border-zinc-200 bg-white px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 sm:px-5">
           <h2 className="text-lg font-bold text-zinc-900">{title}</h2>
           <button type="button" onClick={close} aria-label={t('dialog.close')} className="rounded p-1 text-2xl leading-none text-zinc-500 hover:bg-zinc-100">
             ×
           </button>
         </div>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="min-h-0 overflow-y-auto space-y-4 px-4 py-4 sm:px-5">
           {error && <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
           {clashes && (
@@ -557,17 +587,48 @@ export function AppointmentDialog({
             </div>
           )}
 
-          <div>
-            <label className={labelClass} htmlFor="appt-service">{t('dialog.service')}</label>
-            <select id="appt-service" className={inputClass} value={serviceId} onChange={(event) => chooseService(event.target.value)}>
-              {categories.map((category) => (
-                <optgroup key={category} label={tp.dynamic(`categories.${category}`, undefined, category)}>
-                  {offered.filter((service) => service.category === category).map((service) => (
-                    <option key={service.id} value={service.id}>{optionLabel(service)}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+          <div className="min-w-0 rounded-xl border border-zinc-200 p-3">
+            <p className={labelClass}>{t('dialog.service')}</p>
+            {selectedService && <div className="mb-2 text-sm text-zinc-900">
+              <p>{selectedService.offering?.name ?? selectedService.name}</p>
+              <p className="text-xs text-zinc-500">{[
+                selectedService.hairLength ? tp.dynamic(`hairLength.${selectedService.hairLength}`, undefined, '') : '',
+                tp.dynamic(`priceType.${selectedService.priceType}`, undefined, selectedService.priceType),
+              ].filter(Boolean).join(' · ')}</p>
+            </div>}
+            <details open={!isEdit}>
+              <summary className="cursor-pointer py-1 text-sm font-medium text-zinc-600 underline underline-offset-4">{t('servicePicker.change')}</summary>
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className={labelClass} htmlFor="appt-service-category">{t('servicePicker.category')}</label>
+                  <select id="appt-service-category" className={inputClass} value={serviceCategory} onChange={(event) => update({ serviceCategory: event.target.value })}>
+                    <option value="">{t('servicePicker.allCategories')}</option>
+                    {categories.map((category) => <option key={category} value={category}>{tp.dynamic(`categories.${category}`, undefined, category)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass} htmlFor="appt-service-search">{t('servicePicker.search')}</label>
+                  <input id="appt-service-search" type="search" className={inputClass} value={serviceSearch} placeholder={t('servicePicker.searchPlaceholder')} onChange={(event) => update({ serviceSearch: event.target.value })} />
+                </div>
+                <div>
+                  <label className={labelClass} htmlFor="appt-offering">{t('servicePicker.offering')}</label>
+                  <select id="appt-offering" className={inputClass} value={selectedGroup?.id ?? ''} onChange={(event) => {
+                    const group = visibleGroups.find((item) => item.id === event.target.value);
+                    if (group) chooseService(group.options[0].id);
+                  }}>
+                    <option value="" disabled>{t('servicePicker.chooseOffering')}</option>
+                    {visibleGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+                  </select>
+                  {visibleGroups.length === 0 && <p role="status" className="mt-2 text-sm text-zinc-500">{t('servicePicker.noMatches')}</p>}
+                </div>
+                {selectedGroup && <div>
+                  <label className={labelClass} htmlFor="appt-service">{t('servicePicker.option')}</label>
+                  <select id="appt-service" className={inputClass} value={serviceId} onChange={(event) => chooseService(event.target.value)}>
+                    {selectedGroup.options.map((service) => <option key={service.id} value={service.id}>{optionLabel(service)}</option>)}
+                  </select>
+                </div>}
+              </div>
+            </details>
             {selectedService?.requiresPatchTest && (
               <p className="mt-1 text-xs text-amber-700">{t('dialog.patchTestWarning')}</p>
             )}
@@ -575,7 +636,7 @@ export function AppointmentDialog({
 
           {priceText && (
             <div className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2" aria-live="polite">
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600">{priceHeading}</p>
+              <p className="text-xs font-medium text-zinc-600">{priceHeading}</p>
               <p className="text-sm font-semibold text-zinc-900 tabular-nums">{priceText.amount}</p>
               {priceText.notes.length > 0 && <p className="text-[11px] leading-snug text-zinc-500">{priceText.notes.join(' · ')}</p>}
               {priceHelp && <p className="mt-1 text-xs text-zinc-500">{priceHelp}</p>}
@@ -607,8 +668,8 @@ export function AppointmentDialog({
             </select>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div>
+          <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="col-span-2 min-w-0 sm:col-span-1">
               <label className={labelClass} htmlFor="appt-date">{t('dialog.date')}</label>
               <input id="appt-date" type="date" className={inputClass} value={dateStr} onChange={(event) => update({ dateStr: event.target.value })} />
             </div>
@@ -620,17 +681,22 @@ export function AppointmentDialog({
               <label className={labelClass} htmlFor="appt-duration">{t('dialog.minutes')}</label>
               <input
                 id="appt-duration"
-                type="number"
-                min={MIN_DURATION_MINUTES}
-                step={MIN_DURATION_MINUTES}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 className={inputClass}
-                // Blank while cleared: a number box given 0 shows it, and typing
-                // on then reads "0120" (React leaves it, as it equals 120).
-                value={durationMin > 0 ? durationMin : ''}
-                onChange={(event) => update({ durationMin: Number(event.target.value) })}
+                value={durationText}
+                aria-invalid={!validDuration}
+                aria-describedby={!validDuration ? 'appt-duration-error' : 'appt-end-preview'}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  update({ durationMin: /^\d+$/.test(value) ? value.replace(/^0+(?=\d)/, '') : value });
+                }}
               />
             </div>
           </div>
+          {!validDuration && <p id="appt-duration-error" role="alert" className="text-sm text-red-700">{t('dialog.durationInvalid')}</p>}
+          {endsAt && <p id="appt-end-preview" aria-live="polite" className="text-sm text-zinc-500">{t(salonDateKey(endsAt) !== dateStr ? 'dialog.endsNextDay' : 'dialog.endsAt', { time: formatSalonClock(locale, endsAt) })}</p>}
 
           <div>
             <label className={labelClass} htmlFor="appt-notes">{t('dialog.notes')}</label>
@@ -664,7 +730,7 @@ export function AppointmentDialog({
           )}
         </div>
 
-        <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-zinc-200 bg-white px-5 py-3">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-zinc-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
           {isEdit && (target.status === 'PENDING' || target.status === 'CONFIRMED') && (
             <button type="button" disabled={saving} onClick={cancelBooking} className="mr-auto rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
               {t('dialog.cancelBooking')}
@@ -681,7 +747,7 @@ export function AppointmentDialog({
           </button>
           <button
             type="button"
-            disabled={saving || !serviceId || !stylistId || creditChecking}
+            disabled={saving || !serviceId || !stylistId || creditChecking || !validDuration}
             onClick={() => submit(false)}
             className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
           >
