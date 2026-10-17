@@ -100,6 +100,20 @@ test('entries: intervals, all-day salon days across the clock change, titles cut
   assert.equal(diaryEntriesFrom([ev('x', { htmlLink: 'https://evil.example/calendar/event?eid=1' })], CONFIG)[0].htmlLink, null);
 });
 
+test('Google event links: real-shaped links are kept, anything off Google or unparsable is dropped', () => {
+  const link = (htmlLink: string) => diaryEntriesFrom([ev('x', { htmlLink })], CONFIG)[0].htmlLink;
+  const real = 'https://www.google.com/calendar/event?eid=dWVyNzIwcHZkMzZnbWNxdm1zZ2MwM2xlajhfMjAyNjA5MjEgaGFyYm91cmhhaXJ1a0Bt';
+  assert.equal(link(real), real);
+  const withZone = 'https://www.google.com/calendar/event?eid=ab+cd/ef%3D&ctz=Europe/London';
+  assert.equal(link(withZone), withZone);
+  for (const bad of [
+    'javascript:alert(1)', 'http://www.google.com/calendar/event?eid=1', 'https://evil.example/calendar/event?eid=1',
+    'https://www.google.com.evil.example/calendar/event?eid=1', 'https://www.google.com@evil.example/calendar/event?eid=1',
+    'https://user@www.google.com/calendar/event?eid=1', 'https://www.google.com:8443/calendar/event?eid=1',
+    'https://www.google.com/other?eid=1', 'not a url', `https://www.google.com/calendar/event?eid=${'a'.repeat(500)}`,
+  ]) assert.equal(link(bad), null, bad);
+});
+
 test('entries skip website, cancelled and malformed events; a repeated id is stored once; an unknown colour is null', () => {
   const entries = diaryEntriesFrom([
     ev('Ivan off', { id: 'a' }),

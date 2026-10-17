@@ -30,8 +30,6 @@ export type DiaryEntry = {
 
 const HAN = /\p{Script=Han}/u;
 const ONE_LATIN_LETTER = /^\p{Script=Latin}$/u;
-/** Google's own event links only: anything else is never rendered as a link in Admin. */
-const GOOGLE_EVENT_LINK = /^https:\/\/www\.google\.com\/calendar\/event\?[\w=&%.-]+$/;
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -83,8 +81,17 @@ function diaryTitle(summary: string | undefined): string {
   return Array.from((summary ?? '').replace(/\s+/g, ' ').trim()).slice(0, DIARY_TITLE_MAX).join('');
 }
 
+/** Google's own event links only: anything else is never rendered as a link in Admin. Parsed, not pattern-matched. */
 function safeLink(link: string | undefined): string | null {
-  return link && link.length <= 500 && GOOGLE_EVENT_LINK.test(link) ? link : null;
+  if (!link || link.length > 500) return null;
+  try {
+    const url = new URL(link);
+    const ok = url.protocol === 'https:' && url.hostname === 'www.google.com' && url.pathname === '/calendar/event'
+      && url.port === '' && url.username === '' && url.password === '';
+    return ok ? link : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The diary as stored (spec §7): classified events with a valid interval, one per Google id. Only the title is kept. */
