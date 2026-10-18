@@ -16,8 +16,9 @@ Square **Sandbox**, how to go live, and what staff do day to day.
   setup refusals are not declines, in-salon refunds, bounded refund retries and "Mark refund as
   settled outside the website", a hold Square shows taken, the 12-hour lapse grace) is marked
   **(review 2)**.
-  **Production credentials may be set once the sandbox acceptance list (§4) has passed on a
-  Preview deployment of `main`** (CLAUDE.md), then §5.
+  **Production credentials may be set once the sandbox acceptance list (§4) has passed on
+  `main`** — all of it on a local production build, plus the owner's short check on a Preview
+  (§4, "How §4 is run"; CLAUDE.md) — then §5.
 - Square facts below were checked against Square's documentation on **13 October 2026**. The
   gateway pins Square API version **2026-09-16** (`SQUARE_API_VERSION`,
   `src/app/services/square-gateway.ts`). The 2026-09-16 Cantonese plan is superseded; do not
@@ -383,6 +384,20 @@ Rules:
 
 ## 4. Sandbox acceptance checklist
 
+**How §4 is run (owner decision, 2026-10-17).** The assistant may type test cards and test
+passwords only on a local host, and the Preview is on `vercel.app`. So:
+1. **Every item below** runs on a local production build of `main` with `VERCEL_ENV=preview`, the
+   payment lock's only exemption, as on the Preview (recipe: the 2026-10-15/17 records in
+   `readme/square-acceptance-2026-10-14.md`).
+2. **The owner adds a short check on a Preview of `main`**, typing the cards, for what only the
+   deployed site shows:
+   - a 3-D Secure challenge with DevTools → Console open and a one-minute wait;
+   - a request approved and then refunded, with Square's own webhooks reaching the deployment;
+   - a declined card.
+
+Both are recorded in `readme/square-acceptance-2026-10-14.md`. The 2026-10-17 run of `main` 13dbe8f
+passed both (locally on 2026-10-17, the Preview check on 2026-10-18).
+
 Square's sandbox test values: any future expiry; CVV `111` (Amex `1111`). Square's card form picks
 the postcode field from the country that **issued the card**, not from the site. `4111 1111 1111
 1111` is a US card, so the form shows a digits-only **ZIP** (any 5 digits; the sandbox reports a
@@ -476,8 +491,8 @@ curl -sS -X POST "$URL" -H 'Content-Type: application/json' -H "x-square-hmacsha
 
 ## 5. Production go-live checklist
 
-Only once §4 has passed on a Preview deployment of `main` (S1–S4 are merged and deployed since
-2026-10-13, #63).
+Only once §4 has passed on `main` — locally and in the owner's Preview check (§4, "How §4 is
+run"); it did for 13dbe8f on 2026-10-17/18 (S1–S4 are merged and deployed since 2026-10-13, #63).
 
 **Owner**
 - [ ] A Square **seller** account in the salon's legal name (the merchant of record), United

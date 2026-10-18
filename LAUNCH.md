@@ -84,7 +84,7 @@ Square and payment records.
       configured.
 - [x] Preview database: `20261013120000_square_deposits` applied on 2026-10-13 (runbook §7;
       `prisma migrate deploy`, no drift afterwards).
-- [ ] Developer: sandbox setup on **Preview** only (runbook §3 — free Square Developer account, UK
+- [x] Developer: sandbox setup on **Preview** only (runbook §3 — free Square Developer account, UK
       test account, Vercel Protection Bypass for Automation + an alias for the webhook URL;
       `PREVIEW_EMAIL_ALLOWLIST` = your own address **before** notifications go on there, because the
       preview database holds real customers), then the sandbox acceptance checklist (runbook §4).
@@ -95,7 +95,14 @@ Square and payment records.
       own Protection Bypass secret, the one with the note "Square sandbox webhook". "Send test
       event" returned 200. Preview also has its own `PREVIEW_EMAIL_ALLOWLIST` and its own values for
       `NOTIFICATIONS_ENABLED=true`, `CRON_SECRET` and `CALENDAR_SYNC_ENABLED=true`. Production's
-      values are unchanged, and these Preview-only values are removed again after §4.
+      values are unchanged.
+      **2026-10-17/18:** §4 passed on `main` 13dbe8f: all 13 items on a local production build, plus
+      the owner's short check on the Preview (3-D Secure, Square's own webhooks, a refund, a
+      decline; `readme/square-acceptance-2026-10-14.md`). Afterwards, Preview
+      `NOTIFICATIONS_ENABLED` was set to `false` (switched off, not deleted; owner, 2026-10-17).
+      `PREVIEW_EMAIL_ALLOWLIST`, `CRON_SECRET` and the sandbox `SQUARE_*` values stay, for the next
+      check. The Square account holding the application is named **FaithArkLtd**: before §5 the
+      owner confirms it is the salon's own business account.
       On the preview database only: booking is on, deposits are 20%, and "takes bookings" is unticked
       on the stylists' calendar connections, since crons do not run on previews.
       **§4 progress:** the approve test's hold is done (a £7.40 hold, with request email and
