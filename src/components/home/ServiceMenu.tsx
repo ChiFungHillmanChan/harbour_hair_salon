@@ -37,7 +37,7 @@ export async function ServiceMenu({ entries, title, flatList = false }: ServiceM
         key={key}
         as="article"
         delay={index * 40}
-        className="group relative flex flex-col h-full bg-white border border-zinc-200/80 rounded-2xl p-6 md:p-7 transition-all duration-500 ease-apple hover:border-zinc-900 hover:shadow-[0_20px_60px_-20px_rgba(0,0,0,0.25)] hover:-translate-y-1"
+        className="group relative flex flex-col h-full bg-white border border-zinc-200/80 rounded-xl p-4 sm:rounded-2xl sm:p-6 md:p-7 transition-all duration-500 ease-apple hover:border-zinc-900 hover:shadow-[0_20px_60px_-20px_rgba(0,0,0,0.25)] hover:-translate-y-1"
       >
         {/* Accent corner */}
         <div className="absolute top-0 right-0 w-12 h-12 overflow-hidden rounded-tr-2xl pointer-events-none">
@@ -45,25 +45,25 @@ export async function ServiceMenu({ entries, title, flatList = false }: ServiceM
           <div className="absolute top-0 right-0 h-px w-12 bg-gradient-to-l from-zinc-300 to-transparent" />
         </div>
 
-        {/* Title + price. min-h-[3lh] reserves 3 lines for the title so all cards
+        {/* Title + price. On desktop, min-h-[3lh] reserves 3 lines so cards
             in a row align their description/divider Y positions. */}
-        <div className="flex items-start justify-between gap-4 mb-3">
-          <h3 className="text-xl md:text-2xl font-serif text-zinc-900 leading-tight pr-4 flex-1 min-h-[3lh] group-hover:text-zinc-700 transition-colors" lang={translated ? undefined : 'en'}>
+        <div className="flex items-start justify-between gap-3 mb-2 sm:gap-4 sm:mb-3">
+          <h3 className="text-xl md:text-2xl font-serif text-zinc-900 leading-tight min-w-0 flex-1 sm:pr-4 md:min-h-[3lh] group-hover:text-zinc-700 transition-colors" lang={translated ? undefined : 'en'}>
             {name}
           </h3>
-          <div className="text-right whitespace-nowrap flex-shrink-0">
+          <div className="max-w-[45%] text-right flex-shrink-0">
             {range && sample && <MenuPrice min={range.min} max={range.max} semantics={sample} />}
           </div>
         </div>
 
-        {/* Description always renders with a min-height so the dashed divider
-            below lands at the same Y regardless of description length. */}
-        <p className="text-zinc-500 font-light text-sm leading-relaxed mb-4 min-h-[2lh]" lang={translated ? undefined : 'en'}>
+        {/* On desktop, a minimum description height keeps the dashed divider
+            aligned regardless of description length. */}
+        <p className="text-zinc-600 text-sm leading-relaxed mb-3 md:mb-4 md:min-h-[2lh]" lang={translated ? undefined : 'en'}>
           {description}
         </p>
 
         {/* mt-auto pins the meta row to the bottom of the card. */}
-        <div className="mt-auto flex items-center gap-3 pt-3 border-t border-dashed border-zinc-200">
+        <div className="mt-auto flex flex-wrap items-center gap-2 sm:gap-3 pt-3 border-t border-dashed border-zinc-200">
           <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.15em] text-zinc-500 font-medium">
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="9" />
@@ -84,13 +84,13 @@ export async function ServiceMenu({ entries, title, flatList = false }: ServiceM
   };
 
   return (
-    <section id="services" className="relative py-28 bg-white text-zinc-900 overflow-hidden">
+    <section id="services" className="relative py-12 md:py-28 bg-white text-zinc-900 overflow-hidden">
       {/* Subtle backdrop grid */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#00000008_1px,transparent_1px)] [background-size:24px_24px]" />
       <div className="relative container mx-auto px-4">
-        <Reveal className="text-center mb-16">
+        <Reveal className="text-center mb-8 md:mb-16">
           <p className="text-sm uppercase tracking-[0.2em] text-zinc-500 mb-4 font-medium">{t('menu.eyebrow')}</p>
-          <h2 className="text-4xl md:text-6xl font-serif mb-4 tracking-tight">{title ?? t('menu.defaultTitle')}</h2>
+          <h2 className="text-3xl md:text-6xl font-serif mb-4 tracking-tight">{title ?? t('menu.defaultTitle')}</h2>
           <div className="w-16 h-px bg-zinc-300 mx-auto" />
         </Reveal>
 
@@ -116,16 +116,16 @@ export async function ServiceMenu({ entries, title, flatList = false }: ServiceM
         )}
 
         {/* View All + Book links */}
-        <Reveal className="flex flex-col sm:flex-row items-center justify-center gap-6 mt-16" delay={120}>
+        <Reveal className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8 sm:gap-6 md:mt-16" delay={120}>
           <Link
             href="/services"
-            className="text-sm uppercase tracking-[0.15em] font-medium text-zinc-600 hover:text-zinc-900 transition-colors border-b border-zinc-300 hover:border-zinc-900 pb-1"
+            className="inline-flex min-h-11 items-center text-sm sm:uppercase sm:tracking-[0.15em] font-medium text-zinc-600 hover:text-zinc-900 transition-colors border-b border-zinc-300 hover:border-zinc-900 pb-1"
           >
             {t('menu.viewFullMenu')}
           </Link>
           <Link
             href="/book"
-            className="group inline-flex items-center gap-2 bg-zinc-900 text-white px-8 md:px-10 py-3.5 md:py-4 text-[13px] md:text-sm uppercase tracking-[0.12em] md:tracking-[0.15em] font-bold hover:bg-black transition-all duration-500 ease-apple hover:shadow-[0_20px_50px_-15px_rgba(0,0,0,0.35)] hover:-translate-y-0.5"
+            className="group inline-flex items-center gap-2 bg-zinc-900 text-white min-h-11 px-5 md:px-10 py-2.5 md:py-4 text-sm sm:uppercase md:tracking-[0.15em] font-bold hover:bg-black transition-all duration-500 ease-apple hover:shadow-[0_20px_50px_-15px_rgba(0,0,0,0.35)] hover:-translate-y-0.5"
           >
             {t('menu.bookAppointment')}
             <svg className="w-4 h-4 transition-transform duration-500 ease-apple group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

@@ -80,7 +80,7 @@ export function HeaderClient({ hasOffers }: { hasOffers: boolean }) {
 
   return (
     <header className="bg-black text-white sticky top-0 z-50 [&_a:focus-visible]:outline-2 [&_a:focus-visible]:outline-offset-4 [&_a:focus-visible]:outline-white [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-4 [&_button:focus-visible]:outline-white">
-      <div className="mx-auto max-w-[1536px] min-h-18 sm:min-h-20 px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center gap-4 xl:gap-6">
+      <div className="mx-auto max-w-[1536px] min-h-16 sm:min-h-20 px-4 sm:px-6 lg:px-8 py-2 sm:py-3 flex justify-between items-center gap-4 xl:gap-6">
         <Link href="/" className="group flex shrink-0 items-center min-h-11" aria-label={t('nav.homeLabel')}>
           <span className="whitespace-nowrap text-xl sm:text-2xl font-serif tracking-wider font-bold">
             HARBOUR <span className="text-zinc-400">HAIR</span>

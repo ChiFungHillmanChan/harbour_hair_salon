@@ -53,24 +53,24 @@ export async function TrustBar({
   const t = await getT('home');
   return (
     <section className="bg-white border-b border-zinc-100" aria-label={t('trustBar.label')}>
-      <div className="container mx-auto px-4 py-5">
-        <ul className="flex flex-wrap items-center justify-center gap-x-7 md:gap-x-10 gap-y-3 text-sm text-zinc-600">
+      <div className="container mx-auto px-4 py-3 sm:py-5">
+        <ul className="grid grid-cols-2 sm:flex sm:flex-wrap items-start sm:items-center justify-center gap-x-4 md:gap-x-10 gap-y-3 text-xs sm:text-sm text-zinc-600">
           {PILLARS.map((p) => (
-            <li key={p.label} className="inline-flex items-center gap-2">
-              <span className="text-zinc-900">{p.icon}</span>
+            <li key={p.label} className="inline-flex items-start sm:items-center gap-2">
+              <span className="shrink-0 text-zinc-900">{p.icon}</span>
               <span className="tracking-wide">{t(`trustBar.${p.label}`)}</span>
             </li>
           ))}
         </ul>
 
         {(treatwellUrl || googleBusinessUrl) && (
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] uppercase tracking-[0.18em]">
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 text-xs sm:mt-4 sm:gap-x-6 sm:text-[11px] sm:uppercase sm:tracking-[0.18em]">
             {treatwellUrl && (
               <a
                 href={treatwellUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-semibold text-zinc-900 hover:text-zinc-600 transition-colors"
+                className="inline-flex min-h-11 items-center font-semibold text-zinc-900 hover:text-zinc-600 transition-colors"
               >
                 {t('trustBar.bookOnTreatwell')}
               </a>
@@ -80,7 +80,7 @@ export async function TrustBar({
                 href={googleBusinessUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-zinc-500 hover:text-zinc-900 transition-colors"
+                className="inline-flex min-h-11 items-center text-zinc-500 hover:text-zinc-900 transition-colors"
               >
                 {t('trustBar.findOnGoogle')}
               </a>

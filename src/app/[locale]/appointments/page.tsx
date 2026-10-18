@@ -129,13 +129,13 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
     });
 
   return (
-    <div className="min-h-screen bg-zinc-50 py-12">
+    <div className="min-h-screen bg-zinc-50 py-6 sm:py-12">
       <div className="container mx-auto px-4 max-w-4xl">
-        <h1 className="text-4xl font-serif mb-8 text-zinc-900">{t('title')}</h1>
+        <h1 className="text-3xl sm:text-4xl font-serif mb-6 sm:mb-8 text-zinc-900">{t('title')}</h1>
 
         <ClientMessages namespaces={['appointments', 'pricing']}>
-          <section className="mb-12">
-            <h2 className="text-2xl font-semibold text-zinc-800 mb-4">{t('upcoming.heading')}</h2>
+          <section className="mb-8 sm:mb-12">
+            <h2 className="text-xl sm:text-2xl font-semibold text-zinc-800 mb-4">{t('upcoming.heading')}</h2>
             {upcoming.length === 0 ? (
               <p className="text-zinc-500">{t('upcoming.empty')}</p>
             ) : (
@@ -149,7 +149,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-zinc-800 mb-4">{t('past.heading')}</h2>
+            <h2 className="text-xl sm:text-2xl font-semibold text-zinc-800 mb-4">{t('past.heading')}</h2>
             {past.length === 0 ? (
               <p className="text-zinc-500">{t('past.empty')}</p>
             ) : (

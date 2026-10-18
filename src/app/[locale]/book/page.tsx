@@ -95,8 +95,8 @@ export default async function BookPage() {
   if (!(await isBookingEnabledFor(session?.userId))) {
     const contact = await closedContact();
     return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
-        <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-8 md:p-12 text-center">
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-8 sm:py-16">
+        <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-5 sm:p-8 md:p-12 text-center">
           <BookingClosedNotice t={t} {...contact} />
         </div>
       </div>
@@ -122,8 +122,8 @@ export default async function BookPage() {
   if (account && !hasVerifiedEmail(account)) {
     const ta = await getT('auth');
     return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
-        <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-8 md:p-12 text-center">
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-8 sm:py-16">
+        <div className="max-w-xl w-full bg-white rounded-lg shadow border border-zinc-200 p-5 sm:p-8 md:p-12 text-center">
           <div className="w-12 h-[2px] bg-zinc-300 mx-auto mb-6" />
           <h1 className="text-3xl md:text-4xl font-serif text-zinc-900 mb-4 tracking-tight">{ta('verifyEmail.promptTitle')}</h1>
           <p className="text-zinc-600 leading-relaxed mb-8 break-words">{ta('verifyEmail.promptBody', { email: account.email })}</p>
@@ -148,7 +148,7 @@ export default async function BookPage() {
   return (
     <div className="min-h-screen bg-zinc-50">
       {/* Hero Section */}
-      <section className="relative py-14 md:py-24 bg-zinc-900 text-white overflow-hidden">
+      <section className="relative py-6 md:py-24 bg-zinc-900 text-white overflow-hidden">
         <div className="absolute inset-0">
           <Image
             src="/images/hero-salon.webp"
@@ -156,19 +156,19 @@ export default async function BookPage() {
             fill
             priority
             sizes="100vw"
-            className="object-cover opacity-40"
+            className="object-cover opacity-25 md:opacity-40"
           />
         </div>
         <div className="relative z-10 container mx-auto px-4 text-center">
-          <div className="w-12 h-[2px] bg-white/50 mx-auto mb-6" />
-          <h1 className="text-4xl md:text-6xl font-serif mb-6 tracking-tight">
-            {t('hero.titleStart')} <span className="text-zinc-400">{t('hero.titleEnd')}</span>
+          <div className="hidden md:block w-12 h-[2px] bg-white/50 mx-auto mb-6" />
+          <h1 className="text-3xl md:text-6xl font-serif mb-3 md:mb-6 tracking-tight">
+            {t('hero.titleStart')} <span className="text-zinc-200 md:text-zinc-400">{t('hero.titleEnd')}</span>
           </h1>
-          <p className="text-base md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
+          <p className="text-sm md:text-xl text-zinc-300 max-w-2xl mx-auto font-light leading-relaxed">
             {t('hero.subtitle')}
           </p>
           {aggregateRating.count > 0 && (
-            <p className="mt-6 inline-flex items-center gap-2 text-sm text-zinc-300">
+            <p className="mt-3 md:mt-6 inline-flex items-center gap-2 text-sm text-zinc-300">
               <span className="text-zinc-300" aria-hidden="true">★</span>
               <span className="font-semibold text-white">{aggregateRating.average.toFixed(1)}</span>
               <span aria-hidden="true">·</span>
@@ -178,7 +178,7 @@ export default async function BookPage() {
         </div>
       </section>
 
-      <div className="container mx-auto px-4 py-8 md:py-12">
+      <div className="container mx-auto px-3 py-4 sm:px-4 md:py-12">
         <ClientMessages namespaces={['pricing']} sections={{ booking: ['steps', 'service', 'gate', 'stylist', 'date', 'confirm', 'deposit', 'done', 'closed'] }}>
           <BookingWizard
             services={catalog.services}

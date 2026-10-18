@@ -10,7 +10,7 @@ export function MenuPrice({ min, max, semantics }: { min: number; max: number; s
   const format = useFormatPrice();
   return (
     <>
-      <span className="text-2xl font-serif font-semibold text-zinc-900 tabular-nums">
+      <span className="whitespace-nowrap text-lg sm:text-2xl font-serif font-semibold text-zinc-900 tabular-nums">
         {min === max && !semantics.requiresConsultation ? format(min) : t('menu.fromPrice', { price: format(min) })}
       </span>
       <PriceFinePrint service={{ ...semantics, priceType: 'STANDARD' }} />

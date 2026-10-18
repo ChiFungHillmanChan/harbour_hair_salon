@@ -144,6 +144,7 @@ export default async function Home() {
       <StylistShowcase stylists={stylists} />
       {homeFaqs.length > 0 && (
         <Faq
+          className="max-md:py-12"
           title={t('page.faqTitle')}
           intro={t('page.faqIntro')}
           items={homeFaqs.map((f) => ({ question: f.question, answer: f.answer, lang: locale !== 'en-GB' && !f.translated ? 'en' : undefined }))}

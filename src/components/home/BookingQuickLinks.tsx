@@ -20,12 +20,12 @@ export async function BookingQuickLinks({ settings, source = 'home_hero' }: {
       <p className="mt-1 text-sm leading-relaxed text-zinc-200">
         {t(marketplaces.length > 0 ? 'booking.withPartners' : 'booking.phoneOnly')}
       </p>
-      <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
+      <div className="mt-4 flex flex-wrap justify-center gap-2 sm:gap-3">
         <BookingIntentLink
           href={toTelHref(settings.phone)}
           channel="phone"
           source={source}
-          className="inline-flex min-h-12 items-center justify-center bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+          className="inline-flex min-h-11 w-full items-center justify-center bg-white px-4 py-2.5 sm:w-auto sm:px-5 sm:py-3 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
         >
           {t('booking.call', { phone: settings.phone })}
         </BookingIntentLink>
@@ -37,7 +37,7 @@ export async function BookingQuickLinks({ settings, source = 'home_hero' }: {
             source={source}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-12 items-center justify-center border border-white/75 bg-black/20 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+            className="inline-flex min-h-11 flex-1 items-center justify-center border border-white/75 bg-black/20 px-3 py-2.5 sm:flex-none sm:px-5 sm:py-3 text-sm font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
           >
             {t('booking.bookOn', { name })}
           </BookingIntentLink>

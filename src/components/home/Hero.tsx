@@ -29,7 +29,7 @@ export function Hero({
   const safeSubtitle = subtitle.trim() || t('hero.defaultSubtitle');
 
   return (
-    <section className="relative flex items-center justify-center overflow-hidden bg-zinc-900 px-5 py-10 text-white sm:py-14 md:min-h-[660px] md:py-20">
+    <section className="relative flex items-center justify-center overflow-hidden bg-zinc-900 px-4 py-8 text-white sm:py-14 md:min-h-[660px] md:py-20">
       <div className="absolute inset-0">
         <Image
           src="/images/hero-salon.webp"
@@ -45,16 +45,16 @@ export function Hero({
 
       {/* No entrance delay or scroll fading: booking stays readable immediately. */}
       <div className="relative z-10 w-full max-w-4xl text-center">
-        <p className="mb-4 text-sm font-medium text-zinc-200 md:mb-5 md:text-base">
+        <p className="mb-3 text-xs font-medium sm:mb-4 sm:text-sm text-zinc-200 md:mb-5 md:text-base">
           {safeEyebrow}
         </p>
 
-        <h1 className="mb-4 font-serif text-[2.5rem] leading-[1.02] tracking-tight sm:text-6xl md:mb-5 md:text-7xl lg:text-8xl">
+        <h1 className="mb-4 font-serif text-[clamp(2rem,9vw,2.75rem)] leading-[1.08] tracking-tight sm:text-6xl md:mb-5 md:text-7xl lg:text-8xl">
           <span className="block">{safeTitleLine1}</span>
           <span className="block">{safeTitleLine2}</span>
         </h1>
 
-        <p className="mx-auto mb-6 max-w-xl text-sm leading-relaxed text-zinc-200 sm:text-base md:mb-8 md:text-lg">
+        <p className="mx-auto mb-5 max-w-xl sm:mb-6 text-sm leading-relaxed text-zinc-200 sm:text-base md:mb-8 md:text-lg">
           {safeSubtitle}
         </p>
 
@@ -69,7 +69,7 @@ export function Hero({
 
         <Link
           href="/services"
-          className="mt-4 inline-flex min-h-11 items-center justify-center px-3 text-sm text-white underline underline-offset-4 transition-colors hover:text-zinc-300 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+          className="mt-2 inline-flex min-h-11 sm:mt-4 items-center justify-center px-3 text-sm text-white underline underline-offset-4 transition-colors hover:text-zinc-300 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
         >
           {t('hero.viewServices')}
         </Link>

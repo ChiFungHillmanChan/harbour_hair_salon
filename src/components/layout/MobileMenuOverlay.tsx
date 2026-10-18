@@ -70,10 +70,10 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
       </div>
 
       <div className="min-h-0 flex-1 px-6 sm:px-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col gap-6 overflow-y-auto overscroll-contain">
-        <nav aria-label={t('nav.main')} className="flex flex-col gap-3 sm:gap-4 mt-2 sm:mt-6 [&>a]:flex [&>a]:items-center [&>a]:min-h-11 [&>button]:min-h-11">
+        <nav aria-label={t('nav.main')} className="flex flex-col gap-1 sm:gap-4 mt-2 sm:mt-6 [&>a]:flex [&>a]:items-center [&>a]:min-h-11 [&>button]:min-h-11">
           <Link
             href="/services"
-            className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
+            className="text-white hover:text-zinc-400 text-2xl sm:text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
             {t('nav.services')}
@@ -81,7 +81,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
           {hasOffers && (
             <Link
               href="/offers"
-              className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
+              className="text-white hover:text-zinc-400 text-2xl sm:text-3xl font-serif tracking-tight transition-colors"
               onClick={onClose}
             >
               {t('nav.offers')}
@@ -89,34 +89,34 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
           )}
           <Link
             href="/#team"
-            className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
+            className="text-white hover:text-zinc-400 text-2xl sm:text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
             {t('nav.team')}
           </Link>
           <Link
             href="/contact"
-            className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
+            className="text-white hover:text-zinc-400 text-2xl sm:text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
             {t('nav.contact')}
           </Link>
           <Link
             href="/try-color"
-            className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
+            className="text-white hover:text-zinc-400 text-2xl sm:text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
             {t('nav.tryColor')}
           </Link>
           <Link
             href="/about"
-            className="text-white hover:text-zinc-400 text-3xl font-serif tracking-tight transition-colors"
+            className="text-white hover:text-zinc-400 text-2xl sm:text-3xl font-serif tracking-tight transition-colors"
             onClick={onClose}
           >
             {t('nav.about')}
           </Link>
 
-          <div className="border-t border-zinc-800 my-4 w-full"></div>
+          <div className="border-t border-zinc-800 my-2 sm:my-4 w-full"></div>
 
           {role !== null ? (
             <>
@@ -164,7 +164,7 @@ export default function MobileMenuOverlay({ isOpen, onClose, role, onSignOut, ha
         <div className="mt-auto shrink-0 pt-2">
           <Link
             href="/book"
-            className="block w-full bg-white text-zinc-900 py-4 text-center text-lg uppercase tracking-widest font-bold hover:bg-zinc-200 transition-colors rounded-sm"
+            className="block w-full bg-white text-zinc-900 min-h-11 px-4 py-3 text-center text-sm sm:text-lg sm:uppercase sm:tracking-widest font-semibold hover:bg-zinc-200 transition-colors rounded-sm"
             onClick={onClose}
           >
             {t('nav.bookNow')}
