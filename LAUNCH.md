@@ -28,7 +28,7 @@ Work top to bottom. The order in §3 is **load-bearing**.
 | Online booking | **CLOSED** — `SiteSettings.bookingEnabled=false`, plus the Square lock |
 | Notifications | `NOTIFICATIONS_ENABLED=false` — customers get no booking email yet |
 | Calendar sync | `CALENDAR_SYNC_ENABLED=true`; Fresha inbound OK for all 4 stylists |
-| Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals. *2026-10-18:* Lox's and Shania's "takes bookings" are off in Admin (Shania's being switched off that day), so the gate no longer checks them; Lox's gap and Shania's status: §3.3 |
+| Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals. *2026-10-18:* Lox's and Shania's "takes bookings" are off in Admin (Shania's switched off that day), so the gate no longer checks them; Lox's gap and Shania's status: §3.3 |
 | Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed) |
 | Housekeeping | `HOUSEKEEPING_ENABLED` unset, so it is **on** since release 1 (it runs unless set to `false`; the privacy notice's retention periods depend on it). First run 03:15 UTC on 2026-10-14; checked before the deploy, production had nothing for it to close or remove (no pending requests, no expired rows) |
 | Operations diagnostics | Last run 2026-09-20, **never passed** |
@@ -180,7 +180,7 @@ Square and payment records.
       ("don't touch Lox for now", 2026-10-18): until Lox's feed is linked in Fresha and both are
       set, a website booking with Lox does not block Lox on Fresha, so staff check Fresha before
       confirming a Lox request. Still open for Fresha support: why Lox's blocked times are not
-      exported. **Shania:** not sold on Fresha (owner); her "This provider takes bookings" is being
+      exported. **Shania:** not sold on Fresha (owner); her "This provider takes bookings" was
       switched off in Admin (2026-10-18), and she is hidden from the website anyway — nothing to link.
 - [x] **3.3b Google Calendar** — ON since 2026-10-16, on the HarbourHair diary since 2026-10-17. Original steps: Follow
       `docs/google-calendar-setup.md`: Google Cloud service account, the "Harbour website bookings"
