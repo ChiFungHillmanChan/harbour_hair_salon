@@ -283,29 +283,89 @@ customers.
 - Original blocked challenge (`3ds-blocked.png`)
 - Original CSP errors (`3ds-console.png`)
 
-## Re-run on a Preview of `main` (started 2026-10-17)
+## Re-run on `main` (2026-10-17): all 13 locally, plus a short check on the Preview
 
-The 2026-10-14 run used a branch upload, so runbook §4 is repeated on a Preview of `main`
-(26932a5, which includes #64 and #65), deployed from this record's own pull request. This
-document is the only change in it. Card details are typed by the owner (cards may only be
-typed by the assistant on a local host); results, payment ids and the preview URL are added
-here as each item passes.
+The 2026-10-14 run used a branch upload, so §4 was repeated on `main` (13dbe8f). The assistant
+may type test cards and test passwords only on a local host; the Preview is on `vercel.app`.
+**Owner decision (2026-10-17, in chat):** run all 13 items on a local production build of
+`main`, with the assistant typing the cards, and add a short check on a Preview of `main`, with
+the owner typing three cards. The short check covers what only the deployed site can show:
+- the 3-D Secure challenge under Vercel's Content Security Policy, with the console open;
+- Square's own webhook reaching the deployment;
+- a refund.
+
+The go-live rule in CLAUDE.md and runbook §4/§5 was reworded to match.
+
+### Local run (all 13 items)
+
+**Set-up:**
+- Code: `main` 13dbe8f, a production build (`pnpm build && pnpm start`) with `VERCEL_ENV=preview`,
+  the payment lock's only exemption, as on the Preview.
+- Database: a disposable PostgreSQL 17, migrated and seeded.
+- Square: the sandbox application and location `LAPJRRTBGE2KR` (GB/GBP).
+- Accounts: separate sign-ins on `localhost`, `b.localhost` and `admin.localhost`.
+- Time: 17 Oct 2026, 21:33–22:13 UTC.
+
+**Webhooks:** Square delivers sandbox notices to the Preview URL, never to `localhost`. Each
+notice was therefore built from Square's own payment or refund (read through the API), signed
+with the sandbox key over the configured notification URL (as the route verifies), and posted to
+the local server.
 
 | §4 item | Result | Square payment id | Notes |
 |---|---|---|---|
-| Approve ⇒ capture | pending | | |
-| Decline ⇒ release (and withdrawal) | pending | | |
-| Declined card / failed verification | pending | | |
-| 3-D Secure challenge (+ frictionless, 1-minute wait) | pending | | |
-| Expired hold (a) and (b) | pending | | |
-| Double submit | pending | | |
-| Two customers racing | pending | | |
-| Webhook duplicates and order | pending | | |
-| Refund pending → completed; staff keep | pending | | |
-| Reconciliation | pending | | |
-| Kill switch | pending | | |
-| Wrong access token is not a decline | pending | | |
-| Mark refund as settled outside the website | pending | | |
+| Approve ⇒ capture | Pass | `aQoP0zwoCIPEBkEO1SM4ufbn4nJZY` | `4310…1019`: `PENDING`, hold £4.40 (20% of £22). Approved in Admin: `CONFIRMED`, `CAPTURED`, Square `COMPLETED`. Request, salon-alert and confirmation emails queued and sent (dropped by the preview allowlist rule, as designed locally) |
+| Decline ⇒ release (and withdrawal) | Pass | `AnGbDjovc3t4EarpsiCbfo4eM0eZY`, `SGV9r9kkUEDC2YMEQvBGNkNcpHcZY` | Decline: confirm names the £4.40 release; `VOIDED`, Square `CANCELED`, cancellation email queued. Customer "Withdraw request": `VOIDED`, Square `CANCELED` |
+| Declined card / failed verification | Pass | none | `4000…0002` and `4811…0008`: "Your card was declined or could not be verified. Nothing was booked and you have not been charged."; attempts `FAILED` with no payment id; no booking |
+| 3-D Secure challenge (+ frictionless, 1-minute wait) | Pass | `aQoP0zwoCIPEBkEO1SM4ufbn4nJZY`, `AnGbDjovc3t4EarpsiCbfo4eM0eZY` | The challenge (amount 4.40) stayed open for over a minute before `123456` was entered, and the request went through. `4800…0004` raised no challenge. No `securitypolicyviolation` event on the pages that listened for one. The console check during a challenge is the Preview's |
+| Expired hold (a) and (b) | Pass | `Wsx40woASHxf1sf0UducDEtt1ueZY` (a), `2Ss8olHq2YGO8ASob2BzYzENzECZY` (b) | (a) `delayedUntil` backdated; approval refused ("The card hold for this request has expired…"); the notifications job lapsed it (`requestsLapsed: 1`, `REQUEST_LAPSED` email, attempt `EXPIRED`); housekeeping released the hold at Square (`CANCELED`) once the 15-minute settle time had passed. (b) Cancelled directly in the sandbox; the signed `payment.updated` moved the attempt to `EXPIRED`; the board read "Hold released £4.40"; approval refused |
+| Double submit | Pass | `Ogfp6dwojdytDI7yfN0VxF1NtcPZY` | A triple click made one attempt and one hold. A second tab prepared before the first submitted answered "You already have a request for this time" with no new attempt. An earlier try was refused by the customer's six-an-hour booking limit before the repeat rule (by design); a restart reset the in-memory limits |
+| Two customers racing | Pass | `Wsx40woASHxf1sf0UducDEtt1ueZY` (won), `Qh52kQi2I3K1tfQF8zEqmcDCykJZY` (lost) | Both submitted together. B got the `PENDING` booking and hold. A's hold was authorized, then released (`VOIDED`, Square `CANCELED`), and A saw "15:00 … is no longer available … any hold placed for that time is being released" |
+| Webhook duplicates and order | Pass | `aQoP0zwoCIPEBkEO1SM4ufbn4nJZY` | After capture, an older `APPROVED` `payment.updated` was sent twice with one `event_id`: HTTP 200 twice, one `SquareWebhookEvent` row, attempt still `CAPTURED`. After the refund completed, an older `PENDING` `refund.updated` was sent twice: one row, refund still `COMPLETED` |
+| Refund pending → completed; staff keep | Pass | `aQoP0zwoCIPEBkEO1SM4ufbn4nJZY`; kept `Ogfp6dwojdytDI7yfN0VxF1NtcPZY` | Customer cancel (more than 24 h ahead; confirm says the £4.40 is refunded in full): `CANCELLED`, refund `PENDING`, then `COMPLETED` on the signed `refund.updated`; Square refunded 440. Staff cancel with "Refund" unticked: attempt `KEPT`, no refund row, Square `COMPLETED` with nothing refunded |
+| Reconciliation | Pass | — | Housekeeping HTTP 200, payments `checked: 1`. It released the lapsed hold (a) at Square. `KEPT`, `COMPLETED` and `SETTLED_EXTERNALLY` rows unchanged, a `FAILED` refund not resent; no refund sent to Square |
+| Kill switch | Pass | none | Restarted with `SQUARE_PAYMENTS_ENABLED=false`. The card step showed "Online payment isn't available right now… Please call the salon", no card form and a disabled button; a forced submit booked nothing. Nothing loaded from Square; webhook `POST` → 404. The server's outbound trace held 12 requests, all to the synthetic Redis host, none to Square |
+| Wrong access token is not a decline | Pass | none | Restarted with a mistyped sandbox token; four requests with `4111…`. Each answered "Online payment is not available right now…". Attempts `FAILED` with the setup-refusal sentence, no payment id; Square called four times (the decline limit never stopped one). The log named HTTP 401 once. Operations: "Square refused 4 deposit payments … because of this website's Square setup", apart from "2 card payments were declined" |
+| Mark refund as settled outside the website | Pass | `SKBOfgQGemVYr5VIpeavJVRVPbXZY` | Staff cancel with refund while the server's refund call was failed as a dropped connection (local fault injection) → refund `UNKNOWN`. The £4.40 was refunded directly at Square. The button's question names £4.40; the dialog then read "Refunded £4.40 … recorded as settled outside the website"; refund `SETTLED_EXTERNALLY`; audit `PAYMENT.REFUND_SETTLED_OUTSIDE`; housekeeping sent nothing (Square lists exactly one refund) |
+
+**Found, and fixed in #80:**
+- **Cancelled bookings on a wide screen.** On a tablet or computer, the day and week grids leave
+  cancelled bookings out. So the dialog that records a refund settled outside could only be reached
+  from the month view, and Admin → Operations could not open the booking. #80 lists the cancelled
+  bookings under the grids and links each Operations payment to its booking.
+- **A refund Square refuses on its first send** (here HTTP 401 from the wrong token) ends `FAILED`:
+  "refund the customer another way", and it is not settleable. That is by design (a provable
+  first send). Its deposit (`YJDKelTCERzlOPdZuiCk7Dnq79YZY`) was refunded directly at Square.
+
+### Short check on the Preview
+
+**Set-up:**
+- Deployment: `harbour-hair-sandbox.vercel.app` (customer) and `harbour-hair-sandbox-admin.vercel.app`
+  (staff), both aliases of one Preview of `main` 13dbe8f plus this record.
+- Preview environment: the seven sandbox `SQUARE_*` values, `NOTIFICATIONS_ENABLED=true` and
+  `PREVIEW_EMAIL_ALLOWLIST` set to the owner's own addresses.
+- Who did what: the owner signed in and typed the cards; the assistant drove the booking wizard,
+  approved and declined in Admin, and read the preview database read-only.
+- Time: 18 Oct 2026, 09:21–09:50 UTC.
+- Deposit: £7.40 is the Preview's own policy (20% of £37); production's policy (50%) was not used.
+
+| Check | Result | Square payment id | Notes |
+|---|---|---|---|
+| 3-D Secure challenge, console open, 1-minute wait | Pass | `qwERXsB7xjhde5iudUpWz1Gx4KNZY` | `4310…1019`, Lox, Tue 20 Oct 14:00. The owner followed the steps given (DevTools → Console open, a one-minute wait, then `123456`) and reported it done; no console error was reported. The hold went through (`AUTHORIZED`, £7.40, `PENDING` request), so the challenge iframe the Content Security Policy blocked on 2026-10-14 now completes on the deployment. The assistant's own console capture began with card 2 and saw no error on cards 2 and 3 |
+| Approve ⇒ capture through Square's own webhook, then customer refund | Pass | `qwERXsB7xjhde5iudUpWz1Gx4KNZY` | Approved in Admin (09:22:46): `CAPTURED`, `CONFIRMED`. Square's own `payment.updated` reached the deployment 7 s later and was processed. The customer cancelled from My Bookings ("your £7.40 refund is on its way"): refund `CUSTOMER_CANCELLED`; Square's `refund.created` arrived, then `refund.updated` (09:23:26) moved it to `COMPLETED` |
+| Frictionless card, then staff decline | Pass | `qKbAEaAmKyWMtfDtbd5tPar8mqbZY` | `4800…0004`, 16:00: no challenge, `AUTHORIZED`. Declined in Admin: `VOIDED`, booking `CANCELLED`; Square's `payment.updated` processed |
+| Declined card on the deployed site | Pass | none | `4000…0002`, 17:00: "Your card was declined or could not be verified. Nothing was booked and you have not been charged." Attempt `FAILED`, no payment id, no booking. Operations: "1 card payment was declined in the last 24 hours" |
+| Emails | Pass | — | The owner's Gmail received both "We've received your booking request", the confirmation and both cancellations. The salon alerts went to an address outside the allowlist, so the Preview dropped them by design |
+
+**Notes:**
+- **Postcode.** Square's sandbox test cards are US cards, so the card form asked for a 5-digit
+  ZIP and refused `LS1 1AA`. Square picks the field from the card's issuing country: a UK card
+  gets "Postcode" with letters. The website does not set this, so nothing needs changing. Square
+  has no sandbox card that shows the UK field
+  ([Square forum](https://developer.squareup.com/forums/t/web-payments-sdk-card-form-not-displaying-postcode-after-entering-uk-card-number/10995)).
+- **"Square notifications that matched nothing"** on the Preview's Operations page lists the
+  local run's payments (`Wsx40wo…`, `YJDKel…`, `SKBOfg…`, `Ogfp6…`). The local server shares the
+  sandbox account, and Square sends that account's notices to the Preview, whose database has
+  no such deposits. Production has its own Square application, so this cannot happen there.
 
 References: [project runbook](../docs/square-payments-setup.md),
 [Square sandbox values](https://developer.squareup.com/docs/devtools/sandbox/payments),
