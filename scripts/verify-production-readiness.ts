@@ -48,8 +48,10 @@ async function main() {
     assert.equal(booked.durationAtBooking, 60);
     assert.equal(JSON.parse(booked.quoteJson ?? '{}').amountPence, 10000, 'The server quote is frozen with the booking');
     assert.equal((await db.discountCode.findUniqueOrThrow({ where: { id: 'verify-discount' } })).usedCount, 0);
-    assert.equal(await db.notificationDelivery.count({ where: { appointmentId: booked.id } }), 2, 'Two notifications must commit with the request');
+    // The customer's "request received" email is retired (RETIRED_CUSTOMER_EMAIL_KINDS,
+    // 2026-10-18): only the salon's alert commits with the request.
     const queue = await db.notificationDelivery.findMany({ where: { appointmentId: booked.id } });
+    assert.deepEqual(queue.map((job) => job.kind), ['SALON_ALERT'], 'Only the salon alert must commit with the request');
     assert.ok(queue.every((job) => !job.payloadJson.includes('password')));
     let deliveries = 0;
     const worker = loadServerModule<typeof import('../src/app/services/notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
@@ -60,8 +62,8 @@ async function main() {
       },
     });
     await Promise.all([worker.dispatchPendingNotifications({ db }), worker.dispatchPendingNotifications({ db })]);
-    assert.equal(deliveries, 2, 'Concurrent workers must each deliver a given notification once');
-    assert.equal(await db.notificationDelivery.count({ where: { appointmentId: booked.id, status: 'SENT', payloadJson: '{}' } }), 2);
+    assert.equal(deliveries, 1, 'Concurrent workers must each deliver a given notification once');
+    assert.equal(await db.notificationDelivery.count({ where: { appointmentId: booked.id, status: 'SENT', payloadJson: '{}' } }), 1);
     const failedQueueBooking = loadServerModule<typeof import('../src/app/services/booking-service')>('src/app/services/booking-service.ts', {
       '@/app/lib/prisma': db,
       './offers-service': { getActiveGlobalOffer: async () => null },
