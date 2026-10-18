@@ -6,6 +6,7 @@ import { checkCalendarBookingReadiness } from '@/app/services/integration-readin
 import { BookingError } from '@/app/services/booking-errors';
 import { checkOperationsRuntimeReadiness } from '@/app/services/operations-readiness';
 import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
+import { isBookingBetaTester } from '@/app/lib/booking-beta';
 
 // Online-booking master switch.
 //
@@ -30,6 +31,25 @@ import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock'
 //
 // Cancellation is deliberately NOT blocked — customers may always cancel an
 // existing appointment.
+//
+// BETA BOOKING (owner decision 2026-10-18). While the public gate above is
+// closed, a SIGNED-IN account whose email is on the beta list
+// (`SiteSettings.bookingBetaEmails`, Admin → Settings, lib/booking-beta.ts)
+// still gets the whole online booking flow, card deposits included:
+//   - `assertOnlineBookingReadyFor(db, userId)` and `isBookingEnabledFor(userId)`
+//     answer "open" for such a tester; `assertOnlineBookingReady` and
+//     `isBookingEnabled` stay the PUBLIC gate, unchanged;
+//   - the beta check still needs Square production credentials in a production
+//     build (the payments lock), the same calendar readiness and the same
+//     CALENDAR_SYNC_ENABLED / receivesBookings rule as the public gate; it does
+//     NOT need NOTIFICATIONS_ENABLED, `bookingEnabled` or the operations
+//     readiness (which fails while notifications are off);
+//   - the list is read from the live row on every check, never the day-cached
+//     getSiteSettings(), so a change in Admin → Settings takes effect at once;
+//   - an anonymous visitor never reaches it: no session, no query (Neon rule in
+//     CLAUDE.md). Everyone else keeps seeing the phone / marketplace page.
+// Booking emails for a tester's appointments are sent even while
+// NOTIFICATIONS_ENABLED is off (services/notification-outbox-service.ts).
 
 // Returned by submitBooking / requestReschedule, which have no business
 // knowing which marketplaces are live — that is settings data, and naming one
@@ -55,6 +75,48 @@ export async function assertOnlineBookingReady(db: Prisma.TransactionClient) {
     if (activeChannels) throw new BookingError('MAINTENANCE');
   }
   return settings;
+}
+
+/**
+ * The beta check: the settings a booking needs when `userId` may book while
+ * the public gate is closed, else null. Uncached, from the live row. Every
+ * condition must hold:
+ *   - no payments lock (a production build still needs Square PRODUCTION keys);
+ *   - the account's email is on `SiteSettings.bookingBetaEmails`;
+ *   - the calendars are ready (checkCalendarBookingReadiness), as for everyone;
+ *   - with CALENDAR_SYNC_ENABLED off, no channel receives bookings.
+ * The list is read before the account, so an empty list costs one query.
+ */
+async function betaBookingSettings(db: Prisma.TransactionClient, userId: string): Promise<{ bookingEnabled: boolean; phone: string } | null> {
+  if (isOnlineBookingLockedForPayments()) return null;
+  const settings = await db.siteSettings.findUnique({ where: { id: 'singleton' }, select: { bookingEnabled: true, phone: true, bookingBetaEmails: true } });
+  if (!settings?.bookingBetaEmails.trim()) return null;
+  const account = await db.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (!isBookingBetaTester(account?.email, settings.bookingBetaEmails)) return null;
+  const readiness = await checkCalendarBookingReadiness(db);
+  if (!readiness.ready) return null;
+  if (process.env.CALENDAR_SYNC_ENABLED !== 'true') {
+    const activeChannels = await db.calendarConnection.count({ where: { receivesBookings: true } });
+    if (activeChannels) return null;
+  }
+  return { bookingEnabled: settings.bookingEnabled, phone: settings.phone };
+}
+
+/**
+ * The booking paths' gate: the public gate, or — only when it is closed for
+ * maintenance and the caller is signed in — the beta check. Same answer shape
+ * as `assertOnlineBookingReady`; refuses with the same MAINTENANCE error.
+ * Any other error (a database fault included) propagates unchanged.
+ */
+export async function assertOnlineBookingReadyFor(db: Prisma.TransactionClient, userId: string | null | undefined) {
+  try {
+    return await assertOnlineBookingReady(db);
+  } catch (error) {
+    if (!(error instanceof BookingError) || error.code !== 'MAINTENANCE' || !userId) throw error;
+    const settings = await betaBookingSettings(db, userId);
+    if (!settings) throw error;
+    return settings;
+  }
 }
 
 /**
@@ -109,4 +171,29 @@ export async function isBookingEnabled(): Promise<boolean> {
     console.error('Failed to read booking availability:', error);
     return false;
   }
+}
+
+/**
+ * The beta check alone, for rendering and the availability lookups: whether
+ * `userId` may book while the public gate is closed. Uncached (a tester is a
+ * handful of signed-in accounts); no userId answers false without a query.
+ * Fails closed: any error is logged and answers false.
+ */
+export async function isBetaBookingOpenFor(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    return (await betaBookingSettings(prisma, userId)) !== null;
+  } catch (error) {
+    console.error('Failed to read beta booking access:', error);
+    return false;
+  }
+}
+
+/**
+ * `isBookingEnabled()` for this caller: open to the public, or a beta tester.
+ * An anonymous visitor (no userId) while booking is closed costs no query.
+ */
+export async function isBookingEnabledFor(userId: string | null | undefined): Promise<boolean> {
+  if (await isBookingEnabled()) return true;
+  return isBetaBookingOpenFor(userId);
 }

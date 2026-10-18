@@ -456,6 +456,8 @@ const adminContent: Localized<Messages['adminContent']> = {
       explain: '關閉時，<code>/book</code> 會顯示暫停預約通知，列出你的電話號碼及下方已填網址的各預約平台連結；伺服器會拒絕新預約及改期，「改期」按鈕亦會停用。無論開關與否，顧客仍可取消已有預約。',
       paymentsLocked: '<strong>未設定 Square 正式環境憑證前，網上預約會保持鎖定。</strong>網上預約申請須經 Square 收取信用卡訂金，因此設定前不能開啟此開關；Square 測試（sandbox）憑證不會令正式網站開放預約。顧客仍可致電或透過下方預約平台預約。',
       offWarning: '<strong>網上預約現正關閉。</strong>開啟前請先設定<hours>營業時間</hours>——如下方任何預約平台仍在出售相同的座位，請先檢查<integrations>整合設定</integrations>：沒有雙向日曆同步，同一時段可能會被重複預約。',
+      betaHelp: '網上預約關閉期間，以下已登入的帳戶仍可在網上預約（須付信用卡訂金）。每行一個電郵地址，最多 {max} 個。即使預約電郵已關閉，他們的預約電郵仍會照常發送。其他人仍會看到列出店舖電話及 Fresha／Treatwell 連結的頁面。',
+      betaPaymentsLocked: 'Beta 預約同樣需要 Square 正式環境憑證：設定前，測試用戶亦會和其他人一樣看到暫停預約頁面。',
     },
     deposits: {
       title: '訂金',
@@ -514,6 +516,7 @@ const adminContent: Localized<Messages['adminContent']> = {
       salonNotificationLocale: '店舖通知電郵語言',
       depositPercent: '訂金（價格的百分比）',
       depositMinimumServicePence: '收取訂金的最低服務價格（£）',
+      bookingBetaEmails: 'Beta 測試用戶',
     },
     errors: {
       field: '{field}：{message}',
@@ -524,6 +527,9 @@ const adminContent: Localized<Messages['adminContent']> = {
       LOCALE: '請選擇英文或繁體中文。',
       DEPOSIT_PERCENT: '請輸入 0 至 100 的整數。',
       MONEY: '請輸入有效金額，例如 30 或 30.50。',
+      BETA_EMAIL: '「{email}」不是有效的電郵地址。',
+      BETA_PLACEHOLDER: '「{email}」是無電郵顧客或已刪除資料的佔位地址，並非真實電郵地址。',
+      BETA_TOO_MANY: '最多只可輸入 {max} 個電郵地址。',
       CALENDAR_SYNC: '請啟用 CALENDAR_SYNC_ENABLED，並為使用中的預約渠道部署日曆同步排程。',
       READINESS: '日曆及營運檢查都必須通過。',
       PAYMENTS_NOT_CONNECTED: '未設定 Square 正式環境憑證前，網上預約會保持鎖定。',

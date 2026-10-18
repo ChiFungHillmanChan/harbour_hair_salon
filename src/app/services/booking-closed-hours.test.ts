@@ -4,6 +4,7 @@ import { loadServerModule } from '../../test/load-server-module';
 import { BookingError } from './booking-errors';
 import { buildSlotsForWindow } from './scheduling';
 import { ANY_STYLIST_ID } from '../lib/booking-constants';
+import { publicGateStub } from '../../test/booking-gate-stub';
 
 /**
  * A customer must never end up with an appointment outside the salon's working
@@ -88,13 +89,13 @@ function fixture(options: { hours?: Hours; existing?: { date: Date; durationMin:
   const service = loadServerModule<typeof import('./booking-service')>('src/app/services/booking-service.ts', {
     '@/app/lib/prisma': db,
     './offers-service': { getActiveGlobalOffer: async () => null },
-    '@/app/lib/booking-maintenance': bookingReadiness,
+    '@/app/lib/booking-maintenance': publicGateStub(bookingReadiness),
     './notification-outbox-service': queue,
   });
   const actions = loadServerModule<typeof import('../actions/booking')>('src/app/actions/booking.ts', {
     '@/app/lib/prisma': db,
     '@/app/services/booking-service': service,
-    '@/app/lib/booking-maintenance': bookingReadiness,
+    '@/app/lib/booking-maintenance': publicGateStub(bookingReadiness),
     '@/app/services/notification-outbox-service': queue,
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
     '@/app/lib/rate-limit': {

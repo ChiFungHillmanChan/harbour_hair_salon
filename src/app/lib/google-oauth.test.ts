@@ -110,8 +110,9 @@ test('Google is authoritative only for Gmail and Workspace addresses', () => {
 
 test('a first Google sign-in never takes over an account through a non-authoritative email', () => {
   const stale = { emailAuthoritative: false };
-  assert.deepEqual(decideGoogleLink(stale, { role: 'ADMIN', hasPassword: true }), { kind: 'REFUSE', code: 'google_email_unverified' });
-  assert.deepEqual(decideGoogleLink(stale, { role: 'USER', hasPassword: true }), { kind: 'REFUSE', code: 'google_email_unverified' });
+  assert.deepEqual(decideGoogleLink(stale, { role: 'ADMIN', hasPassword: true, emailVerified: true }), { kind: 'REFUSE', code: 'google_email_unverified' });
+  assert.deepEqual(decideGoogleLink(stale, { role: 'USER', hasPassword: true, emailVerified: false }), { kind: 'REFUSE', code: 'google_email_unverified' });
+  assert.deepEqual(decideGoogleLink(stale, { role: 'USER', hasPassword: true, emailVerified: true }), { kind: 'REFUSE', code: 'google_email_unverified' });
   // Nor creates one the real mailbox owner would later recover with the
   // stale identity still attached.
   assert.deepEqual(decideGoogleLink(stale, null), { kind: 'REFUSE', code: 'google_email_unverified' });
@@ -120,10 +121,20 @@ test('a first Google sign-in never takes over an account through a non-authorita
 test('a first Google sign-in links customers but never administrators', () => {
   const owner = { emailAuthoritative: true };
   assert.deepEqual(decideGoogleLink(owner, null), { kind: 'CREATE' });
-  assert.deepEqual(decideGoogleLink(owner, { role: 'ADMIN', hasPassword: true }), { kind: 'REFUSE', code: 'google_admin_link' });
-  assert.deepEqual(decideGoogleLink(owner, { role: 'ADMIN', hasPassword: false }), { kind: 'REFUSE', code: 'google_admin_link' });
-  assert.deepEqual(decideGoogleLink(owner, { role: 'USER', hasPassword: true }), { kind: 'LINK', clearPassword: true });
-  assert.deepEqual(decideGoogleLink(owner, { role: 'USER', hasPassword: false }), { kind: 'LINK', clearPassword: false });
+  assert.deepEqual(decideGoogleLink(owner, { role: 'ADMIN', hasPassword: true, emailVerified: false }), { kind: 'REFUSE', code: 'google_admin_link' });
+  assert.deepEqual(decideGoogleLink(owner, { role: 'ADMIN', hasPassword: true, emailVerified: true }), { kind: 'REFUSE', code: 'google_admin_link' });
+  assert.deepEqual(decideGoogleLink(owner, { role: 'ADMIN', hasPassword: false, emailVerified: false }), { kind: 'REFUSE', code: 'google_admin_link' });
+  assert.deepEqual(decideGoogleLink(owner, { role: 'USER', hasPassword: true, emailVerified: false }), { kind: 'LINK', clearPassword: true });
+  assert.deepEqual(decideGoogleLink(owner, { role: 'USER', hasPassword: false, emailVerified: false }), { kind: 'LINK', clearPassword: false });
+  assert.deepEqual(decideGoogleLink(owner, { role: 'USER', hasPassword: false, emailVerified: true }), { kind: 'LINK', clearPassword: false });
+});
+
+test('a first Google sign-in keeps the password of an account whose email was already confirmed', () => {
+  // Whoever set that password proved the mailbox (a verification link or a
+  // redeemed reset), so it is the owner's own, not a planted one.
+  const owner = { emailAuthoritative: true };
+  assert.deepEqual(decideGoogleLink(owner, { role: 'USER', hasPassword: true, emailVerified: true }), { kind: 'LINK', clearPassword: false });
+  assert.deepEqual(decideGoogleLink(owner, { role: 'USER', hasPassword: true, emailVerified: false }), { kind: 'LINK', clearPassword: true });
 });
 
 test('the real ID-token mapping marks Workspace (hd) and Gmail identities authoritative, and nothing else', () => {

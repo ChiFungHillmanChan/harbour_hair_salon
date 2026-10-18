@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { loadServerModule } from '../../test/load-server-module';
 import { ANY_STYLIST_ID } from '../lib/booking-constants';
 import { resolveSalonDateTime } from './salon-time';
+import { publicGateStub } from '../../test/booking-gate-stub';
 
 before(() => mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-01T09:00:00Z') }));
 after(() => mock.timers.reset());
@@ -46,7 +47,7 @@ function fixture(input: { funkyBusyAt?: string; funkyUntil?: string; ivan?: bool
   };
   const service = loadServerModule<typeof import('./booking-service')>('src/app/services/booking-service.ts', {
     '@/app/lib/prisma': db,
-    '@/app/lib/booking-maintenance': { assertOnlineBookingReady: async () => ({}) },
+    '@/app/lib/booking-maintenance': publicGateStub({ assertOnlineBookingReady: async () => ({}) }),
     './notification-outbox-service': {},
     './pricing/quote-service': { quoteForNewBooking: async () => ({ service: { id: 'svc', duration: 60, treatwellExternalId: null }, quote: { amountPence: 3000 } }) },
   });

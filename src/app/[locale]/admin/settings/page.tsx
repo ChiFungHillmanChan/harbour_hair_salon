@@ -5,6 +5,7 @@ import { getSiteSettingsForEditing } from '@/app/services/site-settings-service'
 import { getEditorState } from '@/app/services/content/drafts';
 import { SiteSettingsForm } from '@/components/admin/SiteSettingsForm';
 import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
+import { parseBookingBetaEmails } from '@/app/lib/booking-beta';
 import { BilingualContentEditor } from '@/components/admin/BilingualContentEditor';
 import { getT } from '@/i18n/server';
 import { rich } from '@/i18n/rich';
@@ -42,6 +43,8 @@ export default async function AdminSettingsPage() {
     salonNotificationLocale: settings.salonNotificationLocale,
     // The live row's instant: it decides whether the late-arrival box shows ticked.
     lateAutoCancelSince: settings.lateAutoCancelSince,
+    // Beta testers, shown one per line (stored ", "-joined).
+    bookingBetaEmails: parseBookingBetaEmails(settings.bookingBetaEmails).join('\n'),
     ...deposits,
   };
 

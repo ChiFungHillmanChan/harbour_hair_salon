@@ -6,17 +6,20 @@ import {
   updateSiteSettings,
   type SettingsActionState,
 } from '@/app/actions/admin-settings';
-import type { SiteSettings } from '@/app/services/site-settings-service';
+import type { EditableSiteSettings } from '@/app/services/site-settings-service';
 import { penceToDecimalString } from '@/app/services/pricing/money';
 import { HIGH_DEPOSIT_PERCENT, isHighDepositPercent } from '@/app/services/deposit-policy';
-import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
+import { BOOKING_BETA_MAX_TESTERS, LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { LOCALES } from '@/i18n/config';
 import { useT } from '@/i18n/client';
 import { rich } from '@/i18n/rich';
 import { clearDraft, usePreservedForm } from '@/i18n/draft-store';
 
-/** Everything except the homepage hero text, which has its own bilingual editor. */
-type OperationalSettings = Omit<SiteSettings, 'heroEyebrow' | 'heroTitleLine1' | 'heroTitleLine2' | 'heroSubtitle'>;
+/**
+ * Everything except the homepage hero text, which has its own bilingual editor.
+ * `bookingBetaEmails` is the beta testers' list, one address per line.
+ */
+type OperationalSettings = Omit<EditableSiteSettings, 'heroEyebrow' | 'heroTitleLine1' | 'heroTitleLine2' | 'heroSubtitle'>;
 
 interface SiteSettingsFormProps {
   settings: OperationalSettings;
@@ -172,6 +175,33 @@ export function SiteSettingsForm({ settings, bookingLockedForPayments = false }:
             })}
           </div>
         )}
+
+        <div>
+          <label htmlFor="settings-beta-emails" className={labelClass}>
+            {t('settings.fields.bookingBetaEmails')}
+          </label>
+          <textarea
+            id="settings-beta-emails"
+            name="bookingBetaEmails"
+            rows={4}
+            maxLength={10_000}
+            defaultValue={settings.bookingBetaEmails ?? ''}
+            placeholder="tester@example.com"
+            spellCheck={false}
+            autoCapitalize="none"
+            autoComplete="off"
+            aria-describedby={`settings-beta-emails-help${bookingLockedForPayments ? ' settings-beta-emails-locked' : ''}`}
+            className={`${fieldClass} font-mono`}
+          />
+          <p id="settings-beta-emails-help" className="text-xs text-zinc-500 mt-1">
+            {t('settings.booking.betaHelp', { max: BOOKING_BETA_MAX_TESTERS })}
+          </p>
+          {bookingLockedForPayments && (
+            <p id="settings-beta-emails-locked" className="mt-2 rounded border border-zinc-300 bg-zinc-50 px-3 py-2 text-xs leading-5 text-zinc-700" role="note">
+              {t('settings.booking.betaPaymentsLocked')}
+            </p>
+          )}
+        </div>
       </section>
 
       <section id="settings-deposits" className="scroll-mt-20 bg-white border border-zinc-200 rounded-lg p-3 space-y-4 sm:p-6 sm:space-y-5">

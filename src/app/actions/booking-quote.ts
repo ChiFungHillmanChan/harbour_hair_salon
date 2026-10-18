@@ -3,7 +3,8 @@
 import { headers } from 'next/headers';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
-import { isBookingEnabled } from '@/app/lib/booking-maintenance';
+import { isBetaBookingOpenFor, isBookingEnabled } from '@/app/lib/booking-maintenance';
+import { getSession } from '@/app/lib/session';
 import { availabilityLimiter } from '@/app/lib/rate-limit';
 import { BookingError } from '@/app/services/booking-errors';
 import { quoteDepositForNewBooking } from '@/app/services/deposit-quote';
@@ -22,14 +23,20 @@ const SERVICE_ID = z.string().trim().min(1).max(64);
  * needed, so it follows the public availability lookups (actions/booking.ts):
  * junk is refused before anything else, a closed booking page (or the
  * production payments lock) answers without touching the database, and every
- * call spends the same per-address availability budget.
+ * call spends the same per-address availability budget. While booking is
+ * closed, a signed-in caller may be a beta tester (lib/booking-maintenance.ts):
+ * that check reads the database, so it runs only after the budget is spent.
  */
 export async function previewBookingQuote(serviceId: string): Promise<BookingQuotePreview> {
   const id = SERVICE_ID.safeParse(serviceId);
   if (!id.success) return { ok: false };
-  if (!(await isBookingEnabled())) return { ok: false };
+  const publicOpen = await isBookingEnabled();
+  // Cookie only: no query for a signed-out visitor while booking is closed.
+  const betaUserId = publicOpen ? null : (await getSession())?.userId;
+  if (!publicOpen && !betaUserId) return { ok: false };
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   if (!(await availabilityLimiter.check(ip))) return { ok: false };
+  if (!publicOpen && !(await isBetaBookingOpenFor(betaUserId))) return { ok: false };
 
   try {
     const { quote, deposit } = await quoteDepositForNewBooking(prisma, id.data);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
 import { assertFeedInvalidatesBeforeDelivery, type NotificationTimingHooks } from '../../test/stalled-notification';
 import { BookingError } from '../services/booking-errors';
+import { publicGateStub } from '../../test/booking-gate-stub';
 
 before(() => mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') }));
 after(() => mock.timers.reset());
@@ -205,16 +206,23 @@ function fixture(options: {
       return { phone: '020 0000 0000', bookingEnabled: true };
     },
   };
+  /** The account each beta-aware readiness check was asked about. */
+  const gateUserIds: (string | null | undefined)[] = [];
+  const beta = publicGateStub(bookingReadiness);
+  const gate = { ...beta, assertOnlineBookingReadyFor: async (database: never, userId: string | null | undefined) => {
+    gateUserIds.push(userId);
+    return beta.assertOnlineBookingReadyFor(database);
+  } };
   const service = loadServerModule<typeof import('../services/booking-service')>('src/app/services/booking-service.ts', {
     '@/app/lib/prisma': db, './offers-service': { getActiveGlobalOffer: async () => null },
-    '@/app/lib/booking-maintenance': bookingReadiness,
+    '@/app/lib/booking-maintenance': gate,
     './notification-outbox-service': queue,
   });
   const dependencies = {
     '@/app/lib/prisma': db,
     '@/app/services/booking-service': service,
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: options.role ?? 'ADMIN' }) },
-    '@/app/lib/booking-maintenance': bookingReadiness,
+    '@/app/lib/booking-maintenance': gate,
     '@/app/lib/rate-limit': {
       rescheduleLimiter: { check: async (key: string) => { limiterKeys.push(key); return options.rescheduleSpent !== 'user'; } },
       appointmentRescheduleLimiter: { check: async (key: string) => { limiterKeys.push(key); return options.rescheduleSpent !== 'appointment'; } },
@@ -257,7 +265,7 @@ function fixture(options: {
   const admin = loadServerModule<typeof import('./admin')>('src/app/actions/admin.ts', dependencies);
   return {
     appointment, originalDate, messages, events, dispatches: () => dispatches, actions, admin,
-    transactions: () => transactions, writes: () => writes, limiterKeys, audits, googlePushes,
+    transactions: () => transactions, writes: () => writes, limiterKeys, audits, googlePushes, gateUserIds,
   };
 }
 
@@ -562,6 +570,7 @@ test('rescheduling rechecks readiness in the transaction even when the earlier p
   const f = fixture({ onlineReady: false });
   const result = await f.actions.requestReschedule(f.appointment.id, '2099-09-15', '10:00');
   assert.equal(result.success, false);
+  assert.deepEqual(f.gateUserIds, ['user-1'], 'the check is for the signed-in customer (a beta tester may reschedule while closed)');
   assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
   assert.equal(f.appointment.rescheduleRequestedAt, null);
   assert.equal(f.appointment.notificationVersion, 0);

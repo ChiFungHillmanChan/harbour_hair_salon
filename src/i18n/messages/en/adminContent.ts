@@ -456,6 +456,8 @@ const adminContent = {
       explain: 'When off, <code>/book</code> shows the maintenance notice with your phone number and a link to each marketplace you have a URL for below, new bookings and reschedules are refused server-side, and the Reschedule button is disabled. Customers can still cancel existing appointments either way.',
       paymentsLocked: '<strong>Online booking is locked until Square production credentials are configured.</strong> Online booking requests take a card deposit through Square, so this switch cannot be turned on before then; Square sandbox (test) credentials never open the live site. Customers can still book by phone and on the marketplaces below.',
       offWarning: '<strong>Booking is currently OFF.</strong> Before switching it on, set your <hours>opening hours</hours> — and if any marketplace below is still selling the same chairs, check <integrations>Integrations</integrations> first: without two-way calendar sync the same slot can be sold twice.',
+      betaHelp: 'While online booking is closed, these signed-in accounts can still book online, with card deposits. One email per line, up to {max}. Their booking emails are sent even while booking emails are switched off. Everyone else still sees the page with the salon phone number and the Fresha / Treatwell links.',
+      betaPaymentsLocked: 'Beta booking also needs Square production credentials: until they are configured, beta testers see the closed page like everyone else.',
     },
     deposits: {
       title: 'Deposits',
@@ -515,6 +517,7 @@ const adminContent = {
       salonNotificationLocale: 'Salon notification email language',
       depositPercent: 'Deposit (% of the price)',
       depositMinimumServicePence: 'Minimum service price for a deposit (£)',
+      bookingBetaEmails: 'Beta testers',
     },
     errors: {
       field: '{field}: {message}',
@@ -525,6 +528,9 @@ const adminContent = {
       LOCALE: 'Choose English or Traditional Chinese.',
       DEPOSIT_PERCENT: 'Enter a whole number from 0 to 100.',
       MONEY: 'Enter an amount in pounds, e.g. 30 or 30.50.',
+      BETA_EMAIL: '“{email}” is not a valid email address.',
+      BETA_PLACEHOLDER: '“{email}” is a walk-in or erased placeholder, not a real email address.',
+      BETA_TOO_MANY: 'Enter at most {max} email addresses.',
       CALENDAR_SYNC: 'Enable CALENDAR_SYNC_ENABLED and deploy the calendar schedule for active booking channels.',
       READINESS: 'Calendar and operational readiness must both pass.',
       PAYMENTS_NOT_CONNECTED: 'Online booking stays locked until Square production credentials are configured.',

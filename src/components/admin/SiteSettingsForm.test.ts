@@ -100,3 +100,38 @@ test('the late-arrival switch is ticked only when the rule is on', () => {
   assert.equal(box({ ...base, lateAutoCancelSince: '2026-10-16T09:00:00.000Z' }).props.defaultChecked, true, 'ISO string: on');
   assert.equal(box({ ...base, lateAutoCancelSince: new Date('2026-10-16T09:00:00Z') }).props.defaultChecked, true, 'Date: on');
 });
+
+// Beta booking (owner decision 2026-10-18): the testers' list, one address per line.
+test('the beta testers box shows the saved list, explains itself, and notes the Square lock only while it applies', () => {
+  const base = {
+    bookingEnabled: false, depositsEnabled: true, depositPercent: 50, depositMinimumServicePence: 0, phone: '0113 496 0000',
+    salonNotificationLocale: 'en-GB', instagramUrl: '', googleBusinessUrl: '', facebookUrl: '', treatwellUrl: '', freshaUrl: '', booksyUrl: '',
+    twitterHandle: '', gscVerification: '', lateAutoCancelSince: null, bookingBetaEmails: 'hillmanchan709@gmail.com\ntester@example.com',
+  };
+  for (const locked of [false, true]) {
+    const { form } = loadForm('en-GB');
+    const nodes = elements(form.SiteSettingsForm({ settings: base as never, bookingLockedForPayments: locked }));
+    const box = nodes.find((node) => node.props.name === 'bookingBetaEmails')!;
+    assert.equal(box.type, 'textarea');
+    assert.equal(box.props.defaultValue, 'hillmanchan709@gmail.com\ntester@example.com');
+    const label = nodes.find((node) => node.type === 'label' && node.props.htmlFor === box.props.id)!;
+    assert.equal(text(label), 'Beta testers');
+    const help = text(nodes.find((node) => node.props.id === 'settings-beta-emails-help'));
+    assert.match(help, /can still book online, with card deposits/);
+    assert.match(help, /One email per line, up to 20/);
+    assert.match(help, /booking emails are sent even while booking emails are switched off/);
+    assert.match(help, /Everyone else still sees the page with the salon phone number/);
+    const note = nodes.find((node) => node.props.id === 'settings-beta-emails-locked');
+    assert.equal(Boolean(note), locked, `locked: ${locked}`);
+    if (note) assert.match(text(note), /also needs Square production credentials/);
+    assert.equal(String(box.props['aria-describedby']).includes('settings-beta-emails-locked'), locked);
+  }
+});
+
+test('the beta testers box reads in Chinese on the Chinese admin, and an older settings object shows it empty', () => {
+  const { form } = loadForm('zh-HK');
+  const nodes = elements(form.SiteSettingsForm({ settings: { bookingEnabled: false, phone: '0', salonNotificationLocale: 'zh-HK' } as never, bookingLockedForPayments: true }));
+  assert.equal(nodes.find((node) => node.props.name === 'bookingBetaEmails')!.props.defaultValue, '');
+  assert.match(text(nodes.find((node) => node.props.id === 'settings-beta-emails-help')), /每行一個電郵地址，最多 20 個/);
+  assert.match(text(nodes.find((node) => node.props.id === 'settings-beta-emails-locked')), /Square 正式環境憑證/);
+});

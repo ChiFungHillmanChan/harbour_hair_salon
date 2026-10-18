@@ -1,4 +1,4 @@
-import { assertOnlineBookingReady } from '@/app/lib/booking-maintenance';
+import { assertOnlineBookingReadyFor } from '@/app/lib/booking-maintenance';
 import { enqueueAppointmentNotification } from './notification-outbox-service';
 import prisma from '@/app/lib/prisma';
 import { retryOnSerializationFailure, SERIALIZABLE_MAX_ATTEMPTS } from '@/app/lib/serializable-retry';
@@ -484,7 +484,7 @@ export async function createBooking(data: NewBookingInput & { stylistId: string 
   refuseDiscountCode(data.discountCode);
   // Use Serializable transaction to prevent double-booking race conditions
   const appointment = await runSerializableWithRetry(async (tx) => {
-    const settings = await assertOnlineBookingReady(tx);
+    const settings = await assertOnlineBookingReadyFor(tx, data.userId);
     const made = await findRepeatRequest(tx, data, data.stylistId);
     if (made) return { ...made, repeat: true as const };
     await assertActiveBookingLimit(tx, data.userId);
@@ -582,7 +582,7 @@ async function chooseFreeStylist(db: Prisma.TransactionClient, candidateStylistI
 export async function createBookingForFirstAvailable(data: NewBookingInput & { candidateStylistIds: string[] }) {
   refuseDiscountCode(data.discountCode);
   const appointment = await runSerializableWithRetry(async (tx) => {
-    const settings = await assertOnlineBookingReady(tx);
+    const settings = await assertOnlineBookingReadyFor(tx, data.userId);
     // Before choosing a stylist: a repeat must not be given the next free one.
     // Any stylist matches — the first attempt may have been given any of them.
     const made = await findRepeatRequest(tx, data);
@@ -645,7 +645,7 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
  */
 export async function precheckBookingRequest(data: NewBookingInput & ({ stylistId: string } | { candidateStylistIds: string[] })): Promise<void> {
   refuseDiscountCode(data.discountCode);
-  await assertOnlineBookingReady(prisma);
+  await assertOnlineBookingReadyFor(prisma, data.userId);
   await assertActiveBookingLimit(prisma, data.userId);
   const { service } = await quoteInTx(prisma, data);
   if ('candidateStylistIds' in data) {

@@ -13,7 +13,7 @@ function settingsFixture() {
     id: 'singleton', phone: '0113 000 0000', twitterHandle: '', gscVerification: '', googleBusinessUrl: '', facebookUrl: '',
     instagramUrl: '', treatwellUrl: '', freshaUrl: 'https://www.fresha.com/harbour', booksyUrl: '',
     heroEyebrow: 'Owner eyebrow', heroTitleLine1: 'Owner title', heroTitleLine2: 'line two', heroSubtitle: 'Owner subtitle',
-    bookingEnabled: false, salonNotificationLocale: 'en-GB',
+    bookingEnabled: false, salonNotificationLocale: 'en-GB', bookingBetaEmails: 'tester@example.com',
   };
   const service = loadServerModule<typeof import('./site-settings-service')>('src/app/services/site-settings-service.ts', {
     '@/app/lib/prisma': { siteSettings: {
@@ -64,4 +64,13 @@ test('Admin → Settings reads the live row, so a stale cache can never be saved
 test('the editing read never falls back to defaults when the database is unreachable', async () => {
   const f = settingsFixture();
   await assert.rejects(() => f.service.getSiteSettingsForEditing(), /reach database/);
+});
+
+test('beta testers\' emails stay out of the public cached settings; only the editing read carries them', async () => {
+  const f = settingsFixture();
+  f.reach();
+  const cached = await f.service.getSiteSettings();
+  assert.equal('bookingBetaEmails' in cached, false, 'personal data never enters the copy every public page reads');
+  assert.equal(JSON.stringify([...f.store.values()]).includes('tester@example.com'), false);
+  assert.equal((await f.service.getSiteSettingsForEditing()).bookingBetaEmails, 'tester@example.com');
 });

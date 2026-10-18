@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../load-server-module';
 import { translator, type Namespace } from '../../i18n/messages';
+import { publicGateStub } from '../booking-gate-stub';
 
 // My Bookings belongs to whoever proved the address. Staff attach phone
 // bookings to the account that holds the customer's email, and anyone can
@@ -18,7 +19,7 @@ function load(account: { email: string; emailVerifiedAt: Date | null; oauthAccou
       appointment: { findMany: async () => { queries.push('appointment'); return []; } },
     },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1' }) },
-    '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
+    '@/app/lib/booking-maintenance': publicGateStub({ isBookingEnabled: async () => true }),
     '@/components/appointments/AppointmentCard': { AppointmentCard: () => null },
     '@/components/auth/VerifyEmailResendForm': { VerifyEmailResendForm: form },
     '@/i18n/ClientMessages': { ClientMessages: ({ children }: { children: unknown }) => children },

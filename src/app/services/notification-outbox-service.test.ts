@@ -13,12 +13,13 @@ afterEach(() => {
   else process.env.NOTIFICATIONS_ENABLED = previousNotificationsEnabled;
 });
 
-function fixture({ obsolete = false, fail = false, changeDuringPreparation = false, unprepared = false } = {}) {
+function fixture({ obsolete = false, fail = false, changeDuringPreparation = false, unprepared = false, betaEmails = '' } = {}) {
   const now = new Date('2026-09-11T12:00:00Z');
   const row = { id: 'job-1', eventKey: 'appointment/a/0/CONFIRMATION', kind: 'CONFIRMATION', appointmentId: 'a', status: 'PENDING', attempts: 0, firstAttemptAt: null as Date | null, nextAttemptAt: now, createdAt: now, lockedAt: null as Date | null, lockToken: null as string | null, payloadJson: JSON.stringify({ version: 0, date: '2026-09-12T12:00:00.000Z', email: { from: 'Salon <booking@example.com>', to: 'customer@example.com', subject: 'Confirmed', html: '<p>Confirmed</p>' } }) };
   let sends = 0;
   let reads = 0;
   let renders = 0;
+  let settingsReads = 0;
   const keys: string[] = [];
   let changed = obsolete;
   if (changeDuringPreparation || unprepared) row.payloadJson = JSON.stringify({ version: 0, date: '2026-09-12T12:00:00.000Z', appointment: { id: 'a', date: '2026-09-12T12:00:00.000Z', user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', price: 80, duration: 60 } } });
@@ -35,9 +36,13 @@ function fixture({ obsolete = false, fail = false, changeDuringPreparation = fal
       },
     },
     appointment: {
-      findUnique: async () => ({ id: 'a', status: changed ? 'CANCELLED' : 'CONFIRMED', date: new Date('2026-09-12T12:00:00Z'), notificationVersion: changed ? 1 : 0, review: null }),
+      // `user`: the customer the beta check looks up (tests may replace this read without it).
+      findUnique: async (): Promise<{ id: string; status: string; date: Date; notificationVersion: number; review: null; user?: { email: string } }> =>
+        ({ id: 'a', status: changed ? 'CANCELLED' : 'CONFIRMED', date: new Date('2026-09-12T12:00:00Z'), notificationVersion: changed ? 1 : 0, review: null, user: { email: 'Customer@Example.com' } }),
       updateMany: async () => ({ count: 1 }),
     },
+    // The beta list in Admin → Settings (lib/booking-beta.ts).
+    siteSettings: { findUnique: async () => { settingsReads++; return { bookingBetaEmails: betaEmails }; } },
     $transaction: async (fn: (tx: unknown) => unknown) => fn(db),
   };
   const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', {
@@ -47,7 +52,7 @@ function fixture({ obsolete = false, fail = false, changeDuringPreparation = fal
       sendPreparedEmail: async (_email: unknown, key: string) => { sends++; keys.push(key); if (fail) throw new Error('Provider refused customer@example.com'); },
     },
   });
-  return { service, db, row, keys, sends: () => sends, sideEffects: () => ({ reads, renders, sends }), now };
+  return { service, db, row, keys, sends: () => sends, sideEffects: () => ({ reads, renders, sends }), settingsReads: () => settingsReads, now };
 }
 
 for (const flag of [undefined, 'false']) {
@@ -66,6 +71,50 @@ for (const flag of [undefined, 'false']) {
     assert.deepEqual(f.row, originalRow, 'disabled delivery must preserve the queued payload and retry state');
   });
 }
+
+// Beta booking (owner decision 2026-10-18): with delivery switched off, only a
+// beta tester's own appointment is delivered, and only through the call
+// scoped to that appointment; the crons stay off without touching the database.
+test('disabled notifications: an unscoped (cron) dispatch returns before any database access, testers or not', async () => {
+  process.env.NOTIFICATIONS_ENABLED = 'false';
+  const f = fixture({ unprepared: true, betaEmails: 'customer@example.com' });
+  const originalRow = structuredClone(f.row);
+  assert.deepEqual(await f.service.dispatchPendingNotifications({ db: f.db as never, now: f.now }), { sent: 0, failed: 0, skipped: 0, deferred: 0 });
+  assert.equal(f.settingsReads(), 0, 'the beta list is never read without an appointment');
+  assert.deepEqual(f.sideEffects(), { reads: 0, renders: 0, sends: 0 });
+  assert.deepEqual(f.row, originalRow);
+});
+
+test('disabled notifications: a beta tester\'s appointment is still delivered, matched case-insensitively', async (t) => {
+  process.env.NOTIFICATIONS_ENABLED = 'false';
+  const f = fixture({ unprepared: true, betaEmails: 'someone@example.com, CUSTOMER@example.com' });
+  t.mock.timers.enable({ apis: ['Date'], now: f.now });
+  const result = await f.service.dispatchAppointmentNotifications('a');
+  assert.deepEqual(result, { sent: 1, failed: 0, skipped: 0, deferred: 0 });
+  assert.deepEqual(f.sideEffects(), { reads: 1, renders: 1, sends: 1 });
+  assert.equal(f.row.status, 'SENT');
+  assert.deepEqual(f.keys, [f.row.eventKey]);
+});
+
+test('disabled notifications: any other customer\'s appointment sends nothing and keeps its queued mail', async () => {
+  process.env.NOTIFICATIONS_ENABLED = 'false';
+  for (const betaEmails of ['', 'someone@example.com']) {
+    const f = fixture({ unprepared: true, betaEmails });
+    const originalRow = structuredClone(f.row);
+    assert.deepEqual(await f.service.dispatchAppointmentNotifications('a'), { sent: 0, failed: 0, skipped: 0, deferred: 0 }, betaEmails);
+    assert.equal(f.settingsReads(), 1, 'one read of the list');
+    assert.deepEqual(f.sideEffects(), { reads: 0, renders: 0, sends: 0 }, betaEmails);
+    assert.deepEqual(f.row, originalRow, 'the queued payload and retry state are preserved');
+  }
+});
+
+test('enabled notifications deliver without consulting the beta list', async (t) => {
+  const f = fixture();
+  t.mock.timers.enable({ apis: ['Date'], now: f.now });
+  await f.service.dispatchAppointmentNotifications('a');
+  assert.equal(f.sends(), 1);
+  assert.equal(f.settingsReads(), 0);
+});
 
 test('enabling notifications resumes a valid queued email through immediate delivery', async (t) => {
   const f = fixture({ unprepared: true });

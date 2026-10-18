@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { loadServerModule } from '../load-server-module';
 import { translator, type Namespace } from '../../i18n/messages';
 import type { Locale } from '../../i18n/config';
+import { publicGateStub } from '../booking-gate-stub';
 
 type Card = { id: string; calendar: Record<string, unknown> | null };
 
@@ -17,7 +18,7 @@ async function cards(locale: Locale, rows: { upcoming: Record<string, unknown>[]
       contentTranslation: { findMany: async () => { queries.push('contentTranslation'); return [{ entityId: 'service-1', fieldsJson: JSON.stringify({ name: '洗剪吹' }) }]; } },
     },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1' }) },
-    '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
+    '@/app/lib/booking-maintenance': publicGateStub({ isBookingEnabled: async () => true }),
     '@/components/appointments/AppointmentCard': { AppointmentCard: card },
     '@/components/auth/VerifyEmailResendForm': { VerifyEmailResendForm: () => null },
     '@/i18n/ClientMessages': { ClientMessages: ({ children }: { children: unknown }) => children },

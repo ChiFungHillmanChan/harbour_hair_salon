@@ -65,3 +65,9 @@ export const ARRIVAL_EARLY_MINUTES = 60;
  * The booking terms and the consultation's emails read it.
  */
 export const CONSULTATION_CREDIT_MONTHS = 6;
+
+/**
+ * Beta booking (lib/booking-beta.ts): the most accounts Admin → Settings may
+ * list as beta testers. A handful of trusted accounts, not a second launch.
+ */
+export const BOOKING_BETA_MAX_TESTERS = 20;

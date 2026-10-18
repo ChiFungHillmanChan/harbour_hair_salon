@@ -84,10 +84,13 @@ export async function GET(request: NextRequest) {
       });
       if (linkedAccount) return linkedAccount.user;
 
+      // The whole row (it becomes the session's user below), `emailVerifiedAt` included.
       let matchedUser = await tx.user.findUnique({ where: { email: profile.email } });
       const decision = decideGoogleLink(
         profile,
-        matchedUser ? { role: matchedUser.role, hasPassword: matchedUser.password !== null } : null,
+        matchedUser
+          ? { role: matchedUser.role, hasPassword: matchedUser.password !== null, emailVerified: Boolean(matchedUser.emailVerifiedAt) }
+          : null,
       );
       if (decision.kind === 'REFUSE') throw new GoogleSignInRefused(decision.code, matchedUser?.id ?? null);
 
@@ -96,13 +99,16 @@ export async function GET(request: NextRequest) {
           data: { email: profile.email, name: profile.name, role: 'USER', preferredLocale: signInLocale },
         });
       } else if (decision.kind === 'LINK') {
-        // Linking Google to an existing customer. If that row already has a
-        // password, it may have been planted by an attacker who pre-registered
-        // this address to hijack it — Google, authoritative for the address, has
-        // just verified it belongs to the person signing in, so DESTROY the
-        // pre-set credential, any reset link issued for it, and bump
-        // sessionVersion (revoking any session the attacker holds). Also fill in
-        // a missing display name. Without this, the attacker's password kept working.
+        // Linking Google to an existing customer. If that row has a password
+        // and its email was never confirmed, the password may have been planted
+        // by an attacker who pre-registered this address to hijack it — Google,
+        // authoritative for the address, has just verified it belongs to the
+        // person signing in, so DESTROY the pre-set credential, any reset link
+        // issued for it, and bump sessionVersion (revoking any session the
+        // attacker holds). Without this, the attacker's password kept working.
+        // A password on a CONFIRMED email is the mailbox owner's own: it is kept,
+        // with its sessions and reset links, and Google is simply linked
+        // (decideGoogleLink). Either way, fill in a missing display name.
         const needsNameFill = !matchedUser.name && !!profile.name;
         if (decision.clearPassword || needsNameFill) {
           matchedUser = await tx.user.update({

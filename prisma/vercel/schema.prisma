@@ -401,6 +401,9 @@ model SiteSettings {
   // FALSE (booking closed) so a fresh environment can never accidentally take
   // bookings before Treatwell two-way sync is configured.
   bookingEnabled    Boolean  @default(false)
+  /// Beta booking (Admin → Settings): signed-in accounts with these emails may book online
+  /// while bookingEnabled is off; normalised lowercase, ", "-joined (lib/booking-beta.ts).
+  bookingBetaEmails String   @default("")
   /// Language of the salon's own notification mails (new booking alerts).
   salonNotificationLocale String @default("zh-HK")
   /// Square deposit policy for customer booking requests. Off by default; a

@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { loadServerModule } from '../../../../../test/load-server-module';
 import { decideGoogleLink, isGoogleAuthoritativeEmail, type GoogleProfile } from '../../../../lib/google-oauth';
 
-type FixtureUser = { id: string; email: string; name: string | null; role: string; password: string | null; sessionVersion: number; preferredLocale?: string | null };
+type FixtureUser = { id: string; email: string; name: string | null; role: string; password: string | null; sessionVersion: number; preferredLocale?: string | null; emailVerifiedAt?: Date | null };
 
 /**
  * The real callback and link policy; only Google's network calls and the
@@ -130,6 +130,39 @@ test('a Gmail owner reclaims a pre-registered customer account: planted password
   assert.equal(f.resetTokens.length, 0);
   assert.deepEqual(f.linked, [{ provider: 'google', providerAccountId: 'google-sub-2', userId: 'user-1' }]);
   assert.deepEqual(f.sessions, [{ userId: 'user-1', role: 'USER' }]);
+});
+
+test('a customer who confirmed their email keeps their password when they first sign in with Google', async () => {
+  const f = callbackFixture({ id: 'google-sub-3', email: 'client@gmail.com', name: 'Client' }, [
+    { id: 'user-1', email: 'client@gmail.com', name: 'Client', role: 'USER', password: 'own-hash', sessionVersion: 4, emailVerifiedAt: new Date('2026-10-01T09:00:00Z') },
+  ]);
+  const location = await f.run();
+  assert.equal(location.pathname, '/appointments');
+  assert.equal(f.users[0].password, 'own-hash', 'email + password still signs in');
+  assert.equal(f.users[0].sessionVersion, 4, 'no other session is signed out');
+  assert.equal(f.resetTokens.length, 1, 'their reset links are left alone');
+  assert.deepEqual(f.linked, [{ provider: 'google', providerAccountId: 'google-sub-3', userId: 'user-1' }]);
+  assert.deepEqual(f.sessions, [{ userId: 'user-1', role: 'USER' }]);
+});
+
+test('an unconfirmed email still loses its password on the first Google sign-in, even with a name already set', async () => {
+  const f = callbackFixture({ id: 'google-sub-4', email: 'client@gmail.com', name: 'Client' }, [
+    { id: 'user-1', email: 'client@gmail.com', name: 'Someone', role: 'USER', password: 'planted-hash', sessionVersion: 2, emailVerifiedAt: null },
+  ]);
+  await f.run();
+  assert.equal(f.users[0].password, null);
+  assert.equal(f.users[0].sessionVersion, 3);
+  assert.equal(f.users[0].name, 'Someone', 'a saved name is never overwritten');
+  assert.equal(f.resetTokens.length, 0);
+  assert.equal(f.linked.length, 1);
+});
+
+test('a confirmed administrator is still never auto-linked', async () => {
+  const f = callbackFixture({ id: 'google-sub-5', email: 'owner@gmail.com', name: 'Owner' }, [{ ...admin(), email: 'owner@gmail.com', emailVerifiedAt: new Date() }]);
+  const location = await f.run();
+  assert.equal(location.searchParams.get('error'), 'google_admin_link');
+  assert.equal(f.users[0].password, 'admin-hash');
+  assert.equal(f.linked.length, 0);
 });
 
 test('an identity already linked by Google id keeps signing in, whatever its address', async () => {

@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
 import { ANY_STYLIST_ID } from '../lib/booking-constants';
 import { resolveSalonDateTime } from './salon-time';
+import { publicGateStub } from '../../test/booking-gate-stub';
 
 before(() => mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-01T09:00:00Z') }));
 after(() => mock.timers.reset());
 
 type Where = Record<string, unknown>;
-function fixture(options: { enabled?: boolean; fail?: boolean; limited?: boolean } = {}) {
+function fixture(options: { enabled?: boolean; fail?: boolean; limited?: boolean; signedIn?: boolean } = {}) {
   const calls: { model: string; where: Where }[] = [];
   const limiterKeys: string[] = [];
   const hours = [
@@ -29,15 +30,16 @@ function fixture(options: { enabled?: boolean; fail?: boolean; limited?: boolean
   const readiness = { isBookingEnabled: async () => options.enabled !== false, assertOnlineBookingReady: async () => ({}) };
   const service = loadServerModule<typeof import('./booking-service')>('src/app/services/booking-service.ts', {
     '@/app/lib/prisma': db,
-    '@/app/lib/booking-maintenance': readiness,
+    '@/app/lib/booking-maintenance': publicGateStub(readiness),
     './notification-outbox-service': {},
   });
   const actions = loadServerModule<typeof import('../actions/booking')>('src/app/actions/booking.ts', {
     '@/app/lib/prisma': db,
     '@/app/services/booking-service': service,
-    '@/app/lib/booking-maintenance': readiness,
+    '@/app/lib/booking-maintenance': publicGateStub(readiness),
     '@/app/services/notification-outbox-service': {},
-    '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
+    // Signed out unless `signedIn` (the cookie the availability gate reads while booking is closed).
+    '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }), getSession: async () => (options.signedIn ? { userId: 'user-1' } : null) },
     '@/app/lib/rate-limit': {
       bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true },
       availabilityLimiter: { check: async (key: string) => { limiterKeys.push(key); return !options.limited; } },
@@ -102,6 +104,14 @@ test('the actions say "closed" while online booking is switched off, without a q
   assert.deepEqual(await f.actions.fetchSlots(ANY_STYLIST_ID, '2026-10-06', 60), { ok: false, reason: 'CLOSED' });
   assert.equal(f.calls.length, 0);
   assert.equal(f.limiterKeys.length, 0);
+});
+
+test('closed, signed in but not a beta tester: still "closed", with no lookup query, after the per-address limit', async () => {
+  const f = fixture({ enabled: false, signedIn: true });
+  assert.deepEqual(await f.actions.fetchBookingDays('funky', ['2026-10-06'], 60), { ok: false, reason: 'CLOSED' });
+  assert.deepEqual(await f.actions.fetchSlots('funky', '2026-10-06', 60), { ok: false, reason: 'CLOSED' });
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.limiterKeys.length, 2, 'the beta check (a database read) waits behind the address budget');
 });
 
 test('a lookup failure is reported as a failure, not as an unavailable fortnight', async () => {

@@ -531,6 +531,18 @@ run"); it did for 13dbe8f on 2026-10-17/18 (S1–S4 are merged and deployed sinc
 - [ ] For the first week, check Admin → Operations and the daily email for payments needing
       attention, and compare with the Square Dashboard.
 
+**Beta before launch (owner decision 2026-10-18).** Once the production credentials are set (Admin →
+Site Settings no longer shows the Square lock), named accounts can book online in production before it
+opens to everyone: Admin → Site Settings → Online booking → **Beta testers**, one email per line (at
+most 20; the first is `hillmanchan709@gmail.com`). A tester signed in with that account gets the whole
+flow — slots, the card deposit (real money), My Bookings' Reschedule — while `bookingEnabled` stays off
+and everyone else still sees the phone / Fresha / Treatwell page. The gate
+(`lib/booking-maintenance.ts`, `assertOnlineBookingReadyFor`) still needs the production credentials and
+the same calendar readiness as public booking, but not `NOTIFICATIONS_ENABLED`: a tester's booking
+emails (theirs and the salon's alert for that booking) go out even while it is off, every other
+customer stays email-free, and the crons (reminders, review requests, the daily ops alert) stay off.
+The real £0.01 booking above can be made this way. Takes effect on Save; empty the box to end the beta.
+
 ---
 
 ## 6. Operations (staff)
