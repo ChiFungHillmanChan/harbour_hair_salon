@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { z } from 'zod';
 import prisma from '@/app/lib/prisma';
 import { isBetaBookingOpenFor, isBookingEnabled } from '@/app/lib/booking-maintenance';
-import { getSession } from '@/app/lib/session';
+import { getSession, isSessionCurrent } from '@/app/lib/session';
 import { availabilityLimiter } from '@/app/lib/rate-limit';
 import { BookingError } from '@/app/services/booking-errors';
 import { quoteDepositForNewBooking } from '@/app/services/deposit-quote';
@@ -32,11 +32,12 @@ export async function previewBookingQuote(serviceId: string): Promise<BookingQuo
   if (!id.success) return { ok: false };
   const publicOpen = await isBookingEnabled();
   // Cookie only: no query for a signed-out visitor while booking is closed.
-  const betaUserId = publicOpen ? null : (await getSession())?.userId;
-  if (!publicOpen && !betaUserId) return { ok: false };
+  const betaSession = publicOpen ? null : await getSession();
+  if (!publicOpen && !betaSession?.userId) return { ok: false };
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   if (!(await availabilityLimiter.check(ip))) return { ok: false };
-  if (!publicOpen && !(await isBetaBookingOpenFor(betaUserId))) return { ok: false };
+  // A token revoked by sign-out is no tester.
+  if (betaSession && !((await isSessionCurrent(betaSession)) && (await isBetaBookingOpenFor(betaSession.userId)))) return { ok: false };
 
   try {
     const { quote, deposit } = await quoteDepositForNewBooking(prisma, id.data);

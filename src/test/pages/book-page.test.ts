@@ -31,9 +31,10 @@ let gateAsked: (string | null | undefined)[] = [];
 
 /**
  * `enabled`: the public gate. `betaTester`: the signed-in account is on the beta
- * list (lib/booking-maintenance.ts). `userId: null`: signed out.
+ * list (lib/booking-maintenance.ts). `userId: null`: signed out. `revoked`: the
+ * cookie's token predates a sign-out (the account's sessionVersion moved on).
  */
-function loadPage(options: { enabled: boolean; locale?: Locale; stylistTranslations?: Record<string, string>; squareEnv?: Record<string, string>; accountName?: string | null; userId?: string | null; betaTester?: boolean }) {
+function loadPage(options: { enabled: boolean; locale?: Locale; stylistTranslations?: Record<string, string>; squareEnv?: Record<string, string>; accountName?: string | null; userId?: string | null; betaTester?: boolean; revoked?: boolean }) {
   gateAsked = [];
   const userId = options.userId === undefined ? 'user-1' : options.userId;
   const locale = options.locale ?? 'en-GB';
@@ -46,7 +47,7 @@ function loadPage(options: { enabled: boolean; locale?: Locale; stylistTranslati
     '@/app/lib/online-booking-lock': { publicSquareConfig: () => lock.publicSquareConfig(options.squareEnv ?? {}) },
     '@/app/lib/prisma': {
       stylist: { findMany: async () => stylists },
-      user: { findUnique: async () => ({ email: 'customer@example.test', name: options.accountName === undefined ? 'Ada Lovelace' : options.accountName, emailVerifiedAt: new Date(), oauthAccounts: [] }) },
+      user: { findUnique: async () => ({ email: 'customer@example.test', name: options.accountName === undefined ? 'Ada Lovelace' : options.accountName, sessionVersion: options.revoked ? 1 : 0, emailVerifiedAt: new Date(), oauthAccounts: [] }) },
       contentTranslation: {
         findMany: async () => Object.entries(options.stylistTranslations ?? {})
           .map(([entityId, role]) => ({ entityId, fieldsJson: JSON.stringify({ role }) })),
@@ -62,7 +63,7 @@ function loadPage(options: { enabled: boolean; locale?: Locale; stylistTranslati
       gateAsked.push(asked);
       return options.enabled || Boolean(asked && options.betaTester);
     } },
-    '@/app/lib/session': { getSession: async () => (userId ? { userId } : null) },
+    '@/app/lib/session': { getSession: async () => (userId ? { userId, sessionVersion: 0 } : null) },
     '@/app/services/site-settings-service': { getSiteSettings: async () => SETTINGS },
     '@/app/services/pricing/public-catalog': { getPublicCatalog: async () => ({ services: [], offerings: [], categories: [] }) },
     '@/i18n/server': { getLocale: async () => locale, getT: async (namespace: Namespace) => translator(locale, namespace) },
@@ -103,6 +104,12 @@ test('beta: while booking is closed, any other signed-in account gets the closed
 test('open: a signed-out visitor is sent to sign in, in their language', async () => {
   await assert.rejects(loadPage({ enabled: true, userId: null }).default(), /redirected to \/auth\/signin\?redirect=%2Fbook/);
   await assert.rejects(loadPage({ enabled: true, userId: null, locale: 'zh-HK' }).default(), /redirected to \/zh-hk\/auth\/signin\?redirect=%2Fzh-hk%2Fbook/);
+});
+
+test('a token revoked by sign-out is signed out: sent to sign in, the account never shown', async () => {
+  await assert.rejects(loadPage({ enabled: true, revoked: true }).default(), /redirected to \/auth\/signin\?redirect=%2Fbook/);
+  await assert.rejects(loadPage({ enabled: false, betaTester: true, revoked: true }).default(), /redirected to \/auth\/signin/,
+    'a beta tester\'s old cookie gets no wizard either');
 });
 
 type WizardStylist = { id: string; role: string; translated: boolean };

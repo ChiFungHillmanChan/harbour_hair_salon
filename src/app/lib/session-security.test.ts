@@ -127,3 +127,21 @@ test('this browser is still signed out when the database cannot be reached', asy
   assert.equal(values.has('session'), false);
   assert.equal(values.has('session_hint'), false);
 });
+
+test('a token stays current only until sign-out or a reset moves the account\'s version on', async (t) => {
+  const current = fixture(t, 'USER', 0).session;
+  assert.equal(await current.isSessionCurrent({ userId: 'customer', role: 'USER', sessionVersion: 0, expiresAt: new Date() }), true);
+  const preClaim = { userId: 'customer', role: 'USER', expiresAt: new Date() } as unknown as Parameters<typeof current.isSessionCurrent>[0];
+  assert.equal(await current.isSessionCurrent(preClaim), true, 'a token from before the claim counts as version 0');
+  const revoked = fixture(t, 'USER', 1).session;
+  assert.equal(await revoked.isSessionCurrent({ userId: 'customer', role: 'USER', sessionVersion: 0, expiresAt: new Date() }), false);
+});
+
+test('a token for an account that no longer exists is not current', async () => {
+  const session = loadServerModule<typeof import('./session')>('src/app/lib/session.ts', {
+    'next/headers': { cookies: async () => ({ get: () => undefined }) },
+    'next/navigation': { redirect },
+    '@/app/lib/prisma': { user: { findUnique: async () => null } },
+  });
+  assert.equal(await session.isSessionCurrent({ userId: 'gone', role: 'USER', sessionVersion: 0, expiresAt: new Date() }), false);
+});

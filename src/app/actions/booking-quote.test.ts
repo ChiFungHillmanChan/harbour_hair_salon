@@ -21,10 +21,12 @@ type Options = {
   userId?: string;
   /** Whether that account is a beta tester (lib/booking-maintenance.ts). */
   betaTester?: boolean;
+  /** The cookie's token was revoked by sign-out (lib/session.ts isSessionCurrent). */
+  revoked?: boolean;
 };
 
 function fixture(options: Options = {}) {
-  const calls = { gate: 0, limiter: [] as string[], reads: [] as string[], errors: 0, beta: [] as (string | null | undefined)[], sessions: 0 };
+  const calls = { gate: 0, limiter: [] as string[], reads: [] as string[], errors: 0, beta: [] as (string | null | undefined)[], sessions: 0, current: [] as string[] };
   const services = options.services ?? { cut: serviceRow() };
   const unreachable = () => { throw new Error("Can't reach database server"); };
   const db = {
@@ -53,7 +55,10 @@ function fixture(options: Options = {}) {
       // The beta check reads the database; here it only records whom it was asked about.
       isBetaBookingOpenFor: async (userId: string | null | undefined) => { calls.beta.push(userId); return options.betaTester ?? false; },
     },
-    '@/app/lib/session': { getSession: async () => { calls.sessions++; return options.userId ? { userId: options.userId } : null; } },
+    '@/app/lib/session': {
+      getSession: async () => { calls.sessions++; return options.userId ? { userId: options.userId } : null; },
+      isSessionCurrent: async (session: { userId: string }) => { calls.current.push(session.userId); return !options.revoked; },
+    },
     // The same limiter object the public availability actions use (by name).
     '@/app/lib/rate-limit': { availabilityLimiter: { check: async (key: string) => { calls.limiter.push(key); return options.allowed ?? true; } } },
   });
@@ -100,7 +105,7 @@ test('junk ids are refused before the booking gate, the limiter or the database'
   for (const id of ['', '   ', 'x'.repeat(65), 42, null, undefined, { id: 'cut' }, ['cut']]) {
     assert.deepEqual(await f.actions.previewBookingQuote(id as string), { ok: false }, JSON.stringify(id));
   }
-  assert.deepEqual(f.calls, { gate: 0, limiter: [], reads: [], errors: 0, beta: [], sessions: 0 });
+  assert.deepEqual(f.calls, { gate: 0, limiter: [], reads: [], errors: 0, beta: [], sessions: 0, current: [] });
 });
 
 test('while booking is closed nothing is quoted, the budget is not spent and the database is not woken', async () => {
@@ -134,6 +139,17 @@ test('beta: a signed-in account that is not a tester gets nothing; over budget, 
   const throttled = fixture({ open: false, userId: 'user-2', allowed: false });
   assert.deepEqual(await throttled.actions.previewBookingQuote('cut'), { ok: false });
   assert.deepEqual(throttled.calls.beta, [], 'the beta check reads the database, so the budget comes first');
+});
+
+test('beta: a tester\'s token revoked by sign-out gets nothing, checked only after the address budget', async () => {
+  const revoked = fixture({ open: false, userId: 'user-1', betaTester: true, revoked: true });
+  assert.deepEqual(await revoked.actions.previewBookingQuote('cut'), { ok: false });
+  assert.deepEqual(revoked.calls.current, ['user-1']);
+  assert.deepEqual(revoked.calls.beta, [], 'the beta list is not even read for a revoked token');
+  assert.deepEqual(revoked.calls.reads, []);
+  const throttled = fixture({ open: false, userId: 'user-1', betaTester: true, allowed: false });
+  assert.deepEqual(await throttled.actions.previewBookingQuote('cut'), { ok: false });
+  assert.deepEqual(throttled.calls.current, [], 'the version check reads the database, so the budget comes first');
 });
 
 test('an address over the availability budget is refused before any database read', async () => {

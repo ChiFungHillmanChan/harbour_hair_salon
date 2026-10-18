@@ -39,7 +39,7 @@ function fixture(options: { enabled?: boolean; fail?: boolean; limited?: boolean
     '@/app/lib/booking-maintenance': publicGateStub(readiness),
     '@/app/services/notification-outbox-service': {},
     // Signed out unless `signedIn` (the cookie the availability gate reads while booking is closed).
-    '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }), getSession: async () => (options.signedIn ? { userId: 'user-1' } : null) },
+    '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }), getSession: async () => (options.signedIn ? { userId: 'user-1' } : null), isSessionCurrent: async () => true },
     '@/app/lib/rate-limit': {
       bookingLimiter: { check: async () => true }, discountLimiter: { check: async () => true },
       availabilityLimiter: { check: async (key: string) => { limiterKeys.push(key); return !options.limited; } },
