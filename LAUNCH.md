@@ -131,8 +131,12 @@ Square and payment records.
 - [x] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
       Identity checks are complete and the payout bank account is linked (checked 2026-10-14).
       The account's own card rate is still to be confirmed (runbook §8).
-- [ ] Production credentials — **only once the sandbox acceptance checklist (runbook §4) has
-      passed on a Preview deployment**. S1–S4 are built: S3 captures a hold on approval, releases
+- [x] Production credentials — set 2026-10-18 on the owner's word, after §4 passed (2026-10-17/18).
+      Five non-secret values by CLI, the access token and signature key by the owner (Production
+      only; the team's "Separate Production Secret Values" rule keeps them off Preview, which now has
+      no Square token or key until the sandbox ones are re-added). Location `LMDPK9XXXTJEM`
+      ("FaithArkLtd (Main)", address "2 Chapel Street": the owner may rename it and use the salon's
+      address in the Square Dashboard, since card statements show it). S1–S4 are built: S3 captures a hold on approval, releases
       it on decline, withdrawal, lapse or expiry, and refunds cancellations; S4 (the Square webhook
       and the daily reconciliation) follows up a payment whose outcome was unclear, a failed
       release and a refund left pending. Production application in the **salon's** Square
@@ -142,12 +146,18 @@ Square and payment records.
       webhook signature key,
       `SQUARE_WEBHOOK_NOTIFICATION_URL=https://www.harbourhair.co.uk/api/webhooks/square`) —
       runbook §2 and §5.
-- [ ] Webhook subscription at exactly that URL (www, no trailing slash): `payment.created`,
-      `payment.updated`, `refund.created`, `refund.updated`.
+- [x] Webhook subscription at exactly that URL (www, no trailing slash): `payment.created`,
+      `payment.updated`, `refund.created`, `refund.updated`. Created 2026-10-18 ("Harbour Hair
+      website", API 2026-09-16); "Send test event" → 200.
 - [x] Admin → Site Settings → Deposits: on, 50%, minimum £0; Admin → Services & Pricing: a fixed
       £15 override (their full price) on Consultation and on Consultation & Patch Test. Set in
       production on 2026-10-15; nothing is charged until Square production credentials unlock booking.
-- [ ] One real low-value test booking in production (approve, then cancel → refund) — runbook §5.
+- [x] One real low-value test booking in production (approve, then cancel → refund) — runbook §5.
+      2026-10-18, through beta booking (#81, tester `hillmanchan709@gmail.com`): a £0.01 override on
+      Short Over Ears; hold → live `payment.created` → the owner approved (CAPTURED) → the customer
+      cancelled (refund requested; Square's `refund.created`/`refund.updated` processed; refund
+      PENDING at the time of writing, as real-card refunds are) → four tester emails sent. The
+      override was removed straight after. Public booking stays closed until §3.
 
 ---
 
