@@ -121,6 +121,7 @@ const adminSchedule: Localized<Messages['adminSchedule']> = {
     refund: '退還 {amount} 訂金',
     refundHelp: '如客人在預約前不足 {hours} 小時取消，請取消勾選以保留訂金（按預約條款處理）。如由本店取消，請保持勾選。',
     noShowHelp: '預約時間已過。缺席一律不退訂金（本店政策），所以預設不勾選。只有例外情況（例如本店出錯）才勾選退款。',
+    lockedHelp: '客人是在預約前不足 {hours} 小時申請改期的，按預約條款，客人取消時訂金不予退還：如客人取消，請取消勾選。如由本店取消，請保持勾選。',
     releaseNote: '取消後，顧客信用卡上 {amount} 的預留款項會被解除。',
     cancelRefundConfirm: '確定取消 {customer} 的預約並退還 {amount} 訂金？該時段將會釋出。',
     cancelKeepConfirm: '確定取消 {customer} 的預約並保留 {amount} 訂金？該時段將會釋出。',

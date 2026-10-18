@@ -200,6 +200,11 @@ model Appointment {
   consultationCreditUsedBy Appointment[] @relation("ConsultationCredit")
   /// The amount credited, frozen when it was applied (pence).
   consultationCreditPence  Int?
+  /// Set when staff approve a reschedule the customer requested less than
+  /// DEPOSIT_REFUND_NOTICE_HOURS before the booking's then start (the request's
+  /// time): a customer cancellation keeps the deposit whatever the new time
+  /// (owner decision 2026-10-18). Null = the 48-hour rule from the start applies.
+  depositLockedAt          DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 

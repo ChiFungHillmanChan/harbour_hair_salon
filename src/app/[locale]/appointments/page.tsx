@@ -64,6 +64,8 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
     priceAtBooking: true, quoteJson: true, durationAtBooking: true,
     // The consultation credit recorded on the booking; its source and the treatment's own price are untouched.
     consultationCreditPence: true,
+    // Moved at a request made inside 48 hours: cancelling keeps the deposit.
+    depositLockedAt: true,
     stylist: { select: { name: true } },
     service: { select: { name: true, duration: true } },
     review: { select: { id: true } },
@@ -115,6 +117,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
         price,
         consultationCreditPence: a.consultationCreditPence,
         deposit: depositView(a.paymentAttempt),
+        depositLocked: a.depositLockedAt != null,
         hasReview: Boolean(a.review),
         request: rescheduleRequestView(a, now),
         // Only a confirmed, upcoming time goes into the customer's own calendar;

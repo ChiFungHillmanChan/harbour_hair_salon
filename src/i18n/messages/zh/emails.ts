@@ -103,6 +103,7 @@ const emails: Localized<Messages['emails']> = {
     refunding: '你的 {amount} 訂金正在退還。大部分銀行會於 5 至 10 個工作天內顯示退款，部分銀行或需長達 14 個工作天。',
     released: '你信用卡上 {amount} 的預留款項已經解除——並沒有扣款。銀行或需數天才會更新紀錄。',
     kept: '根據我們的預約條款（預約前不足 {hours} 小時取消，或缺席預約），{amount} 訂金不予退還。',
+    keptAfterMove: '根據我們的預約條款，由於你在預約前不足 {hours} 小時申請改期，{amount} 訂金不予退還。',
   },
   cancellation: {
     subject: '你的預約已取消 — Harbour Hair Salon',
@@ -134,6 +135,7 @@ const emails: Localized<Messages['emails']> = {
     footnote: '你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。',
     requestMatched: '這是你申請的新時間。',
     requestReplaced: '你改至{requested}的申請已經結束：本店已為你安排以上時間。',
+    depositKept: '由於你在預約前不足 {hours} 小時申請改期，你的訂金維持不予退還：如取消，訂金不會退還；到店時訂金仍會用作抵扣費用。',
   },
   reminder: {
     subjectToday: '提提你：你今日有預約 — Harbour Hair Salon',

@@ -129,6 +129,7 @@ const adminSchedule = {
     /** {hours}: DEPOSIT_REFUND_NOTICE_HOURS (booking terms, owner decision 2026-10-18). */
     refundHelp: 'Untick to keep it when the customer cancels less than {hours} hours before the appointment, as the booking terms say. Leave it ticked when the salon cancels.',
     noShowHelp: 'The appointment time has passed. A no-show keeps its deposit (salon policy), so this starts unticked. Tick it only to refund by exception, for example the salon’s own mistake.',
+    lockedHelp: 'The customer asked to move this booking less than {hours} hours before it, so the booking terms keep the deposit if they cancel: untick when the customer cancels. Leave it ticked when the salon cancels.',
     releaseNote: 'Cancelling releases the {amount} hold on the customer’s card.',
     cancelRefundConfirm: 'Cancel {customer}’s booking and refund the {amount} deposit? This releases the appointment time.',
     cancelKeepConfirm: 'Cancel {customer}’s booking and keep the {amount} deposit? This releases the appointment time.',

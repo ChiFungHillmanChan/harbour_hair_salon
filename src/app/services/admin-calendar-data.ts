@@ -22,7 +22,7 @@ import type { ContentFields } from './content/fields';
 export const calendarAppointmentSelect = {
   id: true, date: true, status: true, stylistId: true, serviceId: true, updatedAt: true,
   durationAtBooking: true, priceAtBooking: true, quoteJson: true, notes: true,
-  rescheduleRequestedDate: true, rescheduleRequestedAt: true, arrivedAt: true,
+  rescheduleRequestedDate: true, rescheduleRequestedAt: true, arrivedAt: true, depositLockedAt: true,
   user: { select: { id: true, name: true, email: true } },
   stylist: { select: { name: true, calendarColor: true, googleColorId: true } },
   service: { select: { name: true, duration: true, calendarColor: true } },
@@ -52,6 +52,8 @@ export function serializeCalendarAppointment(row: CalendarRow, includeContact = 
     rescheduleRequestedAt: row.rescheduleRequestedAt?.toISOString() ?? null,
     // Staff marked the customer arrived (late-arrival rule): the grid shows it, the dialog toggles it.
     arrivedAt: row.arrivedAt?.toISOString() ?? null,
+    // Moved at the customer's request made inside 48 hours: their cancellation keeps the deposit.
+    depositLocked: row.depositLockedAt !== null,
     price: boardPrice(row),
     deposit: adminDepositView(row.paymentAttempt),
     consultationCredit: row.consultationCreditPence !== null && row.consultationCreditFrom

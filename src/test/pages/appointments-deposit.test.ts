@@ -231,3 +231,14 @@ test('a request\'s hold and a booking without a deposit are unaffected by the 48
   await none.cancel();
   assert.deepEqual(none.confirmations, ['Are you sure you want to cancel this appointment?']);
 });
+
+test('a booking moved at a request made inside 48 hours tells My Bookings its deposit is kept on cancel', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') });
+  const { cards: shown, selects } = await cards([
+    { ...row('locked', 'CONFIRMED', taken()), depositLockedAt: new Date('2099-08-30T10:00:00Z') },
+    { ...row('open', 'CONFIRMED', taken()), depositLockedAt: null },
+  ]);
+  assert.deepEqual(shown.map((card) => [card.id, card.depositLocked]), [['locked', true], ['open', false]]);
+  assert.ok(selects.every((select) => (select as { depositLockedAt?: boolean }).depositLockedAt === true));
+  assert.ok(shown.every((card) => !('depositLockedAt' in card)), 'only the yes/no reaches the browser');
+});

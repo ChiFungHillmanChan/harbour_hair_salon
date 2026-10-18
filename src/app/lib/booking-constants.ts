@@ -58,9 +58,12 @@ export function meetsMinimumNotice(start: Date, now: Date = new Date(), minutes:
  * Whether a customer cancelling a confirmed booking that starts at `start`,
  * at `now`, gets its deposit refunded (DEPOSIT_REFUND_NOTICE_HOURS or more
  * ahead) or not (less: it is kept). Absolute instants, like meetsMinimumNotice.
+ * `depositLockedAt` (Appointment.depositLockedAt, owner decision 2026-10-18):
+ * the booking was moved at the customer's request made inside that window, so
+ * the deposit stays kept whatever the new time.
  */
-export function isDepositRefundableOnCancel(start: Date, now: Date = new Date()): boolean {
-  return meetsMinimumNotice(start, now, DEPOSIT_REFUND_NOTICE_HOURS * 60);
+export function isDepositRefundableOnCancel(start: Date, now: Date = new Date(), depositLockedAt: Date | null = null): boolean {
+  return depositLockedAt === null && meetsMinimumNotice(start, now, DEPOSIT_REFUND_NOTICE_HOURS * 60);
 }
 
 /**

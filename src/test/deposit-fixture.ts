@@ -49,6 +49,8 @@ export type DepositFixtureOptions = {
   /** The booking: PENDING (a request) or CONFIRMED, and when. */
   status?: string;
   date?: Date;
+  /** Moved at the customer's request made inside 48 hours (Appointment.depositLockedAt). */
+  depositLockedAt?: Date | null;
   /** Its card deposit; null = none (staff-entered, deposit 0, older bookings). */
   deposit?: Partial<AttemptRow> | null;
   /** Square's side of that deposit (default: the hold, APPROVED; COMPLETED once the attempt is CAPTURED). */
@@ -83,6 +85,7 @@ export function depositFixture(options: DepositFixtureOptions = {}) {
     notificationLocale: 'en-GB', updatedAt: minutes(-24 * 60), treatwellBookingId: null as string | null,
     treatwellSyncStatus: 'NOT_REQUIRED', treatwellSyncError: null as string | null, reminderSent: false,
     rescheduleRequestedDate: null as Date | null, rescheduleRequestedAt: null as Date | null,
+    depositLockedAt: options.depositLockedAt ?? null,
     user: { email: 'customer@example.test', name: 'Mei', phone: null as string | null },
     stylist: { name: 'Ivan', treatwellExternalId: null as string | null },
     service: { id: 'service-1', name: 'Cut', price: '100.00', duration: 60, treatwellExternalId: null as string | null },

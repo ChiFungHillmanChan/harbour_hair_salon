@@ -100,6 +100,7 @@ export default async function BookingTermsPage() {
           <p>{text(t('bookingTerms.changes.request'))}</p>
           <p>{t('bookingTerms.changes.pending')}</p>
           <p>{t('bookingTerms.changes.deposit')}</p>
+          <p>{t('bookingTerms.changes.depositLocked', { hours: DEPOSIT_REFUND_NOTICE_HOURS })}</p>
         </Section>
 
         <Section id="offers" title={t('bookingTerms.offers.title')}>

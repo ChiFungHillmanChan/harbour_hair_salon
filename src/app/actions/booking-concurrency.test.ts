@@ -53,6 +53,10 @@ function fixture(options: {
   role?: 'ADMIN' | 'USER';
   /** The salon phone in SiteSettings; absent = no settings row (no phone, no callout). */
   salonPhone?: string;
+  /** Already moved at a request made inside 48 hours (Appointment.depositLockedAt). */
+  depositLockedAt?: Date;
+  /** The booking holds a taken (CAPTURED) card deposit. */
+  capturedDeposit?: boolean;
 } & NotificationTimingHooks = {}) {
   const originalDate = options.currentDate ?? new Date('2099-09-14T12:00:00Z');
   const appointment = {
@@ -62,6 +66,7 @@ function fixture(options: {
     updatedAt: new Date('2099-09-01T00:00:00Z'), treatwellBookingId: null,
     rescheduleRequestedDate: (options.openRequest?.requestedDate ?? null) as Date | null,
     rescheduleRequestedAt: (options.openRequest?.requestedAt ?? null) as Date | null,
+    depositLockedAt: (options.depositLockedAt ?? null) as Date | null,
     user: { name: 'Customer', email: 'customer@example.test' },
     stylist: { name: 'Stylist', treatwellExternalId: null },
     service: { name: 'Cut', duration: 30, price: 100, requiresPatchTest: options.requiresPatchTest ?? false, treatwellExternalId: null },
@@ -138,7 +143,7 @@ function fixture(options: {
     availability: { findFirst: async ({ where }: { where: { dayOfWeek: number } }) =>
       options.offDays?.includes(where.dayOfWeek) ? null : ({ startTime: '09:00', endTime: options.hoursEnd ?? '18:00', isOff: false }) },
     // No card deposit on this booking (deposits: admin-deposit.test.ts, booking-cancel-deposit.test.ts).
-    paymentAttempt: { findUnique: async () => null },
+    paymentAttempt: { findUnique: async () => (options.capturedDeposit ? { status: 'CAPTURED' } : null) },
     googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [
       ...(options.externalConflict ? [{ stylistId: 'stylist-1', start: new Date('2099-09-14T12:15:00Z'), end: new Date('2099-09-14T13:00:00Z') }] : []),
@@ -725,6 +730,43 @@ test('approval moves the booking to the requested time, keeps frozen price/durat
   assert.equal(payload.options.oldDate, '2099-09-14T12:00:00.000Z');
   assert.equal(payload.appointment.price.amountPence, 8000);
   assert.equal(payload.appointment.service.duration, 60);
+});
+
+// Owner decision 2026-10-18 (option A): asked for less than 48 hours before the
+// booking, when cancelling would already keep the deposit, it stays kept at the new time.
+const LATE_REQUEST = { requestedDate: new Date('2099-09-25T09:00:00Z'), requestedAt: new Date('2099-09-13T10:00:00Z') };
+
+test('approving a request made less than 48 hours before the booking locks its deposit, and the email says so', async () => {
+  const f = fixture({ openRequest: LATE_REQUEST, capturedDeposit: true });
+  assert.equal((await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', LATE_REQUEST.requestedAt.toISOString())).success, true);
+  assert.equal(f.appointment.date.toISOString(), '2099-09-25T09:00:00.000Z');
+  assert.equal(f.appointment.depositLockedAt?.toISOString(), '2099-09-13T10:00:00.000Z', 'dated by the request');
+  assert.equal(JSON.parse(f.events[0].payloadJson).options.depositLocked, true);
+  assert.deepEqual(f.audits.at(-1)?.metadata, {
+    from: '2099-09-14T12:00:00.000Z', to: '2099-09-25T09:00:00.000Z', requestedAt: '2099-09-13T10:00:00.000Z', depositLockedAt: '2099-09-13T10:00:00.000Z',
+  });
+});
+
+test('a request made 48 hours or more before the booking leaves the deposit refundable by the new time\'s own rule', async () => {
+  for (const requestedAt of [new Date('2099-09-01T11:00:00Z'), new Date('2099-09-12T12:00:00Z')]) {
+    const f = fixture({ openRequest: { ...OPEN_REQUEST, requestedAt }, capturedDeposit: true });
+    assert.equal((await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', requestedAt.toISOString())).success, true);
+    assert.equal(f.appointment.depositLockedAt, null, `${requestedAt.toISOString()}: exactly 48 hours counts as in time`);
+    assert.equal(JSON.parse(f.events[0].payloadJson).options.depositLocked, undefined);
+  }
+});
+
+test('once locked, a deposit stays locked through later moves; without a taken deposit the email says nothing', async () => {
+  const locked = new Date('2099-08-30T10:00:00Z');
+  const again = fixture({ openRequest: OPEN_REQUEST, depositLockedAt: locked, capturedDeposit: true });
+  assert.equal((await again.admin.decideRescheduleRequest(again.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString())).success, true);
+  assert.equal(again.appointment.depositLockedAt?.toISOString(), locked.toISOString());
+  assert.equal(JSON.parse(again.events[0].payloadJson).options.depositLocked, true);
+
+  const noDeposit = fixture({ openRequest: LATE_REQUEST });
+  assert.equal((await noDeposit.admin.decideRescheduleRequest(noDeposit.appointment.id, 'APPROVE', LATE_REQUEST.requestedAt.toISOString())).success, true);
+  assert.ok(noDeposit.appointment.depositLockedAt, 'locked all the same (nothing to keep, so nothing changes for the customer)');
+  assert.equal(JSON.parse(noDeposit.events[0].payloadJson).options.depositLocked, undefined);
 });
 
 test('approval refreshes the stylist\'s Fresha feeds before the readiness check', async () => {

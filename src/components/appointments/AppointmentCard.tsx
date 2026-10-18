@@ -42,6 +42,8 @@ type SerializedAppointment = {
   consultationCreditPence?: number | null;
   /** The card deposit's state (lib/deposit-display.ts); absent or null: none. */
   deposit?: DepositView | null;
+  /** Moved at the customer's request made inside DEPOSIT_REFUND_NOTICE_HOURS: cancelling keeps the deposit (Appointment.depositLockedAt). */
+  depositLocked?: boolean;
   hasReview?: boolean;
   request: RescheduleRequestView;
   /** The entry for the customer's own calendar: confirmed, upcoming bookings only. */
@@ -95,8 +97,10 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
     const hoursUntil = (appointmentDate.getTime() - Date.now()) / (1000 * 60 * 60);
     return hoursUntil < 24;
   });
-  // Cancelling from now on keeps a taken deposit (DEPOSIT_REFUND_NOTICE_HOURS).
-  const [pastRefundDeadline] = useState(() => !isDepositRefundableOnCancel(appointmentDate, new Date()));
+  // Cancelling from now on keeps a taken deposit (DEPOSIT_REFUND_NOTICE_HOURS,
+  // or for good once moved at a request made inside that window).
+  const depositLocked = appointment.depositLocked === true;
+  const [pastRefundDeadline] = useState(() => depositLocked || !isDepositRefundableOnCancel(appointmentDate, new Date()));
   const refundDeadline = new Date(appointmentDate.getTime() - DEPOSIT_REFUND_NOTICE_HOURS * 3_600_000);
 
   // Pin to salon time so the server render (UTC on Vercel) and the browser render
@@ -164,9 +168,9 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
     // click, and the server is told which was shown (cancelAppointment).
     const amount = deposit ? formatPrice(deposit.amountPence) : '';
     const depositKept = deposit?.state === 'PAID' && appointment.status === 'CONFIRMED'
-      && (refundDeadlinePassed || !isDepositRefundableOnCancel(appointmentDate, new Date()));
+      && (depositLocked || refundDeadlinePassed || !isDepositRefundableOnCancel(appointmentDate, new Date()));
     const confirmText = depositKept
-      ? t('card.confirmCancelKept', { amount, hours: DEPOSIT_REFUND_NOTICE_HOURS })
+      ? t(depositLocked ? 'card.confirmCancelKeptMoved' : 'card.confirmCancelKept', { amount, hours: DEPOSIT_REFUND_NOTICE_HOURS })
       : deposit?.state === 'PAID'
         ? t('card.confirmCancelRefund', { amount })
         : deposit?.state === 'HELD'
@@ -243,7 +247,9 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             {/* A taken deposit on a confirmed booking: until when cancelling refunds it. */}
             {deposit?.state === 'PAID' && appointment.status === 'CONFIRMED' && isUpcoming && (
               <p className="text-xs text-zinc-500">
-                {pastRefundDeadline || refundDeadlinePassed
+                {depositLocked
+                  ? t('card.depositKeptAfterMove', { hours: DEPOSIT_REFUND_NOTICE_HOURS })
+                  : pastRefundDeadline || refundDeadlinePassed
                   ? t('card.depositKeptIfCancelled', { hours: DEPOSIT_REFUND_NOTICE_HOURS })
                   : t('card.refundUntil', { date: formatSalonLongDate(locale, refundDeadline), time: formatSalonClock(locale, refundDeadline) })}
               </p>
@@ -363,6 +369,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
           stylistId={appointment.stylistId}
           serviceDuration={appointment.service.duration}
           currentDate={appointment.date}
+          keptDepositPence={deposit?.state === 'PAID' && (pastRefundDeadline || refundDeadlinePassed) ? deposit.amountPence : null}
           onSent={() => setSent(true)}
           onClose={() => {
             setShowReschedule(false);
