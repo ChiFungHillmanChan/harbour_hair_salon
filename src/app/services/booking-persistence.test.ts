@@ -4,6 +4,7 @@ import { loadServerModule } from '../../test/load-server-module';
 import { assertFeedInvalidatesBeforeDelivery, type NotificationTimingHooks } from '../../test/stalled-notification';
 import { BookingError } from './booking-errors';
 import { ANY_STYLIST_ID } from '../lib/booking-constants';
+import { publicGateStub } from '../../test/booking-gate-stub';
 
 before(() => mock.timers.enable({ apis: ['Date'], now: new Date('2099-09-01T12:00:00Z') }));
 after(() => mock.timers.reset());
@@ -119,13 +120,13 @@ function bookingFixture(
   const service = loadServerModule<typeof import('./booking-service')>('src/app/services/booking-service.ts', {
     '@/app/lib/prisma': db,
     './offers-service': { getActiveGlobalOffer: async () => globalOffer },
-    '@/app/lib/booking-maintenance': bookingReadiness,
+    '@/app/lib/booking-maintenance': publicGateStub(bookingReadiness),
     './notification-outbox-service': queue,
   });
   const actions = loadServerModule<typeof import('../actions/booking')>('src/app/actions/booking.ts', {
     '@/app/lib/prisma': db,
     '@/app/services/booking-service': service,
-    '@/app/lib/booking-maintenance': bookingReadiness,
+    '@/app/lib/booking-maintenance': publicGateStub(bookingReadiness),
     '@/app/services/notification-outbox-service': queue,
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1', role: 'USER' }) },
     '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, bookingDailyLimiter: { check: async () => true }, discountLimiter: { check: async () => true } },

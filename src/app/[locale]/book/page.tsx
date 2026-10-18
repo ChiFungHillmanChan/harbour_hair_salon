@@ -6,7 +6,7 @@ import { BookingWizard } from '@/components/booking/BookingWizard';
 import { BookingClosedNotice, type BookingClosedContact } from '@/components/booking/BookingClosedNotice';
 import { getAggregateRating } from '@/app/services/review-service';
 import { redirect } from 'next/navigation';
-import { isBookingEnabled } from '@/app/lib/booking-maintenance';
+import { isBookingEnabledFor } from '@/app/lib/booking-maintenance';
 import { publicSquareConfig } from '@/app/lib/online-booking-lock';
 import { activeMarketplaces } from '@/app/services/marketplace-channels';
 import { getSession } from '@/app/lib/session';
@@ -48,9 +48,15 @@ export async function generateMetadata(): Promise<Metadata> {
 // every page's footer and the sticky mobile bar. `isBookingEnabled()` is now
 // cached for 60s and invalidated by the admin toggle; see booking-maintenance.ts
 // for why that is safe. Keep it that way — and note the gate MUST stay above the
-// session check below, because a signed-out visitor is supposed to see the
+// sign-in redirect below, because a signed-out visitor is supposed to see the
 // marketplace/phone page when booking is closed, not a sign-in redirect. The
 // same order holds on /zh-hk/book.
+//
+// Beta booking: while the public gate is closed, a signed-in account on the beta
+// list (Admin → Settings) still gets the wizard. The session is read from the
+// cookie alone, and `isBookingEnabledFor` runs no query at all for a signed-out
+// visitor while booking is closed — they get the closed page, as before (beta
+// testers sign in first).
 export const dynamic = 'force-dynamic';
 
 async function getStylists(locale: Awaited<ReturnType<typeof getLocale>>) {
@@ -85,7 +91,8 @@ async function closedContact(): Promise<BookingClosedContact> {
 export default async function BookPage() {
   const [locale, t] = await Promise.all([getLocale(), getT('booking')]);
 
-  if (!(await isBookingEnabled())) {
+  const session = await getSession();
+  if (!(await isBookingEnabledFor(session?.userId))) {
     const contact = await closedContact();
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-16">
@@ -100,7 +107,6 @@ export default async function BookPage() {
   // sign in (this gate used to live in middleware). Both hops stay in the
   // visitor's language, and the return target is still a relative path that
   // sanitizeRedirect accepts.
-  const session = await getSession();
   if (!session?.userId) {
     redirect(localizeHref(locale, `/auth/signin?redirect=${encodeURIComponent(localizeHref(locale, '/book'))}`));
   }

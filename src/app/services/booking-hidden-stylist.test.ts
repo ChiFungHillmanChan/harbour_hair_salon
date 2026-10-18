@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { loadServerModule } from '../../test/load-server-module';
 import { ANY_STYLIST_ID } from '../lib/booking-constants';
 import { resolveSalonDateTime } from './salon-time';
+import { publicGateStub } from '../../test/booking-gate-stub';
 
 // A stylist switched off "Show on website" (Stylist.showOnWebsite false) is
 // never offered to a customer making a NEW booking — not by name, not through
@@ -38,7 +39,7 @@ function fixture(input: { shaniaShown?: boolean } = {}) {
   };
   return loadServerModule<typeof import('./booking-service')>('src/app/services/booking-service.ts', {
     '@/app/lib/prisma': db,
-    '@/app/lib/booking-maintenance': { assertOnlineBookingReady: async () => ({}) },
+    '@/app/lib/booking-maintenance': publicGateStub({ assertOnlineBookingReady: async () => ({}) }),
     './notification-outbox-service': {},
     './pricing/quote-service': { quoteForNewBooking: async () => ({ service: { id: 'svc', duration: 60, treatwellExternalId: null }, quote: { amountPence: 3000 } }) },
   });

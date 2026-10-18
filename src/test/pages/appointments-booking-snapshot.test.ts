@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../load-server-module';
 import { translator, type Namespace } from '../../i18n/messages';
+import { publicGateStub } from '../booking-gate-stub';
 
 test('My Bookings sends the recorded price and duration to cards and their reschedule modal', async () => {
   const card = () => null;
@@ -25,7 +26,7 @@ test('My Bookings sends the recorded price and duration to cards and their resch
     '@/components/admin/Pagination': { Pagination: () => null },
     '@/app/lib/prisma': { user: { findUnique: async () => ({ email: 'customer@example.com', emailVerifiedAt: new Date('2026-01-01T00:00:00Z'), oauthAccounts: [] }) }, appointment: { findMany: async ({ where }: { where: { OR?: unknown } }) => where.OR ? [] : appointments } },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1' }) },
-    '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
+    '@/app/lib/booking-maintenance': publicGateStub({ isBookingEnabled: async () => true }),
     '@/components/appointments/AppointmentCard': { AppointmentCard: card },
     '@/components/auth/VerifyEmailResendForm': { VerifyEmailResendForm: () => null },
     '@/i18n/ClientMessages': { ClientMessages: ({ children }: { children: unknown }) => children },

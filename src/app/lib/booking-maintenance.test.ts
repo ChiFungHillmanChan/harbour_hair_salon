@@ -237,3 +237,180 @@ test('a genuinely closed salon is still cached, so closed pages do not query the
     assert.equal(f.store.get('booking-open'), false, 'the MAINTENANCE answer is stored');
   });
 });
+
+// ── Beta booking (owner decision 2026-10-18) ────────────────────────────────
+// While the public gate is closed, a signed-in account on the beta list
+// (SiteSettings.bookingBetaEmails) still books online. The public functions
+// above keep their meaning; the *For variants add the beta check.
+
+type BetaOptions = {
+  list?: string;
+  email?: string | null;
+  calendarReady?: boolean;
+  channels?: number;
+  bookingEnabled?: boolean;
+  settingsError?: boolean;
+};
+
+function betaFixture(options: BetaOptions = {}) {
+  const calls: string[] = [];
+  const db = {
+    siteSettings: { findUnique: async () => {
+      calls.push('settings');
+      if (options.settingsError) throw new Error("Can't reach database server");
+      return { bookingEnabled: options.bookingEnabled ?? false, phone: '01234', bookingBetaEmails: options.list ?? 'someone@example.com, hillmanchan709@gmail.com' };
+    } },
+    user: { findUnique: async ({ where, select }: { where: { id: string }; select: Record<string, boolean> }) => {
+      calls.push(`user:${where.id}`);
+      assert.deepEqual(select, { email: true }, 'the beta check reads the email alone');
+      return options.email === null ? null : { email: options.email ?? 'HillmanChan709@Gmail.com' };
+    } },
+    calendarConnection: { count: async () => { calls.push('channels'); return options.channels ?? 0; } },
+  };
+  const maintenance = loadServerModule<typeof import('./booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
+    '@/app/lib/prisma': db,
+    '@/app/services/integration-readiness': { checkCalendarBookingReadiness: async (tx: unknown) => {
+      calls.push('calendar');
+      assert.equal(tx, db);
+      return { ready: options.calendarReady ?? true, blockers: [] };
+    } },
+    // Fails while notifications are off: beta booking must not depend on it.
+    '@/app/services/operations-readiness': { checkOperationsRuntimeReadiness: async () => { calls.push('operations'); return { ready: false, blockers: ['notifications'] }; } },
+    'next/cache': { unstable_cache: (callback: () => Promise<boolean>) => callback },
+  });
+  return { maintenance, db, calls };
+}
+
+/** Production's flags today: booking emails off, calendar sync on. */
+async function withClosedProductionFlags(run: () => Promise<void>, overrides: Record<string, string | undefined> = {}) {
+  const env = process.env as Record<string, string | undefined>;
+  const keys = ['NOTIFICATIONS_ENABLED', 'CALENDAR_SYNC_ENABLED'];
+  const previous = Object.fromEntries(keys.map((key) => [key, env[key]]));
+  const errors = console.error;
+  console.error = () => {};
+  try {
+    delete env.NOTIFICATIONS_ENABLED;
+    env.CALENDAR_SYNC_ENABLED = 'true';
+    for (const [key, value] of Object.entries(overrides)) {
+      if (value === undefined) delete env[key]; else env[key] = value;
+    }
+    await run();
+  } finally {
+    console.error = errors;
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete env[key]; else env[key] = value;
+    }
+  }
+}
+
+const isMaintenance = (error: unknown) => error instanceof BookingError && error.code === 'MAINTENANCE';
+
+test('beta: while booking is closed, a tester on the list is let in, matched case-insensitively', async () => {
+  await withClosedProductionFlags(async () => {
+    const f = betaFixture();
+    await assert.rejects(f.maintenance.assertOnlineBookingReady(f.db as never), isMaintenance, 'the public gate is unchanged');
+    assert.deepEqual(await f.maintenance.assertOnlineBookingReadyFor(f.db as never, 'user-1'), { bookingEnabled: false, phone: '01234' });
+    assert.equal(await f.maintenance.isBookingEnabled(), false, 'the public answer is unchanged');
+    assert.equal(await f.maintenance.isBookingEnabledFor('user-1'), true);
+    assert.equal(await f.maintenance.isBetaBookingOpenFor('user-1'), true);
+    assert.equal(f.calls.includes('operations'), false, 'operations readiness (which needs notifications) is not required');
+  });
+});
+
+test('beta: a signed-in account that is not on the list stays closed', async () => {
+  await withClosedProductionFlags(async () => {
+    for (const options of [{ email: 'stranger@example.com' }, { email: null }, { list: '' }, { list: 'hillmanchan709@gmail.co' }] as BetaOptions[]) {
+      const f = betaFixture(options);
+      await assert.rejects(f.maintenance.assertOnlineBookingReadyFor(f.db as never, 'user-2'), isMaintenance, JSON.stringify(options));
+      assert.equal(await f.maintenance.isBookingEnabledFor('user-2'), false, JSON.stringify(options));
+      assert.equal(f.calls.includes('calendar'), false, 'no calendar readiness for a non-tester');
+    }
+    // An empty list costs one query: the account is never read.
+    const empty = betaFixture({ list: '  ' });
+    assert.equal(await empty.maintenance.isBookingEnabledFor('user-2'), false);
+    assert.deepEqual(empty.calls, ['settings']);
+  });
+});
+
+test('beta: an anonymous caller while booking is closed is refused without a single query', async () => {
+  await withClosedProductionFlags(async () => {
+    const f = betaFixture();
+    for (const userId of [undefined, null, '']) {
+      await assert.rejects(f.maintenance.assertOnlineBookingReadyFor(f.db as never, userId), isMaintenance);
+      assert.equal(await f.maintenance.isBookingEnabledFor(userId), false);
+      assert.equal(await f.maintenance.isBetaBookingOpenFor(userId), false);
+    }
+    assert.deepEqual(f.calls, [], 'no database read for a signed-out visitor (Neon rule)');
+  });
+});
+
+test('beta: production still needs Square production credentials, decided before any query', async () => {
+  for (const square of [{}, { ...SQUARE_PRODUCTION, SQUARE_ENVIRONMENT: 'sandbox', SQUARE_APPLICATION_ID: 'sandbox-sq0idb-test-application' }]) {
+    await inProductionRuntime(square, async () => {
+      await withClosedProductionFlags(async () => {
+        const f = betaFixture();
+        await assert.rejects(f.maintenance.assertOnlineBookingReadyFor(f.db as never, 'user-1'), isMaintenance);
+        assert.equal(await f.maintenance.isBookingEnabledFor('user-1'), false);
+        assert.deepEqual(f.calls, [], 'the payments lock answers first');
+      });
+    });
+  }
+  await inProductionRuntime(SQUARE_PRODUCTION, async () => {
+    await withClosedProductionFlags(async () => {
+      const f = betaFixture();
+      assert.equal(await f.maintenance.isBookingEnabledFor('user-1'), true, 'with production keys a tester books while notifications are off');
+      assert.equal(await f.maintenance.isBookingEnabled(), false, 'and the public stays closed');
+    });
+  });
+});
+
+test('beta: a tester is refused when the calendars are not ready, or channels receive bookings without calendar sync', async () => {
+  await withClosedProductionFlags(async () => {
+    const f = betaFixture({ calendarReady: false });
+    await assert.rejects(f.maintenance.assertOnlineBookingReadyFor(f.db as never, 'user-1'), isMaintenance);
+    assert.equal(await f.maintenance.isBookingEnabledFor('user-1'), false);
+  });
+  await withClosedProductionFlags(async () => {
+    const f = betaFixture({ channels: 1 });
+    await assert.rejects(f.maintenance.assertOnlineBookingReadyFor(f.db as never, 'user-1'), isMaintenance);
+    assert.equal(await f.maintenance.isBookingEnabledFor('user-1'), false);
+  }, { CALENDAR_SYNC_ENABLED: 'false' });
+  await withClosedProductionFlags(async () => {
+    const f = betaFixture({ channels: 0 });
+    assert.equal(await f.maintenance.isBookingEnabledFor('user-1'), true, 'no receiving channel: calendar sync is not needed');
+  }, { CALENDAR_SYNC_ENABLED: 'false' });
+});
+
+test('beta: when the public gate is open, the beta list is never consulted', async () => {
+  await withClosedProductionFlags(async () => {
+    const f = betaFixture({ bookingEnabled: true, email: 'stranger@example.com' });
+    // Booking is open to everyone here (operations readiness passes below).
+    const open = loadServerModule<typeof import('./booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
+      '@/app/lib/prisma': f.db,
+      '@/app/services/integration-readiness': { checkCalendarBookingReadiness: async () => ({ ready: true, blockers: [] }) },
+      '@/app/services/operations-readiness': { checkOperationsRuntimeReadiness: async () => ({ ready: true, blockers: [] }) },
+      'next/cache': { unstable_cache: (callback: () => Promise<boolean>) => callback },
+    });
+    const settings = await open.assertOnlineBookingReadyFor(f.db as never, 'user-2');
+    assert.equal(settings.bookingEnabled, true);
+    assert.equal(settings.phone, '01234');
+    assert.equal(await open.isBookingEnabledFor('user-2'), true);
+    assert.equal(await open.isBookingEnabledFor(null), true);
+    assert.equal(f.calls.some((call) => call.startsWith('user:')), false);
+  }, { NOTIFICATIONS_ENABLED: 'true' });
+});
+
+test('beta: a database fault propagates from the booking gate, and closes the page check for that request only', async () => {
+  await withClosedProductionFlags(async () => {
+    const f = betaFixture({ settingsError: true });
+    await assert.rejects(f.maintenance.assertOnlineBookingReadyFor(f.db as never, 'user-1'), /reach database/, 'never turned into MAINTENANCE');
+    assert.equal(await f.maintenance.isBookingEnabledFor('user-1'), false);
+    assert.equal(await f.maintenance.isBetaBookingOpenFor('user-1'), false);
+  });
+  // With the public gate reachable, its own faults propagate untouched too.
+  await withClosedProductionFlags(async () => {
+    const f = betaFixture({ settingsError: true });
+    await assert.rejects(f.maintenance.assertOnlineBookingReadyFor(f.db as never, 'user-1'), /reach database/);
+    assert.deepEqual(f.calls, ['settings'], 'the beta check is not tried after a fault');
+  }, { NOTIFICATIONS_ENABLED: 'true' });
+});

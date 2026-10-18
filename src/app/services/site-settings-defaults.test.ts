@@ -44,14 +44,26 @@ test('the migration adds the column defaulting to false', () => {
   assert.match(sql, /ADD COLUMN\s+"bookingEnabled"\s+BOOLEAN NOT NULL DEFAULT false/i);
 });
 
-test('all five booking entry points gate on isBookingEnabled', () => {
+test('all five booking entry points gate on isBookingEnabled, with the beta list only behind it', () => {
   const actions = readFileSync(join(root, 'app/actions/booking.ts'), 'utf8');
-  const guards = actions.match(/if \(!\(await isBookingEnabled\(\)\)\)/g) ?? [];
-  assert.equal(
-    guards.length,
-    5,
-    'getAvailableSlotsAction, fetchSlots, fetchBookingDays, submitBooking and requestReschedule must each gate',
-  );
+  const body = (name: string) => {
+    const start = actions.indexOf(`export async function ${name}(`);
+    assert.ok(start > -1, `${name} must exist`);
+    const next = actions.indexOf('export async function', start + 1);
+    return actions.slice(start, next === -1 ? undefined : next);
+  };
+  // The availability lookups refuse a signed-out caller at once and leave the
+  // beta check (a database read) until after their own input and rate checks.
+  for (const name of ['getAvailableSlotsAction', 'fetchSlots', 'fetchBookingDays']) {
+    assert.match(body(name), /const gate = await availabilityGate\(\);\s*if \(gate\.state === 'CLOSED'\)/, name);
+    assert.match(body(name), /if \(!\(await availabilityOpen\(gate\)\)\)/, name);
+  }
+  for (const name of ['submitBooking', 'requestReschedule']) {
+    assert.match(body(name), /if \(!\(await bookingOpenForCaller\(\)\)\)/, name);
+  }
+  // Both helpers ask the public gate first; beta testers only ever add to it.
+  assert.match(actions, /async function bookingOpenForCaller\(\)[^{]*\{\s*if \(await isBookingEnabled\(\)\) return true;/);
+  assert.match(actions, /async function availabilityGate\(\)[^{]*\{\s*if \(await isBookingEnabled\(\)\) return \{ state: 'OPEN' \};/);
   // The old compile-time constant must be fully gone from the gating path.
   assert.doesNotMatch(actions, /if \(BOOKING_MAINTENANCE\)/);
 });

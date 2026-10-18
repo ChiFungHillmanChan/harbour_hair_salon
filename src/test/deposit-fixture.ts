@@ -3,6 +3,7 @@ import { appointmentEmailContent, type AppointmentEmailKind, type EmailAppointme
 import { SquareGatewayError, type SquarePayment, type SquareRefund } from '../app/services/square-gateway';
 import { BookingError, SlotUnavailableError } from '../app/services/booking-errors';
 import type { Locale } from '../i18n/config';
+import { publicGateStub } from './booking-gate-stub';
 
 /**
  * One booking and its card deposit, for the phase-S3 money lifecycle
@@ -314,7 +315,7 @@ export function depositFixture(options: DepositFixtureOptions = {}) {
   const customer = loadServerModule<typeof import('../app/actions/booking')>('src/app/actions/booking.ts', {
     ...common,
     '@/app/lib/session': { verifySession: async () => ({ userId: options.customerId ?? booking.userId, role: 'USER' }) },
-    '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true, assertOnlineBookingReady: async () => ({ bookingEnabled: true, phone: '07831 830898' }) },
+    '@/app/lib/booking-maintenance': publicGateStub({ isBookingEnabled: async () => true, assertOnlineBookingReady: async () => ({ bookingEnabled: true, phone: '07831 830898' }) }),
     '@/app/lib/rate-limit': {
       bookingLimiter: { check: async () => true }, availabilityLimiter: { check: async () => true },
       rescheduleLimiter: { check: async () => true }, appointmentRescheduleLimiter: { check: async () => true },

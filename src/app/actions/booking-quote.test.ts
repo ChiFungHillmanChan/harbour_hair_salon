@@ -17,10 +17,14 @@ type Options = {
   settings?: Record<string, unknown> | null;
   services?: Record<string, ReturnType<typeof serviceRow>>;
   databaseDown?: boolean;
+  /** The session cookie's account (none: signed out). */
+  userId?: string;
+  /** Whether that account is a beta tester (lib/booking-maintenance.ts). */
+  betaTester?: boolean;
 };
 
 function fixture(options: Options = {}) {
-  const calls = { gate: 0, limiter: [] as string[], reads: [] as string[], errors: 0 };
+  const calls = { gate: 0, limiter: [] as string[], reads: [] as string[], errors: 0, beta: [] as (string | null | undefined)[], sessions: 0 };
   const services = options.services ?? { cut: serviceRow() };
   const unreachable = () => { throw new Error("Can't reach database server"); };
   const db = {
@@ -44,7 +48,12 @@ function fixture(options: Options = {}) {
       headers: async () => new Headers(options.forwardedFor === null ? {} : { 'x-forwarded-for': options.forwardedFor ?? '203.0.113.7, 10.0.0.1' }),
     },
     '@/app/lib/prisma': db,
-    '@/app/lib/booking-maintenance': { isBookingEnabled: async () => { calls.gate++; return options.open ?? true; } },
+    '@/app/lib/booking-maintenance': {
+      isBookingEnabled: async () => { calls.gate++; return options.open ?? true; },
+      // The beta check reads the database; here it only records whom it was asked about.
+      isBetaBookingOpenFor: async (userId: string | null | undefined) => { calls.beta.push(userId); return options.betaTester ?? false; },
+    },
+    '@/app/lib/session': { getSession: async () => { calls.sessions++; return options.userId ? { userId: options.userId } : null; } },
     // The same limiter object the public availability actions use (by name).
     '@/app/lib/rate-limit': { availabilityLimiter: { check: async (key: string) => { calls.limiter.push(key); return options.allowed ?? true; } } },
   });
@@ -91,7 +100,7 @@ test('junk ids are refused before the booking gate, the limiter or the database'
   for (const id of ['', '   ', 'x'.repeat(65), 42, null, undefined, { id: 'cut' }, ['cut']]) {
     assert.deepEqual(await f.actions.previewBookingQuote(id as string), { ok: false }, JSON.stringify(id));
   }
-  assert.deepEqual(f.calls, { gate: 0, limiter: [], reads: [], errors: 0 });
+  assert.deepEqual(f.calls, { gate: 0, limiter: [], reads: [], errors: 0, beta: [], sessions: 0 });
 });
 
 test('while booking is closed nothing is quoted, the budget is not spent and the database is not woken', async () => {
@@ -100,6 +109,31 @@ test('while booking is closed nothing is quoted, the budget is not spent and the
   assert.equal(f.calls.gate, 1);
   assert.deepEqual(f.calls.limiter, []);
   assert.deepEqual(f.calls.reads, []);
+  assert.deepEqual(f.calls.beta, [], 'a signed-out visitor never reaches the beta check');
+});
+
+test('while booking is open, the session is not even read', async () => {
+  const f = fixture({ userId: 'user-1' });
+  assert.equal((await f.actions.previewBookingQuote('cut')).ok, true);
+  assert.equal(f.calls.sessions, 0);
+  assert.deepEqual(f.calls.beta, []);
+});
+
+test('beta: while booking is closed a beta tester is quoted, checked only after the address budget', async () => {
+  const f = fixture({ open: false, userId: 'user-1', betaTester: true });
+  assert.deepEqual(await f.actions.previewBookingQuote('cut'), { ok: true, amountPence: 5000, depositPence: 1000, remainderPence: 4000 });
+  assert.deepEqual(f.calls.beta, ['user-1']);
+  assert.deepEqual(f.calls.limiter, ['203.0.113.7']);
+});
+
+test('beta: a signed-in account that is not a tester gets nothing; over budget, the beta check is never run', async () => {
+  const stranger = fixture({ open: false, userId: 'user-2', betaTester: false });
+  assert.deepEqual(await stranger.actions.previewBookingQuote('cut'), { ok: false });
+  assert.deepEqual(stranger.calls.beta, ['user-2']);
+  assert.deepEqual(stranger.calls.reads, []);
+  const throttled = fixture({ open: false, userId: 'user-2', allowed: false });
+  assert.deepEqual(await throttled.actions.previewBookingQuote('cut'), { ok: false });
+  assert.deepEqual(throttled.calls.beta, [], 'the beta check reads the database, so the budget comes first');
 });
 
 test('an address over the availability budget is refused before any database read', async () => {

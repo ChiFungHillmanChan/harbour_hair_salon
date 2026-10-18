@@ -65,6 +65,9 @@ function uniqueViolation(target: string) {
  * `enabled: false` closes booking at the cached page gate (isBookingEnabled);
  * `ready: false` closes it only at the authoritative check inside the booking
  * transaction, as when it closes between loading the times and confirming.
+ * `betaTesters`: the customer ids on the beta list (lib/booking-maintenance.ts),
+ * who still book while `enabled: false`; `gateUserIds` records which account
+ * each beta-aware check was asked about.
  * `deposits` is the SiteSettings deposit policy (default: off, as a row never
  * saved); `squareEnv` the environment the Square configuration is read from
  * (default: a sandbox configuration in a non-production run).
@@ -84,6 +87,8 @@ export function bookingFixture(options: {
   onAttemptReadById?: () => void;
   /** The client address the requests come from (x-forwarded-for). */
   clientIp?: string;
+  /** Customer ids on the beta list: they book while `enabled: false` (not past `ready: false`). */
+  betaTesters?: string[];
 } = {}) {
   /** The signed-in customer and their address; `asCustomer` switches them (every account is verified). */
   let customerId = 'user-1';
@@ -211,11 +216,23 @@ export function bookingFixture(options: {
     },
     dispatchAppointmentNotifications: async (appointmentId: string) => { effects.dispatches++; effects.dispatchedFor.push(appointmentId); },
   };
+  const betaTesters = new Set(options.betaTesters ?? []);
+  const gateUserIds: (string | null | undefined)[] = [];
+  const isBetaTester = (userId: string | null | undefined) => Boolean(userId && betaTesters.has(userId));
   const readiness = {
     isBookingEnabled: async () => options.enabled !== false,
     assertOnlineBookingReady: async () => {
       if (options.enabled === false || options.ready === false) throw new BookingError('MAINTENANCE');
       return { bookingEnabled: true, phone: '0113 000 0000' };
+    },
+    isBetaBookingOpenFor: async (userId: string | null | undefined) => {
+      gateUserIds.push(userId);
+      return options.ready !== false && isBetaTester(userId);
+    },
+    assertOnlineBookingReadyFor: async (_db: unknown, userId: string | null | undefined) => {
+      gateUserIds.push(userId);
+      if (options.ready === false || (options.enabled === false && !isBetaTester(userId))) throw new BookingError('MAINTENANCE');
+      return { bookingEnabled: options.enabled !== false, phone: '0113 000 0000' };
     },
   };
   const square = options.square ?? {};
@@ -248,7 +265,8 @@ export function bookingFixture(options: {
     '@/app/services/booking-service': service,
     '@/app/lib/booking-maintenance': readiness,
     '@/app/services/notification-outbox-service': queue,
-    '@/app/lib/session': { verifySession: async () => ({ userId: customerId, role: 'USER' }) },
+    // The session cookie names the same customer verifySession proves.
+    '@/app/lib/session': { verifySession: async () => ({ userId: customerId, role: 'USER' }), getSession: async () => ({ userId: customerId }) },
     '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, bookingDailyLimiter: { check: async () => true }, cancelLimiter: { check: async () => true }, availabilityLimiter: { check: async () => true }, ...declineLimiters, ...authorizeLimiters },
     '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { effects.feedInvalidations++; }, scheduleGoogleCalendarPush: () => undefined },
     '@/app/lib/online-booking-lock': { usableSquareConfig: () => realLock.usableSquareConfig(squareEnv) },
@@ -265,5 +283,5 @@ export function bookingFixture(options: {
     'next/server': { after: (callback: () => unknown) => callback() },
     'next/cache': { revalidatePath: () => undefined },
   });
-  return { service, actions, rows, attempts, notices, queuedDeposits, effects, squareCalls, liveService, gateway, asCustomer: (id: string, ip?: string) => { customerId = id; if (ip) clientIp = ip; } };
+  return { service, actions, rows, attempts, notices, queuedDeposits, effects, squareCalls, liveService, gateway, gateUserIds, asCustomer: (id: string, ip?: string) => { customerId = id; if (ip) clientIp = ip; } };
 }

@@ -15,7 +15,7 @@ import type { PriceQuote } from '@/app/services/pricing/quote';
 import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS } from '@/app/lib/booking-constants';
 import type { MessageParams } from '@/i18n/format';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
-import { verifySession } from '@/app/lib/session';
+import { getSession, verifySession } from '@/app/lib/session';
 import { appendAuditEvent } from '@/app/lib/audit';
 import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
 import { after } from 'next/server';
@@ -26,7 +26,7 @@ import {
   appointmentRescheduleLimiter, availabilityLimiter, bookingDailyLimiter, bookingLimiter, cancelLimiter, depositAuthorizeIpLimiter, depositDeclineAccountLimiter, depositDeclineIpLimiter, rescheduleLimiter,
 } from '@/app/lib/rate-limit';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
-import { isBookingEnabled, assertOnlineBookingReady } from '@/app/lib/booking-maintenance';
+import { isBookingEnabled, isBetaBookingOpenFor, assertOnlineBookingReadyFor } from '@/app/lib/booking-maintenance';
 import { isBookableDateWindow } from '@/app/services/booking-horizon';
 import { revalidateAllLocales } from '@/i18n/revalidate';
 import { headers } from 'next/headers';
@@ -56,6 +56,38 @@ async function clientAddress(): Promise<string> {
 // The availability lookups need no session, so they are limited per address.
 async function availabilityAllowed(): Promise<boolean> {
   return availabilityLimiter.check(await clientAddress());
+}
+
+/**
+ * Whether online booking is open for whoever is calling: the public gate, or,
+ * only while it is closed and the session cookie names an account, the beta
+ * list (lib/booking-maintenance.ts). The cookie is read only when needed, and
+ * a signed-out caller costs no query; callers still run verifySession().
+ */
+async function bookingOpenForCaller(): Promise<boolean> {
+  if (await isBookingEnabled()) return true;
+  return isBetaBookingOpenFor((await getSession())?.userId);
+}
+
+/**
+ * The availability lookups' gate, in two steps. This first step never queries
+ * the database while booking is closed: the public answer, else the session
+ * cookie. CLOSED = closed and signed out. BETA = closed but signed in, so
+ * perhaps a beta tester — `availabilityOpen` decides that only AFTER the
+ * lookup's own input checks and per-address limit, because the beta check reads
+ * the database and any registered account could otherwise call it unthrottled.
+ */
+type AvailabilityGate = { state: 'OPEN' } | { state: 'CLOSED' } | { state: 'BETA'; userId: string };
+
+async function availabilityGate(): Promise<AvailabilityGate> {
+  if (await isBookingEnabled()) return { state: 'OPEN' };
+  const userId = (await getSession())?.userId;
+  return userId ? { state: 'BETA', userId } : { state: 'CLOSED' };
+}
+
+async function availabilityOpen(gate: AvailabilityGate): Promise<boolean> {
+  if (gate.state === 'OPEN') return true;
+  return gate.state === 'BETA' && isBetaBookingOpenFor(gate.userId);
 }
 
 /**
@@ -152,7 +184,8 @@ async function checkStylistHours(
 
 export async function getAvailableSlotsAction(prevState: unknown, formData: FormData) {
   const locale = await getActionLocale();
-  if (!(await isBookingEnabled())) {
+  const gate = await availabilityGate();
+  if (gate.state === 'CLOSED') {
     return { error: bookingErrorText(locale, 'MAINTENANCE') };
   }
 
@@ -171,6 +204,9 @@ export async function getAvailableSlotsAction(prevState: unknown, formData: Form
   }
   if (!(await availabilityAllowed())) {
     return { error: bookingErrorText(locale, 'TOO_MANY_ATTEMPTS') };
+  }
+  if (!(await availabilityOpen(gate))) {
+    return { error: bookingErrorText(locale, 'MAINTENANCE') };
   }
 
   try {
@@ -205,7 +241,8 @@ export async function fetchSlots(
   date: string,
   serviceDuration: number,
 ): Promise<FetchSlotsResult> {
-  if (!(await isBookingEnabled())) {
+  const gate = await availabilityGate();
+  if (gate.state === 'CLOSED') {
     return { ok: false, reason: 'CLOSED' };
   }
 
@@ -218,6 +255,9 @@ export async function fetchSlots(
   }
   if (!(await availabilityAllowed())) {
     return { ok: false };
+  }
+  if (!(await availabilityOpen(gate))) {
+    return { ok: false, reason: 'CLOSED' };
   }
   try {
     const slots =
@@ -245,7 +285,8 @@ export async function fetchBookingDays(
   dates: string[],
   serviceDuration: number,
 ): Promise<FetchBookingDaysResult> {
-  if (!(await isBookingEnabled())) {
+  const gate = await availabilityGate();
+  if (gate.state === 'CLOSED') {
     return { ok: false, reason: 'CLOSED' };
   }
   const duration = SERVICE_DURATION.safeParse(serviceDuration);
@@ -256,6 +297,9 @@ export async function fetchBookingDays(
   }
   if (!(await availabilityAllowed())) {
     return { ok: false };
+  }
+  if (!(await availabilityOpen(gate))) {
+    return { ok: false, reason: 'CLOSED' };
   }
   try {
     return { ok: true, days: await getBookingDays(stylistId, [...new Set(dates)], duration.data) };
@@ -324,7 +368,9 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
   const locale = await getActionLocale();
   // Hard server-side block while online booking is in maintenance — checked
   // before anything else so no client (or direct action call) can bypass it.
-  if (!(await isBookingEnabled())) {
+  // A beta tester passes while it is closed; the booking transaction decides
+  // again (assertOnlineBookingReadyFor) for the account verifySession proves.
+  if (!(await bookingOpenForCaller())) {
     return failure(locale, 'MAINTENANCE');
   }
 
@@ -847,8 +893,9 @@ const requestInclude = {
  */
 export async function requestReschedule(appointmentId: string, dateStr: string, time: string) {
   const locale = await getActionLocale();
-  // A request books nothing yet, but it is still online booking: closed with it.
-  if (!(await isBookingEnabled())) return failure(locale, 'MAINTENANCE');
+  // A request books nothing yet, but it is still online booking: closed with it
+  // (beta testers excepted, as for new bookings).
+  if (!(await bookingOpenForCaller())) return failure(locale, 'MAINTENANCE');
 
   const session = await verifySession();
   if (!isValidSalonDate(dateStr) || !isValidSalonTime(time)) return failure(locale, 'INVALID_DATE_TIME');
@@ -895,7 +942,7 @@ export async function requestReschedule(appointmentId: string, dateStr: string, 
   try {
     const requestedAt = new Date();
     await runSerializableWithRetry(async (tx) => {
-      await assertOnlineBookingReady(tx);
+      await assertOnlineBookingReadyFor(tx, session.userId);
       // Refuse a time that is already taken; it is not held after this.
       await assertAppointmentSlotAvailable(tx, appointment, newDate);
       const changed = await tx.appointment.updateMany({

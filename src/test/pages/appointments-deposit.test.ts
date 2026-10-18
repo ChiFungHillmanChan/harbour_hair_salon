@@ -4,6 +4,7 @@ import { loadServerModule } from '../load-server-module';
 import { translator, type Namespace } from '../../i18n/messages';
 import { formatGBP } from '../../app/services/pricing/money';
 import type { Locale } from '../../i18n/config';
+import { publicGateStub } from '../booking-gate-stub';
 
 // My Bookings shows each booking's card deposit by what happened to the money
 // (lib/deposit-display.ts): held, paid, refund pending, refunded, released or
@@ -21,7 +22,7 @@ async function cards(rows: Record<string, unknown>[]) {
       appointment: { findMany: async ({ where, select }: { where: { OR?: unknown }; select: unknown }) => { selects.push(select); return where.OR ? [] : rows; } },
     },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'user-1' }) },
-    '@/app/lib/booking-maintenance': { isBookingEnabled: async () => true },
+    '@/app/lib/booking-maintenance': publicGateStub({ isBookingEnabled: async () => true }),
     '@/components/appointments/AppointmentCard': { AppointmentCard: card },
     '@/components/auth/VerifyEmailResendForm': { VerifyEmailResendForm: () => null },
     '@/i18n/ClientMessages': { ClientMessages: ({ children }: { children: unknown }) => children },

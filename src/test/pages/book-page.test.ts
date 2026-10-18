@@ -26,7 +26,16 @@ const SQUARE_SANDBOX = {
 };
 const lock = loadServerModule<typeof import('../../app/lib/online-booking-lock')>('src/app/lib/online-booking-lock.ts', {});
 
-function loadPage(options: { enabled: boolean; locale?: Locale; stylistTranslations?: Record<string, string>; squareEnv?: Record<string, string>; accountName?: string | null }) {
+/** Which account each page gate was asked about. */
+let gateAsked: (string | null | undefined)[] = [];
+
+/**
+ * `enabled`: the public gate. `betaTester`: the signed-in account is on the beta
+ * list (lib/booking-maintenance.ts). `userId: null`: signed out.
+ */
+function loadPage(options: { enabled: boolean; locale?: Locale; stylistTranslations?: Record<string, string>; squareEnv?: Record<string, string>; accountName?: string | null; userId?: string | null; betaTester?: boolean }) {
+  gateAsked = [];
+  const userId = options.userId === undefined ? 'user-1' : options.userId;
   const locale = options.locale ?? 'en-GB';
   const stylists = [
     { id: 'ivan', name: 'Ivan', role: 'Senior Stylist', imageUrl: null },
@@ -49,8 +58,11 @@ function loadPage(options: { enabled: boolean; locale?: Locale; stylistTranslati
     '@/components/booking/BookingClosedNotice': { BookingClosedNotice: ClosedNotice },
     '@/components/auth/VerifyEmailResendForm': { VerifyEmailResendForm: () => null },
     '@/app/services/review-service': { getAggregateRating: async () => ({ count: 0, average: 0 }) },
-    '@/app/lib/booking-maintenance': { isBookingEnabled: async () => options.enabled },
-    '@/app/lib/session': { getSession: async () => ({ userId: 'user-1' }) },
+    '@/app/lib/booking-maintenance': { isBookingEnabledFor: async (asked: string | null | undefined) => {
+      gateAsked.push(asked);
+      return options.enabled || Boolean(asked && options.betaTester);
+    } },
+    '@/app/lib/session': { getSession: async () => (userId ? { userId } : null) },
     '@/app/services/site-settings-service': { getSiteSettings: async () => SETTINGS },
     '@/app/services/pricing/public-catalog': { getPublicCatalog: async () => ({ services: [], offerings: [], categories: [] }) },
     '@/i18n/server': { getLocale: async () => locale, getT: async (namespace: Namespace) => translator(locale, namespace) },
@@ -66,6 +78,31 @@ test('closed: /book shows the shared closed notice with the salon phone and live
   assert.deepEqual(notice.props.marketplaces, CONTACT.marketplaces);
   assert.equal(typeof notice.props.t, 'function');
   assert.deepEqual(find(tree, Wizard), []);
+});
+
+test('closed: a signed-out visitor gets the closed notice, never a sign-in redirect', async () => {
+  const tree = await loadPage({ enabled: false, userId: null }).default();
+  assert.ok(find(tree, ClosedNotice)[0]);
+  assert.deepEqual(find(tree, Wizard), []);
+  assert.deepEqual(gateAsked, [undefined], 'the gate is told nobody is signed in (no beta query)');
+});
+
+test('beta: while booking is closed, a signed-in beta tester gets the wizard', async () => {
+  const tree = await loadPage({ enabled: false, betaTester: true }).default();
+  assert.ok(find(tree, Wizard)[0]);
+  assert.deepEqual(find(tree, ClosedNotice), []);
+  assert.deepEqual(gateAsked, ['user-1']);
+});
+
+test('beta: while booking is closed, any other signed-in account gets the closed notice', async () => {
+  const tree = await loadPage({ enabled: false, betaTester: false }).default();
+  assert.ok(find(tree, ClosedNotice)[0]);
+  assert.deepEqual(find(tree, Wizard), []);
+});
+
+test('open: a signed-out visitor is sent to sign in, in their language', async () => {
+  await assert.rejects(loadPage({ enabled: true, userId: null }).default(), /redirected to \/auth\/signin\?redirect=%2Fbook/);
+  await assert.rejects(loadPage({ enabled: true, userId: null, locale: 'zh-HK' }).default(), /redirected to \/zh-hk\/auth\/signin\?redirect=%2Fzh-hk%2Fbook/);
 });
 
 type WizardStylist = { id: string; role: string; translated: boolean };

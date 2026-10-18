@@ -4,7 +4,7 @@ import { VerifyEmailResendForm } from '@/components/auth/VerifyEmailResendForm';
 import prisma from '@/app/lib/prisma';
 import { OG_BASE } from '@/app/lib/og-defaults';
 import { AppointmentCard, type BookedPrice } from '@/components/appointments/AppointmentCard';
-import { isBookingEnabled } from '@/app/lib/booking-maintenance';
+import { isBookingEnabledFor } from '@/app/lib/booking-maintenance';
 import { rescheduleRequestView } from '@/app/lib/reschedule-request';
 import { pageNumber } from '@/app/lib/pagination';
 import { recordedPrice } from '@/app/services/pricing/recorded-price';
@@ -74,7 +74,8 @@ export default async function AppointmentsPage({ searchParams }: { searchParams?
     paymentAttempt: { select: depositViewSelect },
   } as const;
   const [bookingEnabled, upcomingRows, pastRows] = await Promise.all([
-    isBookingEnabled(),
+    // Open to the public, or this account is a beta tester (lib/booking-maintenance.ts).
+    isBookingEnabledFor(session.userId),
     prisma.appointment.findMany({
       where: { userId: session.userId, date: { gte: now }, status: { in: ['CONFIRMED', 'PENDING'] } },
       select, orderBy: [{ date: 'asc' }, { id: 'asc' }], take: 26, skip: (upcomingPage - 1) * 25,
