@@ -28,7 +28,7 @@ Work top to bottom. The order in §3 is **load-bearing**.
 | Online booking | **CLOSED** — `SiteSettings.bookingEnabled=false`, plus the Square lock |
 | Notifications | `NOTIFICATIONS_ENABLED=false` — customers get no booking email yet |
 | Calendar sync | `CALENDAR_SYNC_ENABLED=true`; Fresha inbound OK for all 4 stylists |
-| Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals |
+| Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals. *2026-10-18:* Lox's and Shania's "takes bookings" are off in Admin (Shania's being switched off that day), so the gate no longer checks them; Lox's gap and Shania's status: §3.3 |
 | Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed) |
 | Housekeeping | `HOUSEKEEPING_ENABLED` unset, so it is **on** since release 1 (it runs unless set to `false`; the privacy notice's retention periods depend on it). First run 03:15 UTC on 2026-10-14; checked before the deploy, production had nothing for it to close or remove (no pending requests, no expired rows) |
 | Operations diagnostics | Last run 2026-09-20, **never passed** |
@@ -166,13 +166,22 @@ Square and payment records.
 `assertOnlineBookingReady` (`src/app/lib/booking-maintenance.ts`) fails closed.
 
 - [ ] **3.1 Upgrades before customers arrive.** Neon → Launch (pay-as-you-go, ~US$11–15/month,
-      7-day restore); Resend → Pro (a booking sends 5 emails; free is 100/day); Vercel Spend
+      7-day restore); Resend → Pro (an online booking sends 3 emails since the short set of
+      2026-10-18 — salon alert, confirmation, usually a reminder — plus any change or
+      cancellation; free is 100/day); Vercel Spend
       Management US$10 **alerts only** (never pause production).
 - [ ] **3.2 Treatwell decision.** It cannot be synced (no export feed). Recommended: close it.
       Otherwise copy every Treatwell booking into Fresha at once, or accept the risk.
-- [ ] **3.3 Fresha.** Give Lox an import link; ask Fresha support why Lox's blocked times are not
-      exported; Shania shows "Calendar bookings: Off" in Fresha. Then tick Lox's and Shania's
-      outbound confirmations in Admin → Integrations.
+- [ ] **3.3 Fresha (facts corrected 2026-10-18, live data).** Funky and Ivan: Fresha sells them,
+      inbound sync on, outbound subscription confirmed — two-way, done. **Lox:** the owner says
+      Fresha does sell Lox, but in Admin → Integrations Lox's "This provider takes bookings" is
+      unticked (`receivesBookings=false`) **and** Fresha has not subscribed to Lox's website busy feed
+      (`outboundConfirmedAt` null) — two separate gaps. The owner has **paused any Lox change**
+      ("don't touch Lox for now", 2026-10-18): until Lox's feed is linked in Fresha and both are
+      set, a website booking with Lox does not block Lox on Fresha, so staff check Fresha before
+      confirming a Lox request. Still open for Fresha support: why Lox's blocked times are not
+      exported. **Shania:** not sold on Fresha (owner); her "This provider takes bookings" is being
+      switched off in Admin (2026-10-18), and she is hidden from the website anyway — nothing to link.
 - [x] **3.3b Google Calendar** — ON since 2026-10-16, on the HarbourHair diary since 2026-10-17. Original steps: Follow
       `docs/google-calendar-setup.md`: Google Cloud service account, the "Harbour website bookings"
       calendar shared with it, the five `GOOGLE_CALENDAR_*` variables on Vercel **Production only**,
@@ -202,9 +211,19 @@ Square and payment records.
       Consultation went from free to £15).
 - [x] No-show (decided 2026-10-16): the deposit is never refunded. `/booking-terms` says so (en + zh),
       and Admin → Schedule's cancel dialog starts at "keep" once a confirmed visit's time has passed.
-- [ ] Late cancellation (under 24 hours): not decided. `/booking-terms` says the salon "may keep" the
-      deposit, and that a salon cancellation is refunded in full — confirm or reword
-      (`legal.bookingTerms.cancelling`, en + zh).
+- [x] Late cancellation (decided 2026-10-18): a customer cancelling a confirmed booking **48 hours
+      or more** before it starts gets the deposit back in full; **less than 48 hours** (or a no-show),
+      it is kept; a salon cancellation is refunded in full. Customers may still cancel online until 24
+      hours before — My Bookings says the deposit is kept before they confirm, and the website keeps
+      it automatically (`KEPT`, `DEPOSIT_REFUND_NOTICE_HOURS`). For a customer who phones to cancel
+      inside 48 hours, staff untick "Refund the £X deposit" in the cancel dialog. `/booking-terms`
+      (no more "may keep"), the booking page, My Bookings and the emails say so in en + zh.
+- [x] Customer emails — the short set (decided 2026-10-18): confirmation, cancellation (a declined
+      request too), reschedule, reschedule declined/lapsed, request lapsed, late-arrival cancellation
+      and the reminder — the reminder only for a booking confirmed at least 24 hours before it starts.
+      The "request received", "reschedule request received" and review-invitation emails are switched
+      off (not deleted: `RETIRED_CUSTOMER_EMAIL_KINDS`). The salon's alerts are unchanged. The privacy
+      notice says so.
 - [ ] **Late-arrival auto-cancel (shipped OFF).** First brief the staff: while a customer is at the
       salon they tap **Arrived** (Admin → Schedule arrivals panel or the booking dialog; Mark completed
       and walk-ins count as arrived), and when a customer phones to say they're running late they tap
@@ -212,8 +231,9 @@ Square and payment records.
       switch the rule on in Admin → Settings: from then on a confirmed booking not marked Arrived 15
       minutes after its start is cancelled, its deposit kept as for a no-show, and the customer is
       emailed 30 minutes later; Restore (within 24 hours) undoes it. Only bookings made and starting
-      after the switch is turned on are affected, and never one with an open reschedule request. Apply the
-      `20261016120000_late_arrival_auto_cancel` migration to the preview database by hand as well.
+      after the switch is turned on are affected, and never one with an open reschedule request. (The
+      `20261016120000_late_arrival_auto_cancel` migration is on the preview database: it is current
+      through `20261018120000_booking_beta_emails`.)
 - **Consultation credit, "From £X" prices and Styling (2026-10-16, owner):**
   - [x] Styling (the 7 blow-dry services) is booked directly, without a consultation: a production
         data change on 2026-10-16 (`requiresConsultation=false`, audited `SERVICE.UPDATE`). The repo's
@@ -223,9 +243,10 @@ Square and payment records.
         treatments staff book in Admin → Schedule** (the booking dialog offers it, ticked). For a
         treatment booked through Fresha, Treatwell or by phone without going through Admin, the website
         cannot see it: **deduct the consultation fee at the till**.
-  - [ ] After merging, apply the `20261016140000_consultation_credit` migration to the **preview
+  - [x] After merging, apply the `20261016140000_consultation_credit` migration to the **preview
         database** by hand (as for every migration: previews never migrate), or every PR's "Deploy
-        Preview" fails.
+        Preview" fails. Done long since: the preview database is current through
+        `20261018120000_booking_beta_emails`.
 - [ ] Staff approval time (holds expire after 7 days; aim for same-day replies).
 - [ ] Legal entity name and retention periods for the privacy notice (payment records: 6 years)
       and the booking terms.
@@ -236,9 +257,10 @@ Square and payment records.
 ## 5. After booking opens — verify, do not assume
 
 - [ ] `/book` signed out → sign-in redirect; signed in → real slots.
-- [ ] One real booking: request email arrives; admin approval captures the deposit; confirmation
-      email with calendar links; Fresha shows the block within ~10 minutes; cancelling frees the
-      slot and refunds.
+- [ ] One real booking: the salon alert arrives (customers get no "request received" email since
+      2026-10-18); admin approval captures the deposit; confirmation email with calendar links;
+      Fresha shows the block within ~10 minutes; cancelling 48 hours or more ahead frees the slot
+      and refunds (inside 48 hours the deposit is kept).
 - [ ] Watch Neon CU-hours for 48 h (Neon operations log `start_compute` / `suspend_compute`).
 
 **Rollback:** Admin → Settings, switch booking off. It fails closed; customers can still cancel.

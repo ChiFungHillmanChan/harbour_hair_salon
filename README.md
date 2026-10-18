@@ -21,7 +21,8 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 - **Switched off until the salon is ready:** the late-arrival rule (Admin → Settings, after briefing staff).
 - **Google Calendar sync is on** (since 2026-10-16): since 2026-10-17 bookings are written to the salon's own "HarbourHair" diary (harbourhairuk@gmail.com), mirrored in Admin → Schedule (below); #72's "Harbour website bookings" calendar is switched off but kept ([runbook](docs/google-calendar-setup.md)). Google sign-in and the calendar's service account both live in the `harbourhair` Google Cloud project.
 - **Google diary mirror** (live since 2026-10-17): Admin → Schedule mirrors the salon's "HarbourHair" diary by colour ([runbook](docs/google-calendar-setup.md) §2b).
-- **Fresha:** Funky, Ivan and Shania exchange busy time both ways. Lox's Fresha does not import the website's busy feed yet, so staff check Fresha before confirming a Lox request ([LAUNCH.md](LAUNCH.md) §3.3).
+- **Fresha:** Funky and Ivan exchange busy time both ways (inbound on, Fresha subscribed to their website busy feeds). Fresha also sells **Lox**, but Lox's link is not set up: Admin has Lox's "This provider takes bookings" unticked and Fresha has not subscribed to Lox's website busy feed. The owner has paused any Lox change, so until it is linked a website booking with Lox does not block Lox on Fresha, and staff check Fresha before confirming a Lox request ([LAUNCH.md](LAUNCH.md) §3.3). **Shania** is not sold on Fresha (her "takes bookings" is being switched off in Admin, 2026-10-18) and is hidden from the website.
+- **Decided 2026-10-18:** the 48-hour deposit rule and the short set of customer emails (below).
 - The remaining launch steps, in order, are in [LAUNCH.md](LAUNCH.md).
 
 ## What it does
@@ -32,9 +33,10 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 - NHS and student prices need proof of eligibility at the appointment. The offer and discount-code terms are on `/offers` and `/booking-terms`.
 - Register or sign in with email + password or Google. A confirmed email address is needed before booking, and before viewing or changing a booking.
 - Request a booking: at least 2 hours ahead, and the salon confirms it. Services that need a consultation are booked as a "Consultation" or "Consultation & Patch Test" (£15; colour needs the patch test at least 48 hours before); staff then book the treatment in Admin, with the £15 taken off.
-- When deposits are on, the card is only **held** at request time. It is charged when the salon confirms, released if the request is declined, withdrawn or lapses, and refunded when a confirmed booking is cancelled (the salon keeps it for a no-show).
+- When deposits are on, the card is only **held** at request time. It is charged when the salon confirms, and released if the request is declined, withdrawn or lapses. A confirmed booking cancelled **48 hours or more** before it starts gets the deposit back in full; cancelled later, or missed, the deposit is kept (owner decision 2026-10-18; My Bookings says which before the customer confirms). If the salon cancels, the deposit is refunded.
 - When the late-arrival rule is on, a confirmed booking not marked Arrived 15 minutes after its start is cancelled and its deposit kept (staff also mark customers who phone ahead). The salon can restore it within 24 hours.
-- View and cancel bookings (24 hours or more ahead online), and request a reschedule.
+- View and cancel bookings (24 hours or more ahead online; the deposit is refunded only 48 hours or more ahead), and request a reschedule.
+- Emails (the short set, 2026-10-18): the confirmation, a reminder (only for a booking confirmed at least 24 hours before it starts), and an email for each change, cancellation or request the salon could not confirm. No "request received" or review-invitation emails.
 - Add confirmed bookings to Google Calendar or download an `.ics` file.
 - Read the [privacy notice](https://www.harbourhair.co.uk/privacy) and the [booking terms](https://www.harbourhair.co.uk/booking-terms).
 
@@ -85,7 +87,7 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
   - Any other event is a note and blocks nothing. "Show as available" is ignored.
   - Edits to the website's own events in Google are reverted.
   - It runs on Vercel Production only, never on previews.
-- Booking emails wait in an outbox and are only sent while `NOTIFICATIONS_ENABLED=true` (beta testers' bookings excepted). Account emails (verification, password reset) go out at once. Preview deployments only email the addresses in `PREVIEW_EMAIL_ALLOWLIST`, because the preview database is a copy of production.
+- Booking emails wait in an outbox and are only sent while `NOTIFICATIONS_ENABLED=true` (beta testers' bookings excepted). One online booking sends 3: the salon's alert, the customer's confirmation and (usually) a reminder; the request and reschedule-request acknowledgements and the review invitation are retired (`RETIRED_CUSTOMER_EMAIL_KINDS`). Account emails (verification, password reset) go out at once. Preview deployments only email the addresses in `PREVIEW_EMAIL_ALLOWLIST`, because the preview database is a copy of production.
 - Production is deployed **only** by [GitHub Actions](.github/workflows/deploy.yml) after CI passes on `main`.
   - The production build applies PostgreSQL migrations first. Preview builds skip them, so new migrations are applied to the preview database by hand.
   - Runs on `main` queue, and the newest commit deploys last.
