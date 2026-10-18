@@ -158,6 +158,19 @@ export function BookingWizard({ services, offerings, categories, stylists, close
   const submitting = useRef(false);
   const [heldDeposit, setHeldDeposit] = useDraftState<number | null>(`${DRAFT}:held`, null);
 
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const gateHeading = useRef<HTMLHeadingElement>(null);
+  const previousPanel = useRef({ step, pendingGateId, isSubmitted });
+  useEffect(() => {
+    const previous = previousPanel.current;
+    previousPanel.current = { step, pendingGateId, isSubmitted };
+    if (previous.step === step && previous.pendingGateId === pendingGateId && previous.isSubmitted === isSubmitted) return;
+    // A choice near the bottom of a long list must reveal the next panel.
+    const heading = pendingGateId ? gateHeading.current : stepHeading.current;
+    heading?.focus({ preventScroll: true });
+    heading?.scrollIntoView({ block: 'start' });
+  }, [step, pendingGateId, isSubmitted]);
+
   const serviceById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
   const offeringById = useMemo(() => new Map(offerings.map((offering) => [offering.id, offering])), [offerings]);
   const selectedService = selectedServiceId ? serviceById.get(selectedServiceId) ?? null : null;
@@ -443,11 +456,11 @@ export function BookingWizard({ services, offerings, categories, stylists, close
   };
 
   const renderStepIndicator = () => (
-    <div className="flex justify-center mb-8 space-x-2" aria-hidden="true">
+    <div className="flex gap-1.5 mb-5 sm:mb-8" aria-hidden="true">
       {STEPS.map((s, idx) => (
         <div
           key={s}
-          className={`h-2 w-8 sm:w-12 rounded-full ${
+          className={`h-1 flex-1 rounded-full ${
             STEPS.indexOf(step) >= idx || isSubmitted
               ? 'bg-zinc-900'
               : 'bg-gray-200'
@@ -468,13 +481,13 @@ export function BookingWizard({ services, offerings, categories, stylists, close
 
   if (isSubmitted) {
     return (
-      <div className="text-center py-12 animate-fade-in">
-        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+      <div className="max-w-xl mx-auto text-center py-8 sm:py-12">
+        <div className="w-14 h-14 bg-zinc-100 text-zinc-900 rounded-full flex items-center justify-center mx-auto mb-6">
           <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h2 className="text-3xl font-serif mb-4 text-zinc-900">{t('done.title')}</h2>
+        <h2 ref={stepHeading} tabIndex={-1} className="scroll-mt-24 text-2xl sm:text-3xl font-serif mb-4 text-zinc-900 focus:outline-none">{t('done.title')}</h2>
         <p className={`text-zinc-700 ${alreadyRequested || heldDeposit ? 'mb-3' : 'mb-8'}`}>
           {t('done.body')}
         </p>
@@ -492,7 +505,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
             // The request is made; a later visit to /book starts fresh.
             for (const key of ['step', 'service', 'stylist', 'day', 'time', 'origin', 'gate', 'offering', 'option', 'search', 'category', 'submitted', 'alreadyRequested', 'reprice', 'held']) clearDraft(`${DRAFT}:${key}`);
           }}
-          className="bg-zinc-900 text-white px-8 py-3 uppercase tracking-widest text-sm hover:bg-black rounded-md transition-colors"
+          className="inline-flex min-h-11 items-center justify-center bg-zinc-900 text-white px-5 py-2.5 font-semibold text-sm hover:bg-black rounded-md transition-colors"
         >
           {t('done.viewBookings')}
         </Link>
@@ -520,15 +533,15 @@ export function BookingWizard({ services, offerings, categories, stylists, close
     const needsConsultation = options.some((option) => option.requiresConsultation);
     const chosen = pendingOptionId ? options.find((option) => option.id === pendingOptionId) : undefined;
     return (
-      <div key={offering.id} className={`border rounded-lg shadow-sm transition-all ${isOpen ? 'border-zinc-900' : 'border-zinc-200 hover:border-zinc-400'}`}>
+      <div key={offering.id} className={`border rounded-lg transition-colors ${isOpen ? 'border-zinc-900' : 'border-zinc-200 hover:border-zinc-400'}`}>
         <button
           type="button"
           onClick={() => { setOpenOfferingId(isOpen ? null : offering.id); setPendingOptionId(null); }}
           aria-expanded={isOpen}
-          className="w-full p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center text-left hover:bg-zinc-50 rounded-lg"
+          className="w-full p-3 sm:p-6 flex justify-between gap-3 items-start sm:items-center text-left hover:bg-zinc-50 rounded-lg"
         >
-          <div className="mb-2 sm:mb-0">
-            <h3 className="font-medium text-zinc-900 text-lg" lang={offering.translated ? undefined : 'en'}>{offering.name}</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-medium text-zinc-900 text-base sm:text-lg" lang={offering.translated ? undefined : 'en'}>{offering.name}</h3>
             {needsConsultation && (
               <span className="inline-block mt-1 text-[11px] uppercase tracking-wider font-semibold text-zinc-700 bg-zinc-100 border border-zinc-300 rounded px-2 py-0.5">
                 {t('service.consultationRequired')}
@@ -539,7 +552,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
             )}
           </div>
           {standard.length > 0 && (
-            <span className="font-serif text-lg text-zinc-900 font-medium whitespace-nowrap">
+            <span className="shrink-0 font-serif text-base sm:text-lg text-zinc-900 font-medium whitespace-nowrap">
               {needsConsultation
                 ? tp('fromPrice', { price: formatPrice(Math.min(...standard)) })
                 : Math.min(...standard) === Math.max(...standard)
@@ -549,7 +562,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
           )}
         </button>
         {isOpen && (
-          <fieldset className="border-t border-zinc-200 p-4 sm:p-6">
+          <fieldset className="border-t border-zinc-200 p-3 sm:p-6">
             <legend className="sr-only">{t('service.chooseOption')}</legend>
             <p className="text-sm font-medium text-zinc-700 mb-3" aria-hidden="true">{t('service.chooseOption')}</p>
             <div className="grid gap-2">
@@ -559,7 +572,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                 return (
                   <label
                     key={option.id}
-                    className={`flex items-start justify-between gap-4 rounded-lg border p-3 ${selectable ? 'cursor-pointer hover:border-zinc-400' : 'opacity-60'} ${pendingOptionId === option.id ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200'}`}
+                    className={`flex flex-wrap items-start justify-between gap-2 sm:gap-4 rounded-lg border p-3 ${selectable ? 'cursor-pointer hover:border-zinc-400' : 'opacity-60'} ${pendingOptionId === option.id ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200'}`}
                   >
                     <span className="flex items-start gap-3">
                       <input
@@ -580,7 +593,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                         {!selectable && <span className="block text-xs text-zinc-600 mt-1">{t('service.notBookable')}</span>}
                       </span>
                     </span>
-                    <span className="text-right">
+                    <span className="min-w-0 max-w-full text-right">
                       <span className="block font-serif text-base text-zinc-900 tabular-nums">{formatServicePrice(option)}</span>
                       <PriceFinePrint service={option} showNhs />
                       <SurchargeBreakdown option={option} base={base} />
@@ -594,7 +607,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
               type="button"
               disabled={!chosen || !isSelectable(chosen)}
               onClick={() => chosen && handleSelectService(chosen)}
-              className="mt-4 bg-zinc-900 text-white px-6 py-2.5 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-black disabled:opacity-50 transition-colors"
+              className="mt-4 min-h-11 w-full sm:w-auto bg-zinc-900 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-black disabled:opacity-50 transition-colors"
             >
               {t('service.select')}
             </button>
@@ -609,10 +622,10 @@ export function BookingWizard({ services, offerings, categories, stylists, close
       type="button"
       key={service.id}
       onClick={() => handleSelectService(service)}
-      className="w-full text-left border border-zinc-200 p-4 sm:p-6 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all group shadow-sm hover:shadow-md"
+      className="w-full text-left border border-zinc-200 p-3 sm:p-6 rounded-lg flex flex-wrap justify-between gap-3 items-start sm:items-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-colors group"
     >
-      <div className="mb-2 sm:mb-0">
-        <h3 className="font-medium text-zinc-900 group-hover:text-zinc-900 transition-colors text-lg" lang={service.translated ? undefined : 'en'}>{service.name}</h3>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-medium text-zinc-900 group-hover:text-zinc-900 transition-colors text-base sm:text-lg" lang={service.translated ? undefined : 'en'}>{service.name}</h3>
         {service.requiresConsultation && (
           <span className="inline-block mt-1 text-[11px] uppercase tracking-wider font-semibold text-zinc-700 bg-zinc-100 border border-zinc-300 rounded px-2 py-0.5">
             {t('service.consultationRequired')}
@@ -632,29 +645,29 @@ export function BookingWizard({ services, offerings, categories, stylists, close
           )}
         </div>
       </div>
-      <span className="text-right">
-        <span className="block font-serif text-xl text-zinc-900 font-medium whitespace-nowrap">{formatServicePrice(service)}</span>
-        <PriceFinePrint service={service} showNhs />
+      <span className="shrink-0 text-right">
+        <span className="block font-serif text-lg sm:text-xl text-zinc-900 font-medium whitespace-nowrap">{formatServicePrice(service)}</span>
       </span>
+      <PriceFinePrint service={service} showNhs className="w-full text-left" />
     </button>
   );
 
   return (
-    <div className="max-w-4xl mx-auto bg-white shadow-xl p-4 sm:p-6 md:p-8 md:min-h-[600px] rounded-xl border border-zinc-100">
+    <div className="max-w-4xl mx-auto min-w-0 bg-white shadow-sm p-3 sm:p-6 md:p-8 md:min-h-[600px] rounded-xl border border-zinc-200 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-zinc-900">
       {renderStepIndicator()}
 
-      <div className="mb-8">
-        <h2 className="text-2xl font-serif mb-2 text-zinc-900">{t.dynamic(`steps.${step}`)}</h2>
+      <div className="mb-5 sm:mb-8">
+        <h2 ref={stepHeading} tabIndex={-1} className="scroll-mt-24 text-2xl font-serif mb-1 sm:mb-2 text-zinc-900 focus:outline-none">{t.dynamic(`steps.${step}`)}</h2>
         <p className="text-zinc-600 text-sm">
           {t('steps.progress', { current: STEPS.indexOf(step) + 1, total: STEPS.length })}
         </p>
       </div>
 
       {step === 'SERVICE' && (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {pendingGate && (
-            <div className="rounded-lg border border-zinc-300 bg-zinc-50 p-6">
-              <h3 className="font-serif text-lg text-zinc-900 mb-2">{displayName(pendingGate.service)}</h3>
+            <div className="rounded-lg border border-zinc-300 bg-zinc-50 p-4 sm:p-6">
+              <h3 ref={gateHeading} tabIndex={-1} className="scroll-mt-24 font-serif text-lg text-zinc-900 mb-2 focus:outline-none">{displayName(pendingGate.service)}</h3>
               {pendingGate.hasTarget ? (
                 <>
                   <p className="text-sm text-zinc-700">
@@ -662,18 +675,18 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                       ? t('gate.byConsultation', { fee: formatPrice(pendingGate.fee), months: CONSULTATION_CREDIT_MONTHS })
                       : t('gate.byConsultationFree', { fee: t('gate.freeFee') })}
                   </p>
-                  <div className="mt-4 flex gap-3">
+                  <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
                     <button
                       type="button"
                       onClick={confirmConsultation}
-                      className="bg-zinc-900 text-white px-6 py-2.5 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-black transition-colors"
+                      className="min-h-11 bg-zinc-900 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-black transition-colors"
                     >
                       {t('gate.bookConsultation')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setPendingGateId(null)}
-                      className="text-sm font-medium text-zinc-600 hover:text-zinc-900 px-3"
+                      className="min-h-11 text-sm font-medium text-zinc-600 hover:text-zinc-900 px-3"
                     >
                       {t('gate.back')}
                     </button>
@@ -687,7 +700,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                   <button
                     type="button"
                     onClick={() => setPendingGateId(null)}
-                    className="mt-4 text-sm font-medium text-zinc-600 hover:text-zinc-900"
+                    className="mt-4 min-h-11 text-sm font-medium text-zinc-600 hover:text-zinc-900"
                   >
                     {t('gate.backToServices')}
                   </button>
@@ -695,9 +708,9 @@ export function BookingWizard({ services, offerings, categories, stylists, close
               )}
             </div>
           )}
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
              {/* Category Dropdown */}
-             <div className="md:w-1/3">
+             <div className="sm:w-1/3">
                 <label htmlFor="booking-category" className="block text-sm font-medium text-zinc-700 mb-2">{t('service.category')}</label>
                 <div className="relative">
                    <select
@@ -719,7 +732,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
              </div>
 
              {/* Search Bar */}
-             <div className="md:w-2/3">
+             <div className="sm:w-2/3">
                 <label htmlFor="booking-search" className="block text-sm font-medium text-zinc-700 mb-2">{t('service.search')}</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -739,10 +752,10 @@ export function BookingWizard({ services, offerings, categories, stylists, close
              </div>
           </div>
 
-          <div className="space-y-3 mt-6">
+          <div className="space-y-3 mt-4 sm:mt-6">
              <h3 className="font-medium text-zinc-500 text-sm uppercase tracking-wider mb-3">{t('service.available')}</h3>
             {visibleEntries.length > 0 ? (
-              <div className="grid gap-4">
+              <div className="grid gap-2 sm:gap-4">
                 {visibleEntries.map((entry) => entry.kind === 'offering'
                   ? renderOfferingEntry(entry.offering, entry.options)
                   : renderSingleEntry(entry.service))}
@@ -753,7 +766,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                 <button
                   type="button"
                   onClick={() => setSearchTerm('')}
-                  className="mt-2 text-zinc-700 underline text-sm hover:text-zinc-900"
+                  className="mt-2 min-h-11 text-zinc-700 underline text-sm hover:text-zinc-900"
                 >
                   {t('service.clearSearch')}
                 </button>
@@ -765,28 +778,30 @@ export function BookingWizard({ services, offerings, categories, stylists, close
 
       {step === 'STYLIST' && (
         <div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-6 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-6 mb-5 sm:mb-8">
             <button
               type="button"
               onClick={() => { setSelectedStylistId(ANY_STYLIST_ID); setSelectedTime(null); setStep('DATE'); }}
-              className="border border-dashed border-zinc-300 p-4 sm:p-6 rounded-lg text-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all shadow-sm group"
+              className="border border-dashed border-zinc-300 p-3 sm:p-6 rounded-lg flex items-center gap-3 text-left sm:block sm:text-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all shadow-sm group"
             >
-              <div className="w-16 h-16 sm:w-24 sm:h-24 bg-zinc-100 rounded-full mx-auto mb-4 flex items-center justify-center ring-2 ring-offset-2 ring-transparent group-hover:ring-zinc-900 transition-all">
-                <svg className="w-10 h-10 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <div className="shrink-0 w-12 h-12 sm:w-24 sm:h-24 bg-zinc-100 rounded-full sm:mx-auto sm:mb-4 flex items-center justify-center ring-2 ring-offset-2 ring-transparent group-hover:ring-zinc-900 transition-all">
+                <svg className="w-7 h-7 sm:w-10 sm:h-10 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a3 3 0 10-3-3" />
                 </svg>
               </div>
-              <h3 className="font-medium text-zinc-900 text-lg">{t('stylist.anyone')}</h3>
-              <p className="text-sm text-zinc-600 mt-1">{t('stylist.firstAvailable')}</p>
+              <div className="min-w-0">
+                <h3 className="font-medium text-zinc-900 text-base sm:text-lg">{t('stylist.anyone')}</h3>
+                <p className="text-sm text-zinc-600 mt-1">{t('stylist.firstAvailable')}</p>
+              </div>
             </button>
             {stylists.map(stylist => (
               <button
                 type="button"
                 key={stylist.id}
                 onClick={() => { setSelectedStylistId(stylist.id); setSelectedTime(null); setStep('DATE'); }}
-                className="border border-zinc-200 p-4 sm:p-6 rounded-lg text-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all shadow-sm group"
+                className="border border-zinc-200 p-3 sm:p-6 rounded-lg flex items-center gap-3 text-left sm:block sm:text-center hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all shadow-sm group"
               >
-                 <div className="w-16 h-16 sm:w-24 sm:h-24 bg-zinc-200 rounded-full mx-auto mb-4 overflow-hidden ring-2 ring-offset-2 ring-transparent group-hover:ring-zinc-900 transition-all">
+                 <div className="shrink-0 w-12 h-12 sm:w-24 sm:h-24 bg-zinc-200 rounded-full sm:mx-auto sm:mb-4 overflow-hidden ring-2 ring-offset-2 ring-transparent group-hover:ring-zinc-900 transition-all">
                    {stylist.imageUrl ? (
                      // eslint-disable-next-line @next/next/no-img-element
                      <img src={stylist.imageUrl} alt={stylist.name} className="w-full h-full object-cover" />
@@ -796,12 +811,14 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                      </div>
                    )}
                  </div>
-                <h3 className="font-medium text-zinc-900 text-lg">{stylist.name}</h3>
-                <p className="text-sm text-zinc-600 mt-1" lang={stylist.translated ? undefined : 'en'}>{stylist.role}</p>
+                <div className="min-w-0">
+                  <h3 className="font-medium text-zinc-900 text-base sm:text-lg">{stylist.name}</h3>
+                  <p className="text-sm text-zinc-600 mt-1" lang={stylist.translated ? undefined : 'en'}>{stylist.role}</p>
+                </div>
               </button>
             ))}
           </div>
-          <button type="button" onClick={() => { setPendingGateId(null); setConsultationOriginId(null); setStep('SERVICE'); }} className="text-sm font-medium text-zinc-600 hover:text-zinc-900 flex items-center gap-1">
+          <button type="button" onClick={() => { setPendingGateId(null); setConsultationOriginId(null); setStep('SERVICE'); }} className="min-h-11 text-sm font-medium text-zinc-600 hover:text-zinc-900 flex items-center gap-1">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
@@ -820,17 +837,17 @@ export function BookingWizard({ services, offerings, categories, stylists, close
               {lostTime.card && <p className="mt-1">{t('date.timeTakenCard')}</p>}
             </div>
           )}
-          <div className="flex flex-col lg:flex-row gap-8 mb-8 h-full">
+          <div className="flex min-w-0 flex-col lg:flex-row gap-5 sm:gap-8 mb-5 sm:mb-8">
             {/* Date Selection - Sticky Sidebar on Desktop */}
-            <div className="lg:w-1/3">
+            <div className="min-w-0 lg:w-1/3">
               <h3 className="font-medium mb-4 text-zinc-900 flex items-center gap-2">
                 <svg className="w-5 h-5 text-zinc-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 {t('date.selectDate')}
               </h3>
-              <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200">
-                <div className="flex lg:flex-col space-x-3 lg:space-x-0 lg:space-y-3 overflow-x-auto lg:overflow-visible snap-x snap-mandatory lg:snap-none pb-4 lg:pb-0 scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent">
+              <div className="bg-zinc-50 p-2 sm:p-4 rounded-xl border border-zinc-200">
+                <div className="flex lg:flex-col space-x-2 lg:space-x-0 lg:space-y-3 overflow-x-auto lg:overflow-visible snap-x snap-mandatory lg:snap-none pb-2 lg:pb-0 scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent">
                   {days.map((day) => (
                     <DayChip
                       key={day}
@@ -848,7 +865,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
             </div>
 
             {/* Time Selection - Main Area */}
-            <div className="lg:w-2/3">
+            <div className="min-w-0 lg:w-2/3">
               <h3 className="font-medium mb-4 text-zinc-900 flex items-center gap-2">
                 <svg className="w-5 h-5 text-zinc-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -857,7 +874,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
               </h3>
 
               {daysLoading ? (
-                <div className="flex flex-col items-center justify-center h-64 text-zinc-500 text-sm bg-zinc-50 rounded-xl border border-zinc-100" role="status">
+                <div className="flex flex-col items-center justify-center h-40 sm:h-64 text-zinc-500 text-sm bg-zinc-50 rounded-xl border border-zinc-100" role="status">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900 mb-3" aria-hidden="true"></div>
                   {t('date.checking')}
                 </div>
@@ -866,7 +883,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
               ) : dayInfo?.status === 'UNAVAILABLE' && !slotLoadFailed ? (
                 <UnavailableDayBlock hours={dayInfo.hours} stylistName={selectedStylistId === ANY_STYLIST_ID ? null : selectedStylist?.name ?? null} />
               ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-zinc-600 bg-zinc-50 rounded-xl border border-zinc-200 border-dashed text-center p-6">
+                <div className="flex flex-col items-center justify-center h-40 sm:h-64 text-zinc-600 bg-zinc-50 rounded-xl border border-zinc-200 border-dashed text-center p-6">
                   <svg className="w-12 h-12 text-zinc-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
@@ -880,8 +897,8 @@ export function BookingWizard({ services, offerings, categories, stylists, close
             </div>
           </div>
 
-          <div className="flex justify-between items-center pt-6 border-t border-zinc-100 sticky bottom-0 bg-white pb-[max(0.5rem,env(safe-area-inset-bottom))] z-10">
-             <button type="button" onClick={() => setStep('STYLIST')} className="text-sm font-medium text-zinc-600 hover:text-zinc-900 flex items-center gap-1 px-3 py-2 rounded-md hover:bg-zinc-50 transition-colors">
+          <div className="flex justify-between gap-3 items-center pt-3 sm:pt-6 border-t border-zinc-100 sticky bottom-0 bg-white pb-[max(0.5rem,env(safe-area-inset-bottom))] z-10">
+             <button type="button" onClick={() => setStep('STYLIST')} className="min-h-11 text-sm font-medium text-zinc-600 hover:text-zinc-900 flex items-center gap-1 px-3 py-2 rounded-md hover:bg-zinc-50 transition-colors">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
@@ -889,7 +906,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
              </button>
              <div className="flex flex-col items-end">
                {selectedTime && (
-                 <span className="text-xs text-zinc-500 mb-1 hidden sm:block">
+                 <span className="text-xs text-zinc-600 mb-1 text-right">
                    {t('date.selectedAt', { date: dayLabel(selectedDay, { day: 'numeric', month: 'short' }), time: selectedTime })}
                  </span>
                )}
@@ -897,7 +914,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                  type="button"
                  disabled={!selectedTime}
                  onClick={() => setStep('CONFIRM')}
-                 className="bg-zinc-900 text-white px-8 py-3 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md transform active:scale-95"
+                 className="min-h-11 bg-zinc-900 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                >
                  {tc('actions.continue')}
                </button>
@@ -907,8 +924,8 @@ export function BookingWizard({ services, offerings, categories, stylists, close
       )}
 
       {step === 'CONFIRM' && selectedService && (
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <div className="bg-zinc-50/50 p-6 rounded-xl border border-zinc-200 shadow-sm">
+        <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-8">
+          <div className="bg-zinc-50/50 p-4 sm:p-6 rounded-xl border border-zinc-200 shadow-sm">
             <h3 className="font-serif text-lg mb-4 pb-2 border-b border-zinc-200 text-zinc-900">{t('confirm.summary')}</h3>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 text-sm">
               <div>
@@ -937,7 +954,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                 <div className="sm:col-span-2 border-t border-zinc-200 pt-4 mt-2">
                   <div className="flex justify-between items-start gap-4">
                     <dt className="text-zinc-600 font-medium">{t('confirm.totalPrice')}</dt>
-                    <dd className="text-right">
+                    <dd className="min-w-0 max-w-full text-right">
                       <span className="block text-xl font-bold text-zinc-900 tabular-nums">{formatPrice(priceSource.amountPence)}</span>
                       {priceSource.priceType === 'NHS' && (
                         <span className="inline-block mt-1 text-xs bg-zinc-100 text-zinc-800 px-2 py-1 rounded-md font-medium border border-zinc-200">
@@ -983,7 +1000,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                     setStep('DATE');
                   }
                 }}
-                className="mt-3 rounded bg-zinc-900 px-3 py-1.5 text-white hover:bg-black"
+                className="mt-3 min-h-11 rounded bg-zinc-900 px-3 py-2.5 text-white hover:bg-black"
               >
                 {t('confirm.bookPatchTestFirst')}
               </button>
@@ -996,8 +1013,8 @@ export function BookingWizard({ services, offerings, categories, stylists, close
             </div>
           )}
 
-          <div className="flex justify-between items-center pt-6 border-t border-zinc-100">
-             <button type="button" onClick={() => setStep('DATE')} className="text-sm font-medium text-zinc-600 hover:text-zinc-900 flex items-center gap-1">
+          <div className="flex flex-wrap justify-between gap-3 items-center pt-4 sm:pt-6 border-t border-zinc-100">
+             <button type="button" onClick={() => setStep('DATE')} className="min-h-11 text-sm font-medium text-zinc-600 hover:text-zinc-900 flex items-center gap-1">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
@@ -1007,7 +1024,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                type="submit"
                disabled={isLoading || !selectedTime || (colourGate !== null && !colourGate.eligible) || (depositDue !== null && (!cardPayable || !depositCard))}
                aria-busy={isLoading}
-               className="bg-zinc-900 text-white px-8 py-3.5 rounded-lg uppercase text-sm font-bold tracking-wider hover:bg-black disabled:opacity-70 disabled:cursor-not-allowed shadow-md transition-all transform hover:-translate-y-0.5"
+               className="min-h-11 w-full sm:w-auto bg-zinc-900 text-white px-4 sm:px-6 py-3 rounded-lg text-sm font-semibold hover:bg-black disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
              >
                {isLoading ? (
                  <span className="flex items-center gap-2">

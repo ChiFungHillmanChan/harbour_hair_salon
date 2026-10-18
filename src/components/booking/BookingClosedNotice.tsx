@@ -33,19 +33,19 @@ export function BookingClosedNotice({ t, phone, marketplaces, heading: Heading =
           fact both routes below take a real booking today. Copy stays
           marketplace-agnostic: the names come from settings, so clearing a URL
           in the admin panel removes it here. */}
-      <Heading className="text-3xl md:text-4xl font-serif text-zinc-900 mb-4 tracking-tight">
+      <Heading className="text-2xl sm:text-3xl md:text-4xl font-serif text-zinc-900 mb-4 tracking-tight">
         {marketplaces.length > 0 ? t('closed.titleWithPartners') : t('closed.titlePhoneOnly')}
       </Heading>
-      <p className="text-zinc-600 leading-relaxed mb-8">
+      <p className="text-sm sm:text-base text-zinc-600 leading-relaxed mb-6 sm:mb-8">
         {marketplaces.length > 0 ? t('closed.bodyWithPartners') : t('closed.bodyPhoneOnly')}
       </p>
 
       {/* Phone first and equally prominent: a phone booking costs the salon
           no marketplace commission, so it should never look like a fallback. */}
-      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+      <div className="flex flex-wrap gap-2 sm:gap-3 justify-center">
         <a
           href={`tel:${phone.replace(/\s+/g, '')}`}
-          className="inline-block bg-zinc-900 text-white px-8 py-3 rounded-md font-medium hover:bg-zinc-700 transition-colors"
+          className="inline-flex min-h-11 w-full sm:w-auto items-center justify-center bg-zinc-900 text-white px-4 py-2.5 text-sm rounded-md font-medium hover:bg-zinc-700 transition-colors"
         >
           {t('closed.call', { phone })}
         </a>
@@ -55,7 +55,7 @@ export function BookingClosedNotice({ t, phone, marketplaces, heading: Heading =
             href={m.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block border border-zinc-900 text-zinc-900 px-8 py-3 rounded-md font-medium hover:bg-zinc-100 transition-colors"
+            className="inline-flex min-h-11 flex-1 sm:flex-none items-center justify-center border border-zinc-900 text-zinc-900 px-3 py-2.5 text-sm rounded-md font-medium hover:bg-zinc-100 transition-colors"
           >
             {t('closed.bookOn', { name: m.name })}
           </a>
@@ -70,7 +70,7 @@ export function BookingClosedNotice({ t, phone, marketplaces, heading: Heading =
 
       <p className="mt-6 text-sm text-zinc-500">
         {rich(t('closed.alreadyBooked'), {
-          link: (text) => <Link href="/appointments" className="underline hover:text-zinc-900">{text}</Link>,
+          link: (text) => <Link href="/appointments" className="inline-flex min-h-11 items-center underline hover:text-zinc-900">{text}</Link>,
         })}
       </p>
     </>

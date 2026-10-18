@@ -215,10 +215,10 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-white rounded-lg border border-zinc-200 shadow-sm p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="space-y-1">
-            <h3 className="text-lg font-semibold text-zinc-900" lang={appointment.service.nameIsEnglish ? 'en' : undefined}>{appointment.service.name}</h3>
+          <div className="min-w-0 space-y-1 text-sm sm:text-base">
+            <h3 className="text-base sm:text-lg font-semibold text-zinc-900" lang={appointment.service.nameIsEnglish ? 'en' : undefined}>{appointment.service.name}</h3>
             <p className="text-zinc-600">{t('card.withStylist', { name: appointment.stylist.name })}</p>
             <p className="text-zinc-700">
               {t('card.when', { date: formattedDate, time: formattedTime })}
@@ -250,7 +250,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             )}
           </div>
 
-          <div className="flex flex-col items-start sm:items-end gap-3">
+          <div className="flex min-w-0 flex-col items-start sm:items-end gap-3 sm:max-w-[48%]">
             <span
               className={`inline-block px-3 py-1 rounded-full text-xs font-medium uppercase tracking-wide ${
                 statusColors[appointment.status] || 'bg-zinc-100 text-zinc-600'
@@ -262,12 +262,12 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             </span>
 
             {isUpcoming && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 sm:justify-end">
                 {!isPending && (
                   <button
                     onClick={() => setShowReschedule(true)}
                     disabled={rescheduleLocked}
-                    className="px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="min-h-11 px-3 py-2.5 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title={rescheduleTitle}
                   >
                     {request.state === 'open' ? t('card.changeRequest') : t('card.reschedule')}
@@ -275,14 +275,14 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
                 )}
                 {request.state === 'open' && (
                   <button onClick={handleWithdraw} disabled={withdrawing}
-                    className="px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    className="min-h-11 px-3 py-2.5 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     {withdrawing ? t('card.withdrawingRequest') : t('card.withdrawRequest')}
                   </button>
                 )}
                 <button
                   onClick={handleCancel}
                   disabled={cancelLocked || cancelling}
-                  className="px-4 py-2 text-sm border border-red-300 rounded-md text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="min-h-11 px-3 py-2.5 text-sm border border-red-300 rounded-md text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title={cancelLocked ? t('card.cancelTooLate') : undefined}
                 >
                   {cancelling ? t('card.cancelling') : isPending ? t('card.withdraw') : t('card.cancel')}
@@ -293,7 +293,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             {!isUpcoming && appointment.status !== 'CANCELLED' && appointment.status !== 'PENDING' && !appointment.hasReview && (
               <Link
                 href={`/reviews/new?appointmentId=${appointment.id}`}
-                className="px-4 py-2 text-sm bg-zinc-900 text-white rounded-md font-medium hover:bg-black transition-colors"
+                className="inline-flex items-center min-h-11 px-3 py-2.5 text-sm bg-zinc-900 text-white rounded-md font-medium hover:bg-black transition-colors"
               >
                 {t('card.leaveReview')}
               </Link>
@@ -312,7 +312,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
               href={appointmentGoogleCalendarUrl(appointment.calendar)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors"
+              className="inline-flex items-center gap-2 min-h-11 px-3 py-2.5 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors"
             >
               <CalendarIcon />
               {t('card.addToGoogleCalendar')}
@@ -321,7 +321,7 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             <button
               type="button"
               onClick={() => downloadCalendarFile(appointment.calendar!)}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors"
+              className="inline-flex items-center gap-2 min-h-11 px-3 py-2.5 text-sm border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors"
             >
               <DownloadIcon />
               {t('card.downloadCalendarFile')}

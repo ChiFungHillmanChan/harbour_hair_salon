@@ -49,9 +49,11 @@ export default async function SocialLinks({
   const links = getSocialLinks(settings);
   if (links.length === 0) return null;
   const t = await getT('contact');
-  const hover = tone === 'dark' ? 'hover:text-white' : 'hover:text-zinc-900';
+  const toneClass = tone === 'dark'
+    ? 'text-zinc-300 hover:text-white focus-visible:outline-white'
+    : 'text-zinc-600 hover:text-zinc-900 focus-visible:outline-zinc-900';
   return (
-    <div className={`flex items-center gap-4 ${className}`}>
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       {links.map((l) => (
         <a
           key={l.key}
@@ -59,7 +61,7 @@ export default async function SocialLinks({
           target="_blank"
           rel="noopener noreferrer"
           aria-label={t(`social.${l.key}`)}
-          className={`text-zinc-500 ${hover} transition-colors`}
+          className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 ${toneClass} transition-colors`}
         >
           <Icon k={l.key} />
         </a>

@@ -35,7 +35,7 @@ export async function SocialProofBar({ average, count }: { average: number; coun
   const stars = Math.round(average);
   return (
     <section className="bg-white border-b border-zinc-100" aria-label={t('socialProof.label')}>
-      <div className="container mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-5 text-center">
+      <div className="container mx-auto px-4 py-2 sm:py-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0 sm:gap-5 text-center">
         <div className="flex items-center gap-2">
           <Stars value={stars} label={t('socialProof.rated', { value: stars })} />
           <span className="font-serif text-lg text-zinc-900">{average.toFixed(1)}</span>
@@ -43,7 +43,7 @@ export async function SocialProofBar({ average, count }: { average: number; coun
         <span className="hidden sm:block w-px h-5 bg-zinc-200" aria-hidden="true" />
         <Link
           href="/reviews"
-          className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
+          className="inline-flex min-h-11 items-center gap-1 text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
         >
           {rich(t('socialProof.verifiedReviews', { count }), {
             count: (text) => <span className="font-semibold text-zinc-900">{text}</span>,

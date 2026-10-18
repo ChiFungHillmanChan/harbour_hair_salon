@@ -465,3 +465,11 @@ Runbook `docs/google-calendar-setup.md`; design `docs/superpowers/specs/2026-10-
 - `src/app/lib/hair-salon-schema.ts` — `buildHairSalonSchema(settings, content)` supplies a consistent HairSalon identity (`/#salon`), address, phone, hours, map, language and Leeds service area across homepage, contact and local guide. No invented ratings or price band.
 - Sitemap lists both languages of About and the local guide, with canonical/hreflang metadata. Old `/3d` URLs are redirects and excluded.
 - Location evidence: [Visit Leeds — Central Arcade](https://www.visitleeds.co.uk/things-to-do/view-all/central-arcade/), [Visit Leeds — Corn Exchange](https://www.visitleeds.co.uk/things-to-do/view-all/leeds-corn-exchange/), [Leeds Markets](https://markets.leeds.gov.uk/). No walking times or step-free access are inferred.
+
+## Customer mobile layouts (2026-10-18)
+
+- Home sections use compact mobile spacing, a full-width phone action with partner buttons sharing a row, and two-column stylist profiles. Desktop layouts retain their larger spacing.
+- `Faq` gives the entire question row a tap target and visible keyboard focus. `VisitFollowBlock`, `SocialLinks`, `FooterPromotions` and `Footer` finish the mobile page with 44px touch targets, wrapping social links, two-column quick links and compact contact/hours spacing. Home section anchors account for the sticky header.
+- `BookingWizard` uses compact stylist rows, a contained horizontal date strip, 44px time/action controls and a full-width mobile deposit action. Changing steps or opening a consultation moves focus and scrolls to its heading; initial rendering does not move focus. Price fine print occupies its own row in single-service choices.
+- `RescheduleModal` uses a native modal dialog for focus containment/Escape, locks background scrolling while open and keeps actions inside the visible viewport. `AppointmentCard` actions wrap on small screens.
+- `MobileBookBar` reserves bottom safe-area space; the mobile header and menu use more compact spacing.

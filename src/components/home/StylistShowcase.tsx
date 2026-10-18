@@ -27,7 +27,7 @@ function StylistPortrait({ stylist }: { stylist: PublicStylist }) {
   const showImage = stylist.imageUrl && !loadFailed;
 
   return (
-    <div className="aspect-[3/4] bg-zinc-800 relative overflow-hidden">
+    <div className="aspect-square sm:aspect-[3/4] bg-zinc-800 relative overflow-hidden">
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -55,15 +55,15 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
   const locale = useLocale();
   const fallbackLang = (stylist: PublicStylist) => (locale === 'en-GB' || stylist.translated !== false ? undefined : 'en');
   return (
-    <section id="team" className="relative py-28 bg-zinc-900 text-white overflow-hidden">
+    <section id="team" className="scroll-mt-16 sm:scroll-mt-20 relative py-12 md:py-28 bg-zinc-900 text-white overflow-hidden">
       {/* Ambient glow */}
       <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-white/5 blur-3xl" />
       <div className="relative container mx-auto px-4">
-        <Reveal className="text-center mb-16">
+        <Reveal className="text-center mb-8 md:mb-16">
           <p className="text-sm uppercase tracking-[0.2em] text-zinc-300 mb-4 font-medium">
             {t('stylists.eyebrow')}
           </p>
-          <h2 className="text-4xl md:text-6xl font-serif mb-6 tracking-tight">
+          <h2 className="text-3xl md:text-6xl font-serif mb-6 tracking-tight">
             {t('stylists.titleStart')} <span className="text-zinc-400 font-light">{t('stylists.titleEnd')}</span>
           </h2>
           <div className="w-16 h-px bg-white/50 mx-auto mb-6" />
@@ -72,7 +72,7 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
           </p>
         </Reveal>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-8">
           {stylists.map((stylist, index) => (
             <Reveal
               key={stylist.id}
@@ -82,18 +82,18 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
             >
               <Link href={`/stylists/${slugifyName(stylist.name)}`} className="block">
                 <StylistPortrait stylist={stylist} />
-                <div className="p-8 text-center">
+                <div className="p-3 sm:p-8 text-center">
                   <h3 className="text-xl font-serif font-medium mb-1 text-white group-hover:text-zinc-300 transition-colors">{stylist.name}</h3>
-                  <p className="text-zinc-400 text-sm uppercase tracking-wider mb-4" lang={fallbackLang(stylist)}>{stylist.role}</p>
+                  <p className="text-zinc-300 text-xs sm:text-sm sm:uppercase sm:tracking-wider mb-3 sm:mb-4" lang={fallbackLang(stylist)}>{stylist.role}</p>
                   {stylist.bio?.trim() && (
                     <>
-                      <div className="w-8 h-[1px] bg-zinc-700 mx-auto mb-4" />
-                      <p className="text-zinc-400 text-sm italic font-light leading-relaxed mb-6" lang={fallbackLang(stylist)}>
+                      <div className="hidden sm:block w-8 h-[1px] bg-zinc-700 mx-auto mb-4" />
+                      <p className="hidden sm:block text-zinc-400 text-sm italic font-light leading-relaxed mb-6" lang={fallbackLang(stylist)}>
                         &ldquo;{stylist.bio.trim()}&rdquo;
                       </p>
                     </>
                   )}
-                  <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-bold text-zinc-300">
+                  <span className="inline-flex min-h-11 items-center justify-center gap-1.5 text-xs sm:uppercase sm:tracking-[0.2em] font-bold text-zinc-300">
                     {t('stylists.viewProfile')}
                     <svg className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
@@ -105,10 +105,10 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
           ))}
         </div>
 
-        <div className="text-center mt-16">
+        <div className="text-center mt-8 md:mt-16">
           <Link
             href="/stylists"
-            className="inline-flex items-center gap-2 border border-white/40 text-white px-10 py-4 text-sm uppercase tracking-[0.2em] font-medium hover:bg-white/10 hover:border-white/70 transition-all duration-500 ease-apple"
+            className="inline-flex items-center gap-2 border border-white/40 text-white min-h-11 px-5 py-2.5 text-sm sm:px-10 sm:py-4 sm:uppercase sm:tracking-[0.2em] font-medium hover:bg-white/10 hover:border-white/70 transition-all duration-500 ease-apple"
           >
             {t('stylists.meetTeam')}
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

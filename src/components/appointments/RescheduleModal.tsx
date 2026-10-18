@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchSlots, requestReschedule } from '@/app/actions/booking';
 import { isBookingClosedAnswer } from '@/components/booking/closed-answer';
 import type { TimeSlot } from '@/app/services/booking-service';
@@ -27,6 +27,18 @@ export function RescheduleModal({
   onClose,
   onSent,
 }: RescheduleModalProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      dialog?.close();
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   const t = useT('appointments');
   const locale = useLocale();
   // The picked day and time survive a language switch (memory only).
@@ -141,21 +153,21 @@ export function RescheduleModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={`reschedule-title-${appointmentId}`}
+      onCancel={(event) => { event.preventDefault(); close(); }}
+      className="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto overscroll-contain rounded-xl border-0 bg-white p-0 text-zinc-900 shadow-xl backdrop:bg-black/50 backdrop:backdrop-blur-sm [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-zinc-900"
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
     >
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`reschedule-title-${appointmentId}`}
-        className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6 relative max-h-[90vh] overflow-y-auto"
+        className="relative p-4 sm:p-6"
       >
         <button
           onClick={close}
-          className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 transition-colors"
+          className="absolute top-2 right-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-600 transition-colors"
           aria-label={t('reschedule.close')}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -163,7 +175,7 @@ export function RescheduleModal({
           </svg>
         </button>
 
-        <h3 id={`reschedule-title-${appointmentId}`} className="text-xl font-semibold text-zinc-900 mb-4">{t('reschedule.title')}</h3>
+        <h3 id={`reschedule-title-${appointmentId}`} className="pr-10 text-xl font-semibold text-zinc-900 mb-4">{t('reschedule.title')}</h3>
 
         <div className="mb-4">
           <label htmlFor={`reschedule-date-${appointmentId}`} className="block text-sm font-medium text-zinc-700 mb-1">{t('reschedule.date')}</label>
@@ -173,7 +185,7 @@ export function RescheduleModal({
             min={minDate}
             value={selectedDate}
             onChange={(e) => handleDateChange(e.target.value)}
-            className="w-full border border-zinc-300 rounded-md px-3 py-2 text-zinc-900 focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
+            className="min-h-11 min-w-0 w-full max-w-full border border-zinc-300 rounded-md px-3 py-2 text-base text-zinc-900 focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
           />
         </div>
 
@@ -192,7 +204,7 @@ export function RescheduleModal({
                   key={slot.time}
                   onClick={() => setSelectedSlot(slot.time)}
                   aria-pressed={selectedSlot === slot.time}
-                  className={`py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  className={`min-h-11 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
                     selectedSlot === slot.time
                       ? 'bg-zinc-900 text-white'
                       : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
@@ -218,22 +230,22 @@ export function RescheduleModal({
 
         {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
-        <div className="flex gap-3">
+        <div className="sticky bottom-0 flex gap-2 border-t border-zinc-100 bg-white pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <button
             onClick={close}
-            className="flex-1 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors"
+            className="min-h-11 flex-1 px-3 py-2.5 text-sm font-medium border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 transition-colors"
           >
             {t('reschedule.cancel')}
           </button>
           <button
             onClick={handleConfirm}
             disabled={!selectedSlot || submitting}
-            className="flex-1 py-2 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="min-h-11 flex-1 px-3 py-2.5 text-sm font-medium bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? t('reschedule.submitting') : t('reschedule.confirm')}
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }
