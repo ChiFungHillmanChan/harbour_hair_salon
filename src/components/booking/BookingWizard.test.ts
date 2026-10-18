@@ -400,6 +400,24 @@ test('a time less than 24 hours away is flagged to the deposit terms; one furthe
   assert.equal(byType(await mountWizard({ draft: CONFIRM }).settle(), DepositTerms)!.props.startsWithin24Hours, false, '25 hours away');
 });
 
+// Owner decision 2026-10-18: a deposit is refunded only for a cancellation
+// 48 hours or more ahead, so a time already inside 48 hours is flagged too.
+test('a time less than 48 hours away is flagged to the deposit terms as inside the refund window; exactly 48 hours is not', async (t) => {
+  // The CONFIRM draft's time: 11:00 in London on 6 October 2099 (BST) = 10:00 UTC.
+  const flags = async (now: string) => {
+    t.mock.timers.reset();
+    t.mock.timers.enable({ apis: ['Date'], now: new Date(now) });
+    const props = byType(await mountWizard({ draft: CONFIRM }).settle(), DepositTerms)!.props;
+    return [props.startsWithin24Hours, props.startsWithinRefundNotice];
+  };
+  assert.deepEqual(await flags('2099-10-05T12:00:00Z'), [true, true], '22 hours away');
+  assert.deepEqual(await flags('2099-10-05T09:00:00Z'), [false, true], '25 hours away');
+  assert.deepEqual(await flags('2099-10-04T11:00:00Z'), [false, true], '47 hours away');
+  assert.deepEqual(await flags('2099-10-04T10:01:00Z'), [false, true], '47h59m away');
+  assert.deepEqual(await flags('2099-10-04T10:00:00Z'), [false, false], 'exactly 48 hours away: still refundable');
+  assert.deepEqual(await flags('2099-10-03T09:00:00Z'), [false, false], '73 hours away');
+});
+
 // Sandbox acceptance, 15 October 2026: of two customers racing for one time,
 // the loser's wizard went back to the times with nothing on screen saying why
 // (its error lived on the confirm step) — and nothing about the card hold.

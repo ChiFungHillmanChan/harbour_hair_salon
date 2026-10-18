@@ -9,8 +9,9 @@ import type { Prisma } from '@prisma/client';
  * HELD: on the card, not taken. PROCESSING: being taken (or an unanswered
  * capture). PAID: taken. REFUND_PENDING / REFUNDED / REFUND_FAILED: a taken
  * deposit on its way back, back, or stuck. RELEASED: the hold was released or
- * ran out — nothing taken. KEPT: taken, the booking cancelled, and staff
- * chose to keep it (as the booking terms allow) — the attempt says so (KEPT).
+ * ran out — nothing taken. KEPT: taken, the booking cancelled, and the
+ * deposit kept as the booking terms say — staff chose to, or the customer
+ * cancelled less than DEPOSIT_REFUND_NOTICE_HOURS ahead — the attempt says so (KEPT).
  */
 export type DepositState = 'HELD' | 'PROCESSING' | 'PAID' | 'REFUND_PENDING' | 'REFUNDED' | 'REFUND_FAILED' | 'RELEASED' | 'KEPT';
 

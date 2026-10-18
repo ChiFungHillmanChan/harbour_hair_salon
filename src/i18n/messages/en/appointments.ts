@@ -51,6 +51,11 @@ const appointments = {
     opensInNewTab: '(opens in a new tab)',
     calendarAfterConfirmation: 'You can add it to your calendar once it’s confirmed.',
     confirmCancelRefund: 'Cancel this appointment? Your {amount} deposit will be refunded in full.',
+    /** {hours}: DEPOSIT_REFUND_NOTICE_HOURS. A taken deposit, cancelled later than that before the appointment. */
+    confirmCancelKept: 'Cancel this appointment? It is less than {hours} hours away: cancelling now, your {amount} deposit is kept and not refunded.',
+    /** Under a taken deposit on a confirmed booking: {date}, {time} = the start less DEPOSIT_REFUND_NOTICE_HOURS. */
+    refundUntil: 'Cancel by {date}, {time} for a full refund of your deposit. After that, the deposit is kept if you cancel.',
+    depositKeptIfCancelled: 'Your appointment is less than {hours} hours away: if you cancel now, your deposit is kept.',
     confirmWithdrawRelease: 'Withdraw this request? The {amount} hold on your card will be released.',
     /** A consultation credit recorded on the booking, taken off what is paid in the salon. */
     consultationCredit: 'Consultation credit: −{amount}',

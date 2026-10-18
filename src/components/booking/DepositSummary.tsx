@@ -1,5 +1,5 @@
 import Link from '@/i18n/link';
-import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
+import { DEPOSIT_REFUND_NOTICE_HOURS, LATE_ARRIVAL_CANCEL_MINUTES, ONLINE_CANCEL_NOTICE_HOURS } from '@/app/lib/booking-constants';
 import { rich } from '@/i18n/rich';
 import type { Translate } from '@/i18n/translator';
 import type { Messages } from '@/i18n/messages/types-client';
@@ -53,27 +53,35 @@ export function DepositRows({ t, formatPrice, depositPence, remainderPence, pric
 
 /**
  * What the customer agrees to, before the card form: nothing is paid now,
- * the deposit is taken only if the salon confirms, the refund rule and when
- * the deposit may be kept — plus a warning when the appointment is less than
- * 24 hours away (it can then no longer be cancelled online for a refund).
+ * the deposit is taken only if the salon confirms, the refund rule
+ * (DEPOSIT_REFUND_NOTICE_HOURS) and when the deposit is kept — plus a warning
+ * when the appointment is already inside that window (once confirmed, a
+ * cancellation keeps the deposit), worded for the last
+ * ONLINE_CANCEL_NOTICE_HOURS too (it can then not be cancelled online at all).
  * The full terms open in a new tab, so the wizard keeps what was chosen.
  */
-export function DepositTerms({ t, amount, startsWithin24Hours = false }: {
+export function DepositTerms({ t, amount, startsWithin24Hours = false, startsWithinRefundNotice = false }: {
   t: BookingT;
   /** The deposit, formatted. */
   amount: string;
+  /** Less than ONLINE_CANCEL_NOTICE_HOURS away. */
   startsWithin24Hours?: boolean;
+  /** Less than DEPOSIT_REFUND_NOTICE_HOURS away. */
+  startsWithinRefundNotice?: boolean;
 }) {
+  const warning = startsWithin24Hours
+    ? t('deposit.soonWarning', { hours: ONLINE_CANCEL_NOTICE_HOURS })
+    : startsWithinRefundNotice ? t('deposit.refundWarning', { hours: DEPOSIT_REFUND_NOTICE_HOURS }) : null;
   return (
     <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700 leading-relaxed">
       <p>{t('deposit.payNothingNow', { amount })}</p>
       <ul className="mt-2 list-disc space-y-1 pl-5">
-        <li>{t('deposit.refund')}</li>
-        <li>{t('deposit.lateOrNoShow', { minutes: LATE_ARRIVAL_CANCEL_MINUTES })}</li>
+        <li>{t('deposit.refund', { hours: DEPOSIT_REFUND_NOTICE_HOURS })}</li>
+        <li>{t('deposit.lateOrNoShow', { hours: DEPOSIT_REFUND_NOTICE_HOURS, minutes: LATE_ARRIVAL_CANCEL_MINUTES })}</li>
       </ul>
-      {startsWithin24Hours && (
+      {warning && (
         <p className="mt-3 rounded border border-zinc-400 bg-white px-3 py-2 font-medium text-zinc-900" role="note">
-          {t('deposit.soonWarning')}
+          {warning}
         </p>
       )}
       <p className="mt-2">

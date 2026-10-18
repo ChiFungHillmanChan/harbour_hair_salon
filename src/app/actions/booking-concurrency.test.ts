@@ -524,7 +524,7 @@ for (const [label, offsetMinutes, allowed] of [
     const cancel = fixture({ currentDate });
     const cancelled = await cancel.actions.cancelAppointment(cancel.appointment.id);
     assert.equal(cancelled.success, allowed, JSON.stringify(cancelled));
-    if (!allowed) assert.match(String(cancelled.error), /24 hours/);
+    if (!allowed && !cancelled.success) assert.match(String(cancelled.error), /24 hours/);
     const move = fixture({ currentDate });
     const moved = await move.actions.requestReschedule(move.appointment.id, '2099-09-15', '10:00');
     assert.equal(moved.success, allowed, JSON.stringify(moved));
@@ -605,7 +605,7 @@ test('approving a new booking runs the shared pre-approval refresh for its styli
   assert.deepEqual(refreshed, ['stylist-1']);
 });
 
-test('a request leaves the booking confirmed at its original time and emails the customer and the salon', async () => {
+test('a request leaves the booking confirmed at its original time and alerts the salon (the customer acknowledgement is retired)', async () => {
   const f = fixture();
   assert.deepEqual(await f.actions.requestReschedule(f.appointment.id, '2099-09-15', '10:00'), { success: true });
   assert.equal(f.appointment.status, 'CONFIRMED');
@@ -614,7 +614,9 @@ test('a request leaves the booking confirmed at its original time and emails the
   assert.ok(f.appointment.rescheduleRequestedAt);
   assert.equal(f.appointment.notificationVersion, 0, 'a request never bumps the event version');
   assert.equal(f.appointment.reminderSent, true, 'the reminder for the original time stays valid');
-  assert.deepEqual(f.events.map((event) => event.kind).sort(), ['RESCHEDULE_REQUEST_RECEIVED', 'SALON_RESCHEDULE_ALERT']);
+  // Owner decision 2026-10-18: RESCHEDULE_REQUEST_RECEIVED is no longer sent;
+  // the customer hears when staff approve, decline or let it lapse.
+  assert.deepEqual(f.events.map((event) => event.kind).sort(), ['SALON_RESCHEDULE_ALERT']);
   assert.equal(f.dispatches(), 1);
 });
 
@@ -652,12 +654,12 @@ test('asking again for the time already requested sends nothing', async () => {
   assert.deepEqual(f.limiterKeys, []);
 });
 
-test('a new time replaces the open request with fresh emails', async () => {
+test('a new time replaces the open request with a fresh salon alert', async () => {
   const f = fixture({ openRequest: { requestedDate: new Date('2099-09-15T09:00:00Z'), requestedAt: new Date('2099-08-31T11:00:00Z') } });
   assert.equal((await f.actions.requestReschedule(f.appointment.id, '2099-09-16', '10:00')).success, true);
   assert.equal(f.appointment.rescheduleRequestedDate?.toISOString(), '2099-09-16T09:00:00.000Z');
   assert.notEqual(f.appointment.rescheduleRequestedAt?.toISOString(), '2099-08-31T11:00:00.000Z');
-  assert.equal(f.events.length, 2);
+  assert.deepEqual(f.events.map((event) => event.kind), ['SALON_RESCHEDULE_ALERT']);
   assert.ok(f.events.every((event) => event.eventKey.endsWith(f.appointment.rescheduleRequestedAt!.toISOString())));
 });
 
@@ -681,7 +683,7 @@ test('a double-submit after the first committed is a silent no-op', async () => 
   const f = fixture();
   assert.equal((await f.actions.requestReschedule(f.appointment.id, '2099-09-15', '10:00')).success, true);
   assert.deepEqual(await f.actions.requestReschedule(f.appointment.id, '2099-09-15', '10:00'), { success: true });
-  assert.equal(f.events.length, 2, 'one pair of emails in total');
+  assert.equal(f.events.length, 1, 'one salon alert in total');
 });
 
 test('withdrawing clears the request without email, even while online booking is closed', async () => {

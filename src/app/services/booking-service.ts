@@ -523,6 +523,10 @@ export async function createBooking(data: NewBookingInput & { stylistId: string 
       include: bookingResultInclude,
     });
     const paymentAttempt = await linkDeposit(tx, data, created.id);
+    // The customer's receipt is retired (RETIRED_CUSTOMER_EMAIL_KINDS, owner
+    // decision 2026-10-18): the outbox queues nothing for it. The salon alert,
+    // queued at version 0, also marks this as an online request
+    // (request-lapse-notice.ts onlineRequestAlertKey).
     await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', { ...created, paymentAttempt }, { salonPhone: settings.phone });
     await enqueueAppointmentNotification(tx, 'SALON_ALERT', { ...created, paymentAttempt });
     return { ...created, repeat: false as const };
@@ -624,6 +628,10 @@ export async function createBookingForFirstAvailable(data: NewBookingInput & { c
       include: bookingResultInclude,
     });
     const paymentAttempt = await linkDeposit(tx, data, created.id);
+    // The customer's receipt is retired (RETIRED_CUSTOMER_EMAIL_KINDS, owner
+    // decision 2026-10-18): the outbox queues nothing for it. The salon alert,
+    // queued at version 0, also marks this as an online request
+    // (request-lapse-notice.ts onlineRequestAlertKey).
     await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', { ...created, paymentAttempt }, { salonPhone: settings.phone });
     await enqueueAppointmentNotification(tx, 'SALON_ALERT', { ...created, paymentAttempt });
     return { ...created, repeat: false as const };

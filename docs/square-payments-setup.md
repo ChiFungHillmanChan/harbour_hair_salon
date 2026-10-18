@@ -78,7 +78,9 @@ captured payment can be **refunded**. Holds are created with `autocomplete: fals
 5. Repeats never keep a second hold: the same submission replays its first answer; the same
    request made again is answered "already requested" before the card is touched (a repeat only
    caught inside the booking transaction releases its hold).
-6. The request email mentions the hold; the done screen says it is only taken if the salon confirms.
+6. The salon's alert mentions the hold; the done screen says it is only taken if the salon confirms.
+   (The customer's "request received" email is retired since 2026-10-18 — owner's short set of
+   emails, `RETIRED_CUSTOMER_EMAIL_KINDS`; the customer hears when the salon confirms or declines.)
 
 ### 1.3 Staff approve — capture (S3)
 1. The hold must still be valid (`AUTHORIZED`, `delayed_until` in the future); otherwise approval is
@@ -120,10 +122,22 @@ notifications run never does. Until then staff **mark it completed** if the cust
 deposit is kept towards the bill) or **decline** it (refunded) — Operations, the daily email and
 "Re-check payment" say so.
 
-### 1.6 Cancelling a confirmed booking — refund (S3)
-- Customer, online, at least 24 hours before: full refund.
-- Staff: the cancel dialog offers **"Refund the £X deposit"**, ticked by default; untick to keep it
-  for a late cancellation or no-show (the `/booking-terms` policy line). **(review)** A keep is
+### 1.6 Cancelling a confirmed booking — refund or keep (S3; 48-hour rule 2026-10-18)
+- Customer, online (allowed until 24 hours before, `ONLINE_CANCEL_NOTICE_HOURS`):
+  - **48 hours or more** before the start (`DEPOSIT_REFUND_NOTICE_HOURS`; exactly 48 h counts):
+    full refund (reason `CUSTOMER_CANCELLED`).
+  - **Less than 48 hours** before: the deposit is **kept** (owner decision 2026-10-18), recorded
+    `KEPT` exactly as a staff keep — no refund row, never refunded by reconciliation — and the
+    cancellation email says it is kept. My Bookings says which before the customer confirms
+    ("cancelling now, your £X deposit is kept"); `cancelAppointment` decides inside its transaction
+    from the booking's start and the time now, and refuses (`DEPOSIT_NOW_KEPT`, nothing changes) a
+    cancellation that would keep a deposit the confirm step promised to refund (the 48-hour mark
+    passed while the dialog was open).
+  - A request (`PENDING`) is not a booking: withdrawing it releases the hold at any time, and money
+    taken on one is refunded.
+- Staff: the cancel dialog offers **"Refund the £X deposit"**, ticked by default (the salon's
+  default, also when the salon cancels); untick to keep it when the customer cancels less than 48
+  hours ahead, or for a no-show (the `/booking-terms` policy line). **(review)** A keep is
   recorded on the deposit (`KEPT`), so nothing later reports it as unexplained or refunds it as a
   late capture.
 - A `PaymentRefund(REQUESTED)` row is written in the cancellation transaction; Square
@@ -232,13 +246,13 @@ deposit is kept towards the bill) or **decline** it (refunded) — Operations, t
 | `INITIATED` | Row written; Square has not answered yet | The submission; reconciliation after 15 min (⇒ `UNKNOWN`) |
 | `AUTHORIZED` | Hold on the card | Approve (capture), decline/lapse/withdraw (release), Square at expiry, reconciliation (release once its booking is missing or not `PENDING`) |
 | `CAPTURING` | An approval is capturing | That approval; after 2 minutes the next approval, closing or re-check |
-| `CAPTURED` | Deposit taken | Refunds; `KEPT` when staff keep it on cancelling |
+| `CAPTURED` | Deposit taken | Refunds; `KEPT` when staff keep it on cancelling, or the customer cancels less than 48 hours ahead |
 | `FAILED` | Declined or not verified (HTTP 400/402, `PAYMENT_DECLINED`), refused by the website's own Square setup (401/403/404…, `PAYMENT_SETUP_REFUSED`), or never sent (`PAYMENT_NOT_SENT`) — nothing held | Final |
 | `UNKNOWN` | No usable answer from Square | Cancel by key, daily for 7 days ⇒ `VOIDED`; at once once Square's answer is known |
 | `VOIDED` | Hold released by the website | Final (a hold Square still shows is released again) |
 | `EXPIRED` | Square released the hold (at `delayed_until`, or earlier) | Final; an open request with it lapses |
 | `CAPTURE_UNKNOWN` | Capture outcome unclear | Approval retry at once; closing / lapse / re-check / daily run (`GetPayment`) once quiet for 2 minutes; webhook |
-| `KEPT` | Taken, booking cancelled, staff kept it (booking terms) | Final; never refunded by the website |
+| `KEPT` | Taken, booking cancelled, kept under the booking terms (staff kept it, or the customer cancelled less than 48 hours ahead) | Final; never refunded by the website |
 
 `PaymentRefund.status`: `REQUESTED` → `SUBMITTING` (first send claimed) → `PENDING` → `COMPLETED` |
 `FAILED` | `REJECTED`, or `UNKNOWN` (no usable answer, a refused retry, or a send whose sender went
@@ -355,8 +369,8 @@ Rules:
    which is a copy of production **with real customers' data**:
    - **First** set `PREVIEW_EMAIL_ALLOWLIST` on Preview to your own address (comma-separated full
      addresses and/or `@domain` entries, e.g. `you@example.com`). On a preview deployment
-     (`VERCEL_ENV=preview`) every email the site sends — booking mail, reminders, review requests,
-     the outbox backlog, the daily alert — goes only to recipients on that list; everything else is
+     (`VERCEL_ENV=preview`) every email the site sends — booking mail, reminders, the outbox backlog,
+     the daily alert — goes only to recipients on that list; everything else is
      dropped as if sent (one log line, no address, never retried), and with the variable unset a
      preview sends nothing at all (`lib/preview-email.ts`, `sendPreparedEmail`). The preview
      database is a copy of production, so without the list the notifications run would email real
@@ -418,8 +432,8 @@ See each result on the website **and** in Square (Developer Console → Sandbox 
 **Square Dashboard** next to the account → Transactions). Record the date, the preview URL and
 commit, and the Square payment ids.
 
-- [ ] **Approve ⇒ capture.** Request with `4111…`: `PENDING`, deposit held, request email mentions
-      the hold; Square shows the payment authorized. Approve in Admin → Schedule: `CONFIRMED`,
+- [ ] **Approve ⇒ capture.** Request with `4111…`: `PENDING`, deposit held, the salon alert mentions
+      the hold (no customer request email since 2026-10-18); Square shows the payment authorized. Approve in Admin → Schedule: `CONFIRMED`,
       `CAPTURED`, confirmation email with deposit paid and remainder; Square shows it completed. The
       later `payment.updated` webhook changes nothing.
 - [ ] **Decline ⇒ release.** Decline a new request: `VOIDED`, Square shows it cancelled, customer
@@ -439,8 +453,7 @@ commit, and the Square payment ids.
       `UPDATE "PaymentAttempt" SET "delayedUntil" = (now() at time zone 'utc') - interval '1 minute'
       WHERE "appointmentId" = '<appointment id>';` — then approval must be refused ("hold expired");
       run the notifications job on the preview (only with `PREVIEW_EMAIL_ALLOWLIST` set to your own
-      address, §3 step 8: this run also sends any reminders, review requests and backlog due on the
-      copied data) —
+      address, §3 step 8: this run also sends any reminders and backlog due on the copied data) —
       `curl -H "Authorization: Bearer $CRON_SECRET" -H "x-vercel-protection-bypass: $BYPASS" https://<alias>.vercel.app/api/cron/notifications`
       — and the request must lapse with its email and the hold released.
       (b) On another test request, cancel the authorized payment directly in the sandbox —
@@ -455,9 +468,11 @@ commit, and the Square payment ids.
 - [ ] **Webhook duplicates and order.** Re-send a signed event twice and an older one late (below):
       the second copy is a no-op (one `SquareWebhookEvent` row); an `APPROVED` `payment.updated`
       sent after capture leaves the attempt `CAPTURED`.
-- [ ] **Refund pending → completed.** Customer cancels a confirmed booking at least 24 hours ahead:
+- [ ] **Refund pending → completed.** Customer cancels a confirmed booking at least 48 hours ahead:
       refund requested, then pending, then completed (webhook or "Re-check payment"); Square lists
-      the refund. Staff cancel with "Refund" unticked: deposit kept, no refund in Square.
+      the refund. Customer cancels one less than 48 hours (and more than 24) ahead: My Bookings says
+      the deposit is kept, `KEPT`, no refund in Square. Staff cancel with "Refund" unticked: deposit
+      kept, no refund in Square.
 - [ ] **Reconciliation.** Call the housekeeping job on the preview (as the notifications call
       above, `/api/cron/housekeeping`): nothing already settled changes; anything left pending by
       the tests above is settled or still listed in Admin → Operations.
@@ -498,9 +513,11 @@ run"); it did for 13dbe8f on 2026-10-17/18 (S1–S4 are merged and deployed sinc
 - [ ] A Square **seller** account in the salon's legal name (the merchant of record), United
       Kingdom, GBP; identity checks complete; payout bank account added; the Leeds location
       (Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX) can take card payments.
-- [ ] The deposit policy (§1.1) and the late-cancellation / no-show line on `/booking-terms`
+- [x] The deposit policy (§1.1) and the late-cancellation / no-show line on `/booking-terms`
       (`legal.bookingTerms.cancelling.lateOrNoShow`, en + zh; the booking page repeats it before the
-      card form, `booking.deposit.lateOrNoShow`) — change both if the rule differs. Staff can only
+      card form, `booking.deposit.lateOrNoShow`) — change both if the rule differs. Decided
+      2026-10-18: less than 48 hours ahead or a no-show keeps the deposit; 48 hours or more, a full
+      refund; a salon cancellation, a full refund (`DEPOSIT_REFUND_NOTICE_HOURS`). Staff can only
       keep a whole deposit or refund all of it, so the line must not promise anything in between.
       Keep the percentage proportionate: Admin → Site Settings warns above 50%.
 
@@ -525,7 +542,7 @@ run"); it did for 13dbe8f on 2026-10-17/18 (S1–S4 are merged and deployed sinc
       per-service overrides.
 - [ ] Open booking in the order of `LAUNCH.md` §3, then one **real** booking on the owner's card:
       give one service a temporary fixed deposit of £0.01 (Square's minimum), request it, approve
-      (Square shows the payment completed), cancel at least 24 hours ahead (refund pending, then
+      (Square shows the payment completed), cancel at least 48 hours ahead (refund pending, then
       completed in Square), and put the override back. Square keeps its fee (about 25p) even after
       the refund.
 - [ ] For the first week, check Admin → Operations and the daily email for payments needing
@@ -540,7 +557,7 @@ and everyone else still sees the phone / Fresha / Treatwell page. The gate
 (`lib/booking-maintenance.ts`, `assertOnlineBookingReadyFor`) still needs the production credentials and
 the same calendar readiness as public booking, but not `NOTIFICATIONS_ENABLED`: a tester's booking
 emails (theirs and the salon's alert for that booking) go out even while it is off, every other
-customer stays email-free, and the crons (reminders, review requests, the daily ops alert) stay off.
+customer stays email-free, and the crons (reminders, the daily ops alert) stay off.
 The real £0.01 booking above can be made this way. Takes effect on Save; empty the box to end the beta.
 
 ---
@@ -549,9 +566,11 @@ The real £0.01 booking above can be made this way. Takes effect on Save; empty 
 
 **What staff see.** Admin → Schedule shows each booking's deposit (held, taken, released, refund
 pending, refunded, or needing attention). **Approve** takes the deposit; **Decline** releases it;
-**Cancel** on a confirmed booking offers "Refund the £X deposit" (ticked; untick to keep it for a
-late cancellation, as the booking terms allow — once the visit's time has passed it starts unticked,
-because a no-show's deposit is never refunded, owner decision 2026-10-16); **Mark completed** releases a hold that
+**Cancel** on a confirmed booking offers "Refund the £X deposit" (ticked; untick to keep it when the
+customer cancels less than 48 hours ahead, as the booking terms say (owner decision 2026-10-18); leave
+it ticked when the salon cancels — once the visit's time has passed it starts unticked,
+because a no-show's deposit is never refunded, owner decision 2026-10-16); a customer who cancels
+online less than 48 hours ahead has their deposit kept automatically (`KEPT`); **Mark completed** releases a hold that
 was never taken (collect the full price in the salon — the confirm question says so) and keeps a
 taken deposit towards the bill; **Re-check payment** asks Square again; **Mark refund as settled
 outside the website** (shown next to it only for a refund Square has not confirmed) records that you

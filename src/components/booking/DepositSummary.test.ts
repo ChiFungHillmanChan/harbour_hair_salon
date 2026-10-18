@@ -4,6 +4,7 @@ import { loadServerModule } from '../../test/load-server-module';
 import { translator } from '../../i18n/messages';
 import { formatGBP } from '../../app/services/pricing/money';
 import type { Locale } from '../../i18n/config';
+import { DEPOSIT_REFUND_NOTICE_HOURS } from '../../app/lib/booking-constants';
 
 type Element = { type: unknown; props: Record<string, unknown> };
 
@@ -49,37 +50,55 @@ test('the rest carries the price’s own fine print when it is not exact', () =>
   assert.equal(rest('zh-HK', { vatDisplay: 'EXCLUDED', priceNature: 'SUBJECT_TO_CONSULTATION' }), '£37.50未含 VAT · 最終價錢於諮詢時確定');
 });
 
+// Owner decision 2026-10-18: a full refund 48 hours or more ahead; later, kept.
 const DISCLOSURE = {
   'en-GB': [
     'You pay nothing now. We place a hold on your card and take the £12.50 deposit only when we confirm your booking; if we decline or don’t confirm your request, the hold is released.',
-    'Cancel at least 24 hours before your appointment for a full refund.',
-    'If you miss your appointment, or are more than 15 minutes late without letting us know, we keep the deposit. If you cancel less than 24 hours before it, we may keep it.',
+    `Cancel at least ${DEPOSIT_REFUND_NOTICE_HOURS} hours before your appointment for a full refund.`,
+    'If you cancel less than 48 hours before your appointment, miss it, or are more than 15 minutes late without letting us know, we keep the deposit.',
   ],
   'zh-HK': [
     '你現在毋須付款。我們會先在你的信用卡預留款項，只有在本店確認你的預約後，才會收取 £12.50 訂金；如本店拒絕或未有確認你的申請，預留款項會被解除。',
-    '於預約前最少 24 小時取消可獲全數退款。',
-    '如你缺席預約，或遲到超過 15 分鐘而沒有通知本店，本店會保留訂金；如你在預約前不足 24 小時取消，本店可能會保留訂金。',
+    `於預約前最少 ${DEPOSIT_REFUND_NOTICE_HOURS} 小時取消可獲全數退款。`,
+    '如你在預約前不足 48 小時取消、缺席預約，或遲到超過 15 分鐘而沒有通知本店，本店會保留訂金。',
   ],
 } as const;
+/** Less than 24 hours away: no online cancelling at all, and the deposit is kept. */
 const SOON = {
-  'en-GB': 'Your appointment is less than 24 hours away: once we confirm it, the deposit can’t be refunded online if you cancel.',
-  'zh-HK': '你的預約距今不足 24 小時：本店確認後，如你取消預約，訂金將無法於網上退還。',
+  'en-GB': 'Your appointment is less than 24 hours away: once we confirm it, it can’t be cancelled online, and if you cancel, the deposit is kept.',
+  'zh-HK': '你的預約距今不足 24 小時：本店確認後，預約將無法於網上取消；如你取消預約，訂金不予退還。',
+} as const;
+/** Less than 48 hours away: cancelling once confirmed keeps the deposit. */
+const WITHIN_REFUND = {
+  'en-GB': 'Your appointment is less than 48 hours away: once we confirm it, the deposit is kept if you cancel.',
+  'zh-HK': '你的預約距今不足 48 小時：本店確認後，如你取消預約，訂金不予退還。',
 } as const;
 
 for (const locale of ['en-GB', 'zh-HK'] as const) {
-  test(`before the card form: nothing paid now, when it is taken, the refund rule and when it may be kept (${locale})`, () => {
+  test(`before the card form: nothing paid now, when it is taken, the 48-hour refund rule and when it is kept (${locale})`, () => {
     const tree = ui.DepositTerms({ t: t(locale), amount: '£12.50' });
     const nodes = elements(tree);
     const lines = nodes.filter((node) => node.type === 'p' || node.type === 'li').map(text);
     for (const line of DISCLOSURE[locale]) assert.ok(lines.includes(line), `${locale}: ${line}`);
-    assert.ok(!text(tree).includes(SOON[locale]), 'no short-notice warning for a time more than 24 hours away');
+    assert.ok(!text(tree).includes(SOON[locale]) && !text(tree).includes(WITHIN_REFUND[locale]), 'no short-notice warning for a time 48 hours or more away');
+    assert.doesNotMatch(text(tree), /may keep|可能會保留/, 'no "may keep": the rule is decided');
   });
 
-  test(`a time less than 24 hours away adds the warning that the deposit can’t then be refunded online (${locale})`, () => {
-    const nodes = elements(ui.DepositTerms({ t: t(locale), amount: '£12.50', startsWithin24Hours: true }));
+  test(`a time less than 48 hours away warns that the deposit is kept if cancelled once confirmed (${locale})`, () => {
+    const nodes = elements(ui.DepositTerms({ t: t(locale), amount: '£12.50', startsWithinRefundNotice: true }));
+    const warning = nodes.find((node) => text(node) === WITHIN_REFUND[locale]);
+    assert.ok(warning, WITHIN_REFUND[locale]);
+    assert.equal(warning.props.role, 'note');
+    assert.ok(!nodes.some((node) => text(node) === SOON[locale]));
+    for (const line of DISCLOSURE[locale]) assert.ok(nodes.some((node) => text(node) === line), line);
+  });
+
+  test(`a time less than 24 hours away says it can’t then be cancelled online and the deposit is kept (${locale})`, () => {
+    const nodes = elements(ui.DepositTerms({ t: t(locale), amount: '£12.50', startsWithin24Hours: true, startsWithinRefundNotice: true }));
     const warning = nodes.find((node) => text(node) === SOON[locale]);
     assert.ok(warning, SOON[locale]);
     assert.equal(warning.props.role, 'note');
+    assert.equal(nodes.filter((node) => node.props.role === 'note').length, 1, 'one warning, the stronger one');
     // The rules are still all there.
     for (const line of DISCLOSURE[locale]) assert.ok(nodes.some((node) => text(node) === line), line);
   });

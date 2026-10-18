@@ -58,7 +58,11 @@ export type DepositFixtureOptions = {
   square?: SquareScript;
   /** No usable Square configuration on this deployment. */
   paymentsOff?: boolean;
-  /** The customer was told the request awaits confirmation (a REQUEST_RECEIVED notice exists). */
+  /**
+   * The request was made online, so the customer awaits an answer: its first
+   * salon alert (version 0) exists, as every online request's does
+   * (request-lapse-notice.ts). A staff pencil-in has none.
+   */
   announced?: boolean;
   /** The time is no longer free on the Nth slot check (1-based); every other check passes. */
   slotLostOnCheck?: number;
@@ -93,7 +97,7 @@ export function depositFixture(options: DepositFixtureOptions = {}) {
     status: 'COMPLETED', reason: 'STAFF_CANCELLED', requestedById: null, createdAt: minutes(-60), updatedAt: minutes(-60), ...refund,
   }));
   const deliveries: { eventKey: string; appointmentId: string; kind: string; payloadJson: string }[] = options.announced
-    ? [{ eventKey: `appointment/${booking.id}/0/REQUEST_RECEIVED`, appointmentId: booking.id, kind: 'REQUEST_RECEIVED', payloadJson: '{}' }]
+    ? [{ eventKey: `appointment/${booking.id}/0/SALON_ALERT`, appointmentId: booking.id, kind: 'SALON_ALERT', payloadJson: '{}' }]
     : [];
   const audits: { actorUserId: string | null; action: string; metadata: Record<string, unknown> }[] = [];
   const counts = { refreshes: 0, slotChecks: 0, transactions: 0, dispatches: 0, invalidations: 0 };

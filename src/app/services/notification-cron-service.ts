@@ -6,6 +6,25 @@ import { enqueueAppointmentNotification, dispatchPendingNotifications } from './
 import { lapseExpiredRescheduleRequests } from './reschedule-request-lapse';
 import { lapseStartedPendingRequests } from './pending-request-lapse';
 import { reminderWindowEnd, reviewWindow } from '@/app/api/cron/reminders/reminder-window';
+import { isReminderWanted } from '@/app/lib/booking-constants';
+import { isRetiredCustomerEmailKind } from './email-content';
+
+/**
+ * The emails this cron finds due by itself. A retired one
+ * (RETIRED_CUSTOMER_EMAIL_KINDS: the review invitation since 2026-10-18) is
+ * not looked for at all — no query — until it is taken off that list.
+ */
+const SCHEDULED_KINDS = (['REMINDER', 'REVIEW_REQUEST'] as const).filter((kind) => !isRetiredCustomerEmailKind(kind));
+
+/** The earliest CONFIRMATION email queued for a booking (when it was confirmed), or null. */
+function confirmedAt(notifications: { kind: string; createdAt?: Date }[]): Date | null {
+  let earliest: Date | null = null;
+  for (const notification of notifications) {
+    if (notification.kind !== 'CONFIRMATION' || !(notification.createdAt instanceof Date)) continue;
+    if (!earliest || notification.createdAt < earliest) earliest = notification.createdAt;
+  }
+  return earliest;
+}
 
 type EnqueueCursors = { REMINDER: string | null; REVIEW_REQUEST: string | null };
 
@@ -70,7 +89,8 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
     let queued = 0;
     let scanned = 0;
     let deferred = 0;
-    for (const kind of ['REMINDER', 'REVIEW_REQUEST'] as const) {
+    let remindersNotWanted = 0;
+    for (const kind of SCHEDULED_KINDS) {
       // Give upcoming reminders their own batch, then reviews their own budget.
       // Persist the last scanned id across BOTH schedules so failed/previously
       // queued events cannot trap every run behind the same 100 appointments.
@@ -83,7 +103,8 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
           user: { select: { email: true, name: true, phone: true } },
           stylist: { select: { name: true } },
           service: { select: { name: true, price: true, duration: true, isConsultation: true, isPatchTest: true } },
-          notifications: { where: { kind }, select: { eventKey: true } },
+          // CONFIRMATION too: when the booking was confirmed decides whether it gets a reminder.
+          notifications: { where: { kind: { in: [kind, 'CONFIRMATION'] } }, select: { eventKey: true, kind: true, createdAt: true } },
         },
         orderBy: { id: 'asc' },
         take: 100,
@@ -93,7 +114,13 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
       for (const appointment of appointments) {
         if (Date.now() - started > phaseBudget) break;
         const eventKey = `appointment/${appointment.id}/${appointment.notificationVersion}/${kind}`;
-        if (!appointment.notifications.some((notification) => notification.eventKey === eventKey)) {
+        // Confirmed less than REMINDER_MIN_CONFIRMED_AHEAD_HOURS before its
+        // start: its confirmation email was the reminder (owner decision
+        // 2026-10-18). Nothing is queued; it is looked at again while it is
+        // in the window, like a walk-in placeholder, and dispatch re-checks.
+        if (kind === 'REMINDER' && !isReminderWanted(appointment.date, confirmedAt(appointment.notifications))) {
+          remindersNotWanted++;
+        } else if (!appointment.notifications.some((notification) => notification.eventKey === eventKey)) {
           // Walk-in placeholder addresses queue nothing (and are rescanned
           // every run), so count only rows that were actually written.
           if (await enqueueAppointmentNotification(prisma, kind, appointment)) queued++;
@@ -108,7 +135,7 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
     // Newly inserted rows become due after discovery began; use a fresh cutoff.
     const delivery = await dispatchPendingNotifications({ budgetMs: Math.max(0, 45_000 - (Date.now() - started)), limit: 30 });
     const result = {
-      queued, scanned, lapsed: lapse.lapsed, lapseFailed: lapse.failed, requestsLapsed: requestLapse.lapsed, requestLapseFailed: requestLapse.failed,
+      queued, scanned, remindersNotWanted, lapsed: lapse.lapsed, lapseFailed: lapse.failed, requestsLapsed: requestLapse.lapsed, requestLapseFailed: requestLapse.failed,
       ...delivery, deferred: delivery.deferred + deferred, durationMs: Date.now() - started,
     };
     await prisma.backgroundJobState.update({ where: { name }, data: {

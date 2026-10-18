@@ -131,7 +131,7 @@ test('the notice names every cookie the code sets for visitors', async () => {
 
 test('the periods the notice states are the ones the code enforces', async () => {
   const en = (await privacyPage('en-GB')).text;
-  assert.ok(en.includes('Last updated: 17 October 2026'));
+  assert.ok(en.includes('Last updated: 18 October 2026'));
   assert.ok(en.includes(`email confirmation after ${EMAIL_VERIFICATION_TTL_HOURS} hours`));
   assert.ok(en.includes(`password reset after ${RESET_TOKEN_TTL_MS / 3_600_000} hour`));
   assert.ok(en.includes(`unsubscribe after ${UNSUBSCRIBE_TOKEN_TTL_DAYS} days`));
@@ -141,7 +141,7 @@ test('the periods the notice states are the ones the code enforces', async () =>
   assert.ok(en.includes(`within ${(EMAIL_SEND_DAILY_POLICY.windowSeconds * 2) / 86_400} days`));
 
   const zh = (await privacyPage('zh-HK')).text;
-  assert.ok(zh.includes('最後更新：2026年10月17日'));
+  assert.ok(zh.includes('最後更新：2026年10月18日'));
   assert.ok(zh.includes(`電郵確認連結為 ${EMAIL_VERIFICATION_TTL_HOURS} 小時`));
   assert.ok(zh.includes(`重設密碼連結為 ${RESET_TOKEN_TTL_MS / 3_600_000} 小時`));
   assert.ok(zh.includes(`取消訂閱連結為 ${UNSUBSCRIBE_TOKEN_TTL_DAYS} 日`));
@@ -176,4 +176,16 @@ test('the notice says the website keeps a copy of the salon diary, for whom and 
   assert.ok(en.includes(`deleted ${GOOGLE_DIARY_RETENTION_DAYS} days after the entry ends`));
   const zh = (await privacyPage('zh-HK')).text;
   assert.ok(zh.includes(`於記錄結束後 ${GOOGLE_DIARY_RETENTION_DAYS} 日刪除`));
+});
+
+// Owner decision 2026-10-18 ("short version"): no booking-request or
+// reschedule-request acknowledgement and no review invitation is emailed
+// (RETIRED_CUSTOMER_EMAIL_KINDS), so the notice no longer claims either.
+test('the emails line lists only what is sent, and there is no review-invitation purpose', async () => {
+  const en = (await privacyPage('en-GB')).text;
+  assert.ok(en.includes('Emails we send you: booking confirmations, reminders, changes of time, cancellations, and replies when we cannot confirm a request or a change of time, and whether each one was delivered.'));
+  assert.doesNotMatch(en, /review invitation|To ask how your visit went|booking requests, confirmations/);
+  const zh = (await privacyPage('zh-HK')).text;
+  assert.ok(zh.includes('我們發給你的電郵：預約確認、提醒、改期、取消，和本店未能確認你的預約申請或改期要求時的通知，以及每封電郵是否成功送達。'));
+  assert.doesNotMatch(zh, /評價邀請|了解你對服務的意見/);
 });

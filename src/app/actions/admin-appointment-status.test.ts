@@ -13,8 +13,14 @@ after(() => mock.timers.reset());
 
 type FixtureOptions = {
   status?: string; date?: Date; role?: 'ADMIN' | 'USER';
-  /** The request was announced to the customer: its REQUEST_RECEIVED notice was queued (a staff pencil-in has none). */
-  announced?: boolean;
+  /**
+   * The request was made online, so the customer awaits an answer: true = its
+   * first salon alert (version 0) was queued, as every online request's is;
+   * 'legacy' = only the REQUEST_RECEIVED notice a request made before
+   * 2026-10-18 has; 'moved-pencil-in' = a staff pencil-in that staff moved,
+   * whose salon alert was queued at a later version. A pencil-in left alone has none.
+   */
+  announced?: boolean | 'legacy' | 'moved-pencil-in';
   salonPhone?: string;
   settingsReadFails?: boolean;
   arrivedAt?: Date | null;
@@ -34,6 +40,11 @@ function fixture(options: FixtureOptions = {}) {
   };
   const enqueued: string[] = [];
   const queued: { kind: string; version: number; options: Record<string, unknown> }[] = [];
+  const delivery = (version: number, kind: string) => ({ id: `${kind}-${version}`, eventKey: `appointment/${appointment.id}/${version}/${kind}`, appointmentId: appointment.id, kind });
+  const deliveries = options.announced === true ? [delivery(0, 'SALON_ALERT')]
+    // The fallback alone: a pre-2026-10-18 request also has its salon alert.
+    : options.announced === 'legacy' ? [delivery(0, 'REQUEST_RECEIVED')]
+      : options.announced === 'moved-pencil-in' ? [delivery(1, 'SALON_ALERT')] : [];
   const audits: { action: string; metadata: Record<string, unknown> }[] = [];
   const counts = { dispatches: 0, invalidations: 0, slotChecks: 0, refreshes: 0, writes: 0, settingsReads: 0 };
   const written: Record<string, unknown>[] = [];
@@ -55,8 +66,9 @@ function fixture(options: FixtureOptions = {}) {
     // No card deposit on this booking (deposits: admin-deposit.test.ts).
     paymentAttempt: { findUnique: async () => null },
     notificationDelivery: {
+      findUnique: async ({ where }: { where: { eventKey: string } }) => deliveries.find((row) => row.eventKey === where.eventKey) ?? null,
       findFirst: async ({ where }: { where: { appointmentId: string; kind: string } }) =>
-        options.announced && where.appointmentId === appointment.id && where.kind === 'REQUEST_RECEIVED' ? { id: 'request-received' } : null,
+        deliveries.find((row) => row.appointmentId === where.appointmentId && row.kind === where.kind) ?? null,
     },
     siteSettings: { findUnique: async () => {
       counts.settingsReads++;
@@ -229,9 +241,20 @@ test('declining a request whose time passed more than 72 hours ago sends nothing
   assert.equal(f.counts.settingsReads, 0, 'no email, so no phone to look up');
 });
 
+// Owner decision 2026-10-18: the REQUEST_RECEIVED email is retired, so an
+// online request is known by its first salon alert; requests made before then
+// by their old REQUEST_RECEIVED row.
+test('declining an online request that never had a REQUEST_RECEIVED notice still sends the request-lapsed email; an older one with only that notice does too', async () => {
+  for (const announced of [true, 'legacy'] as const) {
+    const f = fixture({ status: 'PENDING', date: minutes(-30), announced, salonPhone: '07831 830898' });
+    assert.deepEqual(await f.admin.updateAppointmentStatus(f.appointment.id, 'CANCELLED'), { success: true });
+    assert.deepEqual(f.queued, [{ kind: 'REQUEST_LAPSED', version: 1, options: { salonPhone: '07831 830898' } }], String(announced));
+  }
+});
+
 test('declining a staff pencil-in once its time has come sends nothing: the customer was never told it awaited confirmation', async () => {
-  for (const date of [NOW, minutes(-30)]) {
-    const f = fixture({ status: 'PENDING', date, salonPhone: '07831 830898' });
+  for (const [date, announced] of [[NOW, false], [minutes(-30), false], [minutes(-30), 'moved-pencil-in']] as const) {
+    const f = fixture({ status: 'PENDING', date, salonPhone: '07831 830898', announced });
     assert.deepEqual(await f.admin.updateAppointmentStatus(f.appointment.id, 'CANCELLED'), { success: true });
     assert.equal(f.appointment.status, 'CANCELLED');
     assert.equal(f.appointment.notificationVersion, 1);

@@ -18,7 +18,7 @@ import { DepositCardForm } from './DepositCardForm';
 import { DepositRows, DepositTerms, PaymentUnavailableNotice } from './DepositSummary';
 import { depositVerificationDetails, SQUARE_TOKENIZE_TIMEOUT_MS, withTimeout, type DepositCard, type DepositPayer, type SquarePublicConfig } from './square-web-payments';
 import { afterDepositAnswer, PAYMENT_ANSWER_CODES, reusableSubmission, submissionFingerprint, type DepositSubmission } from './deposit-submission';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, CONSULTATION_CREDIT_MONTHS, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, meetsMinimumNotice } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, CONSULTATION_CREDIT_MONTHS, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, isDepositRefundableOnCancel, meetsMinimumNotice } from '@/app/lib/booking-constants';
 import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
@@ -287,10 +287,12 @@ export function BookingWizard({ services, offerings, categories, stylists, close
   const depositDue = depositPreview?.ok && depositPreview.depositPence > 0 ? depositPreview : null;
   // A deposit can only be paid with Square configured for this site.
   const cardPayable = Boolean(depositDue && payment.square && !paymentRefused);
-  // Less than 24 hours ahead: once confirmed, it can no longer be cancelled
-  // online for a refund (cancelAppointment), so the review step says so.
-  const startsWithin24Hours = depositDue !== null && selectedTime !== null
-    && !meetsMinimumNotice(resolveSalonDateTime(dayString, selectedTime).utc, new Date(), ONLINE_CANCEL_NOTICE_HOURS * 60);
+  // Less than DEPOSIT_REFUND_NOTICE_HOURS ahead: once confirmed, cancelling
+  // keeps the deposit; less than ONLINE_CANCEL_NOTICE_HOURS, it can no longer
+  // be cancelled online at all (cancelAppointment). The review step says so.
+  const selectedStart = depositDue !== null && selectedTime !== null ? resolveSalonDateTime(dayString, selectedTime).utc : null;
+  const startsWithin24Hours = selectedStart !== null && !meetsMinimumNotice(selectedStart, new Date(), ONLINE_CANCEL_NOTICE_HOURS * 60);
+  const startsWithinRefundNotice = selectedStart !== null && !isDepositRefundableOnCancel(selectedStart, new Date());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -956,7 +958,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
 
           {depositDue && (
             <div className="space-y-4">
-              <DepositTerms t={t} amount={formatPrice(depositDue.depositPence)} startsWithin24Hours={startsWithin24Hours} />
+              <DepositTerms t={t} amount={formatPrice(depositDue.depositPence)} startsWithin24Hours={startsWithin24Hours} startsWithinRefundNotice={startsWithinRefundNotice} />
               {cardPayable && payment.square ? (
                 <DepositCardForm square={payment.square} phone={closedContact.phone} onCardChange={setDepositCard} />
               ) : (

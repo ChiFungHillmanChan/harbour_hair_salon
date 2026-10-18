@@ -348,9 +348,10 @@ async function main() {
     assert.equal(appointment.status, 'PENDING');
     assert.equal(appointment.durationAtBooking, 60);
     assert.equal(Number(appointment.priceAtBooking), 100);
-    assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id } }), 2);
+    // Owner decision 2026-10-18: the customer's REQUEST_RECEIVED email is retired; the salon alert alone is queued.
+    assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id } }), 1);
     await notifications.dispatchAppointmentNotifications(appointment.id);
-    assert.deepEqual(deliveries.map(delivery => delivery.kind).sort(), ['REQUEST_RECEIVED', 'SALON_ALERT']);
+    assert.deepEqual(deliveries.map(delivery => delivery.kind).sort(), ['SALON_ALERT']);
     const uid = `UID:${appointment.id}@harbourhair.co.uk`;
     assert.ok((await readFeed()).includes(uid), 'A pending website request must already block the outbound calendar');
     assert.equal(await slotAvailable(bookingDay, '10:00'), false);
@@ -566,10 +567,12 @@ async function main() {
       assert.equal(held?.appointmentId, booked.id);
       assert.equal(held?.amountPence, depositPence);
       assert.equal(held?.idempotencyKey, `dep_${first.replace(/-/g, '')}`);
-      // Delivered after the response (its stored payload is then scrubbed): the email was built with the hold.
-      const receipt = deliveries.find((delivery) => delivery.eventKey === `appointment/${booked.id}/0/REQUEST_RECEIVED`);
-      assert.ok(receipt, 'the request receipt was sent');
-      assert.deepEqual(JSON.parse(receipt.payload).appointment.deposit, { amountPence: depositPence, status: 'AUTHORIZED' }, 'the receipt mentions the hold');
+      // Delivered after the response (its stored payload is then scrubbed): the salon's alert was built with the hold.
+      // No customer receipt: REQUEST_RECEIVED is retired (owner decision 2026-10-18).
+      const alert = deliveries.find((delivery) => delivery.eventKey === `appointment/${booked.id}/0/SALON_ALERT`);
+      assert.ok(alert, 'the salon alert was sent');
+      assert.deepEqual(JSON.parse(alert.payload).appointment.deposit, { amountPence: depositPence, status: 'AUTHORIZED' }, 'the alert mentions the hold');
+      assert.equal(await db.notificationDelivery.count({ where: { appointmentId: booked.id, kind: 'REQUEST_RECEIVED' } }), 0, 'no customer receipt is queued');
       // The same submission again: its outcome, never a second authorization —
       // already requested, with the hold that same submission placed.
       assert.deepEqual(await submitDeposit('10:00', first), { success: true, alreadyRequested: true, depositHeldPence: depositPence });
@@ -714,7 +717,8 @@ async function main() {
         } });
         squareS3.set(paymentId, { status: options.attempt === 'CAPTURED' ? 'COMPLETED' : 'APPROVED', amount: 2000, referenceId: attempt.id, version: 1 });
         if (options.announced) {
-          await db.notificationDelivery.create({ data: { eventKey: `appointment/${appointment.id}/0/REQUEST_RECEIVED`, appointmentId: appointment.id, kind: 'REQUEST_RECEIVED', payloadJson: '{}', status: 'SENT' } });
+          // Made online: the salon alert every online request queues at version 0 (request-lapse-notice.ts).
+          await db.notificationDelivery.create({ data: { eventKey: `appointment/${appointment.id}/0/SALON_ALERT`, appointmentId: appointment.id, kind: 'SALON_ALERT', payloadJson: '{}', status: 'SENT' } });
         }
         return { appointment, attempt, paymentId };
       };
@@ -791,7 +795,7 @@ async function main() {
       assert.equal(sentNotice(declined.appointment.id, 1, 'CANCELLATION').options.depositOutcome, 'RELEASED');
       assert.equal(await db.paymentRefund.count({ where: { attemptId: declined.attempt.id } }), 0);
 
-      // A customer cancelling a confirmed booking online (24 hours or more ahead) gets it all back.
+      // A customer cancelling a confirmed booking online 48 hours or more ahead gets it all back.
       const paid = await withDeposit(instant(day52, '10:00'), { status: 'CONFIRMED', attempt: 'CAPTURED' });
       await assertActionSuccess(await depositOwner.cancelAppointment(paid.appointment.id));
       const customerRefund = await db.paymentRefund.findFirstOrThrow({ where: { attemptId: paid.attempt.id } });
@@ -799,6 +803,18 @@ async function main() {
       assert.equal(sentNotice(paid.appointment.id, 1, 'CANCELLATION').options.depositOutcome, 'REFUNDING');
       assertActionError(await depositOwner.cancelAppointment(paid.appointment.id), /Only pending or confirmed/);
       assert.equal(await db.paymentRefund.count({ where: { attemptId: paid.attempt.id } }), 1, 'never refunded twice');
+
+      // Less than 48 hours ahead (owner decision 2026-10-18) the deposit is kept: refused until the
+      // customer has been told so, then recorded KEPT like a staff keep — no refund row, nothing to attend to.
+      const lateCancel = await withDeposit(new Date(Date.now() + 30 * 3_600_000), { status: 'CONFIRMED', attempt: 'CAPTURED' });
+      assertActionError(await depositOwner.cancelAppointment(lateCancel.appointment.id), /less than 48 hours/);
+      assert.deepEqual([await statusOf(lateCancel.appointment.id), (await attemptOf(lateCancel.attempt.id)).status], ['CONFIRMED', 'CAPTURED'], 'the refusal changed nothing');
+      await assertActionSuccess(await depositOwner.cancelAppointment(lateCancel.appointment.id, { depositKept: true }));
+      assert.deepEqual([await statusOf(lateCancel.appointment.id), (await attemptOf(lateCancel.attempt.id)).status], ['CANCELLED', 'KEPT']);
+      assert.equal(await db.paymentRefund.count({ where: { attemptId: lateCancel.attempt.id } }), 0, 'no refund row');
+      assert.equal(sentNotice(lateCancel.appointment.id, 1, 'CANCELLATION').options.depositOutcome, 'KEPT');
+      const lateKeptAttention = await collectPaymentAttention(db, new Date(), pageWindows(new Date()));
+      assert.ok(!lateKeptAttention.attempts.some((row) => row.id === lateCancel.attempt.id), 'a kept deposit needs nobody');
 
       // Staff cancelling a confirmed booking refund it by default, or keep it — recorded in the audit.
       const staffRefunded = await withDeposit(instant(day52, '12:00'), { status: 'CONFIRMED', attempt: 'CAPTURED' });
@@ -1196,11 +1212,13 @@ async function main() {
     assertActionError(await customerActions.cancelAppointment(appointment.id), /Only pending or confirmed/);
     assert.equal(await slotAvailable(bookingDay, '14:00'), true);
     assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: 'CANCELLATION' } }), 1);
-    // Every sent notice (the original five plus the reschedule-request scenarios') has its payload scrubbed.
+    // Every sent notice (salon alert, confirmation, move, and the reschedule-request scenarios') has its payload scrubbed.
     const sentCount = await db.notificationDelivery.count({ where: { appointmentId: appointment.id, status: 'SENT' } });
     assert.ok(sentCount >= 5);
     const sentKinds = new Set((await db.notificationDelivery.findMany({ where: { appointmentId: appointment.id, status: 'SENT' }, select: { kind: true } })).map(row => row.kind));
-    for (const kind of ['RESCHEDULE_REQUEST_RECEIVED', 'SALON_RESCHEDULE_ALERT', 'RESCHEDULE_DECLINED']) assert.ok(sentKinds.has(kind), `${kind} was sent`);
+    for (const kind of ['SALON_ALERT', 'CONFIRMATION', 'RESCHEDULE', 'SALON_RESCHEDULE_ALERT', 'RESCHEDULE_DECLINED']) assert.ok(sentKinds.has(kind), `${kind} was sent`);
+    // Retired customer emails (owner decision 2026-10-18) were never queued.
+    assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, kind: { in: ['REQUEST_RECEIVED', 'RESCHEDULE_REQUEST_RECEIVED'] } } }), 0);
     assert.equal(await db.notificationDelivery.count({ where: { appointmentId: appointment.id, status: 'SENT', payloadJson: '{}' } }), sentCount);
     console.log('PASS: approval rechecks newly imported Fresha conflicts; failed import preserves blocks, keeps booking open while fresh and closes it once stale; cancellation remains available and removes its outbound event.');
 

@@ -63,6 +63,7 @@ const errors: Localized<Messages['errors']> = {
     CANCEL_ONLY_ACTIVE: '只可取消待處理或已確認的預約',
     CANCEL_TOO_LATE: '預約前 24 小時內不能取消',
     CANCEL_FAILED: '未能取消預約，請再試一次。',
+    DEPOSIT_NOW_KEPT: '現在距離你的預約已不足 {hours} 小時，如你取消，訂金將不予退還。預約尚未取消：如仍要取消，請再按一次「取消預約」。',
     RESCHEDULE_ONLY_CONFIRMED: '只可更改已確認的預約',
     RESCHEDULE_TOO_LATE: '預約前 24 小時內不能改期',
     RESCHEDULE_PAST: '不能改期至已過去的時間',

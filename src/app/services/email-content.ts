@@ -8,7 +8,7 @@ import { formatGBP, toPence } from './pricing/money';
 import { requiresEligibilityProof } from './pricing/eligibility';
 import type { PriceNature, PriceType, VatDisplay } from './pricing/policy';
 import { salonRelativeDay } from './salon-time';
-import { CONSULTATION_CREDIT_MONTHS, LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
+import { CONSULTATION_CREDIT_MONTHS, DEPOSIT_REFUND_NOTICE_HOURS, LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { appointmentCalendarEvent } from './appointment-calendar';
 import { appointmentGoogleCalendarUrl, appointmentIcsFile, type IcsMethod, type IcsOrganizer } from '@/app/lib/calendar-links';
 
@@ -82,6 +82,25 @@ export function isSalonEmailKind(kind: AppointmentEmailKind): boolean {
 
 /** Kinds that belong to one reschedule request (keyed by its `requestedAt`). */
 export const RESCHEDULE_REQUEST_EMAIL_KINDS: readonly AppointmentEmailKind[] = ['RESCHEDULE_REQUEST_RECEIVED', 'SALON_RESCHEDULE_ALERT', 'RESCHEDULE_DECLINED', 'RESCHEDULE_LAPSED'];
+
+/**
+ * Customer emails the salon no longer sends (owner decision 2026-10-18, the
+ * "short version"): the booking-request and reschedule-request
+ * acknowledgements and the review invitation. Switched off, not deleted:
+ * enqueueAppointmentNotification queues none of them, the notifications cron
+ * does not even look for review invitations, and one already queued is
+ * skipped at dispatch (payload cleared), never sent. Take a kind out of this
+ * list to send it again; its template and every call site are still there.
+ * The customer still hears about every decision: CONFIRMATION, CANCELLATION
+ * (a declined request too), RESCHEDULE, RESCHEDULE_DECLINED / _LAPSED,
+ * REQUEST_LAPSED, LATE_CANCELLED and the REMINDER; the salon's alerts are unchanged.
+ */
+export const RETIRED_CUSTOMER_EMAIL_KINDS: readonly AppointmentEmailKind[] = ['REQUEST_RECEIVED', 'RESCHEDULE_REQUEST_RECEIVED', 'REVIEW_REQUEST'];
+
+/** Whether a queued row's kind is one of RETIRED_CUSTOMER_EMAIL_KINDS. */
+export function isRetiredCustomerEmailKind(kind: string): boolean {
+  return (RETIRED_CUSTOMER_EMAIL_KINDS as readonly string[]).includes(kind);
+}
 
 export type EmailContent = {
   locale: Locale;
@@ -176,7 +195,7 @@ function depositClosingNote(appointment: EmailAppointment, locale: Locale, outco
   const [value, sentence] = outcome === 'REFUNDING'
     ? [t('values.depositRefunding', { amount }), t('deposit.refunding', { amount })]
     : outcome === 'KEPT'
-      ? [t('values.depositKept', { amount }), t('deposit.kept', { amount })]
+      ? [t('values.depositKept', { amount }), t('deposit.kept', { amount, hours: DEPOSIT_REFUND_NOTICE_HOURS })]
       : [t('values.depositReleased', { amount }), t('deposit.released', { amount })];
   return { row: { label: t('labels.deposit'), value }, sentence };
 }
@@ -334,7 +353,7 @@ export function appointmentEmailContent(
       // A deposit or credit sentence already says how payment works: the change
       // footnote must not repeat it (or say "payment is due" after "nothing to pay").
       const footnotes = paid
-        ? [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnoteWithDeposit'), paid.sentence, t('calendar.attached')]
+        ? [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnoteWithDeposit', { hours: DEPOSIT_REFUND_NOTICE_HOURS }), paid.sentence, t('calendar.attached')]
         : creditNote
           ? [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnoteNoPayment'), creditNote, t('calendar.attached')]
           : [lateArrival, ...eligibility, ...consultationCredit, t('confirmation.footnote'), t('calendar.attached')];
