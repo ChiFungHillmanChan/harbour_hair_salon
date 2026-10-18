@@ -69,17 +69,22 @@ export type GoogleLinkDecision =
  *    later recovers by email.
  *  - Existing administrator → refuse. Staff accounts are never taken over by an
  *    email match; they sign in with their password.
- *  - Existing customer → link, destroying a password that may have been planted
- *    by someone who pre-registered the address (the owner has just proved it).
+ *  - Existing customer whose email was never confirmed → link, destroying a
+ *    password that may have been planted by someone who pre-registered the
+ *    address (the owner has just proved it).
+ *  - Existing customer whose email WAS confirmed (`emailVerified`: a
+ *    verification link or a password reset redeemed from that mailbox) → link
+ *    and keep the password: whoever set it has already proved the mailbox, so
+ *    it is the owner's own, and they keep both ways in (owner decision 2026-10-18).
  */
 export function decideGoogleLink(
   profile: Pick<GoogleProfile, 'emailAuthoritative'>,
-  existing: { role: string; hasPassword: boolean } | null,
+  existing: { role: string; hasPassword: boolean; emailVerified: boolean } | null,
 ): GoogleLinkDecision {
   if (!profile.emailAuthoritative) return { kind: 'REFUSE', code: 'google_email_unverified' };
   if (!existing) return { kind: 'CREATE' };
   if (existing.role !== 'USER') return { kind: 'REFUSE', code: 'google_admin_link' };
-  return { kind: 'LINK', clearPassword: existing.hasPassword };
+  return { kind: 'LINK', clearPassword: existing.hasPassword && !existing.emailVerified };
 }
 
 function getSessionKey() {
