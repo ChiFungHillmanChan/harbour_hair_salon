@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Appointment, PaymentAttempt, Prisma, PrismaClient, Service, Stylist, User } from '@prisma/client';
 import prisma from '@/app/lib/prisma';
 import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
+import { isBookingBetaTester } from '@/app/lib/booking-beta';
 import { isRequestLapseNoticeTimely } from '@/app/lib/appointment-timing';
 import { prepareAppointmentEmail, sendPreparedEmail, type AppointmentEmailKind, type AppointmentEmailOptions, type PreparedEmail } from './email-service';
 import { isSalonEmailKind, RESCHEDULE_REQUEST_EMAIL_KINDS, type DepositOutcome, type EmailDeposit, type EmailPrice } from './email-content';
@@ -204,11 +205,32 @@ async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string
   }
 }
 
+/**
+ * Beta booking (lib/booking-beta.ts): whether this appointment's customer is
+ * on the beta list in Admin → Settings, read from the live row. The list is
+ * read first, so an empty one costs a single query.
+ */
+async function isBetaTesterAppointment(db: PrismaClient, appointmentId: string): Promise<boolean> {
+  const settings = await db.siteSettings.findUnique({ where: { id: 'singleton' }, select: { bookingBetaEmails: true } });
+  if (!settings?.bookingBetaEmails.trim()) return false;
+  const appointment = await db.appointment.findUnique({ where: { id: appointmentId }, select: { user: { select: { email: true } } } });
+  return isBookingBetaTester(appointment?.user.email, settings.bookingBetaEmails);
+}
+
 export async function dispatchPendingNotifications(options: { db?: PrismaClient; now?: Date; limit?: number; budgetMs?: number; appointmentId?: string } = {}) {
   const result = { sent: 0, failed: 0, skipped: 0, deferred: 0 };
   // Immediate actions and scheduled workers share the same delivery switch.
   // Preserve queued events while disabled so valid ones can resume later.
-  if (process.env.NOTIFICATIONS_ENABLED !== 'true') return result;
+  // Beta booking is the one exception: with the switch off, a call scoped to
+  // ONE appointment (dispatchAppointmentNotifications) still delivers that
+  // appointment's mail — the customer's and the salon's alert — when its
+  // customer is a beta tester. Every other customer stays email-free, and an
+  // unscoped call (the crons, Admin → Operations) returns here before any
+  // database access, exactly as before.
+  if (process.env.NOTIFICATIONS_ENABLED !== 'true') {
+    if (!options.appointmentId) return result;
+    if (!(await isBetaTesterAppointment(options.db ?? prisma, options.appointmentId))) return result;
+  }
   const db = options.db ?? prisma;
   const now = options.now ?? new Date();
   const started = Date.now();
