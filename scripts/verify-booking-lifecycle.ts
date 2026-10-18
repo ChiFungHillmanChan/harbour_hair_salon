@@ -233,7 +233,7 @@ async function main() {
     let session = { userId: ids.customer, role: 'USER' };
     const actionDependencies = {
       '@/app/lib/prisma': db,
-      '@/app/lib/session': { verifySession: async () => session },
+      '@/app/lib/session': { verifySession: async () => session, getSession: async () => session },
       '@/app/services/booking-service': booking,
       '@/app/services/notification-outbox-service': notifications,
       '@/app/services/stylist-ical-cache': icalCache,
@@ -272,12 +272,12 @@ async function main() {
     });
     const fixedCustomer = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
       ...actionDependencies, '@/app/services/booking-service': raceBooking,
-      '@/app/lib/session': { verifySession: async () => ({ userId: ids.customer, role: 'USER' }) },
+      '@/app/lib/session': { verifySession: async () => ({ userId: ids.customer, role: 'USER' }), getSession: async () => ({ userId: ids.customer, role: 'USER' }) },
       '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited, cancelLimiter: unlimited },
     });
     const fixedAdmin = loadServerModule<typeof import('../src/app/actions/admin')>('src/app/actions/admin.ts', {
       ...actionDependencies, '@/app/services/booking-service': raceBooking,
-      '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
+      '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }), getSession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
       '@/app/actions/admin-services': adminServices,
     });
     const { syncCalendarFeeds } = await import('../src/app/services/calendar-sync-service');
@@ -536,7 +536,7 @@ async function main() {
       };
       const depositCustomer = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
         ...actionDependencies,
-        '@/app/lib/session': { verifySession: async () => ({ userId: ids.other, role: 'USER' }) },
+        '@/app/lib/session': { verifySession: async () => ({ userId: ids.other, role: 'USER' }), getSession: async () => ({ userId: ids.other, role: 'USER' }) },
         '@/app/lib/rate-limit': { ...realRateLimit, bookingLimiter: unlimited, bookingDailyLimiter: unlimited },
         '@/app/services/square-gateway': { createSquareGateway: () => fakeSquare },
         '@/app/lib/online-booking-lock': {
@@ -684,13 +684,13 @@ async function main() {
       const depositAdmin = loadServerModule<typeof import('../src/app/actions/admin')>('src/app/actions/admin.ts', {
         ...actionDependencies, '@/app/actions/admin-services': adminServices,
         '@/app/services/deposit-lifecycle': depositLifecycle,
-        '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
+        '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }), getSession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
         // The feeds were imported moments ago; this hook lets two approvals overlap.
         '@/app/services/calendar-sync-service': { refreshCalendarFeedsBeforeApproval: async () => { await beforeApprovalTransaction?.(); return []; } },
       });
       const depositOwner = loadServerModule<typeof import('../src/app/actions/booking')>('src/app/actions/booking.ts', {
         ...actionDependencies, '@/app/services/deposit-lifecycle': depositLifecycle,
-        '@/app/lib/session': { verifySession: async () => ({ userId: ids.other, role: 'USER' }) },
+        '@/app/lib/session': { verifySession: async () => ({ userId: ids.other, role: 'USER' }), getSession: async () => ({ userId: ids.other, role: 'USER' }) },
         '@/app/lib/rate-limit': { ...realRateLimit, rescheduleLimiter: unlimited, appointmentRescheduleLimiter: unlimited, cancelLimiter: unlimited },
       });
       const lapse = loadServerModule<typeof import('../src/app/services/pending-request-lapse')>('src/app/services/pending-request-lapse.ts', {
@@ -1477,7 +1477,7 @@ async function main() {
       await sync(icalFeed([{ uid: 'synthetic-fresha-during-google', start: instant(gDay(4), '10:00'), end: instant(gDay(4), '11:00') }]));
       const clearing = loadServerModule<typeof import('../src/app/actions/admin-google-calendar')>('src/app/actions/admin-google-calendar.ts', {
         ...actionDependencies,
-        '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
+        '@/app/lib/session': { verifySession: async () => ({ userId: ids.admin, role: 'ADMIN' }), getSession: async () => ({ userId: ids.admin, role: 'ADMIN' }) },
         '@/app/lib/google-calendar-config': googleSettings,
         '@/i18n/request': { localizedPath: async (path: string) => path },
         'next/navigation': { redirect: (destination: string): never => { throw new Error(`REDIRECT ${destination}`); } },
