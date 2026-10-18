@@ -55,7 +55,7 @@ export function StylistShowcase({ stylists }: { stylists: PublicStylist[] }) {
   const locale = useLocale();
   const fallbackLang = (stylist: PublicStylist) => (locale === 'en-GB' || stylist.translated !== false ? undefined : 'en');
   return (
-    <section id="team" className="relative py-12 md:py-28 bg-zinc-900 text-white overflow-hidden">
+    <section id="team" className="scroll-mt-16 sm:scroll-mt-20 relative py-12 md:py-28 bg-zinc-900 text-white overflow-hidden">
       {/* Ambient glow */}
       <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-white/5 blur-3xl" />
       <div className="relative container mx-auto px-4">

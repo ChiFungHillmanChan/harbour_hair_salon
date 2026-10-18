@@ -7,7 +7,7 @@ export default async function VisitFollowBlock() {
   const [settings, t, tl] = await Promise.all([getSiteSettings(), getT('home'), getT('local')]);
   return (
     <section className="bg-zinc-50 py-12 md:py-16">
-      <div className="mx-auto max-w-4xl px-6 text-center">
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 text-center">
         <h2 className="font-serif text-3xl text-zinc-900 mb-3">{t('visit.title')}</h2>
         <p className="text-zinc-600 mb-6">
           {t('visit.body')}

@@ -84,7 +84,7 @@ export async function ServiceMenu({ entries, title, flatList = false }: ServiceM
   };
 
   return (
-    <section id="services" className="relative py-12 md:py-28 bg-white text-zinc-900 overflow-hidden">
+    <section id="services" className="scroll-mt-16 sm:scroll-mt-20 relative py-12 md:py-28 bg-white text-zinc-900 overflow-hidden">
       {/* Subtle backdrop grid */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#00000008_1px,transparent_1px)] [background-size:24px_24px]" />
       <div className="relative container mx-auto px-4">
