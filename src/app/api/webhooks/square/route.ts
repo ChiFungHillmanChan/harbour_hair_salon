@@ -9,7 +9,7 @@ import {
 // Square's payment and refund notifications (docs/square-payments-setup.md §1.7).
 // Square calls this whenever money moves on the salon's account — not only
 // for this site's deposits — so everything that can be refused is refused
-// before the database is touched (CLAUDE.md, "Neon compute budget": a public
+// before the database is touched (docs/agents/neon-budget.md: a public
 // endpoint something external calls is a cron you do not control):
 //   1. no usable Square configuration (switched off, incomplete, sandbox
 //      credentials in a production build, or production credentials on a

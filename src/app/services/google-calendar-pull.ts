@@ -285,7 +285,7 @@ export async function pullGoogleCalendar(options: {
   now?: Date;
   gateway?: GooglePullGateway;
 } = {}): Promise<GooglePullResult> {
-  // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
+  // Kill-switch above the first database read (docs/agents/neon-budget.md).
   const config = googleCalendarConfig();
   if (!config) return { reverted: 0, blocks: 0, entries: 0, changed: false, diaryChanged: false, skipped: 'disabled' };
   const db = options.db ?? (await import('@/app/lib/prisma')).default;

@@ -104,7 +104,7 @@ const BLOG_PAGE_SIZE = 12;
  * language; nothing reaches the database until a post or its translation is
  * published (actions/admin-blog.ts and actions/admin-content.ts drop the tag).
  * The day-long expiry is only a safety net: a timed expiry is itself a poll
- * (CLAUDE.md, "Neon compute budget"). Cards are small and posts few, so one
+ * (docs/agents/neon-budget.md). Cards are small and posts few, so one
  * entry stays far below the cache's size limit.
  */
 const readPublishedCards = unstable_cache(

@@ -179,7 +179,7 @@ export async function runGoogleCalendarJob(
   run: GoogleCalendarRun,
   options: { db?: JobDb; deadline?: number; renew?: boolean } = {},
 ): Promise<GoogleCalendarJobResult> {
-  // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
+  // Kill-switch above the first database read (docs/agents/neon-budget.md).
   const config = googleCalendarConfig();
   if (!config) return { skipped: 'disabled' };
   const name = run === 'daily' ? GOOGLE_CALENDAR_DAILY_JOB : GOOGLE_CALENDAR_JOB;

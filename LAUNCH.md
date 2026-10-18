@@ -236,7 +236,7 @@ Square and payment records.
       emailed 30 minutes later; Restore (within 24 hours) undoes it. Only bookings made and starting
       after the switch is turned on are affected, and never one with an open reschedule request. (The
       `20261016120000_late_arrival_auto_cancel` migration is on the preview database: it is current
-      through `20261018120000_booking_beta_emails`.)
+      through `20261018200000_deposit_locked_at`.)
 - **Consultation credit, "From £X" prices and Styling (2026-10-16, owner):**
   - [x] Styling (the 7 blow-dry services) is booked directly, without a consultation: a production
         data change on 2026-10-16 (`requiresConsultation=false`, audited `SERVICE.UPDATE`). The repo's
@@ -249,7 +249,7 @@ Square and payment records.
   - [x] After merging, apply the `20261016140000_consultation_credit` migration to the **preview
         database** by hand (as for every migration: previews never migrate), or every PR's "Deploy
         Preview" fails. Done long since: the preview database is current through
-        `20261018120000_booking_beta_emails`.
+        `20261018200000_deposit_locked_at`.
 - [ ] Staff approval time (holds expire after 7 days; aim for same-day replies).
 - [ ] Legal entity name and retention periods for the privacy notice (payment records: 6 years)
       and the booking terms.

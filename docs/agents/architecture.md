@@ -1,0 +1,78 @@
+# Architecture
+
+> How the app is built: auth, i18n, email, payments, calendars, crons and the source layout. Part of the agent guide: `CLAUDE.md` / `AGENTS.md` link here. Keep it true when the code changes.
+
+- **Framework**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4
+- **Package manager**: pnpm
+- **Database**: Prisma ORM with triple schema setup:
+  - `prisma/dev/schema.prisma` — SQLite for local development
+  - `prisma/vercel/schema.prisma` — PostgreSQL for Vercel deployment (Neon)
+  - `prisma/prod/schema.prisma` — MS SQL Server (legacy Docker)
+  - **Always edit all three schema files** when changing the database schema
+- **Auth**: JWT sessions via `jose`, passwords hashed with `bcryptjs`, plus Google sign-in. Session helpers in `src/app/lib/session.ts`. Admin sign-in is password or Google only: MFA stopped being required in e9f3a25 and its code is dormant.
+  - **Route protection** lives in `src/middleware.ts`; a root `middleware.ts` is never loaded. It guards `/admin`, `/kiosk`, `/appointments` and `/reviews/new`, and rewrites the locale prefix.
+  - `/book` checks sign-in in its page instead (see `booking-and-payments.md`).
+  - The header learns who is signed in from the `session_hint` cookie alone (`lib/session-hint.ts`) — no `/api/session` request per visitor.
+- **i18n**: English (default, unprefixed) and Traditional Chinese (`/zh-hk`), admin pages included.
+  - Messages live in `src/i18n/messages/{en,zh}/*.ts`; `src/i18n/messages/completeness.test.ts` fails when either language misses a key.
+  - Customers get emails in `User.preferredLocale`, saved at registration, Google sign-up and booking; staff choose it for walk-ins.
+- **Email**: Resend's REST API (`sendPreparedEmail` in `src/app/services/email-service.ts`) with React Email templates in `src/components/emails/`.
+  - Booking emails (to the customer and the salon) are queued in the notification outbox (`services/notification-outbox-service.ts`) and only sent while `NOTIFICATIONS_ENABLED=true` — except a beta tester's appointment, which its own per-appointment dispatch sends even while it is off (beta booking, `booking-and-payments.md`).
+  - Account emails (verification, password reset, unsubscribe) go out at once.
+  - A preview deployment only emails `PREVIEW_EMAIL_ALLOWLIST`.
+  - **The short set (owner decision 2026-10-18).** Customers get `CONFIRMATION`, `CANCELLATION` (a declined request too: `wasConfirmed: false`), `RESCHEDULE`, `RESCHEDULE_DECLINED`, `RESCHEDULE_LAPSED`, `REQUEST_LAPSED`, `LATE_CANCELLED` and `REMINDER`; the salon gets `SALON_ALERT` and `SALON_RESCHEDULE_ALERT`, unchanged. So one online booking sends 3 emails: the salon alert, the confirmation and (usually) a reminder.
+  - **Retired, not deleted:** `REQUEST_RECEIVED`, `RESCHEDULE_REQUEST_RECEIVED` and `REVIEW_REQUEST` (`RETIRED_CUSTOMER_EMAIL_KINDS` in `services/email-content.ts`). `enqueueAppointmentNotification` queues nothing for them (every call site stays), the notifications cron skips the review-invitation phase before any query (its saved cursor is kept), and a row queued before is skipped at dispatch with its payload cleared. Take a kind off the list to send it again.
+  - **Reminder rule:** only for a booking confirmed at least `REMINDER_MIN_CONFIRMED_AHEAD_HOURS` (24) before its start — dated by its earliest `CONFIRMATION` row (`confirmationQueuedAt`); with none it goes as before. The cron applies it when it looks for reminders and `isCurrent` again at dispatch.
+  - **The request-lapse email still needs an online request:** `services/request-lapse-notice.ts` knows one by the salon alert it queued at notificationVersion 0 (`onlineRequestAlertKey`; an old `REQUEST_RECEIVED` row still counts). A staff pencil-in has none: it queues nothing when made, and a staff move queues its alert only after bumping the version.
+- **Payments**: Square for booking deposits — the Web Payments SDK card form in the browser, REST calls through `services/square-gateway.ts`, and webhooks at `/api/webhooks/square`. See the Square bullets in `booking-and-payments.md` and `docs/square-payments-setup.md`.
+- **Rate limiting**: Upstash Redis through `lib/rate-limit.ts` (`KV_REST_API_URL`/`KV_REST_API_TOKEN`, or `UPSTASH_REDIS_REST_URL`/`_TOKEN`). It never fails open.
+- **Calendars**:
+  - Each stylist has a token-protected outbound busy feed, `/api/ical/[stylistId]`, served from the Data Cache. Fresha imports it as blocked time.
+  - The calendar-sync cron imports the stylists' inbound feeds into `ExternalBusyBlock`. Its `summary` keeps only Fresha's generic titles (`services/calendar-busy-kind.ts`), so Admin → Schedule (`lib/calendar-busy-display.ts`) shows part-day blocked time as "Blocked", a Fresha appointment as "Fresha booking" and a whole-day block as "Unavailable"; any other title is never stored.
+  - Customers get Google Calendar links and `.ics` files (`lib/calendar-links.ts`).
+  - **Google Calendar sync** (two-way, ON in production since 2026-10-16; runbook `docs/google-calendar-setup.md`, design `docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md`): the salon's primary "HarbourHair" calendar (`GOOGLE_CALENDAR_ID=harbourhairuk@gmail.com` once the diary mirror is rolled out), written through a service account (`services/google-calendar-*.ts`, `lib/google-calendar-config.ts`). It is not a `CalendarConnection`.
+    - **Push**: every booking is one event (id `hh` + sha256 of the appointment id). `invalidateStylistIcalFeed` (Server Actions only) schedules the push with `after()` (`scheduleGoogleCalendarPush`); the calendar-sync cron retries and catches cron-made changes (45-minute look-back); housekeeping re-renders the whole window and deletes copies of appointments that ended over **12 months** ago. A Google failure never fails a booking action: the row keeps `attempts`/`lastError` and the cron retries (a booking before the 7-day window only while `attempts < 5`; a row erasure marked for re-rendering until it lands).
+    - **Pull**: `POST /api/webhooks/google-calendar` checks sync-enabled (404) and the `X-Goog-Channel-Token` (HMAC over the channel id, carrying its own expiry, `lib/google-channel-token.ts`; 401) before any DB access, answers 200 and pulls in `after()`, single-flight (`runPullSingleFlight`: one pull at a time plus one re-run). The watch channel is made by the daily run (housekeeping renews it within 48 hours of its expiry) and by Admin → Integrations → "Sync now", which replaces it at once (`runGoogleCalendarJob('daily', { renew: true })`). The webhook and the pull NEVER push (`invalidateStylistIcalFeedFromCron` never schedules one), or every notification would start a push, a notification and a pull again without end.
+    - **Blocks**: STYLIST and LEAVE diary entries (below) become `ExternalBusyBlock` source `GOOGLE` for their stylists (`services/google-busy-mapping.ts`); #72's title-prefix rule (an unmatched title blocked the whole salon) is gone. Website events (private property `harbourAppointmentId`, or an id shaped `hh` + 40 hex should the property be stripped) are NEVER diary entries or blocks, and an edited, recoloured or deleted one is written back, for bookings from 7 days back too: the website wins, staff edit website bookings in Admin (a loop breaker: not within 10 minutes of its own write, `GOOGLE_EVENT_NOT_KEPT`). GOOGLE blocks ARE exported in the stylist's outbound busy feed so Fresha stops selling the hour; FRESHA/TREATWELL blocks are not. The pull writes busy blocks (and drops the feed cache) only when the blocks that have not ended differ from the stored ones that have not ended.
+    - **Diary mirror** (`docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md`): the pull classifies every Google-only event (`services/google-diary-classify.ts`: website/cancelled skipped; stylist Google colour → STYLIST; no-stylist colour (default Tomato 11) → UNASSIGNED; else names in the title → LEAVE, else NOTE; transparency ignored) into `GoogleDiaryEntry` (30 days back to 90 ahead, deleted 30 days after the end by the pull and by housekeeping) and writes GOOGLE busy blocks for STYLIST/LEAVE only, in one transaction. UNASSIGNED entries take a chair (`services/diary-chair-rule.ts`, loaded by `diary-chair-load.ts` inside the booking reads and transactions; the chairs are the active stylists with `takesWalkIns`, Admin → Stylists "Takes walk-ins", and booking a stylist without it uses none): customer paths refuse, admin create/move warn (`DIARY_CHAIR`), staff confirm/approve never apply it (`{ chairRule: false }`). Website events take the stylist's `googleColorId` (`googleColorFor`; none set → the no-stylist colour); `GoogleCalendarSyncState.calendarId` + `services/google-calendar-guard.ts` start over when `GOOGLE_CALENDAR_ID` changes. Colours: Admin → Stylists (Google colour, Google names) and Admin → Integrations (Diary colours). Diary titles hold customers' names and phone numbers: admin-only (Admin → Schedule), never in a public page, feed or email.
+    - **Config**: `GOOGLE_CALENDAR_SYNC_ENABLED` is the kill-switch, set on **Production only** (the preview database holds real customers; `VERCEL_ENV=preview` is off whatever the env says). Status, "Sync now", "Clear Google busy time and diary copy" (deletes every GOOGLE block and the diary copy, so turning the sync off is reversible; audited) and the diary colours live in Admin → Integrations. Failures reach the daily ops alert through two job rows: `google-calendar` (the 30-minute run, which also checks health: a live watch channel and a successful pull within 24 hours) and `google-calendar-daily` (housekeeping and Sync now).
+- **Validation**: Zod
+- **Deployment**: Vercel (Pro plan) with Neon Postgres (**PostgreSQL 18, `eu-west-2`/London** since 2026-09-16 — moved from `us-east-1` to stop every query crossing the Atlantic; CI must test against the same major version). Four crons live in `vercel.json`: reminders (daily 08:00 UTC; also sends the salon's daily "needs attention" email, `services/ops-alert-service.ts`, only when something is wrong), notifications (`*/30 8-19` UTC, daytime only), calendar-sync (`*/30`, but the route skips ticks outside saved staff hours ±15 min before touching the DB; after the feeds it runs the late-arrival rule and the Google Calendar retry/pull) and housekeeping (daily 03:15 UTC: retention clean-up, unanswered-request lapses, Square reconciliation `services/payment-reconciliation.ts` and the daily Google Calendar run `services/google-calendar-job.ts`). See `neon-budget.md` before adding another; `neon-compute-budget.test.ts` pins these.
+
+## Source layout (detailed)
+
+- `src/app/` — Next.js App Router pages and API routes
+  - `[locale]/` — every page. English is served unprefixed, Chinese under `/zh-hk`, and `src/middleware.ts` rewrites. It covers:
+    - the public pages, `auth/`, `book/`, `appointments/`, `privacy/`, `booking-terms/` and `kiosk/`;
+    - `admin/`: the schedule home page, `services`, `stylists`, `shifts`, `timesheets`, `payroll`, `employees`, `blog`, `faqs`, `offers`, `discounts`, `reviews`, `users`, `settings`, `opening-hours`, `integrations` and `operations`.
+  - `actions/` — Server actions by domain:
+    - `auth.ts`, `booking.ts`, `booking-quote.ts`, `admin.ts`;
+    - `admin-erasure.ts`, `admin-payments.ts`, `admin-settings.ts`, `admin-operations.ts`;
+    - `admin-arrivals.ts` (Arrived, late-cancel restore), `admin-consultation-credit.ts`, `admin-google-calendar.ts` (Sync now, Clear Google busy time and diary copy, Diary colours), …
+  - `lib/` — Shared utilities:
+    - `prisma.ts`, `session.ts`, `session-hint.ts`, `rate-limit.ts`;
+    - `booking-maintenance.ts` (the go-live gate), `online-booking-lock.ts`, `square-config.ts`;
+    - `booking-constants.ts` (notice, late-arrival and consultation-credit constants), `late-arrival.ts`;
+    - `calendar-links.ts`, `calendar-busy-display.ts`, `calendar-diary-display.ts`, `google-calendar-config.ts`, `google-channel-token.ts`, `google-aliases.ts`, `preview-email.ts`, …
+  - `services/` — Business logic:
+    - booking (`booking-service.ts`, `pending-request-lapse.ts`, `reschedule-request-lapse.ts`, `late-arrival-cancel.ts`, `consultation-credit.ts`);
+    - pricing (`pricing/`: `policy.ts`, `eligibility.ts`, `quote.ts`, `public-catalog.ts`, …);
+    - email (`email-service.ts`, `notification-outbox-service.ts`, `ops-alert-service.ts`);
+    - `housekeeping-service.ts` and `operations-messages.ts`;
+    - calendars (`calendar-sync-service.ts`, `calendar-busy-kind.ts`, `stylist-ical-feed.ts`, `stylist-ical-cache.ts`, `google-calendar-*.ts`, `google-busy-mapping.ts`, `google-diary-*.ts`, `diary-chair-*.ts`);
+    - deposits (`deposit-*.ts`, `payment-*.ts`, `square-gateway.ts`, `square-webhook-events.ts`).
+  - `api/` — API routes:
+    - `cron/`: reminders, notifications, calendar-sync, housekeeping, and the gated treatwell-sync;
+    - `health/`, `ical/[stylistId]/` (busy feeds), `webhooks/square/`, `webhooks/google-calendar/`;
+    - `auth/` (Google OAuth, email verification, sign-out) and `session/`.
+- `src/i18n/` — locales, routing helpers and the `messages/{en,zh}` dictionaries.
+- `src/components/` — React components by feature (`booking/`, `admin/`, `appointments/`, `emails/`, `layout/`, …).
+- `src/test/` — shared fixtures (`booking-fixture.ts`, `deposit-fixture.ts`, `payments-fixture.ts`) and page tests (`src/test/pages/`). `node --test` reads `[locale]` in a path as a glob, so a test placed under `src/app/[locale]/` never runs.
+- `src/middleware.ts` — route protection and locale rewrites.
+- `prisma/{dev,vercel,prod}/` — the three schemas, each with its own migrations folder; seed scripts.
+- `scripts/` — `production-build-guard.mjs`, the PostgreSQL verification suites (`verify-*.ts`) and the handover PDF builder (`pdf/`).
+- `docs/` — runbooks (`square-payments-setup.md`, `google-calendar-setup.md`, `data-erasure.md`) and design specs and plans (`superpowers/`).
+- `infra/` — Vercel firewall rules (`vercel-firewall/`) and the dormant AWS fallback (`aws/`).
+- `LAUNCH.md` — the launch checklist and the last verified production state.
+- `vercel.json` — Cron job configuration
+- `readme/structure.md` — Function/component registry

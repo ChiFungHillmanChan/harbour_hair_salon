@@ -220,7 +220,7 @@ export async function pushGoogleCalendar(options: {
   appointmentIds?: string[];
 } = {}): Promise<GooglePushResult> {
   const result = { written: 0, deleted: 0, unchanged: 0, failed: 0 };
-  // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
+  // Kill-switch above the first database read (docs/agents/neon-budget.md).
   const config = googleCalendarConfig();
   if (!config) return { ...result, skipped: 'disabled' };
   if (options.appointmentIds && options.appointmentIds.length === 0) return result;

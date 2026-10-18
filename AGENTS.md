@@ -1,22 +1,68 @@
 # AGENTS.md
 
-This file guides Codex when working with code in this repository. `CLAUDE.md` is the fuller reference (same rules, more detail and history); read it before scheduling anything, touching payments or changing a public route.
+Guidance for Codex in this repository. This file is the short core. The detail lives in `docs/agents/`, and the table at the end says which file to read before touching what. `CLAUDE.md` carries the same guide for Claude Code: keep the two in step.
 
-## Project Overview
+## 1. What this project is
 
-Harbour Hair Salon — a bilingual Next.js 16 website for a hair salon in Leeds: English (no URL prefix) and Traditional Chinese (`/zh-hk`), admin included. Live at https://www.harbourhair.co.uk, deployed on Vercel (Pro plan) with Neon PostgreSQL 18 in London.
+**Harbour Hair Salon** is the website and booking system of a hair salon in Leeds, UK. It is live at https://www.harbourhair.co.uk in English (no URL prefix) and Traditional Chinese (`/zh-hk`), admin included.
 
-- **Public pages:** home, services & pricing, stylists, blog, offers, reviews, contact, privacy notice and booking terms.
-- **Sign-in:** email + password, or Google.
-- **Online booking requests** that staff confirm, with Square card deposits (Square production keys set 2026-10-18; online booking open only to beta testers until launch).
-- **Customer appointments:** view, cancel, request a reschedule, add to Google Calendar / `.ics`.
-- **Admin panel:** schedule (arrivals, late-arrival restore, drag/resize with confirmation, consultation credit), services & pricing, stylists, shifts, timesheets and payroll, blog, FAQs, offers, discounts, reviews, users (with erasure), settings (booking switch, deposits, late-arrival rule), integrations (Fresha feeds, Google Calendar) and operations.
-- **Staff kiosk.**
-- **Calendars:** Fresha availability exchanged both ways through iCal busy feeds; two-way sync with the salon's primary "HarbourHair" Google Calendar, mirrored in Admin → Schedule by colour (sync on in production since 2026-10-16; diary mirror 2026-10-17, rollout in `docs/google-calendar-setup.md` §2b).
+- **Customers** browse services and prices, stylists, the blog, offers and reviews. They sign in (email + password, or Google) to request bookings, which staff then confirm. A Square card deposit is held at booking and taken when staff confirm. Customers can cancel, ask for a new time, and add bookings to their calendar.
+- **Staff** run the salon from the admin panel: the schedule (arrivals, drag-to-move, consultation credit), services and pricing, stylists, shifts, timesheets and payroll, content (blog, FAQs, offers), reviews, users (with GDPR erasure), settings, integrations and operations. There is also a staff clock-in kiosk.
+- **Other channels stay in sync.** Fresha and the website swap busy time through iCal feeds both ways. The salon's Google Calendar ("HarbourHair") syncs both ways and shows as the staff diary in Admin → Schedule.
+- **Brand:** monochrome black, white and grey (client requirement).
 
-**Production state (2026-10-18):** online booking closed to the public (`SiteSettings.bookingEnabled=false`, `NOTIFICATIONS_ENABLED=false`) but open to beta testers (Admin → Settings → Beta testers: the owner's `hillmanchan709@gmail.com` only); Square production keys and webhook set 2026-10-18 after the §4 acceptance list passed; a real £0.01 test booking passed; "Short Over Ears - Wash, Haircut & Blow Dry" keeps a £0.01 test deposit override on purpose — remove it before public booking opens (`LAUNCH.md` §3.8); Fresha: Funky and Ivan are two-way (inbound on, outbound subscription confirmed); Fresha does sell **Lox**, but Admin has Lox's "This provider takes bookings" unticked (`receivesBookings=false`) and Fresha has not subscribed to the website busy feed (`outboundConfirmedAt` null) — the owner has paused any Lox change, so a website booking with Lox does not block Lox on Fresha and staff check Fresha before confirming a Lox request (§3.3); **Shania** is not sold on Fresha (her "takes bookings" switched off in Admin on 2026-10-18) and is hidden from the website; deposit refunds follow the 48-hour rule and customers get the short set of emails (both 2026-10-18, below); `CALENDAR_SYNC_ENABLED=true`; housekeeping on; late-arrival rule off; Google Calendar sync ON since 2026-10-16 (its five `GOOGLE_CALENDAR_*` variables are set on Production), on the salon's HarbourHair diary since 2026-10-17 (`docs/google-calendar-setup.md` §2b); #72's "Harbour website bookings" calendar is switched off but kept. Remaining launch steps: `LAUNCH.md`.
+## 2. Current state (2026-10-18)
 
-## Commands
+- The public site is live. **Online booking is closed to the public**: customers book by phone, Fresha or Treatwell. It is open to **beta testers** only (Admin → Settings → Beta testers, currently the owner's account).
+- Square **production** keys and the webhook are set. A real £0.01 test booking passed end to end. The assistant never captures or refunds real money: staff press those buttons.
+- Production flags: `NOTIFICATIONS_ENABLED=false`, `CALENDAR_SYNC_ENABLED=true`, Google Calendar sync on, housekeeping on, late-arrival rule off.
+- **Remove before public launch:** the £0.01 test deposit on "Short Over Ears - Wash, Haircut & Blow Dry" (`LAUNCH.md` §3.8).
+- **Fresha gap:** Lox is not linked both ways, and the owner has paused changes. Staff check Fresha before confirming a Lox request.
+- The preview database is migrated through `20261018200000_deposit_locked_at`.
+- Full dated detail: `docs/agents/production-state.md`. The launch steps, in order: `LAUNCH.md` §3, then the owner decisions in §4.
+
+## 3. Production stack
+
+| Layer | Service | Setup | Plan / cost |
+|---|---|---|---|
+| App | **Next.js 16** (App Router), React 19, TypeScript, Tailwind v4, pnpm, Node 24 | `vercel.json` pins region `lhr1` (London) | — |
+| Hosting | **Vercel** | Deployed **only** by GitHub Actions after CI (`.github/workflows/deploy.yml`); Vercel's git builds are off. The project firewall is in `infra/vercel-firewall/`; preview URLs sit behind Vercel login | Pro, US$20/month |
+| Database | **Neon PostgreSQL 18**, `eu-west-2` | Prisma 6. Production `damp-wildflower-12426644`; preview has its own copy, `aged-glitter-18950253` (real customer data: treat it like production) | Free (100 CU-h/month; going over **suspends** the database). Move to Launch (~US$5–15/month) at public launch |
+| Rate limits | **Upstash Redis**, `eu-west-2` | `lib/rate-limit.ts`; never fails open | Free |
+| Email | **Resend** (REST) + React Email | Booking emails go through an outbox; previews only email an allowlist | Free (100/day). Move to Pro (US$20/month) at launch |
+| Payments | **Square** (Web Payments SDK + REST + webhook) | The salon's own account; production keys on Vercel Production only, sandbox on Preview only. Runbook: `docs/square-payments-setup.md` | 1.4% + 25p per UK card; no monthly fee |
+| Google | Google Cloud project `harbourhair` (`harbourhair-511821`) | The OAuth client for Google sign-in, plus a service account for Calendar sync. Runbook: `docs/google-calendar-setup.md` | Free |
+| DNS | IONOS | `www.harbourhair.co.uk` is canonical; DMARC is live | Domain renewal yearly |
+| Crons | Vercel crons (UTC) | reminders `0 8`, notifications `*/30 8-19`, calendar-sync `*/30` (staff hours only), housekeeping `15 3` | Read `docs/agents/neon-budget.md` before adding one |
+
+**Running cost:** about US$20/month now, about US$45–55/month once public booking opens (Vercel Pro, plus Neon Launch and Resend Pro), plus Square's per-payment fees. Also set a Vercel spend alert of US$10 (**alerts only**: pausing would take production offline). Environment variables: `docs/agents/environment.md`.
+
+## 4. Repository structure
+
+```text
+src/
+  app/
+    [locale]/        every page; middleware serves English unprefixed, Chinese under /zh-hk
+      admin/         staff panel (schedule home, services, stylists, shifts, payroll, blog, settings, integrations, operations, …)
+      book/ appointments/ auth/ kiosk/ booking-terms/ privacy/ …
+    actions/         Server Actions by domain ('use server'): booking, admin*, auth, kiosk, …
+    services/        business logic: booking, pricing/, deposits + Square, email + outbox, calendars (Fresha, Google), housekeeping
+    lib/             shared helpers: session, prisma, rate-limit, booking gate + constants, Square config, calendar links
+    api/             cron/, webhooks/ (square, google-calendar), ical/[stylistId], auth/, health, session
+  components/        React components by feature (booking, admin, appointments, emails, layout, home, legal, …)
+  i18n/              locales, routing helpers, messages/{en,zh}
+  middleware.ts      route protection + locale rewrite (a root middleware.ts is never loaded)
+  test/              shared fixtures and page tests (tests under src/app/[locale]/ never run)
+prisma/{dev,vercel,prod}/   SQLite (local) · PostgreSQL (Vercel; the app's Prisma client) · SQL Server (legacy). Each has its own schema and migrations
+docs/agents/         the detailed agent guide (table at the end)
+docs/                runbooks (Square, Google Calendar, data erasure) and design specs (superpowers/specs, plans)
+scripts/             production build guard, PostgreSQL verification suites, PDF handover builder
+infra/               Vercel firewall rules; a dormant AWS fallback (do not deploy)
+readme/structure.md  function/component registry: check it before adding a new one
+LAUNCH.md            the launch checklist and the last verified production state
+```
+
+## 5. Commands
 
 ```bash
 pnpm dev              # Start dev server (localhost:3000)
@@ -55,95 +101,58 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 # Vercel's own git builds are off (`git.deploymentEnabled: false` in vercel.json).
 ```
 
-## Architecture
+## 6. How a change reaches production
 
-- **Framework**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4; pnpm; Zod for validation.
-- **Database**: Prisma ORM with three schemas — `prisma/dev` (SQLite), `prisma/vercel` (PostgreSQL/Neon, the one the app's client is generated from) and `prisma/prod` (MS SQL Server, legacy). **Always edit all three schema files** and add a migration to each.
-- **Auth**: JWT sessions via `jose`, `bcryptjs` passwords, plus Google sign-in (`src/app/lib/session.ts`). Route protection in `src/middleware.ts` (a root `middleware.ts` is never loaded): it guards `/admin`, `/kiosk`, `/appointments` and `/reviews/new` and rewrites the locale prefix. `/book` checks sign-in in its page. Sign-out is `POST /api/auth/signout` and ends every session.
-- **i18n**: messages in `src/i18n/messages/{en,zh}/*.ts`; `completeness.test.ts` fails when either language misses a key. Customers get emails in `User.preferredLocale`.
-- **Email**: Resend REST API (`services/email-service.ts`) with React Email templates in `src/components/emails/`. Booking emails go through the notification outbox and are only sent while `NOTIFICATIONS_ENABLED=true`; a preview deployment only emails `PREVIEW_EMAIL_ALLOWLIST`.
-  - **Short set of customer emails (owner decision 2026-10-18):** customers get `CONFIRMATION`, `CANCELLATION` (a declined request too), `RESCHEDULE`, `RESCHEDULE_DECLINED`, `RESCHEDULE_LAPSED`, `REQUEST_LAPSED`, `LATE_CANCELLED` and `REMINDER` — the reminder only for a booking confirmed at least 24 hours before its start (`REMINDER_MIN_CONFIRMED_AHEAD_HOURS`; the earliest `CONFIRMATION` row dates it; checked by the cron and again at dispatch). The salon's `SALON_ALERT` / `SALON_RESCHEDULE_ALERT` are unchanged. `REQUEST_RECEIVED`, `RESCHEDULE_REQUEST_RECEIVED` and `REVIEW_REQUEST` are retired, not deleted: `RETIRED_CUSTOMER_EMAIL_KINDS` in `services/email-content.ts` — never queued, the review phase of the cron does no query, old queued rows are skipped at dispatch. Take a kind off that list to send it again. So one online booking now sends 3 emails: the salon alert, the confirmation and (usually) a reminder. The request-lapse email still reaches every online request: `services/request-lapse-notice.ts` knows one by the salon alert it queued at version 0 (`onlineRequestAlertKey`; an old `REQUEST_RECEIVED` row still counts), which a staff pencil-in never has.
-- **Payments**: Square deposits — Web Payments SDK card form, REST through `services/square-gateway.ts`, webhook `POST /api/webhooks/square`. Runbook: `docs/square-payments-setup.md`.
-- **Rate limiting**: Upstash Redis through `lib/rate-limit.ts`; never fails open.
-- **Calendars**:
-  - Each stylist has a token-protected outbound busy feed, `/api/ical/[stylistId]`, served from the Data Cache; Fresha imports it as blocked time.
-  - The calendar-sync cron imports the stylists' inbound feeds into `ExternalBusyBlock`; Admin → Schedule shows Fresha blocked time as "Blocked" and Fresha appointments as "Fresha booking" (`services/calendar-busy-kind.ts`, `lib/calendar-busy-display.ts`).
-  - **Google Calendar sync** (on in production since 2026-10-16; runbook `docs/google-calendar-setup.md`): website bookings are pushed through a service account to the salon's primary "HarbourHair" calendar (`GOOGLE_CALENDAR_ID=harbourhairuk@gmail.com`; since 2026-10-17; #72's "Harbour website bookings" is switched off but kept), each in its stylist's Google colour. The website wins: edits to its own events in Google are written back.
-  - **Diary mirror** (spec `docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md`): the pull copies every other event, 30 days back to 90 ahead, into `GoogleDiaryEntry` (`services/google-diary-classify.ts`): a stylist's Google colour → STYLIST; the no-stylist colour (Tomato) → UNASSIGNED, which takes a chair (`services/diary-chair-rule.ts`: customer paths refuse, Admin warns; the chairs are stylists with `Stylist.takesWalkIns`, Admin → Stylists "Takes walk-ins"); otherwise a title naming a stylist → LEAVE, else NOTE (blocks nothing); "Show as available" is ignored. STYLIST and LEAVE become `ExternalBusyBlock` source `GOOGLE` and are exported in the outbound busy feed so Fresha stops selling the hour; UNASSIGNED and NOTE never are. Admin → Schedule shows the diary read-only; titles hold customers' names and phones, so admin-only. Colours: Admin → Stylists and Admin → Integrations. Changing `GOOGLE_CALENDAR_ID` starts the bookkeeping over (`services/google-calendar-guard.ts`).
-  - **Who customers see:** `Stylist.showOnWebsite` off hides a stylist from the public pages, `/book`, "Anyone", the booking actions and the coverage gate (CLAUDE.md, Key Conventions → "Who customers see, who takes walk-ins"); Admin → Employees → "Also add as stylist" makes a hidden, linked stylist.
-  - Google calls `POST /api/webhooks/google-calendar`, which refuses (404/401) before any DB access and pulls single-flight after answering; the webhook and the pull never push. Website copies are kept 12 months; diary entries 30 days after they end.
-- **Crons** (`vercel.json`, UTC): reminders `0 8` (plus the daily "needs attention" email), notifications `*/30 8-19`, calendar-sync `*/30` (skips ticks outside staff hours ±15 min before touching the DB; also runs the late-arrival rule and the Google Calendar retry/pull) and housekeeping `15 3` (retention, request lapses, Square reconciliation, the daily Google Calendar run).
+1. Work on a branch: `main` deploys. Before pushing, run `pnpm test`, `pnpm exec tsc --noEmit` and `pnpm lint`.
+2. **Schema change:** edit all three `prisma/*/schema.prisma` files and add a migration to each `migrations/` folder. Production applies migrations in its deploy build. The **preview database never migrates by itself**: apply each migration by hand (`docs/square-payments-setup.md` §7), or every PR's "Deploy Preview" fails. The Blast Radius hook holds that command until the owner approves it in the terminal.
+3. Open a PR. "CI" is the gate; "Deploy Preview" only needs the preview database to be current.
+4. Squash-merge with an explicit `--subject`/`--body`. **A skip-CI marker anywhere in the head commit message deploys nothing** (`[skip ci]` and friends, even when quoted). Write "skip-ci marker" in prose. After merging, confirm a `push` run for the new `main` SHA appears in Actions.
+5. Deploys on `main` queue one after another and are never cancelled mid-flight. When the `NEON_API_KEY` secret and the `NEON_PROJECT_ID` variable are set, each production deploy first takes a Neon snapshot branch (`predeploy-*`). Rollback: promote an older deployment in Vercel.
+6. When behaviour, setup or production facts change, update this guide (`AGENTS.md`, `CLAUDE.md`, `docs/agents/`), `LAUNCH.md` and the customer-facing terms and privacy notice in the same PR.
 
-### Environment Variables
+## 7. Rules that must never break
 
-- `POSTGRES_URL` / `POSTGRES_URL_NON_POOLING` — Neon (auto-injected); `DATABASE_URL` — local SQLite.
-- `SESSION_SECRET` — JWT signing key (required, no fallback).
-- `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`, `SALON_NOTIFY_EMAIL`, `RESEND_AUDIENCE_ID` — email.
-- `NOTIFICATIONS_ENABLED` — `"true"` turns on booking emails, reminders and the daily ops alert; the online-booking go-live gate also requires it. Production: `false` until launch.
-- `CALENDAR_SYNC_ENABLED` — `"true"` lets the calendar-sync cron run (production: `true`); the late-arrival rule and the Google Calendar 30-minute step run inside it.
-- `HOUSEKEEPING_ENABLED` — the daily housekeeping cron runs unless this is `"false"`.
-- `TREATWELL_SYNC_ENABLED` / `TREATWELL_API_ENABLED` — deliberately off.
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google sign-in (OAuth client in the `harbourhair` Google Cloud project, harbourhairuk@gmail.com).
-- `GOOGLE_CALENDAR_SYNC_ENABLED`, `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_SA_EMAIL`, `GOOGLE_CALENDAR_SA_PRIVATE_KEY`, `GOOGLE_CALENDAR_WEBHOOK_SECRET` — Google Calendar sync (`lib/google-calendar-config.ts`). **Vercel Production only, never Preview** (a preview is off whatever the env says). All five must be present and the flag exactly `"true"`, else the sync is off. The private key keeps its newlines as literal `\n`.
-- `SQUARE_*` (seven variables) — Square deposits: sandbox values on Preview only, production values on Production only (`docs/square-payments-setup.md` §2). Production has all seven since 2026-10-18; Preview lacks the sandbox token and signature key until they are re-added.
-- `KV_REST_API_URL` / `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` / `_TOKEN`) — rate limits.
-- `NEXT_PUBLIC_SITE_URL` — canonical URL (defaults to `https://www.harbourhair.co.uk`).
-- `CRON_SECRET` — cron auth bearer token.
-- `PREVIEW_EMAIL_ALLOWLIST` — Preview only: the only recipients a preview deployment emails.
-- Vercel makes new variables Sensitive: anything the BUILD reads (`NEXT_PUBLIC_*`, the database URLs for `prisma migrate deploy`) must be added with `vercel env add --no-sensitive`. "Separate Production Secret Values" is on: add a production secret as a new Production-only variable, never into the Preview one.
+Each rule has its full story in the linked file.
 
-### Source Layout
+- **Neon wakes cost money, not queries.** New crons run every 30 minutes or less often, in business hours where possible. Kill-switches go **above** the first database call. Public pages stay on ISR or the Data Cache. Anything external that polls a route counts as a cron you do not control. → `neon-budget.md`
+- **Never return a fallback from inside `unstable_cache`.** It caches the fallback. Let the read throw and fall back outside the cache. → `neon-budget.md`
+- **Every Server Action is a public endpoint.** Admin actions call `requireAdmin` / `verifySession` + a role check before any read; customer actions check ownership. `getSession()` checks only the signature: never show or answer from it without `isSessionCurrent`. → `security.md`
+- **Money safety.** Square is never called inside a database transaction. Deposit amounts come from the server, never the browser. Outside a production build, only sandbox credentials work. Production booking stays locked without Square production credentials. A refund claims its row before Square is called. → `booking-and-payments.md`
+- **Online booking gate.** It fails closed; admin booking paths never call it; beta testers get through only via `assertOnlineBookingReadyFor`. Never write `bookingEnabled` straight into the database: use Admin → Settings. → `booking-and-payments.md`
+- **Deposit rules (owner decisions).** Customers cancelling 48 hours or more ahead get a full refund; inside 48 hours the deposit is kept. A reschedule the customer asked for inside 48 hours stays kept (`depositLockedAt`). A no-show keeps it. A salon cancellation refunds it. → `booking-and-payments.md`
+- **Both languages, always.** Every UI string goes in `src/i18n/messages/en` **and** `zh` (`completeness.test.ts` enforces it). Links use the locale-aware helpers.
+- **Monochrome brand.** No blue `#174F7F`, no gold (`brand-monochrome.test.ts`).
+- **Calendars.** Cron code invalidates the iCal feeds with `invalidateStylistIcalFeedFromCron()`, because `updateTag` only works in Server Actions. A Google webhook or pull never pushes, or the sync would loop forever. → `architecture.md`
+- **Never put `routes` + `mitigate` in `vercel.json`.** It challenged every request, which blocked Fresha's iCal pollers. Firewall rules live in `infra/vercel-firewall/`. → `security.md`
+- **`lastError` sentences are state keys.** Code reads them back. Never reword one in place; catalogue new ones in `services/operations-messages.ts`.
+- **Prefer reversible changes.** The owner wants things disabled or hidden, not deleted, unless they explicitly ask.
 
-- `src/app/[locale]/` — every page (English unprefixed, Chinese under `/zh-hk`): public pages, `auth/`, `book/`, `appointments/`, `privacy/`, `booking-terms/`, `kiosk/` and `admin/` (schedule home, `services`, `stylists`, `shifts`, `timesheets`, `payroll`, `employees`, `blog`, `faqs`, `offers`, `discounts`, `reviews`, `users`, `settings`, `opening-hours`, `integrations`, `operations`).
-- `src/app/actions/` — Server actions by domain (`auth.ts`, `booking.ts`, `booking-quote.ts`, `admin.ts`, `admin-settings.ts`, `admin-payments.ts`, `admin-erasure.ts`, `admin-operations.ts`, `admin-arrivals.ts`, `admin-consultation-credit.ts`, `admin-google-calendar.ts`, …).
-- `src/app/lib/` — shared utilities (`prisma.ts`, `session.ts`, `rate-limit.ts`, `booking-maintenance.ts` — the go-live gate, `online-booking-lock.ts`, `square-config.ts`, `booking-constants.ts`, `late-arrival.ts`, `calendar-links.ts`, `google-calendar-config.ts`, …).
-- `src/app/services/` — business logic: booking (`booking-service.ts`, `pending-request-lapse.ts`, `late-arrival-cancel.ts`, `consultation-credit.ts`), pricing (`pricing/`), email and outbox, housekeeping, calendars (`calendar-sync-service.ts`, `stylist-ical-*.ts`, `google-calendar-*.ts`, `google-busy-mapping.ts`, `google-diary-*.ts`, `diary-chair-*.ts`), deposits (`deposit-*.ts`, `payment-*.ts`, `square-*.ts`), `operations-messages.ts`.
-- `src/app/api/` — `cron/` (reminders, notifications, calendar-sync, housekeeping, gated treatwell-sync), `health/`, `ical/[stylistId]/`, `webhooks/square/`, `webhooks/google-calendar/`, `auth/` and `session/`.
-- `src/i18n/` — locales, routing helpers and the `messages/{en,zh}` dictionaries.
-- `src/components/` — React components by feature (`booking/`, `admin/`, `appointments/`, `emails/`, `legal/`, `pricing/`, `layout/`, …).
-- `src/test/` — shared fixtures and page tests. A test under `src/app/[locale]/` never runs (`node --test` reads `[locale]` as a glob).
-- `prisma/{dev,vercel,prod}/` — the three schemas and their migrations; seed scripts.
-- `docs/` — runbooks (`square-payments-setup.md`, `google-calendar-setup.md`, `data-erasure.md`) and specs/plans (`superpowers/`).
-- `LAUNCH.md` — launch checklist and last verified production state. `readme/structure.md` — function/component registry.
+## 8. Coding conventions
 
-## Key Conventions
+- **Server actions over API routes** for data operations. Place in `src/app/actions/`, use `'use server'` directive.
+- **Use Prisma generated types** from `@prisma/client` — never create manual interfaces for database models.
+- **Never access env vars at module level** — wrap in async functions for runtime access.
+- **Email service uses `import 'server-only'`** — not `'use server'` (internal functions, not client-callable).
+- **Every UI string goes in both languages** (`src/i18n/messages/en` and `zh`, admin included; `completeness.test.ts` enforces it). Links go through the locale-aware helpers in `src/i18n/` so a `/zh-hk` visitor stays in Chinese.
+- **Use regular `<img>` for external/CDN images**, `next/image` only for local `public/` assets.
+- **Tailwind CSS only** for styling. The brand is **monochrome black/white/grey** (client requirement) — never reintroduce the old blue `#174F7F` or gold.
+- **readme/structure.md**: Check before creating new functions/components to avoid duplication.
+- **Next.js 16 is newer than your training data.** Read the relevant guide in `node_modules/next/dist/docs/` before writing framework code, and heed deprecation notices (the managed block at the end of this file).
+- **Tests:** `node:test` + tsx with `--conditions=react-server`, and modules loaded through `src/test/load-server-module.ts` with stubs. Page tests live in `src/test/pages/`, because `node --test` treats `[locale]` in a path as a glob.
+- **Match the surrounding code:** its comment density, naming and idiom. Comments explain *why*, often with the owner decision and its date.
 
-- **Server actions over API routes** for data operations (`src/app/actions/`, `'use server'`). Email service uses `import 'server-only'`, not `'use server'`.
-- **Use Prisma generated types** from `@prisma/client` — never manual interfaces for database models.
-- **Never access env vars at module level** — read them inside functions at runtime.
-- **Every UI string goes in both languages** (`en` and `zh`, admin included); links go through the locale-aware helpers in `src/i18n/`.
-- **Booking needs a signed-in customer with a confirmed email**; every booking action re-checks. Seeing or changing a booking needs the confirmed email too. While booking is closed, `/book` shows the phone / Fresha / Treatwell page.
-- **Online booking opens in production only with Square PRODUCTION credentials** (set 2026-10-18; `isOnlineBookingLockedForPayments` in `lib/online-booking-lock.ts`, fails closed). Deposits: a HOLD at request time, CAPTURE when staff confirm, RELEASE on decline/withdraw/lapse, REFUND on cancelling a confirmed booking (staff may keep it; a no-show's deposit is never refunded). **48-hour rule (owner decision 2026-10-18):** a customer who cancels a confirmed booking 48 hours or more before its start gets the deposit back in full; later (online until 24 hours ahead) it is kept — `DEPOSIT_REFUND_NOTICE_HOURS` in `lib/booking-constants.ts`, decided inside `cancelAppointment`'s transaction, recorded `KEPT` like a staff keep; My Bookings says which before the customer confirms, and a keep the confirm step did not announce is refused (`DEPOSIT_NOW_KEPT`). A salon cancellation is refunded (the dialog's default). Square is never called inside a transaction. Reconciliation rides the daily housekeeping run — no polling cron. Detail: CLAUDE.md and `docs/square-payments-setup.md`.
-- **Beta booking** (owner decision 2026-10-18): while booking is closed to the public, signed-in accounts listed in Admin → Settings → Beta testers (`SiteSettings.bookingBetaEmails`, `lib/booking-beta.ts`) get the full online flow with deposits; the gate is `assertOnlineBookingReadyFor` / `isBookingEnabledFor` in `lib/booking-maintenance.ts` (still needs Square production credentials and calendar readiness, not `NOTIFICATIONS_ENABLED`). With notifications off, only testers' appointments are emailed; the crons stay off. No query for a signed-out visitor. Details in CLAUDE.md.
-- **Money is moved by staff, never by an agent**: capturing or refunding a real payment (Confirm & take deposit, Cancel with refund) is pressed by the owner or staff; an agent prepares and verifies.
-- **Booking rules**: 2-hour minimum notice online (`MIN_BOOKING_NOTICE_MINUTES`); 24-hour cancellation/reschedule policy; customer reschedules are staff-approved requests; unanswered requests lapse once their appointment has ended; "Mark completed" only after the start; reschedule approvals and staff bookings/edits run in Serializable transactions (no double booking).
-- **Late arrivals** (`services/late-arrival-cancel.ts`, `lib/late-arrival.ts`; ships off): once switched on in Admin → Settings (`SiteSettings.lateAutoCancelSince`), the calendar-sync cron cancels a CONFIRMED booking not marked Arrived 15 minutes after its start (only bookings made and starting after the switch-on, started within 120 minutes, with no open reschedule request), keeps the deposit as a no-show and emails `LATE_CANCELLED` 30 minutes later. Staff tap Arrived (`actions/admin-arrivals.ts`, `components/admin/LateArrivalPanel.tsx`) and can Restore within 24 h.
-- **Consultation credit** (`services/consultation-credit.ts`, `CONSULTATION_CREDIT_MONTHS` = 6): a paid consultation is taken off a consultation-required treatment staff book in Admin within 6 months, once; a cancelled treatment frees it. It is looked up again inside the booking's Serializable transaction (never trusted from the browser) and recorded in `Appointment.consultationCreditFromId` / `consultationCreditPence`; `priceAtBooking` never changes.
-- **Price after consultation**: `effectivePriceNature` (`services/pricing/policy.ts`) makes every consultation-required service read "From £X — final price confirmed at your consultation" in the catalogue, JSON-LD and recorded quotes. Styling services need no consultation; colouring and perms do.
-- **NHS/student proof and offer terms**: NHS-priced options carry a proof-of-eligibility notice (`services/pricing/eligibility.ts`); the offer and discount-code terms are `legal.bookingTerms.offers` (`components/legal/OfferTerms.tsx`). Discount codes stay paused (`DISCOUNTS_PAUSED`).
-- **Admin calendar drags and resizes ask before saving** (`components/admin/MoveConfirmDialog.tsx`, iPad ghost-tap safe).
-- **Neon bills compute time, not queries** — read CLAUDE.md "Neon compute budget" before adding a cron, a dynamic public page, a public endpoint something external polls, or a timed cache expiry. New crons need intervals over 5 minutes; put kill-switches above the first DB call; keep public pages on ISR; put new daily chores in housekeeping and 30-minute ones in calendar-sync.
-- **Never return a fallback from inside `unstable_cache`** — throw out of the cached function and fall back outside it.
-- **Site settings are cached for 24 hours**; a direct DB write is not seen until Admin → Settings → Save. Code that closes bookings or moves money reads the live `SiteSettings` row.
-- **Preview deployments use their own London database** (`harbour-hair-preview-lhr`), an exact copy of production with real customer data — treat it like production. Previews never migrate: apply every new migration to it by hand (`pnpm db:vercel:deploy` with the preview env), or every PR's preview build fails. Latest applied: `20261018120000_booking_beta_emails` (2026-10-18).
-- **Every fixed `lastError` sentence a job writes is catalogued** in `services/operations-messages.ts`; never reword one that code reads back.
-- **Customer erasure goes through Admin → Users** (anonymise, never delete; `docs/data-erasure.md`). Keep the privacy notice and `/booking-terms` true when retention, payment or booking rules change.
-- **Use regular `<img>` for external images**, `next/image` only for local `public/` assets; no `images.remotePatterns`.
-- **Tailwind CSS only.** The brand is **monochrome black/white/grey** (client requirement, enforced by `brand-monochrome.test.ts`) — never reintroduce the old blue `#174F7F` or gold.
-- **readme/structure.md**: check before creating new functions/components to avoid duplication.
-- **Deploys are serialised** on `main`; a skip-CI marker anywhere in main's head commit message (a squash body copies every commit message of the PR) runs no CI and no deploy. Write "skip-ci marker", never the bracketed form.
+## 9. Read before you touch…
 
-## Security guardrails (keep them; details in CLAUDE.md)
-
-- First Google sign-in: only Gmail/googlemail or Workspace (`hd`) addresses may create or link an account; administrators are never auto-linked (`decideGoogleLink`); linking keeps a customer's password only when their email was already confirmed — a never-confirmed one is destroyed with its sessions and reset links.
-- Every password change revokes unused reset tokens in the same transaction; new passwords ≤ 72 UTF-8 bytes (`fitsBcryptLimit`).
-- Login and reset requests: per-IP and per-account limits via `lib/rate-limit.ts` (never fail open); the `login_device` cookie keeps the owner's own browser out of the account bucket. Daily ceilings on bookings, cancellations and card authorizations.
-- Sign-out (`POST /api/auth/signout`) ends every session and sends `Clear-Site-Data`; never move it into a Server Action or add a GET.
-- Email verification is GET → confirm page → POST; never consume anything on a GET.
-- Availability lookups are bounded by `isBookableDateWindow` before any query. Marketing unsubscribe only through the signed emailed link.
-- Webhooks refuse before any DB access: Square 404/413/401 (unusable config, body over 64 KB, bad signature), Google Calendar 404/401 (sync off, bad or expired channel token).
-- Scanner probes are denied by a **project firewall** rule (`infra/vercel-firewall/`). Never use `vercel.json` `routes` + `mitigate`: it challenged all traffic, including the marketplaces' iCal pollers.
-- Planned, not built: slot holds + live Fresha check — `docs/superpowers/specs/2026-09-29-booking-slot-hold-and-live-sync-design.md`.
+| You are about to… | Read |
+|---|---|
+| change booking, deposits, refunds, reschedules, consultation credit, late arrivals or the go-live gate | `docs/agents/booking-and-payments.md`, then `docs/square-payments-setup.md` |
+| touch auth, sessions, sign-in, rate limits, webhooks or the firewall | `docs/agents/security.md` |
+| add a cron, a public route that reads the database, or change caching | `docs/agents/neon-budget.md` |
+| work on email, calendars (Fresha / Google), i18n, crons or the overall design | `docs/agents/architecture.md` |
+| add or change an environment variable | `docs/agents/environment.md` |
+| need production facts (what is live, IDs, colours, flags) | `docs/agents/production-state.md`, `LAUNCH.md` |
+| change Google Calendar sync | `docs/google-calendar-setup.md` |
+| erase a customer's data | `docs/data-erasure.md` |
 
 <!-- BEGIN:nextjs-agent-rules -->
 

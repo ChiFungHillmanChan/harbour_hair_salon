@@ -118,7 +118,7 @@ export function parseSquareWebhookEvent(body: string): SquareWebhookEvent | 'IGN
  * — or a payment without this site's reference (taken in the salon on a
  * Square reader, say). Square notifies every payment and refund on the
  * account, so without this each in-salon card payment would wake the database
- * (CLAUDE.md, "Neon compute budget"). A refund carries no reference: one made
+ * (docs/agents/neon-budget.md). A refund carries no reference: one made
  * at this location is looked up once and, when its payment is none of this
  * site's deposits, settled there and then (recordSquareWebhookEvent, NOT_OURS).
  */
