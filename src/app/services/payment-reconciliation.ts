@@ -17,8 +17,8 @@ import { heldWithoutBooking, inThisDeployment, markSquareEventProcessed, SUBMISS
 // Reconciliation (docs/superpowers/specs/2026-10-13-square-deposits-design.md,
 // phase S4): whatever the booking actions and the Square webhook could not
 // settle by themselves is settled here by asking Square afresh — once a day
-// in the existing housekeeping run (no cron of its own: CLAUDE.md "Neon
-// compute budget"), on demand from Admin → Schedule → "Re-check payment",
+// in the existing housekeeping run (no cron of its own:
+// docs/agents/neon-budget.md), on demand from Admin → Schedule → "Re-check payment",
 // and right after a webhook that says Square holds or took money no booking
 // wants. The rules S2/S3 follow hold here too:
 //   - Square is never called inside a database transaction;

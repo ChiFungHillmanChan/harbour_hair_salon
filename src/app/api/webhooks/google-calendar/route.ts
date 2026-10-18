@@ -7,7 +7,7 @@ import { describeFault } from '@/app/lib/fault';
 // (docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md §6).
 // Google calls this for every change on the salon calendar, the website's own
 // writes included: a public endpoint something external calls is a cron you
-// do not control (CLAUDE.md, "Neon compute budget"), so everything that can be
+// do not control (docs/agents/neon-budget.md), so everything that can be
 // refused is refused before the database is touched:
 //   1. sync off (not configured, or a preview deployment) ⇒ 404;
 //   2. X-Goog-Channel-Token not signed under the webhook secret for

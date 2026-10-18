@@ -98,7 +98,8 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 | Document | What it covers |
 |---|---|
 | [LAUNCH.md](LAUNCH.md) | Launch checklist and the last verified production state |
-| [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) | Architecture, commands, conventions and guardrails for contributors |
+| [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) | The agent guide: what the project is, stack, structure, commands, workflow and the rules that must not break |
+| [docs/agents/](docs/agents/) | The guide's detail: architecture, booking and payments rules, security, Neon budget, environment variables, production state |
 | [docs/square-payments-setup.md](docs/square-payments-setup.md) | Square runbook: sandbox setup, acceptance tests, go-live, staff operations |
 | [docs/google-calendar-setup.md](docs/google-calendar-setup.md) | Google Calendar runbook: Google Cloud and calendar setup, diary colours and names, the switch to HarbourHair, Vercel variables, first run, changing the calendar, secret rotation, turning it off |
 | [docs/data-erasure.md](docs/data-erasure.md) | Customer data erasure procedure |

@@ -18,7 +18,7 @@ Square **Sandbox**, how to go live, and what staff do day to day.
   **(review 2)**.
   **Production credentials may be set once the sandbox acceptance list (§4) has passed on
   `main`** — all of it on a local production build, plus the owner's short check on a Preview
-  (§4, "How §4 is run"; CLAUDE.md) — then §5.
+  (§4, "How §4 is run"; `docs/agents/booking-and-payments.md`) — then §5.
 - Square facts below were checked against Square's documentation on **13 October 2026**. The
   gateway pins Square API version **2026-09-16** (`SQUARE_API_VERSION`,
   `src/app/services/square-gateway.ts`). The 2026-09-16 Cantonese plan is superseded; do not
@@ -179,7 +179,7 @@ deposit is kept towards the bill) or **decline** it (refunded) — Operations, t
   `payment.updated`, `refund.created`, `refund.updated`, events for another location (**(review
   2)** including one whose object the site cannot read but which names its location), and
   payments without a deposit reference (a sale on the salon's card reader) are answered `200`
-  without opening the database (CLAUDE.md, Neon compute budget). A refund carries no reference, so
+  without opening the database (`docs/agents/neon-budget.md`). A refund carries no reference, so
   **(review 2)** a refund at this location whose payment is none of the site's deposits (refunded on
   the card reader) is looked up once and settled at once (`NOT_OURS`): never listed as unmatched,
   never in the daily email, never re-read by the daily run.
@@ -240,7 +240,7 @@ deposit is kept towards the bill) or **decline** it (refunded) — Operations, t
   only from 5 (card testing). **(review 2)** Deposits Square refused in the last 24 hours because of
   the website's own setup (401/403/404) are shown, and emailed from one, as a configuration problem.
 - No new cron: webhooks are a handful per booking and reconciliation rides the existing daily run
-  (CLAUDE.md, Neon compute budget).
+  (`docs/agents/neon-budget.md`).
 
 ### 1.9 States
 

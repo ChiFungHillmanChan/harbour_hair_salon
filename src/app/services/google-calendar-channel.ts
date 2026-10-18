@@ -70,7 +70,7 @@ export async function ensureGoogleWatchChannel(options: {
   gateway?: GoogleChannelGateway;
   renew?: boolean;
 } = {}): Promise<'created' | 'renewed' | 'current' | 'disabled'> {
-  // Kill-switch above the first database read (CLAUDE.md, "Neon compute budget").
+  // Kill-switch above the first database read (docs/agents/neon-budget.md).
   const config = googleCalendarConfig();
   if (!config) return 'disabled';
   const db = options.db ?? (await import('@/app/lib/prisma')).default;

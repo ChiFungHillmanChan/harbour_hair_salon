@@ -7,7 +7,7 @@ import { loadServerModule } from '../../test/load-server-module';
 // costs at least five minutes of compute (the fixed idle-suspend tail). The
 // cost driver is therefore HOW OFTEN something touches the database, so these
 // tests pin the schedule-level decisions that keep the monthly total well
-// under the cap. See "Neon compute budget" in CLAUDE.md before loosening any.
+// under the cap. See docs/agents/neon-budget.md before loosening any.
 
 type Cron = { path: string; schedule: string };
 async function vercelConfig(): Promise<{ crons: Cron[]; git?: { deploymentEnabled?: boolean } }> {

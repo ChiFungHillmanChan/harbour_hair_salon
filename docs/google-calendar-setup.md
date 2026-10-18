@@ -196,7 +196,7 @@ vercel env add GOOGLE_CALENDAR_WEBHOOK_SECRET production
 - **Migration:** the production deploy applies `20261016150000_google_calendar_sync` and
   `20261017120000_google_diary_mirror` itself. Apply them to the **preview** database by hand
   after the merge (`pnpm db:vercel:deploy` with the preview env), or every PR's "Deploy
-  Preview" fails (CLAUDE.md, "Preview deployments").
+  Preview" fails (`docs/agents/neon-budget.md`, "Preview deployments").
 - The webhook needs the public URL `https://www.harbourhair.co.uk/api/webhooks/google-calendar`
   to stay reachable: Google cannot pass a challenge, so no Vercel Firewall rule or bot
   protection may challenge or deny it (`infra/vercel-firewall/README.md`).
