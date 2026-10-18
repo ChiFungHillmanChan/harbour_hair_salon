@@ -89,6 +89,8 @@ export function bookingFixture(options: {
   clientIp?: string;
   /** Customer ids on the beta list: they book while `enabled: false` (not past `ready: false`). */
   betaTesters?: string[];
+  /** The session cookie's token was revoked by sign-out (lib/session.ts isSessionCurrent). */
+  revokedSession?: boolean;
 } = {}) {
   /** The signed-in customer and their address; `asCustomer` switches them (every account is verified). */
   let customerId = 'user-1';
@@ -266,7 +268,7 @@ export function bookingFixture(options: {
     '@/app/lib/booking-maintenance': readiness,
     '@/app/services/notification-outbox-service': queue,
     // The session cookie names the same customer verifySession proves.
-    '@/app/lib/session': { verifySession: async () => ({ userId: customerId, role: 'USER' }), getSession: async () => ({ userId: customerId }) },
+    '@/app/lib/session': { verifySession: async () => ({ userId: customerId, role: 'USER' }), getSession: async () => ({ userId: customerId }), isSessionCurrent: async () => options.revokedSession !== true },
     '@/app/lib/rate-limit': { bookingLimiter: { check: async () => true }, bookingDailyLimiter: { check: async () => true }, cancelLimiter: { check: async () => true }, availabilityLimiter: { check: async () => true }, ...declineLimiters, ...authorizeLimiters },
     '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => { effects.feedInvalidations++; }, scheduleGoogleCalendarPush: () => undefined },
     '@/app/lib/online-booking-lock': { usableSquareConfig: () => realLock.usableSquareConfig(squareEnv) },

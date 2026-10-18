@@ -43,6 +43,13 @@ for (const stylistId of ['funky', ANY_STYLIST_ID]) {
   });
 }
 
+test('beta: a tester\'s token revoked by sign-out sees no dates or times, and the beta list is not read', async () => {
+  const f = fixture({ enabled: false, betaTesters: ['user-1'], revokedSession: true });
+  assert.deepEqual(await f.actions.fetchBookingDays('funky', ['2026-10-06'], 60), { ok: false, reason: 'CLOSED' });
+  assert.deepEqual(await f.actions.fetchSlots('funky', '2026-10-06', 60), { ok: false, reason: 'CLOSED' });
+  assert.deepEqual(f.gateUserIds, []);
+});
+
 test('beta: a tester is still refused when the authoritative check closes (calendars not ready)', async () => {
   const f = fixture({ enabled: false, ready: false, betaTesters: ['user-1'] });
   const answer = await f.actions.submitBooking(request('funky'));

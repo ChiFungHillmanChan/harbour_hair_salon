@@ -107,9 +107,8 @@ export default async function BookPage() {
   // sign in (this gate used to live in middleware). Both hops stay in the
   // visitor's language, and the return target is still a relative path that
   // sanitizeRedirect accepts.
-  if (!session?.userId) {
-    redirect(localizeHref(locale, `/auth/signin?redirect=${encodeURIComponent(localizeHref(locale, '/book'))}`));
-  }
+  const signIn = localizeHref(locale, `/auth/signin?redirect=${encodeURIComponent(localizeHref(locale, '/book'))}`);
+  if (!session?.userId) redirect(signIn);
 
   // Booking needs a confirmed address; submitBooking refuses without one (see
   // lib/email-verification.ts). Say so up front, with a way to get a new link,
@@ -117,9 +116,13 @@ export default async function BookPage() {
   const account = await prisma.user.findUnique({
     where: { id: session.userId },
     // The name and email also go to Square with a card deposit, to verify the card.
-    select: { email: true, name: true, ...EMAIL_VERIFICATION_SELECT },
+    select: { email: true, name: true, sessionVersion: true, ...EMAIL_VERIFICATION_SELECT },
   });
-  if (account && !hasVerifiedEmail(account)) {
+  // The cookie alone is not enough to show the account: a token revoked by
+  // sign-out (or an erased account) is signed out — verifySession's rule, in
+  // the same query.
+  if (!account || account.sessionVersion !== (session.sessionVersion ?? 0)) redirect(signIn);
+  if (!hasVerifiedEmail(account)) {
     const ta = await getT('auth');
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-8 sm:py-16">
@@ -189,7 +192,7 @@ export default async function BookPage() {
             // Card deposits: only Square's public values, read now (never at
             // build time) — null when no deposit can be taken here. The access
             // token never leaves the server.
-            payment={{ square: publicSquareConfig(), payer: { name: account?.name ?? null, email: account?.email ?? null } }}
+            payment={{ square: publicSquareConfig(), payer: { name: account.name, email: account.email } }}
           />
         </ClientMessages>
       </div>

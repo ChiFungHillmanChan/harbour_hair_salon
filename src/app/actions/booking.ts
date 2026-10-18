@@ -15,7 +15,8 @@ import type { PriceQuote } from '@/app/services/pricing/quote';
 import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, DEPOSIT_REFUND_NOTICE_HOURS, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, isDepositRefundableOnCancel } from '@/app/lib/booking-constants';
 import type { MessageParams } from '@/i18n/format';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
-import { getSession, verifySession } from '@/app/lib/session';
+import { getSession, isSessionCurrent, verifySession } from '@/app/lib/session';
+import type { SessionPayload } from '@/app/lib/jwt';
 import { appendAuditEvent } from '@/app/lib/audit';
 import { isRescheduleRequestExpired } from '@/app/lib/reschedule-request';
 import { after } from 'next/server';
@@ -77,17 +78,18 @@ async function bookingOpenForCaller(): Promise<boolean> {
  * lookup's own input checks and per-address limit, because the beta check reads
  * the database and any registered account could otherwise call it unthrottled.
  */
-type AvailabilityGate = { state: 'OPEN' } | { state: 'CLOSED' } | { state: 'BETA'; userId: string };
+type AvailabilityGate = { state: 'OPEN' } | { state: 'CLOSED' } | { state: 'BETA'; session: SessionPayload };
 
 async function availabilityGate(): Promise<AvailabilityGate> {
   if (await isBookingEnabled()) return { state: 'OPEN' };
-  const userId = (await getSession())?.userId;
-  return userId ? { state: 'BETA', userId } : { state: 'CLOSED' };
+  const session = await getSession();
+  return session?.userId ? { state: 'BETA', session } : { state: 'CLOSED' };
 }
 
+// A token revoked by sign-out is no tester: checked with the beta list, after the budget.
 async function availabilityOpen(gate: AvailabilityGate): Promise<boolean> {
   if (gate.state === 'OPEN') return true;
-  return gate.state === 'BETA' && isBetaBookingOpenFor(gate.userId);
+  return gate.state === 'BETA' && (await isSessionCurrent(gate.session)) && isBetaBookingOpenFor(gate.session.userId);
 }
 
 /**

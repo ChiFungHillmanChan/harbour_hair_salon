@@ -87,10 +87,28 @@ export async function requireAdmin() {
   return session;
 }
 
+/**
+ * The cookie's claims, checked for signature and lifetime only. A token that
+ * sign-out or a password reset has revoked still decodes here, so nothing may
+ * be shown or answered from it until `isSessionCurrent` (or the account query
+ * comparing `sessionVersion` itself) has passed. Callers that run
+ * `verifySession` next may use it as a query-free first look.
+ */
 export async function getSession(): Promise<SessionPayload | null> {
   const cookie = (await cookies()).get('session')?.value;
   const session = await decrypt(cookie);
   return session;
+}
+
+/**
+ * Whether a decoded token is still current: verifySession's sessionVersion
+ * check, without its redirect. Sign-out bumps the version, so a copied cookie
+ * stops counting on every device at once. One primary-key lookup.
+ */
+export async function isSessionCurrent(session: SessionPayload): Promise<boolean> {
+  if (!session.userId) return false;
+  const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { sessionVersion: true } });
+  return user !== null && user.sessionVersion === (session.sessionVersion ?? 0);
 }
 
 export async function deleteSession() {

@@ -29,9 +29,11 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
   // A failed link from a signed-in customer who still needs one: offer a new
   // link right here. Anyone else is pointed at the next step.
   const session = verified ? null : await getSession();
-  const account = session?.userId
-    ? await prisma.user.findUnique({ where: { id: session.userId }, select: { email: true, ...EMAIL_VERIFICATION_SELECT } })
+  const row = session?.userId
+    ? await prisma.user.findUnique({ where: { id: session.userId }, select: { email: true, sessionVersion: true, ...EMAIL_VERIFICATION_SELECT } })
     : null;
+  // A token revoked by sign-out shows nothing of the account.
+  const account = row && row.sessionVersion === (session?.sessionVersion ?? 0) ? row : null;
 
   return (
     <main className="flex min-h-[100svh] items-center justify-center bg-zinc-50 px-4 py-12">
