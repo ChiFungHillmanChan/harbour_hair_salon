@@ -11,14 +11,17 @@ It offers:
 
 It runs on Vercel with Neon PostgreSQL 18 in London.
 
-## Status (2026-10-16)
+## Status (2026-10-18)
 
 - The public site is live. Releases #62 (review follow-ups, Google Calendar links, i18n) and #63 (Square deposits) are deployed and verified.
 - Deployed on 2026-10-16: Fresha blocked time labelled "Blocked" in the schedule (#68), sign-out that ends every session (#69), late-arrival auto-cancel (#70, switched off), consultation credit, "From £X" prices for consultation services, move confirmation and NHS/student and offer terms (#71), and two-way Google Calendar sync (#72, switched on the same day).
-- **Online booking is closed.** It opens only once Square production credentials are set, after the sandbox acceptance checklist has passed. Until then customers book by phone, Fresha or Treatwell.
+- Deployed on 2026-10-17/18: the Google diary mirror (#75), "Takes walk-ins" and "Show on website" for stylists (#76, #77), mobile admin improvements (#78), cancelled bookings on the desktop schedule (#80) and beta booking (#81).
+- **Online booking is closed to the public; beta testers can book.** The Square sandbox acceptance list passed on 2026-10-17/18 ([record](readme/square-acceptance-2026-10-14.md)), the Square production keys and webhook were set on 2026-10-18, and a real £0.01 test booking passed (hold, capture on approval, refund on cancellation). Only the accounts in Admin → Settings → Beta testers (currently the owner) can book online; everyone else books by phone, Fresha or Treatwell until launch ([LAUNCH.md](LAUNCH.md) §3).
+- **Test deposit kept on purpose:** "Short Over Ears - Wash, Haircut & Blow Dry" takes a £0.01 deposit so testers can check real cards for a penny. It is removed before public booking opens.
 - **Switched off until the salon is ready:** the late-arrival rule (Admin → Settings, after briefing staff).
 - **Google Calendar sync is on** (since 2026-10-16): since 2026-10-17 bookings are written to the salon's own "HarbourHair" diary (harbourhairuk@gmail.com), mirrored in Admin → Schedule (below); #72's "Harbour website bookings" calendar is switched off but kept ([runbook](docs/google-calendar-setup.md)). Google sign-in and the calendar's service account both live in the `harbourhair` Google Cloud project.
-- **Google diary mirror** (2026-10-17, being rolled out): the sync moves to the salon's primary "HarbourHair" calendar, the diary staff already keep, and Admin → Schedule mirrors it by colour. The steps left are in the [runbook](docs/google-calendar-setup.md) §2b.
+- **Google diary mirror** (live since 2026-10-17): Admin → Schedule mirrors the salon's "HarbourHair" diary by colour ([runbook](docs/google-calendar-setup.md) §2b).
+- **Fresha:** Funky, Ivan and Shania exchange busy time both ways. Lox's Fresha does not import the website's busy feed yet, so staff check Fresha before confirming a Lox request ([LAUNCH.md](LAUNCH.md) §3.3).
 - The remaining launch steps, in order, are in [LAUNCH.md](LAUNCH.md).
 
 ## What it does
@@ -28,7 +31,7 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 - Services that need a consultation (colouring, perms) show a "From £X" price, confirmed at the consultation. The consultation's fee comes off that treatment if it goes ahead within 6 months. Styling can be booked directly.
 - NHS and student prices need proof of eligibility at the appointment. The offer and discount-code terms are on `/offers` and `/booking-terms`.
 - Register or sign in with email + password or Google. A confirmed email address is needed before booking, and before viewing or changing a booking.
-- Request a booking: at least 2 hours ahead, and the salon confirms it.
+- Request a booking: at least 2 hours ahead, and the salon confirms it. Services that need a consultation are booked as a "Consultation" or "Consultation & Patch Test" (£15; colour needs the patch test at least 48 hours before); staff then book the treatment in Admin, with the £15 taken off.
 - When deposits are on, the card is only **held** at request time. It is charged when the salon confirms, released if the request is declined, withdrawn or lapses, and refunded when a confirmed booking is cancelled (the salon keeps it for a no-show).
 - When the late-arrival rule is on, a confirmed booking not marked Arrived 15 minutes after its start is cancelled and its deposit kept (staff also mark customers who phone ahead). The salon can restore it within 24 hours.
 - View and cancel bookings (24 hours or more ahead online), and request a reschedule.
@@ -44,7 +47,7 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 - **Content and pricing:** services & pricing (with per-service deposits), stylists, blog, FAQs, offers, discounts and reviews.
 - **Staff:** shifts, timesheets and payroll.
 - **Users:** includes customer data erasure.
-- **Site settings:** the booking switch, the deposit policy and the late-arrival rule.
+- **Site settings:** the booking switch, beta testers (accounts that may book online while booking is closed), the deposit policy and the late-arrival rule.
 - **Integrations:** Fresha calendar connections, setup readiness, and the Google Calendar status with "Sync now", "Clear Google busy time and diary copy" and the diary colours.
 - **Operations:** diagnostics, background jobs and payments needing attention.
 - **Staff kiosk** on a shared salon device.
@@ -67,6 +70,8 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
   - the Admin → Settings booking switch;
   - calendar readiness;
   - a passing Admin → Operations diagnostics run.
+- **Beta booking:** while it is closed, a signed-in account listed in Admin → Settings → Beta testers still gets the online flow (it needs the Square production keys and calendar readiness, not the switch or notifications), and only that tester's booking emails are sent.
+- Deposits: 50% of the booked option's price (half a penny rounds up), or a per-service fixed amount (both consultations: £15); the card is held at request time and charged only when staff confirm.
 - Calendar connections exchange iCal busy periods.
   - Fresha works both ways.
   - Treatwell can only import, because it has no export feed.
@@ -80,7 +85,7 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
   - Any other event is a note and blocks nothing. "Show as available" is ignored.
   - Edits to the website's own events in Google are reverted.
   - It runs on Vercel Production only, never on previews.
-- Booking emails wait in an outbox and are only sent while `NOTIFICATIONS_ENABLED=true`. Account emails (verification, password reset) go out at once. Preview deployments only email the addresses in `PREVIEW_EMAIL_ALLOWLIST`, because the preview database is a copy of production.
+- Booking emails wait in an outbox and are only sent while `NOTIFICATIONS_ENABLED=true` (beta testers' bookings excepted). Account emails (verification, password reset) go out at once. Preview deployments only email the addresses in `PREVIEW_EMAIL_ALLOWLIST`, because the preview database is a copy of production.
 - Production is deployed **only** by [GitHub Actions](.github/workflows/deploy.yml) after CI passes on `main`.
   - The production build applies PostgreSQL migrations first. Preview builds skip them, so new migrations are applied to the preview database by hand.
   - Runs on `main` queue, and the newest commit deploys last.
@@ -96,6 +101,7 @@ It runs on Vercel with Neon PostgreSQL 18 in London.
 | [docs/google-calendar-setup.md](docs/google-calendar-setup.md) | Google Calendar runbook: Google Cloud and calendar setup, diary colours and names, the switch to HarbourHair, Vercel variables, first run, changing the calendar, secret rotation, turning it off |
 | [docs/data-erasure.md](docs/data-erasure.md) | Customer data erasure procedure |
 | [docs/superpowers/specs/](docs/superpowers/specs/) | Design specs: [card deposits](docs/superpowers/specs/2026-10-13-square-deposits-design.md), [late-arrival auto-cancel](docs/superpowers/specs/2026-10-16-late-arrival-auto-cancel-design.md), [consultation credit and pricing](docs/superpowers/specs/2026-10-16-consultation-credit-pricing-ux-design.md), [Google Calendar sync](docs/superpowers/specs/2026-10-16-google-calendar-two-way-sync-design.md), [Google diary mirror](docs/superpowers/specs/2026-10-17-google-diary-colour-mirror-design.md) |
+| [readme/square-acceptance-2026-10-14.md](readme/square-acceptance-2026-10-14.md) | Square sandbox acceptance record (2026-10-14/15, and the 2026-10-17/18 run on `main`) |
 | [readme/structure.md](readme/structure.md) | Function and component registry |
 | [readme/production-readiness-rollout-cantonese.md](readme/production-readiness-rollout-cantonese.md) | Rollout record (Cantonese) |
 | [readme/backend-security-operations.md](readme/backend-security-operations.md) | Administrator bootstrap, recovery, signing-key rotation, kiosk revocation, database maintenance. Its MFA steps describe dormant code: admin MFA stopped being required in `e9f3a25`. |

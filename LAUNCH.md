@@ -173,7 +173,7 @@ Square and payment records.
 - [ ] **3.3 Fresha.** Give Lox an import link; ask Fresha support why Lox's blocked times are not
       exported; Shania shows "Calendar bookings: Off" in Fresha. Then tick Lox's and Shania's
       outbound confirmations in Admin → Integrations.
-- [ ] **3.3b Google Calendar (optional, independent of booking; ships OFF).** Follow
+- [x] **3.3b Google Calendar** — ON since 2026-10-16, on the HarbourHair diary since 2026-10-17. Original steps: Follow
       `docs/google-calendar-setup.md`: Google Cloud service account, the "Harbour website bookings"
       calendar shared with it, the five `GOOGLE_CALENDAR_*` variables on Vercel **Production only**,
       redeploy, Admin → Integrations → Sync now, then the §4 test (a booking appears; `Ivan: test`,
@@ -183,12 +183,15 @@ Square and payment records.
 - [ ] **3.5 Environment, then redeploy** (env changes only reach the runtime after a deploy):
       leave `HOUSEKEEPING_ENABLED` unset (on), then `NOTIFICATIONS_ENABLED=true` (sends real email);
       `SALON_NOTIFY_EMAIL` if salon alerts should not go to `EMAIL_REPLY_TO`.
-- [ ] **3.6 Square** — §2 complete.
+- [x] **3.6 Square** — §2 complete (production keys, webhook and a real £0.01 test, 2026-10-18).
 - [ ] **3.7 Run Admin → Operations diagnostics LAST.** The report is invalidated by changes to
       `EMAIL_FROM`, `EMAIL_REPLY_TO`, `SALON_NOTIFY_EMAIL`, `RESEND_API_KEY`, `CRON_SECRET`,
       `NOTIFICATIONS_ENABLED`, `POSTGRES_URL`, `DATABASE_URL` or the Redis credentials.
 - [ ] **3.8 Admin → Settings → turn booking on.** Never write `bookingEnabled` straight into the
-      database.
+      database. **First** remove the £0.01 test deposit on "Short Over Ears - Wash, Haircut & Blow
+      Dry" (Admin → Services & Pricing → that service → empty "Deposit for this service"; kept on
+      purpose for beta testers since 2026-10-18), and decide whether to keep the beta tester list
+      (it no longer matters once booking is open to everyone).
 
 ---
 
