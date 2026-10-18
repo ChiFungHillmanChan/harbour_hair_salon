@@ -37,6 +37,14 @@ export type SiteSettings = {
   lateAutoCancelSince: string | null;
 };
 
+/**
+ * What Admin → Settings edits: the settings above plus the beta testers'
+ * emails (`bookingBetaEmails`, lib/booking-beta.ts). Those addresses are
+ * personal data, so they are deliberately NOT part of `SiteSettings`, whose
+ * cached copy serves every public page — only the live row read below has them.
+ */
+export type EditableSiteSettings = SiteSettings & { bookingBetaEmails: string };
+
 const SINGLETON_ID = 'singleton';
 
 const DEFAULTS: SiteSettings = {
@@ -118,23 +126,26 @@ function mapRow(row: {
 // production logs several times a day) — silently replacing whatever the salon
 // had set in Admin → Settings. Now a failed revalidation keeps serving the last
 // good settings, and DEFAULTS only cover a request with nothing cached yet.
-async function readSiteSettingsRow(): Promise<SiteSettings> {
+async function readStoredRow() {
   // Read-first, create-on-miss. Using upsert races under concurrent
   // pre-rendering because two workers can both attempt INSERT.
   const existing = await prisma.siteSettings.findUnique({ where: { id: SINGLETON_ID } });
-  if (existing) return mapRow(existing);
+  if (existing) return existing;
 
   try {
-    const created = await prisma.siteSettings.create({ data: { id: SINGLETON_ID } });
-    return mapRow(created);
+    return await prisma.siteSettings.create({ data: { id: SINGLETON_ID } });
   } catch {
     // Someone else inserted it between our read and create. Read again. Never
     // return DEFAULTS from in here: unstable_cache would keep the fallback for
     // the whole revalidate period (CLAUDE.md) — throw and fall back outside.
     const row = await prisma.siteSettings.findUnique({ where: { id: SINGLETON_ID } });
     if (!row) throw new Error('SiteSettings singleton missing after a create race');
-    return mapRow(row);
+    return row;
   }
+}
+
+async function readSiteSettingsRow(): Promise<SiteSettings> {
+  return mapRow(await readStoredRow());
 }
 
 // A day, not an hour: every expiry made the next visit to /contact, /about etc.
@@ -150,8 +161,12 @@ const getSiteSettingsFromStore = unstable_cache(readSiteSettingsRow, ['site-sett
  * cache there would let a stale copy (e.g. after a direct database write)
  * silently overwrite newer values, booking on/off included. Throws if the
  * database can't be read: an editable form must not show made-up values.
+ * Also carries the beta testers' emails, which the public copy never holds.
  */
-export const getSiteSettingsForEditing = readSiteSettingsRow;
+export async function getSiteSettingsForEditing(): Promise<EditableSiteSettings> {
+  const row = await readStoredRow();
+  return { ...mapRow(row), bookingBetaEmails: row.bookingBetaEmails };
+}
 
 async function getSiteSettingsOrDefaults(): Promise<SiteSettings> {
   try {

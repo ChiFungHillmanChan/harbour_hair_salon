@@ -13,6 +13,8 @@ import { LOCALES } from '@/i18n/config';
 import { getActionT } from '@/i18n/request';
 import { BLOG_POSTS_TAG } from '@/app/services/blog-service';
 import { parsePoundsInput } from '@/app/services/pricing/money';
+import { bookingBetaEmailsSchema, parseBookingBetaEmails } from '@/app/lib/booking-beta';
+import type { MessageParams } from '@/i18n/format';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -82,6 +84,10 @@ const settingsSchema = z.object({
   depositMinimumServicePence: poundsAsPence.default(0),
   // Not a column: it becomes `lateAutoCancelSince` (the instant it was switched on).
   lateAutoCancelEnabled: z.boolean().default(false),
+  // Beta booking's testers (lib/booking-beta.ts), stored normalised. Unlike the
+  // fields above, a form without the box (a page older than it) leaves the
+  // stored list alone rather than clearing it.
+  bookingBetaEmails: bookingBetaEmailsSchema.optional(),
 });
 
 export type SettingsActionState =
@@ -109,7 +115,9 @@ export async function updateSiteSettings(
     // message over a dozen boxes with no idea which one to fix.
     const issue = parsed.error.issues[0];
     const field = String(issue?.path[0] ?? '');
-    const message = t.dynamic(`settings.errors.${issue?.message}`, undefined, t('settings.errors.INVALID'));
+    // The beta list names the address it refused (lib/booking-beta.ts).
+    const params = issue?.code === 'custom' ? issue.params as MessageParams | undefined : undefined;
+    const message = t.dynamic(`settings.errors.${issue?.message}`, params, t('settings.errors.INVALID'));
     const label = t.has(`settings.fields.${field}`) ? t.dynamic(`settings.fields.${field}`) : null;
     return { status: 'error', message: label ? t('settings.errors.field', { field: label, message }) : message };
   }
@@ -158,15 +166,16 @@ export async function updateSiteSettings(
           return reasons.length ? reasons : [t('settings.errors.READINESS')];
         }
       }
-      const { lateAutoCancelEnabled, ...columns } = parsed.data;
+      const { lateAutoCancelEnabled, bookingBetaEmails, ...columns } = parsed.data;
       // Switching on records the instant: only bookings that start after it
       // are ever cancelled. Saving again keeps the original instant.
       const existing = await tx.siteSettings.findUnique({ where: { id: 'singleton' }, select: { lateAutoCancelSince: true } });
       const lateAutoCancelSince = lateAutoCancelEnabled ? existing?.lateAutoCancelSince ?? new Date() : null;
+      const beta = bookingBetaEmails === undefined ? {} : { bookingBetaEmails };
       await tx.siteSettings.upsert({
         where: { id: 'singleton' },
-        update: { ...columns, lateAutoCancelSince },
-        create: { id: 'singleton', ...columns, lateAutoCancelSince },
+        update: { ...columns, ...beta, lateAutoCancelSince },
+        create: { id: 'singleton', ...columns, ...beta, lateAutoCancelSince },
       });
       await appendAuditEvent({
         actorUserId: session.userId,
@@ -180,6 +189,9 @@ export async function updateSiteSettings(
           depositPercent: parsed.data.depositPercent,
           depositMinimumServicePence: parsed.data.depositMinimumServicePence,
           lateAutoCancel: lateAutoCancelEnabled,
+          // How many beta testers, never their addresses: the audit log
+          // outlives a customer's erasure (docs/data-erasure.md).
+          ...(bookingBetaEmails === undefined ? {} : { bookingBetaTesters: parseBookingBetaEmails(bookingBetaEmails).length }),
         },
       }, tx);
       return [];
