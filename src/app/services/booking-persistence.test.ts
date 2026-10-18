@@ -241,7 +241,9 @@ for (const anyone of [false, true]) {
     });
   });
 
-  test(`${label} submit atomically records both request notices and dispatches only after commit`, async () => {
+  // Owner decision 2026-10-18: the customer's REQUEST_RECEIVED email is retired
+  // (RETIRED_CUSTOMER_EMAIL_KINDS); the salon alert alone is queued.
+  test(`${label} submit atomically records the salon alert, no customer acknowledgement, and dispatches only after commit`, async () => {
     const f = bookingFixture({ type: 'PERCENTAGE', value: 20 });
     const result = await f.actions.submitBooking(input);
     assert.equal(result.success, true);
@@ -249,7 +251,6 @@ for (const anyone of [false, true]) {
     assert.equal(f.code.usedCount, 0);
     assert.equal(f.stored[0].status, 'PENDING');
     assert.deepEqual(f.events.map((event) => event.eventKey), [
-      'appointment/appointment-1/0/REQUEST_RECEIVED',
       'appointment/appointment-1/0/SALON_ALERT',
     ]);
     for (const event of f.events) {
@@ -258,8 +259,7 @@ for (const anyone of [false, true]) {
       assert.equal(payload.appointment.service.duration, 60);
       assert.equal(payload.date, '2099-09-14T10:00:00.000Z');
     }
-    assert.equal(JSON.parse(f.events[0].payloadJson).options.salonPhone, '020 0000 0000');
-    assert.equal(f.delivered.length, 2);
+    assert.equal(f.delivered.length, 1);
     assert.equal(f.dispatches(), 1);
   });
 
@@ -289,8 +289,8 @@ for (const anyone of [false, true]) {
     assert.equal(f.stored.length, 0);
   });
 
-  test(`${label} rolls back the appointment and first notice when the second enqueue fails`, async () => {
-    const f = bookingFixture({ type: 'PERCENTAGE', value: 20 }, null, { failEnqueueAt: 2 });
+  test(`${label} rolls back the appointment when its salon alert cannot be queued`, async () => {
+    const f = bookingFixture({ type: 'PERCENTAGE', value: 20 }, null, { failEnqueueAt: 1 });
     const result = await f.actions.submitBooking(input);
     assert.equal(result.success, false);
     assert.equal(f.stored.length, 0);

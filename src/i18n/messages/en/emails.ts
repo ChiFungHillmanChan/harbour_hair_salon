@@ -68,7 +68,8 @@ const emails = {
     textHeading: 'HARBOUR HAIR — BOOKING CONFIRMED',
     textIntro: 'Your appointment at Harbour Hair Salon is confirmed.',
     textManage: 'Manage your booking up to 24 hours before the appointment from the My Bookings page: {url}',
-    footnoteWithDeposit: 'Need to make a change? You can cancel (your deposit is refunded in full) or request a new time from My Bookings up to 24 hours before your appointment.',
+    /** {hours}: DEPOSIT_REFUND_NOTICE_HOURS (owner decision 2026-10-18). */
+    footnoteWithDeposit: 'Need to make a change? You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment. If you cancel at least {hours} hours before it, your deposit is refunded in full; after that, it is kept.',
     /** confirmation.footnote without its payment sentence: a consultation-credit sentence already says what is left to pay. */
     footnoteNoPayment: 'Need to make a change? You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.',
     depositPaid: 'Your {deposit} deposit is paid; {remainder} is left to pay in the salon. Cash and card are accepted.',
@@ -109,7 +110,8 @@ const emails = {
   deposit: {
     refunding: 'Your {amount} deposit is being refunded. Most banks show refunds within 5–10 working days; some take up to 14.',
     released: 'The {amount} hold on your card has been released — nothing was taken. Your bank may take a few days to remove it.',
-    kept: 'The {amount} deposit is kept under our booking terms.',
+    /** {hours}: DEPOSIT_REFUND_NOTICE_HOURS — the booking terms' reasons for keeping a deposit. */
+    kept: 'The {amount} deposit is kept under our booking terms (a cancellation less than {hours} hours before the appointment, or a missed appointment).',
   },
   cancellation: {
     subject: 'Your booking has been cancelled — Harbour Hair Salon',

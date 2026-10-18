@@ -311,7 +311,9 @@ export async function editAppointmentByAdmin(input: EditAppointmentInput): Promi
         if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
         if (current.status === 'PENDING') {
           // The old version's request notices are now stale. Persist fresh
-          // receipt/alert snapshots so an edit cannot silently lose them.
+          // receipt/alert snapshots so an edit cannot silently lose them. The
+          // customer's receipt is retired (RETIRED_CUSTOMER_EMAIL_KINDS, owner
+          // decision 2026-10-18): the outbox queues nothing for it.
           await enqueueAppointmentNotification(tx, 'REQUEST_RECEIVED', updated);
           await enqueueAppointmentNotification(tx, 'SALON_ALERT', updated);
         } else {

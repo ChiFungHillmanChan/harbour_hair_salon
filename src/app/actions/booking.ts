@@ -12,7 +12,7 @@ import { PriceChangedError } from '@/app/services/booking-service';
 import { getActionLocale } from '@/i18n/request';
 import type { Locale } from '@/i18n/config';
 import type { PriceQuote } from '@/app/services/pricing/quote';
-import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS } from '@/app/lib/booking-constants';
+import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, DEPOSIT_REFUND_NOTICE_HOURS, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, isDepositRefundableOnCancel } from '@/app/lib/booking-constants';
 import type { MessageParams } from '@/i18n/format';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
 import { getSession, verifySession } from '@/app/lib/session';
@@ -774,7 +774,15 @@ async function submitWithDeposit(context: {
   return { success: true, depositHeldPence: hold.amountPence };
 }
 
-export async function cancelAppointment(appointmentId: string) {
+/**
+ * The customer cancels a confirmed booking, or withdraws a request.
+ * `options.depositKept`: the confirm step told them their deposit is kept
+ * (DEPOSIT_REFUND_NOTICE_HOURS). A cancellation that would keep a taken
+ * deposit without that is refused (DEPOSIT_NOW_KEPT) and changes nothing — the
+ * dialog promised a refund and the deadline passed while it was open — so the
+ * customer only ever loses a deposit after being told so.
+ */
+export async function cancelAppointment(appointmentId: string, options?: { depositKept?: boolean }) {
   const session = await verifySession();
   const locale = await getActionLocale();
 
@@ -822,9 +830,17 @@ export async function cancelAppointment(appointmentId: string) {
     if (refusal) throw new BookingError(refusal);
     const deposit = await runSerializableWithRetry(async (tx) => {
       // The card deposit (docs/superpowers/specs/2026-10-13-square-deposits-design.md):
-      // a withdrawn request's hold is released; a confirmed booking cancelled
-      // online (24 hours or more ahead, checked above) is refunded in full.
-      const plan = await planDepositForClosing(tx, appointmentId, { closing: 'CANCEL', refund: true, reason: 'CUSTOMER_CANCELLED', requestedById: null, now });
+      // a withdrawn request's hold is released (a request was never
+      // confirmed: anything taken on it is refunded). A confirmed booking
+      // cancelled DEPOSIT_REFUND_NOTICE_HOURS or more before its start is
+      // refunded in full; later, the deposit is kept (KEPT, as a staff keep:
+      // reconciliation never refunds it) — owner decision 2026-10-18. Decided
+      // here, from the start the conditional update below re-checks and the
+      // time now, so a retried transaction decides afresh.
+      const closingAt = new Date();
+      const refund = appointment.status !== 'CONFIRMED' || isDepositRefundableOnCancel(appointment.date, closingAt);
+      const plan = await planDepositForClosing(tx, appointmentId, { closing: 'CANCEL', refund, reason: 'CUSTOMER_CANCELLED', requestedById: null, now: closingAt });
+      if (plan.outcome === 'KEPT' && options?.depositKept !== true) throw new BookingError('DEPOSIT_NOW_KEPT', { hours: DEPOSIT_REFUND_NOTICE_HOURS });
       const changed = await tx.appointment.updateMany({
         where: { id: appointmentId, userId: session.userId, status: appointment.status, date: appointment.date, updatedAt: appointment.updatedAt },
         data: { status: 'CANCELLED', rescheduleRequestedDate: null, rescheduleRequestedAt: null, treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 } },
@@ -846,13 +862,13 @@ export async function cancelAppointment(appointmentId: string) {
   } catch (error) {
     // A refusal (stale, not found) is an answer; anything else is a fault to investigate.
     if (!(error instanceof BookingError)) console.error('Cancelling an appointment failed:', { appointmentId, ...describeFault(error) });
-    return { success: false, error: describeBookingError(error, locale, 'CANCEL_FAILED') };
+    return { success: false as const, ...(error instanceof BookingError ? { code: error.code } : {}), error: describeBookingError(error, locale, 'CANCEL_FAILED') };
   }
 
   revalidateAllLocales(revalidatePath, '/appointments');
   revalidateAllLocales(revalidatePath, '/admin');
   revalidateAllLocales(revalidatePath, '/book');
-  return { success: true };
+  return { success: true as const };
 }
 
 export async function checkColourEligibility(serviceId: string, dateStr: string) {
@@ -950,6 +966,7 @@ export async function requestReschedule(appointmentId: string, dateStr: string, 
         data: { rescheduleRequestedDate: newDate, rescheduleRequestedAt: requestedAt },
       });
       if (changed.count !== 1) throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
+      // Retired customer acknowledgement (RETIRED_CUSTOMER_EMAIL_KINDS): queues nothing; the salon is still alerted.
       await enqueueAppointmentNotification(tx, 'RESCHEDULE_REQUEST_RECEIVED', appointment, { requestedDate: newDate, requestedAt });
       await enqueueAppointmentNotification(tx, 'SALON_RESCHEDULE_ALERT', appointment, { requestedDate: newDate, requestedAt });
       await appendAuditEvent({

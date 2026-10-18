@@ -27,11 +27,23 @@ export const MIN_BOOKING_NOTICE_MINUTES = 120;
 
 /**
  * Until how many hours before its start a customer can cancel a CONFIRMED
- * booking online, with any card deposit refunded in full (cancelAppointment);
- * after that they call the salon. The booking page warns when a requested
- * time is already inside this window.
+ * booking online (cancelAppointment); after that they call the salon. Whether
+ * a card deposit is refunded is a separate rule: DEPOSIT_REFUND_NOTICE_HOURS.
+ * The booking page warns when a requested time is already inside this window.
  */
 export const ONLINE_CANCEL_NOTICE_HOURS = 24;
+
+/**
+ * Owner decision 2026-10-18: a customer who cancels a CONFIRMED booking at
+ * least this many hours before its start gets the card deposit back in full;
+ * cancelling later keeps it (as a missed appointment does). Between this and
+ * ONLINE_CANCEL_NOTICE_HOURS the customer may still cancel online, and My
+ * Bookings says before they confirm that the deposit is kept. The booking
+ * page, the booking terms, the confirmation email and the admin dialog's help
+ * all read this number; change it and the wording follows. Exactly this many
+ * hours ahead still counts as in time (isDepositRefundableOnCancel).
+ */
+export const DEPOSIT_REFUND_NOTICE_HOURS = 48;
 
 /**
  * True when `start` gives at least `minutes` of notice from `now`. Compared
@@ -40,6 +52,15 @@ export const ONLINE_CANCEL_NOTICE_HOURS = 24;
  */
 export function meetsMinimumNotice(start: Date, now: Date = new Date(), minutes: number = MIN_BOOKING_NOTICE_MINUTES): boolean {
   return start.getTime() - now.getTime() >= minutes * 60_000;
+}
+
+/**
+ * Whether a customer cancelling a confirmed booking that starts at `start`,
+ * at `now`, gets its deposit refunded (DEPOSIT_REFUND_NOTICE_HOURS or more
+ * ahead) or not (less: it is kept). Absolute instants, like meetsMinimumNotice.
+ */
+export function isDepositRefundableOnCancel(start: Date, now: Date = new Date()): boolean {
+  return meetsMinimumNotice(start, now, DEPOSIT_REFUND_NOTICE_HOURS * 60);
 }
 
 /**
@@ -71,3 +92,18 @@ export const CONSULTATION_CREDIT_MONTHS = 6;
  * list as beta testers. A handful of trusted accounts, not a second launch.
  */
 export const BOOKING_BETA_MAX_TESTERS = 20;
+
+/**
+ * Owner decision 2026-10-18 ("short version" of the customer emails): the
+ * REMINDER goes only to a booking confirmed at least this many hours before
+ * its start. One confirmed later has only just had its confirmation email.
+ */
+export const REMINDER_MIN_CONFIRMED_AHEAD_HOURS = 24;
+
+/**
+ * Whether a booking starting at `start` gets a reminder, given when it was
+ * confirmed (null: not known — the reminder goes, as before the rule).
+ */
+export function isReminderWanted(start: Date, confirmedAt: Date | null): boolean {
+  return confirmedAt === null || meetsMinimumNotice(start, confirmedAt, REMINDER_MIN_CONFIRMED_AHEAD_HOURS * 60);
+}

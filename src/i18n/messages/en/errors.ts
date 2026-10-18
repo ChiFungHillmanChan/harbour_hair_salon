@@ -71,6 +71,8 @@ const errors = {
     CANCEL_ONLY_ACTIVE: 'Only pending or confirmed appointments can be cancelled',
     CANCEL_TOO_LATE: 'Cannot cancel within 24 hours of appointment',
     CANCEL_FAILED: 'Could not cancel the appointment. Please try again.',
+    /** {hours}: DEPOSIT_REFUND_NOTICE_HOURS. The confirm step had promised a refund; nothing was cancelled. */
+    DEPOSIT_NOW_KEPT: 'It is now less than {hours} hours before your appointment, so if you cancel, your deposit is kept and not refunded. Nothing has been cancelled: press Cancel again if you still want to cancel.',
     RESCHEDULE_ONLY_CONFIRMED: 'Only confirmed appointments can be rescheduled',
     RESCHEDULE_TOO_LATE: 'Cannot reschedule within 24 hours of appointment',
     RESCHEDULE_PAST: 'Cannot reschedule to a time in the past',

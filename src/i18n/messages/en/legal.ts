@@ -28,7 +28,8 @@ const legal = {
       payments: '<b>Online deposits:</b> if your booking needs a deposit, its amount, whether it is held, taken, released or refunded, the dates, and the references Square gives the payment and any refund. Your card details go straight to Square: we never see or store your card number.',
       patchTests: '<b>Patch tests and consultations:</b> some colour services need a skin patch test first. We keep a record of your patch tests and consultations (when they took place, and which service a consultation was for) so that we can check whether a colour service is safe to book. If you tell us about an allergy or a reaction, we may note it on your booking.',
       staffBookings: '<b>Bookings made with our staff:</b> if you book by phone, WhatsApp or in the salon, we record your name and, if you give them, your phone number and email address.',
-      emails: '<b>Emails we send you:</b> booking requests, confirmations, reminders, changes, cancellations and review invitations, and whether each one was delivered.',
+      /** The customer emails the code sends (email-content.ts; RETIRED_CUSTOMER_EMAIL_KINDS are not sent, owner decision 2026-10-18). */
+      emails: '<b>Emails we send you:</b> booking confirmations, reminders, changes of time, cancellations, and replies when we cannot confirm a request or a change of time, and whether each one was delivered.',
       reviews: '<b>Reviews:</b> if you review a visit, your rating, your comment and which appointment it was for.',
       marketing: '<b>Marketing preference:</b> if you subscribed to our marketing emails in the past, your email address and whether you have since unsubscribed. We no longer take new sign-ups on this website.',
       security: '<b>Security information:</b> your device’s IP address, used briefly to stop abuse such as repeated sign-in attempts or floods of emails; a record of account events such as sign-ins, email confirmations and password changes (it does not include your IP address); and the short-lived technical logs our hosting provider keeps.',
@@ -42,7 +43,6 @@ const legal = {
       service: '<b>To run your account and your bookings:</b> creating your account, taking and managing appointments and reschedule requests, and sending the emails that go with them. Basis: contract (we need it to provide the service you ask for).',
       payments: '<b>To take, release and refund deposits:</b> holding the deposit when you send a request, taking it when we confirm your booking, and releasing or refunding it under our <terms>booking terms</terms>. Basis: contract. Keeping the payment records for our accounts is a legal obligation.',
       safety: '<b>To check that a colour service is safe for you:</b> patch-test records, and any allergy or reaction you tell us about. Basis: contract; for health information, your explicit consent, which you can withdraw at any time.',
-      reviewRequests: '<b>To ask how your visit went:</b> one review invitation after an appointment. Basis: legitimate interests (improving our service).',
       reviewsPublished: '<b>To publish your review:</b> on this website after we have checked it, with your name as it appears on your account, the service and the stylist. Basis: consent. You choose to submit it, and you can ask us to remove it at any time.',
       marketing: '<b>To send marketing emails:</b> only if you subscribed. Basis: consent, which you can withdraw at any time with the link in any marketing email or on <unsubscribe>our unsubscribe page</unsubscribe>.',
       security: '<b>To keep the website and your account secure:</b> limiting repeated attempts, confirming email addresses and keeping a record of account events. Basis: legitimate interests (protecting our customers and our systems).',
@@ -123,8 +123,8 @@ const legal = {
    * wizard's deposit summary links here). Every rule stated must match the
    * code and the deposit design
    * (docs/superpowers/specs/2026-10-13-square-deposits-design.md): change the
-   * wording and the page's LAST_UPDATED together. The notice and patch-test
-   * periods come from code constants.
+   * wording and the page's LAST_UPDATED together. The notice, cancellation,
+   * deposit-refund and patch-test periods come from code constants.
    */
   bookingTerms: {
     meta: {
@@ -160,20 +160,23 @@ const legal = {
     cancelling: {
       title: 'Cancelling',
       request: 'You can withdraw a request we haven’t confirmed yet at any time in <bookings>My Bookings</bookings>. We release the hold and you are not charged.',
-      confirmed: 'You can cancel a confirmed booking in <bookings>My Bookings</bookings> up to 24 hours before your appointment, and we refund your deposit in full.',
-      late: 'Less than 24 hours before your appointment, please call us to cancel.',
+      /** {cancelHours}: ONLINE_CANCEL_NOTICE_HOURS; {hours}: DEPOSIT_REFUND_NOTICE_HOURS. */
+      confirmed: 'You can cancel a confirmed booking in <bookings>My Bookings</bookings> up to {cancelHours} hours before your appointment. If you cancel at least {hours} hours before it, we refund your deposit in full.',
+      /** {cancelHours}: ONLINE_CANCEL_NOTICE_HOURS. */
+      late: 'Less than {cancelHours} hours before your appointment, please call us to cancel.',
       /** {minutes}: LATE_ARRIVAL_CANCEL_MINUTES. Applies while Admin → Settings has the rule on; the salon decided it 2026-10-16. */
       lateArrival: 'If you are more than {minutes} minutes late and haven’t let us know, we cancel your appointment so that the time can go to another client, and we keep your deposit, as for a missed appointment. If you’re running late, please call us.',
       /**
-       * OWNER POLICY (2026-10-16): a no-show's deposit is never refunded; the
-       * rule for late cancellations is not decided yet, so it stays "may".
-       * Staff apply it when they cancel: the whole deposit is refunded or the
-       * whole deposit is kept (the website cannot keep part of one), and the
-       * admin dialog starts unticked ("keep") once the appointment time has
-       * passed. Keep this sentence in step with what the salon actually does,
-       * and with booking.deposit.lateOrNoShow.
+       * OWNER POLICY: a no-show's deposit is never refunded (2026-10-16); a
+       * cancellation less than DEPOSIT_REFUND_NOTICE_HOURS ({hours}) before the
+       * appointment keeps it (2026-10-18) — cancelAppointment keeps it for an
+       * online cancellation, and staff untick "Refund" for one by phone. The
+       * whole deposit is refunded or the whole deposit is kept (the website
+       * cannot keep part of one), and the admin dialog starts unticked
+       * ("keep") once the appointment time has passed. Keep this sentence in
+       * step with what the salon actually does, and with booking.deposit.lateOrNoShow.
        */
-      lateOrNoShow: 'If you don’t come to your appointment, we keep your deposit. If you cancel less than 24 hours before your appointment, we may keep your deposit.',
+      lateOrNoShow: 'If you cancel less than {hours} hours before your appointment, or don’t come to it, we keep your deposit.',
       salon: 'If we have to cancel your appointment, we refund your deposit in full.',
     },
     refunds: {
@@ -208,7 +211,8 @@ const legal = {
      */
     rights: {
       title: 'Your rights',
-      body: 'You can cancel a confirmed booking online up to 24 hours before your appointment for a full refund of your deposit, or contact us at any time before your appointment. If you miss your appointment, or are more than {minutes} minutes late without letting us know, we keep your deposit; if you cancel late, we may keep it. We never keep more than the deposit. Your statutory rights are not affected.',
+      /** {cancelHours}: ONLINE_CANCEL_NOTICE_HOURS; {hours}: DEPOSIT_REFUND_NOTICE_HOURS; {minutes}: LATE_ARRIVAL_CANCEL_MINUTES. */
+      body: 'You can cancel a confirmed booking online up to {cancelHours} hours before your appointment, or contact us at any time before your appointment. If you cancel at least {hours} hours before your appointment, we refund your deposit in full. If you cancel later than that, miss your appointment, or are more than {minutes} minutes late without letting us know, we keep your deposit. We never keep more than the deposit. Your statutory rights are not affected.',
     },
     contact: {
       title: 'Questions',

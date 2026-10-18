@@ -206,7 +206,7 @@ test('disabled delivery still enqueues notification fields and frozen values wit
   assert.equal(saved.locale, 'en-GB', 'a booking with no recorded language is mailed in English');
 });
 
-test('a request queued with a held deposit carries it in the snapshot (schema 3); without one it carries none', async () => {
+test('a request\'s salon alert queued with a held deposit carries it in the snapshot (schema 3); without one it carries none', async () => {
   const payloads: string[] = [];
   const db = {
     notificationDelivery: {
@@ -221,7 +221,7 @@ test('a request queued with a held deposit carries it in the snapshot (schema 3)
     id: 'a', date: new Date('2099-09-12T12:00:00Z'), notificationVersion: 0, priceAtBooking: 100, durationAtBooking: 60, notes: null,
     user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', duration: 60 },
   };
-  await service.enqueueAppointmentNotification(db as never, 'REQUEST_RECEIVED', {
+  await service.enqueueAppointmentNotification(db as never, 'SALON_ALERT', {
     ...appointment, paymentAttempt: { status: 'AUTHORIZED', amountPence: 2000, squarePaymentId: 'square-secret-id' },
   } as never);
   await service.enqueueAppointmentNotification(db as never, 'SALON_ALERT', { ...appointment, id: 'b' } as never);
@@ -235,8 +235,8 @@ test('a request queued with a held deposit carries it in the snapshot (schema 3)
 
 test('the queued deposit reaches the email at send time without a database read', async () => {
   const f = fixture({ unprepared: true });
-  f.row.kind = 'REQUEST_RECEIVED';
-  f.row.eventKey = 'appointment/a/0/REQUEST_RECEIVED';
+  f.row.kind = 'SALON_ALERT';
+  f.row.eventKey = 'appointment/a/0/SALON_ALERT';
   f.db.appointment.findUnique = async () => ({ id: 'a', status: 'PENDING', date: new Date('2026-09-12T12:00:00Z'), notificationVersion: 0, review: null });
   const payload = JSON.parse(f.row.payloadJson);
   payload.appointment = {
@@ -464,7 +464,8 @@ function requestFixture(kind: string, state: { status: string; requestedAt: stri
 const OPEN = '2099-09-01T11:00:00.000Z';
 const OTHER = '2099-09-01T11:30:00.000Z';
 for (const [kind, state, expected] of [
-  ['RESCHEDULE_REQUEST_RECEIVED', { status: 'CONFIRMED', requestedAt: OPEN }, 'SENT'],
+  // Retired customer email (2026-10-18): one queued before is skipped even while its request is open.
+  ['RESCHEDULE_REQUEST_RECEIVED', { status: 'CONFIRMED', requestedAt: OPEN }, 'SKIPPED'],
   ['RESCHEDULE_REQUEST_RECEIVED', { status: 'CONFIRMED', requestedAt: OTHER }, 'SKIPPED'],
   ['RESCHEDULE_REQUEST_RECEIVED', { status: 'CONFIRMED', requestedAt: null }, 'SKIPPED'],
   ['SALON_RESCHEDULE_ALERT', { status: 'CONFIRMED', requestedAt: OPEN }, 'SENT'],
@@ -485,7 +486,7 @@ for (const [kind, state, expected] of [
 }
 
 test('a request email is prepared with its requested date', async () => {
-  const f = requestFixture('RESCHEDULE_REQUEST_RECEIVED', { status: 'CONFIRMED', requestedAt: OPEN });
+  const f = requestFixture('SALON_RESCHEDULE_ALERT', { status: 'CONFIRMED', requestedAt: OPEN });
   await f.service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
   assert.equal((f.prepared[0] as { requestedDate: Date }).requestedDate.toISOString(), '2099-09-15T09:00:00.000Z');
 });
@@ -499,11 +500,11 @@ test('request emails are keyed by the request, so a replacement queues new event
   const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', { '@/app/lib/prisma': db, './email-service': {} });
   const appointment = { id: 'a', date: new Date('2099-09-14T12:00:00Z'), priceAtBooking: null, durationAtBooking: 60, notificationVersion: 3, notes: null, user: { email: 'amy@example.test', name: 'Amy' }, stylist: { name: 'Ivan' }, service: { name: 'Cut', duration: 60 } };
   const requestedDate = new Date('2099-09-15T09:00:00Z');
-  await service.enqueueAppointmentNotification(db as never, 'RESCHEDULE_REQUEST_RECEIVED', appointment, { requestedDate, requestedAt: new Date('2099-09-01T11:00:00Z') });
-  await service.enqueueAppointmentNotification(db as never, 'RESCHEDULE_REQUEST_RECEIVED', appointment, { requestedDate, requestedAt: new Date('2099-09-01T11:30:00Z') });
+  await service.enqueueAppointmentNotification(db as never, 'SALON_RESCHEDULE_ALERT', appointment, { requestedDate, requestedAt: new Date('2099-09-01T11:00:00Z') });
+  await service.enqueueAppointmentNotification(db as never, 'SALON_RESCHEDULE_ALERT', appointment, { requestedDate, requestedAt: new Date('2099-09-01T11:30:00Z') });
   assert.deepEqual(upserts.map((event) => event.eventKey), [
-    'appointment/a/3/RESCHEDULE_REQUEST_RECEIVED/2099-09-01T11:00:00.000Z',
-    'appointment/a/3/RESCHEDULE_REQUEST_RECEIVED/2099-09-01T11:30:00.000Z',
+    'appointment/a/3/SALON_RESCHEDULE_ALERT/2099-09-01T11:00:00.000Z',
+    'appointment/a/3/SALON_RESCHEDULE_ALERT/2099-09-01T11:30:00.000Z',
   ]);
   await assert.rejects(service.enqueueAppointmentNotification(db as never, 'RESCHEDULE_DECLINED', appointment, { requestedDate }), /requestedAt/);
 });
@@ -630,4 +631,104 @@ test('a snapshot queued before credit existed is prepared with neither field', a
   await service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
   assert.equal(f.row.status, 'SENT');
   assert.ok(!('consultationCreditPence' in prepared[0]) && !('isConsultation' in prepared[0]));
+});
+
+// --- The "short version" of the customer emails (owner decision 2026-10-18) --
+
+test('the retired customer emails are the request and reschedule acknowledgements and the review invitation', async () => {
+  const { RETIRED_CUSTOMER_EMAIL_KINDS, isRetiredCustomerEmailKind } = await import('./email-content');
+  assert.deepEqual([...RETIRED_CUSTOMER_EMAIL_KINDS].sort(), ['REQUEST_RECEIVED', 'RESCHEDULE_REQUEST_RECEIVED', 'REVIEW_REQUEST']);
+  for (const kind of ['CONFIRMATION', 'CANCELLATION', 'RESCHEDULE', 'RESCHEDULE_DECLINED', 'RESCHEDULE_LAPSED', 'REQUEST_LAPSED', 'LATE_CANCELLED', 'REMINDER', 'SALON_ALERT', 'SALON_RESCHEDULE_ALERT']) {
+    assert.equal(isRetiredCustomerEmailKind(kind), false, `${kind} is still sent`);
+  }
+});
+
+test('a retired customer email is never queued: no row, no read, for any customer', async () => {
+  const calls = [] as string[];
+  const db = { notificationDelivery: {
+    findUnique: async () => { calls.push('findUnique'); return null; },
+    upsert: async ({ create }: { create: { kind: string } }) => { calls.push(`upsert ${create.kind}`); return { id: 'queued' }; },
+  } };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', { '@/app/lib/prisma': db, './email-service': {} });
+  const appointment = {
+    id: 'a', date: new Date('2099-09-12T12:00:00Z'), notificationVersion: 0, notes: null, priceAtBooking: 80, durationAtBooking: 60,
+    user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', duration: 60 },
+    paymentAttempt: { status: 'AUTHORIZED', amountPence: 2000 },
+  };
+  const request = { requestedDate: new Date('2099-09-15T09:00:00Z'), requestedAt: new Date('2099-09-01T11:00:00Z'), salonPhone: '07831 830898' };
+  for (const kind of ['REQUEST_RECEIVED', 'RESCHEDULE_REQUEST_RECEIVED', 'REVIEW_REQUEST'] as const) {
+    assert.equal(await service.enqueueAppointmentNotification(db as never, kind, appointment as never, request), null, kind);
+  }
+  assert.equal(calls.length, 0);
+  // The salon's alerts are unchanged.
+  await service.enqueueAppointmentNotification(db as never, 'SALON_ALERT', appointment as never);
+  await service.enqueueAppointmentNotification(db as never, 'SALON_RESCHEDULE_ALERT', appointment as never, request);
+  assert.deepEqual(calls.filter((call) => call.startsWith('upsert')), ['upsert SALON_ALERT', 'upsert SALON_RESCHEDULE_ALERT']);
+});
+
+for (const kind of ['REQUEST_RECEIVED', 'RESCHEDULE_REQUEST_RECEIVED', 'REVIEW_REQUEST'] as const) {
+  for (const prepared of [false, true]) {
+    test(`a ${prepared ? 'prepared' : 'unprepared'} ${kind} queued before it was retired is skipped at dispatch, payload cleared, never sent`, async () => {
+      const f = fixture({ unprepared: !prepared });
+      f.row.kind = kind;
+      f.row.eventKey = `appointment/a/0/${kind}`;
+      let appointmentReads = 0;
+      f.db.appointment.findUnique = async () => { appointmentReads++; return { id: 'a', status: 'PENDING', date: new Date('2026-09-12T12:00:00Z'), notificationVersion: 0, review: null }; };
+      const result = await f.service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+      assert.deepEqual(result, { sent: 0, failed: 0, skipped: 1, deferred: 0 });
+      assert.equal(f.row.status, 'SKIPPED');
+      assert.equal(f.row.payloadJson, '{}', 'the personal copy is cleared like any stale row');
+      assert.equal(f.sideEffects().renders, 0);
+      assert.equal(f.sends(), 0);
+      assert.equal(appointmentReads, 0, 'decided from the kind alone');
+    });
+  }
+}
+
+// A REMINDER only for a booking confirmed at least 24 hours before its start,
+// re-checked at dispatch so a reminder queued earlier obeys the rule too.
+for (const [label, confirmedHoursBefore, expected] of [
+  ['confirmed 23 hours before its start', 23, 'SKIPPED'],
+  ['confirmed 23h59m before its start', 23 + 59 / 60, 'SKIPPED'],
+  ['confirmed exactly 24 hours before its start', 24, 'SENT'],
+  ['confirmed 3 days before its start', 72, 'SENT'],
+  ['with no confirmation notice', null, 'SENT'],
+] as const) {
+  test(`a queued reminder for a booking ${label} is ${expected}`, async (t) => {
+    const f = fixture();
+    t.mock.timers.enable({ apis: ['Date'], now: f.now });
+    f.row.kind = 'REMINDER';
+    f.row.eventKey = 'appointment/a/0/REMINDER';
+    const start = new Date('2026-09-12T12:00:00Z');
+    const lookups: Record<string, unknown>[] = [];
+    (f.db.notificationDelivery as Record<string, unknown>).findFirst = async ({ where }: { where: Record<string, unknown> }) => {
+      lookups.push(where);
+      return confirmedHoursBefore === null ? null : { createdAt: new Date(start.getTime() - confirmedHoursBefore * 3_600_000) };
+    };
+    await f.service.dispatchPendingNotifications({ db: f.db as never, now: f.now });
+    assert.equal(f.row.status, expected);
+    assert.equal(f.sends(), expected === 'SENT' ? 1 : 0);
+    assert.deepEqual(lookups[0], { appointmentId: 'a', kind: 'CONFIRMATION' }, 'the earliest CONFIRMATION notice dates the confirmation');
+  });
+}
+
+// request-lapse-notice.ts knows an online request by the salon alert it queued
+// at version 0: the key it looks up must be the one the outbox writes.
+test('an online request\'s first salon alert is written under the key the lapse notice looks for', async () => {
+  const keys: string[] = [];
+  const db = { notificationDelivery: {
+    findUnique: async () => null,
+    upsert: async ({ create }: { create: { eventKey: string } }) => { keys.push(create.eventKey); return { id: create.eventKey }; },
+  } };
+  const service = loadServerModule<typeof import('./notification-outbox-service')>('src/app/services/notification-outbox-service.ts', { '@/app/lib/prisma': db, './email-service': {} });
+  const { onlineRequestAlertKey } = loadServerModule<typeof import('./request-lapse-notice')>('src/app/services/request-lapse-notice.ts', {});
+  const created = {
+    id: 'cm-online', date: new Date('2099-09-12T12:00:00Z'), notificationVersion: 0, notes: null, priceAtBooking: 80, durationAtBooking: 60,
+    user: { name: 'Customer', email: 'customer@example.com' }, stylist: { name: 'Stylist' }, service: { name: 'Cut', duration: 60 },
+  };
+  await service.enqueueAppointmentNotification(db as never, 'SALON_ALERT', created as never);
+  // A staff move of a pencil-in queues its alert only after bumping the version.
+  await service.enqueueAppointmentNotification(db as never, 'SALON_ALERT', { ...created, id: 'cm-pencil', notificationVersion: 1 } as never);
+  assert.deepEqual(keys, [onlineRequestAlertKey('cm-online'), 'appointment/cm-pencil/1/SALON_ALERT']);
+  assert.notEqual(keys[1], onlineRequestAlertKey('cm-pencil'));
 });

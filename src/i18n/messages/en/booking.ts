@@ -117,9 +117,14 @@ const booking = {
      * taken, and when it can be lost. Keep in step with legal.bookingTerms.
      */
     payNothingNow: 'You pay nothing now. We place a hold on your card and take the {amount} deposit only when we confirm your booking; if we decline or don’t confirm your request, the hold is released.',
-    refund: 'Cancel at least 24 hours before your appointment for a full refund.',
-    lateOrNoShow: 'If you miss your appointment, or are more than {minutes} minutes late without letting us know, we keep the deposit. If you cancel less than 24 hours before it, we may keep it.',
-    soonWarning: 'Your appointment is less than 24 hours away: once we confirm it, the deposit can’t be refunded online if you cancel.',
+    /** {hours}: DEPOSIT_REFUND_NOTICE_HOURS (owner decision 2026-10-18). */
+    refund: 'Cancel at least {hours} hours before your appointment for a full refund.',
+    /** {hours}: DEPOSIT_REFUND_NOTICE_HOURS; {minutes}: LATE_ARRIVAL_CANCEL_MINUTES. */
+    lateOrNoShow: 'If you cancel less than {hours} hours before your appointment, miss it, or are more than {minutes} minutes late without letting us know, we keep the deposit.',
+    /** {hours}: ONLINE_CANCEL_NOTICE_HOURS. The requested time is already that close. */
+    soonWarning: 'Your appointment is less than {hours} hours away: once we confirm it, it can’t be cancelled online, and if you cancel, the deposit is kept.',
+    /** {hours}: DEPOSIT_REFUND_NOTICE_HOURS. The requested time is already that close. */
+    refundWarning: 'Your appointment is less than {hours} hours away: once we confirm it, the deposit is kept if you cancel.',
     termsLink: 'Read the full <link>booking terms</link>.',
     opensInNewTab: '(opens in a new tab)',
     cardLegend: 'Card details',

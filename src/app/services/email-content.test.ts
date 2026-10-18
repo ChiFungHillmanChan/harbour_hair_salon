@@ -361,10 +361,11 @@ const s3Wording = {
     paid: 'Your £20.00 deposit is paid; £80.00 is left to pay in the salon. Cash and card are accepted.',
     paidNoTotal: 'Your £20.00 deposit is paid; the rest is due at the salon. Cash and card are accepted.',
     paidInFull: 'Your £100.00 deposit covers the full price: there is nothing left to pay in the salon.',
-    change: 'Need to make a change? You can cancel (your deposit is refunded in full) or request a new time from My Bookings up to 24 hours before your appointment.',
+    // Owner decision 2026-10-18: refunded in full only 48 hours or more ahead.
+    change: 'Need to make a change? You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment. If you cancel at least 48 hours before it, your deposit is refunded in full; after that, it is kept.',
     refunding: ['£20.00 — being refunded', 'Your £20.00 deposit is being refunded. Most banks show refunds within 5–10 working days; some take up to 14.'],
     released: ['£20.00 hold released — nothing taken', 'The £20.00 hold on your card has been released — nothing was taken. Your bank may take a few days to remove it.'],
-    kept: ['£20.00 kept', 'The £20.00 deposit is kept under our booking terms.'],
+    kept: ['£20.00 kept', 'The £20.00 deposit is kept under our booking terms (a cancellation less than 48 hours before the appointment, or a missed appointment).'],
     holdExpired: /couldn’t confirm your booking request for .+ while the hold on your card was still valid/,
   },
   'zh-HK': {
@@ -372,10 +373,10 @@ const s3Wording = {
     paid: '你已繳付 £20.00 訂金；餘下 £80.00 於店內繳付，接受現金及信用卡。',
     paidNoTotal: '你已繳付 £20.00 訂金；餘款於店內繳付，接受現金及信用卡。',
     paidInFull: '你已繳付的 £100.00 訂金已包括全部費用，到店時無須再付款。',
-    change: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消（訂金全數退還）或申請改期。',
+    change: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。如你在預約前最少 48 小時取消，訂金會全數退還；其後取消，訂金不予退還。',
     refunding: ['£20.00——正在退款', '你的 £20.00 訂金正在退還。大部分銀行會於 5 至 10 個工作天內顯示退款，部分銀行或需長達 14 個工作天。'],
     released: ['已解除 £20.00 預留款項——沒有扣款', '你信用卡上 £20.00 的預留款項已經解除——並沒有扣款。銀行或需數天才會更新紀錄。'],
-    kept: ['£20.00——不予退還', '根據我們的預約條款，£20.00 訂金不予退還。'],
+    kept: ['£20.00——不予退還', '根據我們的預約條款（預約前不足 48 小時取消，或缺席預約），£20.00 訂金不予退還。'],
     holdExpired: /未能在你信用卡的預留款項仍然有效時確認你/,
   },
 } as const;

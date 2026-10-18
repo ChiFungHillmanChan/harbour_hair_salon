@@ -20,7 +20,7 @@ import {
 import type { DepositView } from '@/app/lib/deposit-display';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { isArrivalWindowOpen, lateCancelDueAt } from '@/app/lib/late-arrival';
-import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
+import { DEPOSIT_REFUND_NOTICE_HOURS, LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useLocale, useT } from '@/i18n/client';
 import { DEFAULT_LOCALE, HTML_LANG, LOCALE_LABEL, LOCALES, isLocale, type Locale } from '@/i18n/config';
@@ -709,7 +709,7 @@ export function AppointmentDialog({
                 <input type="checkbox" checked={refundDeposit} onChange={(event) => update({ refundDeposit: event.target.checked })} />
                 {t('deposit.refund', { amount: formatPrice(deposit.amountPence) })}
               </label>
-              <p className="mt-1 text-xs text-zinc-500">{t(visitPassed ? 'deposit.noShowHelp' : 'deposit.refundHelp')}</p>
+              <p className="mt-1 text-xs text-zinc-500">{visitPassed ? t('deposit.noShowHelp') : t('deposit.refundHelp', { hours: DEPOSIT_REFUND_NOTICE_HOURS })}</p>
             </div>
           )}
           {isEdit && target.status === 'PENDING' && deposit?.state === 'HELD' && (

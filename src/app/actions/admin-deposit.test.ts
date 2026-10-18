@@ -291,8 +291,8 @@ test('staff may keep a confirmed booking’s deposit: no refund, the audit recor
   assert.equal(f.attempts[0].status, 'KEPT');
   assert.deepEqual(f.audits[0].metadata, { from: 'CONFIRMED', to: 'CANCELLED', deposit: 'KEPT', depositPence: 2000 });
   assert.deepEqual(f.queued().map((notice) => [notice.kind, notice.options]), [['CANCELLATION', { wasConfirmed: true, depositOutcome: 'KEPT' }]]);
-  assert.ok(f.render('CANCELLATION', 'en-GB').footnotes.includes('The £20.00 deposit is kept under our booking terms.'));
-  assert.ok(f.render('CANCELLATION', 'zh-HK').footnotes.includes('根據我們的預約條款，£20.00 訂金不予退還。'));
+  assert.ok(f.render('CANCELLATION', 'en-GB').footnotes.includes('The £20.00 deposit is kept under our booking terms (a cancellation less than 48 hours before the appointment, or a missed appointment).'));
+  assert.ok(f.render('CANCELLATION', 'zh-HK').footnotes.includes('根據我們的預約條款（預約前不足 48 小時取消，或缺席預約），£20.00 訂金不予退還。'));
 });
 
 test('a request whose deposit was taken but never confirmed is always refunded when declined', async () => {

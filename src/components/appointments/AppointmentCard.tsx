@@ -13,7 +13,7 @@ import { useLocale, useT } from '@/i18n/client';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { useDraftState } from '@/i18n/draft-store';
 import { appointmentGoogleCalendarUrl, appointmentIcsBlob, type AppointmentCalendarEvent } from '@/app/lib/calendar-links';
-import { LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
+import { DEPOSIT_REFUND_NOTICE_HOURS, LATE_ARRIVAL_CANCEL_MINUTES, isDepositRefundableOnCancel } from '@/app/lib/booking-constants';
 import { RescheduleModal } from './RescheduleModal';
 
 /**
@@ -86,12 +86,18 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
   const [error, setError] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
   const [sent, setSent] = useState(false);
+  // The server refused a cancellation because the refund deadline passed
+  // while the confirm step was open (DEPOSIT_NOW_KEPT): say "kept" from now on.
+  const [refundDeadlinePassed, setRefundDeadlinePassed] = useState(false);
 
   const appointmentDate = new Date(appointment.date);
   const [isWithin24Hours] = useState(() => {
     const hoursUntil = (appointmentDate.getTime() - Date.now()) / (1000 * 60 * 60);
     return hoursUntil < 24;
   });
+  // Cancelling from now on keeps a taken deposit (DEPOSIT_REFUND_NOTICE_HOURS).
+  const [pastRefundDeadline] = useState(() => !isDepositRefundableOnCancel(appointmentDate, new Date()));
+  const refundDeadline = new Date(appointmentDate.getTime() - DEPOSIT_REFUND_NOTICE_HOURS * 3_600_000);
 
   // Pin to salon time so the server render (UTC on Vercel) and the browser render
   // agree — otherwise BST produces a hydration mismatch and non-UK viewers see
@@ -152,12 +158,20 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
       : undefined;
 
   async function handleCancel() {
-    // Say what happens to the deposit: a taken one is refunded, a hold released.
-    const confirmText = deposit?.state === 'PAID'
-      ? t('card.confirmCancelRefund', { amount: formatPrice(deposit.amountPence) })
-      : deposit?.state === 'HELD'
-        ? t('card.confirmWithdrawRelease', { amount: formatPrice(deposit.amountPence) })
-        : t('card.confirmCancel');
+    // Say what happens to the deposit before the customer agrees: a taken one
+    // is refunded in full DEPOSIT_REFUND_NOTICE_HOURS or more before the
+    // appointment and kept after that; a hold is released. Worked out at the
+    // click, and the server is told which was shown (cancelAppointment).
+    const amount = deposit ? formatPrice(deposit.amountPence) : '';
+    const depositKept = deposit?.state === 'PAID' && appointment.status === 'CONFIRMED'
+      && (refundDeadlinePassed || !isDepositRefundableOnCancel(appointmentDate, new Date()));
+    const confirmText = depositKept
+      ? t('card.confirmCancelKept', { amount, hours: DEPOSIT_REFUND_NOTICE_HOURS })
+      : deposit?.state === 'PAID'
+        ? t('card.confirmCancelRefund', { amount })
+        : deposit?.state === 'HELD'
+          ? t('card.confirmWithdrawRelease', { amount })
+          : t('card.confirmCancel');
     if (!window.confirm(confirmText)) return;
 
     setCancelling(true);
@@ -165,10 +179,11 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
 
     try {
       // Errors come back in the page's language from the action.
-      const result = await cancelAppointment(appointment.id);
+      const result = await cancelAppointment(appointment.id, { depositKept });
       if (result.success) {
         router.refresh();
       } else {
+        if (result.code === 'DEPOSIT_NOW_KEPT') setRefundDeadlinePassed(true);
         setError(result.error || t('card.cancelFailed'));
       }
     } catch {
@@ -224,6 +239,14 @@ export function AppointmentCard({ appointment, isUpcoming, bookingEnabled }: App
             {!price.known && <p className="text-xs text-zinc-500">{tp('unknownPriceHelp')}</p>}
             {deposit && (
               <p className="text-sm text-zinc-700">{t.dynamic(`deposit.${deposit.state}`, { amount: formatPrice(deposit.amountPence) })}</p>
+            )}
+            {/* A taken deposit on a confirmed booking: until when cancelling refunds it. */}
+            {deposit?.state === 'PAID' && appointment.status === 'CONFIRMED' && isUpcoming && (
+              <p className="text-xs text-zinc-500">
+                {pastRefundDeadline || refundDeadlinePassed
+                  ? t('card.depositKeptIfCancelled', { hours: DEPOSIT_REFUND_NOTICE_HOURS })
+                  : t('card.refundUntil', { date: formatSalonLongDate(locale, refundDeadline), time: formatSalonClock(locale, refundDeadline) })}
+              </p>
             )}
           </div>
 

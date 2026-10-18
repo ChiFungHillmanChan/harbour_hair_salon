@@ -5,8 +5,9 @@ import prisma from '@/app/lib/prisma';
 import { isPlaceholderEmail } from '@/app/lib/walk-in-customer';
 import { isBookingBetaTester } from '@/app/lib/booking-beta';
 import { isRequestLapseNoticeTimely } from '@/app/lib/appointment-timing';
+import { isReminderWanted } from '@/app/lib/booking-constants';
 import { prepareAppointmentEmail, sendPreparedEmail, type AppointmentEmailKind, type AppointmentEmailOptions, type PreparedEmail } from './email-service';
-import { isSalonEmailKind, RESCHEDULE_REQUEST_EMAIL_KINDS, type DepositOutcome, type EmailDeposit, type EmailPrice } from './email-content';
+import { isRetiredCustomerEmailKind, isSalonEmailKind, RESCHEDULE_REQUEST_EMAIL_KINDS, type DepositOutcome, type EmailDeposit, type EmailPrice } from './email-content';
 import { recordedPrice } from './pricing/recorded-price';
 import { DEFAULT_LOCALE, isLocale, localeOrDefault, type Locale } from '@/i18n/config';
 
@@ -121,13 +122,33 @@ const LEASE_MS = 5 * 60_000;
 const RETRY_WINDOW_MS = 23 * 60 * 60_000;
 const MAX_ATTEMPTS = 12;
 
-/** Must be called inside the appointment transaction, before it commits. */
+/**
+ * When a booking was confirmed, as far as the outbox can tell: when its
+ * earliest CONFIRMATION email was queued (staff confirming a request, or
+ * entering a confirmed booking with "email the customer"). Null: none was.
+ */
+export async function confirmationQueuedAt(db: Pick<Prisma.TransactionClient, 'notificationDelivery'>, appointmentId: string): Promise<Date | null> {
+  const first = await db.notificationDelivery.findFirst({
+    where: { appointmentId, kind: 'CONFIRMATION' },
+    orderBy: { createdAt: 'asc' },
+    select: { createdAt: true },
+  });
+  return first?.createdAt ?? null;
+}
+
+/**
+ * Must be called inside the appointment transaction, before it commits.
+ * Returns null, writing nothing, for a walk-in placeholder address and for a
+ * retired customer email (RETIRED_CUSTOMER_EMAIL_KINDS).
+ */
 export async function enqueueAppointmentNotification(
   db: QueueDb,
   kind: AppointmentEmailKind,
   appointment: NotificationAppointment,
   options: AppointmentEmailOptions & { requestedAt?: Date; notBefore?: Date } = {},
 ) {
+  // Switched off by the owner (email-content.ts): no row at all.
+  if (isRetiredCustomerEmailKind(kind)) return null;
   // Phone bookings have an unroutable identity, but may still alert the salon.
   if (!isSalonEmailKind(kind) && isPlaceholderEmail(appointment.user.email)) return null;
   const forRequest = RESCHEDULE_REQUEST_EMAIL_KINDS.includes(kind);
@@ -190,8 +211,12 @@ async function isCurrent(db: QueueDb, appointmentId: string | null, kind: string
     case 'REQUEST_RECEIVED':
     case 'SALON_ALERT': return current.status === 'PENDING' && current.date > now;
     case 'CONFIRMATION':
-    case 'RESCHEDULE':
-    case 'REMINDER': return current.status === 'CONFIRMED' && current.date > now;
+    case 'RESCHEDULE': return current.status === 'CONFIRMED' && current.date > now;
+    // Only for a booking confirmed REMINDER_MIN_CONFIRMED_AHEAD_HOURS or more
+    // before its start (owner decision 2026-10-18): re-checked here, so a
+    // reminder queued before the rule, or before a move, obeys it too.
+    case 'REMINDER': return current.status === 'CONFIRMED' && current.date > now
+      && isReminderWanted(current.date, await confirmationQueuedAt(db, appointmentId));
     case 'REVIEW_REQUEST': return ['CONFIRMED', 'COMPLETED'].includes(current.status) && current.date < now && !current.review;
     // Mail about an open request goes only while that same request is open.
     case 'RESCHEDULE_REQUEST_RECEIVED':
@@ -250,6 +275,12 @@ export async function dispatchPendingNotifications(options: { db?: PrismaClient;
     if (!row || row.lockToken !== lockToken) continue;
     const finish = (data: Prisma.NotificationDeliveryUpdateManyMutationInput) => db.notificationDelivery.updateMany({ where: { id: row.id, lockToken }, data: { ...data, lockToken: null, lockedAt: null } });
     try {
+      // A customer email retired after it was queued (RETIRED_CUSTOMER_EMAIL_KINDS): never sent.
+      if (isRetiredCustomerEmailKind(row.kind)) {
+        await finish({ status: 'SKIPPED', lastError: null, payloadJson: '{}' });
+        result.skipped++;
+        continue;
+      }
       // An unknown outcome must not resend after Resend's 24-hour key retention.
       if (row.attempts > 1 && row.firstAttemptAt && now.getTime() - row.firstAttemptAt.getTime() >= RETRY_WINDOW_MS) {
         await finish({ status: 'FAILED', lastError: 'Retry window expired. Check provider delivery logs before any manual resend.' });

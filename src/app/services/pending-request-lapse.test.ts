@@ -38,7 +38,14 @@ type Hooks = {
 };
 
 type FixtureRow = {
-  id: string; status?: string; date: Date; announced?: boolean; email?: string; treatwellBookingId?: string;
+  /**
+   * Made online, so the customer awaits an answer: true = its first salon
+   * alert (version 0) was queued, as every online request's is; 'legacy' =
+   * only the REQUEST_RECEIVED notice of a request made before 2026-10-18;
+   * 'moved-pencil-in' = a staff pencil-in that staff moved (its salon alert at
+   * a later version). Absent: a pencil-in left alone, with no notice at all.
+   */
+  id: string; status?: string; date: Date; announced?: boolean | 'legacy' | 'moved-pencil-in'; email?: string; treatwellBookingId?: string;
   /** The frozen duration (60 by default); null falls back to the service's. */
   durationAtBooking?: number | null;
   serviceDuration?: number;
@@ -91,8 +98,11 @@ function fixture(rows: FixtureRow[], hooks: Hooks = {}) {
     if (key === 'date') return row.date <= (condition as { lte: Date }).lte;
     return row[key] === condition;
   });
-  // The REQUEST_RECEIVED notice an online request queued when it was made.
-  const deliveries = rows.filter((row) => row.announced).map((row) => ({ id: `n-${row.id}`, appointmentId: row.id, kind: 'REQUEST_RECEIVED' }));
+  // What an online request queued when it was made (see FixtureRow.announced).
+  const deliveries = rows.filter((row) => row.announced).map((row) => {
+    const [version, kind] = row.announced === 'legacy' ? [0, 'REQUEST_RECEIVED'] : row.announced === 'moved-pencil-in' ? [1, 'SALON_ALERT'] : [0, 'SALON_ALERT'];
+    return { id: `n-${row.id}`, eventKey: `appointment/${row.id}/${version}/${kind}`, appointmentId: row.id, kind };
+  });
   const enqueued: { id: string; kind: string; version: number; salonPhone?: string; depositOutcome?: string; holdExpired?: boolean; deposit?: unknown }[] = [];
   const audits: { action: string; targetId: string; metadata: Record<string, unknown> }[] = [];
   const counts = { settingsReads: 0, transactions: 0, invalidations: 0 };
@@ -156,6 +166,7 @@ function fixture(rows: FixtureRow[], hooks: Hooks = {}) {
       },
     },
     notificationDelivery: {
+      findUnique: async ({ where }: { where: { eventKey: string } }) => deliveries.find((row) => row.eventKey === where.eventKey) ?? null,
       findFirst: async ({ where }: { where: { appointmentId: string; kind: string } }) =>
         deliveries.find((row) => row.appointmentId === where.appointmentId && row.kind === where.kind) ?? null,
     },
@@ -295,15 +306,26 @@ test('the end comes from the frozen duration, falling back to the service durati
   ]);
 });
 
-// Staff "pencil in" bookings are PENDING too, but nobody told the customer they
-// were awaiting confirmation (no REQUEST_RECEIVED), so there is nobody to tell
-// that it lapsed — often the customer simply came in.
+// Staff "pencil in" bookings are PENDING too, but the customer never sent a
+// request (no online request's salon alert), so there is nobody to tell that
+// it lapsed — often the customer simply came in. Moving one queues its salon
+// alert at a later version, which does not make it an online request.
 test('a pencilled-in booking the customer was never told about is closed without an email', async () => {
-  const f = fixture([{ id: 'pencil', date: ENDED }]);
-  assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 1, failed: 0 });
-  assert.equal(f.appointments[0].status, 'CANCELLED');
+  const f = fixture([{ id: 'pencil', date: ENDED }, { id: 'moved-pencil', date: ENDED, announced: 'moved-pencil-in' }]);
+  assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 2, failed: 0 });
+  assert.deepEqual(f.appointments.map((row) => row.status), ['CANCELLED', 'CANCELLED']);
   assert.deepEqual(f.enqueued, []);
-  assert.equal(f.audits[0].metadata.notified, false);
+  assert.deepEqual(f.audits.map((audit) => audit.metadata.notified), [false, false]);
+});
+
+// Owner decision 2026-10-18: REQUEST_RECEIVED is retired, so new online
+// requests have none; they are known by their first salon alert. Requests made
+// before then are known by their old REQUEST_RECEIVED row.
+test('an online request with no REQUEST_RECEIVED notice still gets the lapse email, as does an older one with only that notice', async () => {
+  const f = fixture([{ id: 'online', date: ENDED, announced: true }, { id: 'older', date: ENDED, announced: 'legacy' }]);
+  assert.deepEqual(await f.service.lapseStartedPendingRequests(now), { lapsed: 2, failed: 0 });
+  assert.deepEqual(f.enqueued.map((event) => [event.id, event.kind]), [['online', 'REQUEST_LAPSED'], ['older', 'REQUEST_LAPSED']]);
+  assert.deepEqual(f.audits.map((audit) => audit.metadata.notified), [true, true]);
 });
 
 // A backlog (first deploy, or crons switched off for a while) is closed without

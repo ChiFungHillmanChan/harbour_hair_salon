@@ -13,7 +13,9 @@ import { createSquareGateway } from './square-gateway';
 // (docs/superpowers/specs/2026-10-13-square-deposits-design.md, phase S3):
 // staff confirming the request TAKE (capture) the deposit; declining,
 // withdrawing or lapsing it RELEASE (void) the hold; cancelling a confirmed
-// booking REFUNDS what was taken — or, if staff choose, keeps it. The booking
+// booking REFUNDS what was taken — or keeps it: staff may choose to, and a
+// customer cancelling less than DEPOSIT_REFUND_NOTICE_HOURS ahead does
+// (actions/booking.ts cancelAppointment). The booking
 // actions (actions/admin.ts, actions/booking.ts) and the lapse step
 // (pending-request-lapse.ts) call these around their own transactions:
 //   - the in-transaction parts only read and write rows, never Square, so a
@@ -234,7 +236,8 @@ export async function settleDepositBeforeClosing(db: AttemptDb, appointmentId: s
  *    customer is told it is released.
  *  - A deposit taken (CAPTURED) is refunded in full when the booking is
  *    cancelled — a REQUESTED refund row now, Square after the commit — unless
- *    `refund` is false: staff keep it, recorded on the deposit itself
+ *    `refund` is false: staff keep it, or the customer cancelled less than
+ *    DEPOSIT_REFUND_NOTICE_HOURS ahead; recorded on the deposit itself
  *    (CAPTURED → KEPT, conditionally). Marked completed, it is kept as part
  *    of the bill and stays CAPTURED.
  *  - A capture under way refuses the closing (DEPOSIT_IN_PROGRESS).
@@ -267,8 +270,8 @@ export async function planDepositForClosing(tx: DepositDb, appointmentId: string
       const remainder = await refundableRemainderPence(tx, attempt.id);
       if (remainder <= 0) return { ...NO_DEPOSIT, paymentAttempt: held };
       if (!options.refund) {
-        // A deliberate keep (a late cancellation or no-show, as the booking
-        // terms allow): recorded, so the attention list never reports it as
+        // A deliberate keep (a cancellation less than DEPOSIT_REFUND_NOTICE_HOURS
+        // ahead or a no-show, as the booking terms say): recorded, so the attention list never reports it as
         // money taken without a reason and reconciliation never refunds it as
         // a late capture. Conditional: a concurrent change rolls this closing back.
         const kept = await tx.paymentAttempt.updateMany({ where: { id: attempt.id, status: 'CAPTURED' }, data: { status: 'KEPT' } });

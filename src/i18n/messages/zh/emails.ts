@@ -65,7 +65,7 @@ const emails: Localized<Messages['emails']> = {
     textHeading: 'HARBOUR HAIR — 預約已確認',
     textIntro: '你於 Harbour Hair Salon 的預約已經確認。',
     textManage: '你可於預約前 24 小時或之前，在「我的預約」頁面管理預約：{url}',
-    footnoteWithDeposit: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消（訂金全數退還）或申請改期。',
+    footnoteWithDeposit: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。如你在預約前最少 {hours} 小時取消，訂金會全數退還；其後取消，訂金不予退還。',
     footnoteNoPayment: '需要更改？你可於預約前 24 小時或之前，在「我的預約」取消或申請改期。',
     depositPaid: '你已繳付 {deposit} 訂金；餘下 {remainder} 於店內繳付，接受現金及信用卡。',
     depositPaidNoTotal: '你已繳付 {deposit} 訂金；餘款於店內繳付，接受現金及信用卡。',
@@ -102,7 +102,7 @@ const emails: Localized<Messages['emails']> = {
   deposit: {
     refunding: '你的 {amount} 訂金正在退還。大部分銀行會於 5 至 10 個工作天內顯示退款，部分銀行或需長達 14 個工作天。',
     released: '你信用卡上 {amount} 的預留款項已經解除——並沒有扣款。銀行或需數天才會更新紀錄。',
-    kept: '根據我們的預約條款，{amount} 訂金不予退還。',
+    kept: '根據我們的預約條款（預約前不足 {hours} 小時取消，或缺席預約），{amount} 訂金不予退還。',
   },
   cancellation: {
     subject: '你的預約已取消 — Harbour Hair Salon',
