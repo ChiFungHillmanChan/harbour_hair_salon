@@ -628,6 +628,7 @@ export function ScheduleCalendar({
       ...(appt.arrivedAt ? { arrivedAt: appt.arrivedAt } : {}),
       // Only a booking with a card deposit carries one.
       ...(appt.deposit ? { deposit: appt.deposit } : {}),
+      ...(appt.depositLocked ? { depositLocked: true } : {}),
       // Only a booking staff applied a consultation credit to carries one.
       ...(appt.consultationCredit ? { consultationCredit: appt.consultationCredit } : {}),
     });

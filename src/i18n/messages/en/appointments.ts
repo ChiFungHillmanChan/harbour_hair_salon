@@ -56,6 +56,8 @@ const appointments = {
     /** Under a taken deposit on a confirmed booking: {date}, {time} = the start less DEPOSIT_REFUND_NOTICE_HOURS. */
     refundUntil: 'Cancel by {date}, {time} for a full refund of your deposit. After that, the deposit is kept if you cancel.',
     depositKeptIfCancelled: 'Your appointment is less than {hours} hours away: if you cancel now, your deposit is kept.',
+    depositKeptAfterMove: 'You asked to move this booking less than {hours} hours before it: if you cancel, your deposit is kept.',
+    confirmCancelKeptMoved: 'Cancel this appointment? You asked to move it less than {hours} hours before it: cancelling now, your {amount} deposit is kept and not refunded.',
     confirmWithdrawRelease: 'Withdraw this request? The {amount} hold on your card will be released.',
     /** A consultation credit recorded on the booking, taken off what is paid in the salon. */
     consultationCredit: 'Consultation credit: −{amount}',
@@ -90,6 +92,7 @@ const appointments = {
     slotsFailed: "We couldn't load available times. Please try again, or call the salon.",
     failed: 'Request failed',
     sent: 'Request sent. Your current time stays booked until the salon confirms.',
+    depositLockWarning: 'Your appointment is less than {hours} hours away, so your {amount} deposit is already non-refundable, and it stays that way at the new time: if you cancel later, it is kept. It still counts towards the price when you come in.',
     unexpectedError: 'Something went wrong. Please try again, or call the salon.',
   },
 } satisfies MessageTree;

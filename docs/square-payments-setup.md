@@ -165,7 +165,10 @@ deposit is kept towards the bill) or **decline** it (refunded) — Operations, t
   `SETTLED_EXTERNALLY`: counted against the deposit, shown as refunded, never sent to Square again.
   The confirm question names the amount; it cannot be undone from the website.
 - Completed appointments keep the deposit (it counts towards the bill). A reschedule keeps the
-  deposit attached to the booking.
+  deposit attached to the booking. A customer reschedule requested less than 48 hours before the
+  booking's start (when cancelling would already keep the deposit) locks it on approval
+  (`Appointment.depositLockedAt`, owner decision 2026-10-18): a later customer cancellation keeps it
+  whatever the new time, and the reschedule email, My Bookings and the admin dialog say so.
 
 ### 1.7 Webhook — `POST /api/webhooks/square` (S4)
 - Not configured (no usable Square configuration here) ⇒ `404`. Body over 64 KB ⇒ `413`.

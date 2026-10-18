@@ -76,6 +76,8 @@ export type DialogTarget =
       rescheduleRequestedAt: string | null;
       /** The booking's card deposit (lib/deposit-display.ts), when it has one. */
       deposit?: DepositView | null;
+      /** Moved at the customer's request made inside DEPOSIT_REFUND_NOTICE_HOURS: their own cancellation keeps the deposit. */
+      depositLocked?: boolean;
       /** When staff marked the customer arrived (ISO instant); the late-arrival rule never cancels an arrived booking. */
       arrivedAt?: string | null;
       /** The consultation credit staff applied to this booking, if any. */
@@ -709,7 +711,7 @@ export function AppointmentDialog({
                 <input type="checkbox" checked={refundDeposit} onChange={(event) => update({ refundDeposit: event.target.checked })} />
                 {t('deposit.refund', { amount: formatPrice(deposit.amountPence) })}
               </label>
-              <p className="mt-1 text-xs text-zinc-500">{visitPassed ? t('deposit.noShowHelp') : t('deposit.refundHelp', { hours: DEPOSIT_REFUND_NOTICE_HOURS })}</p>
+              <p className="mt-1 text-xs text-zinc-500">{visitPassed ? t('deposit.noShowHelp') : target.mode === 'edit' && target.depositLocked ? t('deposit.lockedHelp', { hours: DEPOSIT_REFUND_NOTICE_HOURS }) : t('deposit.refundHelp', { hours: DEPOSIT_REFUND_NOTICE_HOURS })}</p>
             </div>
           )}
           {isEdit && target.status === 'PENDING' && deposit?.state === 'HELD' && (

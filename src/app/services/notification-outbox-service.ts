@@ -63,13 +63,13 @@ type NotificationPayload = {
   appointment?: SnapshotV1 | SnapshotV2 | SnapshotV3;
   /**
    * `wasConfirmed`: CANCELLATION only; `depositOutcome`: CANCELLATION and
-   * REQUEST_LAPSED; `holdExpired`: REQUEST_LAPSED only — see
+   * REQUEST_LAPSED; `holdExpired`: REQUEST_LAPSED only; `depositLocked`: RESCHEDULE and CANCELLATION — see
    * AppointmentEmailOptions. Each is absent on mail queued before it existed,
    * which renders as it always did.
    */
   options?: {
     salonPhone?: string; oldDate?: string; requestedDate?: string; requestedAt?: string; wasConfirmed?: boolean;
-    depositOutcome?: DepositOutcome; holdExpired?: boolean;
+    depositOutcome?: DepositOutcome; holdExpired?: boolean; depositLocked?: boolean;
   };
 };
 
@@ -182,7 +182,7 @@ export async function enqueueAppointmentNotification(
     options: {
       salonPhone: options.salonPhone, oldDate: options.oldDate?.toISOString(), requestedDate: options.requestedDate?.toISOString(),
       requestedAt: options.requestedAt?.toISOString(), wasConfirmed: options.wasConfirmed,
-      depositOutcome: options.depositOutcome, holdExpired: options.holdExpired,
+      depositOutcome: options.depositOutcome, holdExpired: options.holdExpired, depositLocked: options.depositLocked,
     },
   };
   return db.notificationDelivery.upsert({

@@ -165,6 +165,25 @@ test('a deposit is never kept without the customer being told: a confirm step th
   }
 });
 
+test('a booking moved at a request made inside 48 hours keeps its deposit whenever it is cancelled, and the email says why', async () => {
+  const f = depositFixture({ status: 'CONFIRMED', date: minutes(10 * 24 * 60), depositLockedAt: minutes(-60), deposit: CAPTURED_DEPOSIT });
+  assert.deepEqual(await f.customer.cancelAppointment(f.booking.id, { depositKept: true }), { success: true });
+  assert.equal(f.attempts[0].status, 'KEPT');
+  assert.deepEqual([f.refunds, f.squareCalls.order], [[], []], 'ten days ahead, yet nothing is refunded');
+  assert.deepEqual(f.queued().map((notice) => [notice.kind, notice.options]), [
+    ['CANCELLATION', { wasConfirmed: true, depositOutcome: 'KEPT', depositLocked: true }],
+  ]);
+  assert.equal(f.render('CANCELLATION', 'en-GB').footnotes[0], 'The £20.00 deposit is kept under our booking terms: you asked to move this booking less than 48 hours before it.');
+  assert.equal(f.render('CANCELLATION', 'zh-HK').footnotes[0], '根據我們的預約條款，由於你在預約前不足 48 小時申請改期，£20.00 訂金不予退還。');
+});
+
+test('a locked deposit is never kept without the customer being told', async () => {
+  const f = depositFixture({ status: 'CONFIRMED', date: minutes(10 * 24 * 60), depositLockedAt: minutes(-60), deposit: CAPTURED_DEPOSIT });
+  const answer = await f.customer.cancelAppointment(f.booking.id);
+  assert.equal(!answer.success && answer.code, 'DEPOSIT_NOW_KEPT');
+  assert.deepEqual([f.booking.status, f.attempts[0].status, f.refunds, f.queued()], ['CONFIRMED', 'CAPTURED', [], []]);
+});
+
 test('a request is not a booking: withdrawing it inside 48 hours still releases the hold, and money taken on it is refunded', async () => {
   const held = depositFixture({ date: minutes(30 * HOUR) });
   assert.deepEqual(await held.customer.cancelAppointment(held.booking.id), { success: true });

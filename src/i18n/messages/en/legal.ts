@@ -188,6 +188,7 @@ const legal = {
       request: 'To move a confirmed booking to another time, send a request in <bookings>My Bookings</bookings> at least 24 hours before your appointment, for a new time at least 24 hours away. Your booking stays at its original time until we confirm the change.',
       pending: 'To change a request we haven’t confirmed yet, withdraw it and send a new one.',
       deposit: 'Your deposit moves with your booking: you don’t pay it again, and it isn’t refunded because the time changed.',
+      depositLocked: 'If you ask to move your booking less than {hours} hours before it starts, your deposit stays non-refundable at the new time: if you then cancel, it is kept. It still counts towards the price when you come in.',
     },
     offers: {
       title: 'Offers, discount codes and NHS or student prices',

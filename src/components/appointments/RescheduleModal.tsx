@@ -8,12 +8,19 @@ import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import { useLocale, useT } from '@/i18n/client';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import { clearDraft, useDraftState } from '@/i18n/draft-store';
+import { useFormatPrice } from '@/components/pricing/PriceParts';
+import { DEPOSIT_REFUND_NOTICE_HOURS } from '@/app/lib/booking-constants';
 
 interface RescheduleModalProps {
   appointmentId: string;
   stylistId: string;
   serviceDuration: number;
   currentDate: string; // ISO string
+  /**
+   * A taken deposit that cancelling would already keep (DEPOSIT_REFUND_NOTICE_HOURS):
+   * said before the request is sent, because it stays kept at the new time.
+   */
+  keptDepositPence?: number | null;
   onClose: () => void;
   /** Called once the request is sent, just before the dialog closes. */
   onSent?: () => void;
@@ -24,9 +31,11 @@ export function RescheduleModal({
   stylistId,
   serviceDuration,
   currentDate,
+  keptDepositPence = null,
   onClose,
   onSent,
 }: RescheduleModalProps) {
+  const formatPrice = useFormatPrice();
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -176,6 +185,12 @@ export function RescheduleModal({
         </button>
 
         <h3 id={`reschedule-title-${appointmentId}`} className="pr-10 text-xl font-semibold text-zinc-900 mb-4">{t('reschedule.title')}</h3>
+
+        {keptDepositPence !== null && (
+          <p className="mb-4 rounded-md border border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-800">
+            {t('reschedule.depositLockWarning', { hours: DEPOSIT_REFUND_NOTICE_HOURS, amount: formatPrice(keptDepositPence) })}
+          </p>
+        )}
 
         <div className="mb-4">
           <label htmlFor={`reschedule-date-${appointmentId}`} className="block text-sm font-medium text-zinc-700 mb-1">{t('reschedule.date')}</label>

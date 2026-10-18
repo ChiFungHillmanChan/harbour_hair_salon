@@ -112,6 +112,7 @@ const emails = {
     released: 'The {amount} hold on your card has been released — nothing was taken. Your bank may take a few days to remove it.',
     /** {hours}: DEPOSIT_REFUND_NOTICE_HOURS — the booking terms' reasons for keeping a deposit. */
     kept: 'The {amount} deposit is kept under our booking terms (a cancellation less than {hours} hours before the appointment, or a missed appointment).',
+    keptAfterMove: 'The {amount} deposit is kept under our booking terms: you asked to move this booking less than {hours} hours before it.',
   },
   cancellation: {
     subject: 'Your booking has been cancelled — Harbour Hair Salon',
@@ -144,6 +145,7 @@ const emails = {
     footnote: 'You can cancel, or request a new time, from My Bookings up to 24 hours before your appointment.',
     requestMatched: 'This is the new time you asked for.',
     requestReplaced: 'Your request to move to {requested} is now closed: the salon has arranged the time above instead.',
+    depositKept: 'You asked to move this booking less than {hours} hours before it, so your deposit stays non-refundable: if you cancel, it is kept. It still counts towards the price when you come in.',
   },
   reminder: {
     subjectToday: 'Reminder: your appointment is today — Harbour Hair Salon',

@@ -20,6 +20,7 @@ import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { hasAppointmentStarted } from '@/app/lib/appointment-timing';
 import { isRequestLapseNoticeDue, readSalonPhoneForLapseNotice } from '@/app/services/request-lapse-notice';
 import { BookingError, bookingErrorText, describeBookingError } from '@/app/services/booking-errors';
+import { isDepositRefundableOnCancel } from '@/app/lib/booking-constants';
 import {
   approvalStep, claimDepositForCapture, depositGatewayFor, loadLinkedDeposit, markDepositCaptured, NO_DEPOSIT,
   planDepositForClosing, recordDepositTakenNotConfirmed, settleDepositAfterCommit, settleDepositBeforeClosing, submitDepositRefund,
@@ -819,9 +820,9 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
         throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
       }
       const guard = { id: appointmentId, status: 'CONFIRMED', date: current.date, rescheduleRequestedAt: current.rescheduleRequestedAt };
-      const audit = (action: string) => appendAuditEvent({
+      const audit = (action: string, extra: Record<string, unknown> = {}) => appendAuditEvent({
         actorUserId: session.userId, action, targetType: 'Appointment', targetId: appointmentId,
-        metadata: { from: current.date.toISOString(), to: requested.toISOString(), requestedAt: expected.toISOString() },
+        metadata: { from: current.date.toISOString(), to: requested.toISOString(), requestedAt: expected.toISOString(), ...extra },
       }, tx);
 
       if (decision === 'DECLINE') {
@@ -860,18 +861,26 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
         stylistExternalId: current.stylist.treatwellExternalId,
         serviceExternalId: current.service.treatwellExternalId,
       });
+      // Asked for less than DEPOSIT_REFUND_NOTICE_HOURS before the booking's
+      // start, when cancelling would already have kept the deposit: it stays
+      // kept at the new time (owner decision 2026-10-18), so a move cannot
+      // turn a kept deposit back into a refund. Once locked, it stays locked.
+      const depositLockedAt = current.depositLockedAt
+        ?? (isDepositRefundableOnCancel(current.date, expected) ? null : expected);
       const changed = await tx.appointment.updateMany({
         where: guard,
         data: {
           date: requested, rescheduleRequestedDate: null, rescheduleRequestedAt: null, reminderSent: false,
-          treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 },
+          treatwellSyncStatus, treatwellSyncError: null, notificationVersion: { increment: 1 }, depositLockedAt,
         },
       });
       if (changed.count !== 1) throw new BookingError('RESCHEDULE_REQUEST_CHANGED');
       const updated = await tx.appointment.findUnique({ where: { id: appointmentId }, include });
       if (!updated) throw new BookingError('APPOINTMENT_NOT_FOUND');
-      await enqueueAppointmentNotification(tx, 'RESCHEDULE', updated, { oldDate: current.date });
-      await audit('APPOINTMENT.RESCHEDULE_APPROVED');
+      // The email says so only when there is a taken deposit to keep.
+      const attempt = depositLockedAt ? await tx.paymentAttempt.findUnique({ where: { appointmentId }, select: { status: true } }) : null;
+      await enqueueAppointmentNotification(tx, 'RESCHEDULE', updated, { oldDate: current.date, ...(attempt?.status === 'CAPTURED' ? { depositLocked: true } : {}) });
+      await audit('APPOINTMENT.RESCHEDULE_APPROVED', depositLockedAt ? { depositLockedAt: depositLockedAt.toISOString() } : {});
       return true;
     });
     // Finish the action's cache invalidation before external email delivery.

@@ -648,3 +648,13 @@ for (const locale of ['en-GB', 'zh-HK'] as const) {
     }
   });
 }
+
+test('a move asked for less than 48 hours before the booking says its deposit stays non-refundable', () => {
+  const moved = { ...requestAppointment, date: new Date('2099-09-12T13:00:00Z') };
+  const locked = appointmentEmailContent('RESCHEDULE', moved, 'en-GB', { oldDate: requestedDate, depositLocked: true });
+  assert.ok(locked.footnotes.includes('You asked to move this booking less than 48 hours before it, so your deposit stays non-refundable: if you cancel, it is kept. It still counts towards the price when you come in.'));
+  assert.ok(appointmentEmailContent('RESCHEDULE', moved, 'zh-HK', { oldDate: requestedDate, depositLocked: true }).footnotes
+    .includes('由於你在預約前不足 48 小時申請改期，你的訂金維持不予退還：如取消，訂金不會退還；到店時訂金仍會用作抵扣費用。'));
+  const plain = appointmentEmailContent('RESCHEDULE', moved, 'en-GB', { oldDate: requestedDate });
+  assert.ok(!plain.footnotes.some((line) => /non-refundable/.test(line)), 'an ordinary move says nothing about the deposit');
+});

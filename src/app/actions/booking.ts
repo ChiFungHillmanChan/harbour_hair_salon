@@ -838,9 +838,10 @@ export async function cancelAppointment(appointmentId: string, options?: { depos
       // refunded in full; later, the deposit is kept (KEPT, as a staff keep:
       // reconciliation never refunds it) — owner decision 2026-10-18. Decided
       // here, from the start the conditional update below re-checks and the
-      // time now, so a retried transaction decides afresh.
+      // time now, so a retried transaction decides afresh. A booking moved at
+      // the customer's request made inside that window keeps it (depositLockedAt).
       const closingAt = new Date();
-      const refund = appointment.status !== 'CONFIRMED' || isDepositRefundableOnCancel(appointment.date, closingAt);
+      const refund = appointment.status !== 'CONFIRMED' || isDepositRefundableOnCancel(appointment.date, closingAt, appointment.depositLockedAt);
       const plan = await planDepositForClosing(tx, appointmentId, { closing: 'CANCEL', refund, reason: 'CUSTOMER_CANCELLED', requestedById: null, now: closingAt });
       if (plan.outcome === 'KEPT' && options?.depositKept !== true) throw new BookingError('DEPOSIT_NOW_KEPT', { hours: DEPOSIT_REFUND_NOTICE_HOURS });
       const changed = await tx.appointment.updateMany({
@@ -854,6 +855,7 @@ export async function cancelAppointment(appointmentId: string, options?: { depos
       await enqueueAppointmentNotification(tx, 'CANCELLATION', { ...cancelled, paymentAttempt: plan.paymentAttempt }, {
         wasConfirmed: appointment.status === 'CONFIRMED',
         ...(plan.outcome ? { depositOutcome: plan.outcome } : {}),
+        ...(plan.outcome === 'KEPT' && appointment.depositLockedAt ? { depositLocked: true } : {}),
       });
       return plan;
     });

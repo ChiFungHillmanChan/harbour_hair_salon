@@ -218,6 +218,9 @@ Square and payment records.
       it automatically (`KEPT`, `DEPOSIT_REFUND_NOTICE_HOURS`). For a customer who phones to cancel
       inside 48 hours, staff untick "Refund the £X deposit" in the cancel dialog. `/booking-terms`
       (no more "may keep"), the booking page, My Bookings and the emails say so in en + zh.
+      **Reschedule inside 48 hours (option A, decided 2026-10-18):** a move the customer asks for less
+      than 48 hours before the booking keeps the deposit non-refundable at the new time
+      (`depositLockedAt`); it still counts towards the bill if they come.
 - [x] Customer emails — the short set (decided 2026-10-18): confirmation, cancellation (a declined
       request too), reschedule, reschedule declined/lapsed, request lapsed, late-arrival cancellation
       and the reminder — the reminder only for a booking confirmed at least 24 hours before it starts.

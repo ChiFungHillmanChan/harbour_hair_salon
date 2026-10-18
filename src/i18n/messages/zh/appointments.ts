@@ -53,6 +53,8 @@ const appointments: Localized<Messages['appointments']> = {
     confirmCancelKept: '確定要取消此預約嗎？距離預約已不足 {hours} 小時：現在取消，你的 {amount} 訂金將不予退還。',
     refundUntil: '於{date} {time}或之前取消，訂金可全數退還；其後取消，訂金不予退還。',
     depositKeptIfCancelled: '距離預約已不足 {hours} 小時：如現在取消，訂金不予退還。',
+    depositKeptAfterMove: '你是在預約前不足 {hours} 小時申請改期的：如取消，訂金不予退還。',
+    confirmCancelKeptMoved: '確定要取消此預約嗎？你是在預約前不足 {hours} 小時申請改期的：現在取消，你的 {amount} 訂金將不予退還。',
     confirmWithdrawRelease: '確定要撤回此預約要求嗎？你信用卡上 {amount} 的預留款項會被解除。',
     consultationCredit: '諮詢費抵扣：−{amount}',
     toPayInSalon: '到店繳付：{amount}',
@@ -84,6 +86,7 @@ const appointments: Localized<Messages['appointments']> = {
     slotsFailed: '未能載入可預約時間。請再試一次，或致電本店。',
     failed: '申請失敗',
     sent: '申請已送出。在本店確認之前，你現有的時間會繼續保留。',
+    depositLockWarning: '距離預約已不足 {hours} 小時，你的 {amount} 訂金已不予退還，改期後亦一樣：日後取消，訂金不會退還；到店時訂金仍會用作抵扣費用。',
     unexpectedError: '發生錯誤。請再試一次，或致電本店。',
   },
 };

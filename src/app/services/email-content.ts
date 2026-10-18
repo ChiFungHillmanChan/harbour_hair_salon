@@ -157,6 +157,12 @@ export type AppointmentEmailOptions = {
    * out before anyone confirmed it, while the requested time is still ahead.
    */
   holdExpired?: boolean;
+  /**
+   * RESCHEDULE and CANCELLATION: the customer asked to move the booking less
+   * than DEPOSIT_REFUND_NOTICE_HOURS before it, so its taken deposit stays kept
+   * at the new time (Appointment.depositLockedAt), and a kept one says why.
+   */
+  depositLocked?: boolean;
 };
 
 /** "£20.00" in the email's language. */
@@ -187,7 +193,7 @@ function creditRows(appointment: EmailAppointment, locale: Locale) {
  * What a closing email says about the deposit: a Deposit row and one
  * sentence (refunded, released or kept), or nothing without an outcome.
  */
-function depositClosingNote(appointment: EmailAppointment, locale: Locale, outcome: DepositOutcome | undefined) {
+function depositClosingNote(appointment: EmailAppointment, locale: Locale, outcome: DepositOutcome | undefined, locked = false) {
   const pence = depositAmount(appointment.deposit);
   if (!outcome || pence === null) return null;
   const t = translator(locale, 'emails');
@@ -195,7 +201,7 @@ function depositClosingNote(appointment: EmailAppointment, locale: Locale, outco
   const [value, sentence] = outcome === 'REFUNDING'
     ? [t('values.depositRefunding', { amount }), t('deposit.refunding', { amount })]
     : outcome === 'KEPT'
-      ? [t('values.depositKept', { amount }), t('deposit.kept', { amount, hours: DEPOSIT_REFUND_NOTICE_HOURS })]
+      ? [t('values.depositKept', { amount }), t(locked ? 'deposit.keptAfterMove' : 'deposit.kept', { amount, hours: DEPOSIT_REFUND_NOTICE_HOURS })]
       : [t('values.depositReleased', { amount }), t('deposit.released', { amount })];
   return { row: { label: t('labels.deposit'), value }, sentence };
 }
@@ -414,7 +420,7 @@ export function appointmentEmailContent(
     }
     case 'CANCELLATION': {
       // Refunded, hold released, or kept (services/deposit-lifecycle.ts).
-      const deposit = depositClosingNote(appointment, locale, options.depositOutcome);
+      const deposit = depositClosingNote(appointment, locale, options.depositOutcome, options.depositLocked === true);
       return {
         ...base,
         subject: t('cancellation.subject'),
@@ -459,7 +465,7 @@ export function appointmentEmailContent(
         details: [labels('service', service), labels('stylist', appointment.stylist.name), labels('date', date), labels('time', time), labels('previousDate', previous), ...creditRows(appointment, locale)],
         cta: { label: t('reschedule.cta'), href: url(locale, '/appointments') },
         links: calendarLinks(),
-        footnotes: [...requestNote, t('reschedule.footnote'), t('calendar.moved'), t('calendar.attached')],
+        footnotes: [...requestNote, t('reschedule.footnote'), ...(options.depositLocked ? [t('reschedule.depositKept', { hours: DEPOSIT_REFUND_NOTICE_HOURS })] : []), t('calendar.moved'), t('calendar.attached')],
       };
     }
     case 'REMINDER': {
