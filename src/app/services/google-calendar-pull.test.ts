@@ -787,3 +787,28 @@ test('150 Google-only events are stored in two batches, each clearing its own ke
   assert.deepEqual(new Set(store.blocks.map((row) => row.externalUid)), new Set(expected.map((row) => row.externalUid)));
   assert.equal(store.blocks.find((row) => row.externalUid === expected[120].externalUid)!.start.getTime(), at(120 * 30).getTime());
 });
+
+test('write-backs stop starting once the pull\'s 40 s budget is spent; the pull still succeeds and the rest wait for the next one', async () => {
+  const bookings = Array.from({ length: 50 }, (_, index) => appt(`a${String(index).padStart(2, '0')}`, { date: at(DAY + index * 60) }));
+  const store = fakeDb(bookings, { events: bookings.map((booking) => syncedRow(booking)), state: { busyHash: EMPTY_HASH } });
+  const realNow = Date.now;
+  let clock = 0;
+  Date.now = () => clock;
+  try {
+    // Every booking is missing from Google, and each write takes a second.
+    const google = fakeGoogle([], (call) => {
+      if (call.op === 'put') clock += 1_000;
+      return undefined;
+    });
+    const { pull } = load();
+    const result = await run(pull, store.db, google.gateway);
+    assert.equal(google.calls.length, 40, 'no write starts after 40 s');
+    assert.equal(result.reverted, 40);
+    assert.equal(result.failed, undefined, 'running out of time is not a failed pull');
+    assert.equal(store.state!.lastPullSuccessAt!.getTime(), NOW.getTime());
+    const untouched = bookings.filter((booking) => store.rows.get(booking.id)!.syncedAt!.getTime() !== NOW.getTime());
+    assert.equal(untouched.length, 10, 'the rest keep their old row, so the next pull writes them');
+  } finally {
+    Date.now = realNow;
+  }
+});

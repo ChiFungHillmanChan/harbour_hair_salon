@@ -24,6 +24,8 @@ export type CalendarSyncDependencies = {
   provider?: CalendarProvider;
   /** Only connections that have not succeeded since this instant (or whose last attempt failed). */
   staleBefore?: Date;
+  /** Never these connections (already tried earlier in the same refresh). */
+  excludeConnectionIds?: string[];
 };
 
 /**
@@ -49,6 +51,7 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
       ...(deps.connectionId ? { id: deps.connectionId } : {}),
       ...(deps.stylistId ? { stylistId: deps.stylistId } : {}),
       ...(deps.staleBefore ? { OR: [{ lastSuccessAt: null }, { lastSuccessAt: { lt: deps.staleBefore } }, { lastError: { not: null } }] } : {}),
+      ...(deps.excludeConnectionIds?.length ? { NOT: { id: { in: deps.excludeConnectionIds } } } : {}),
     },
     orderBy: { lastAttemptAt: { sort: 'asc', nulls: 'first' } },
     take: 20,
@@ -145,14 +148,17 @@ export const APPROVAL_REFRESH_MINUTES = 5;
  */
 export async function refreshCalendarFeedsBeforeApproval(
   stylistId: string,
-  opts: Omit<CalendarSyncDependencies, 'staleBefore' | 'stylistId'> = {},
+  opts: Omit<CalendarSyncDependencies, 'staleBefore' | 'stylistId' | 'excludeConnectionIds'> = {},
 ): Promise<CalendarSyncResult[]> {
   if (process.env.CALENDAR_SYNC_ENABLED !== 'true') return [];
   const now = (opts.now ?? new Date()).getTime();
   const results: CalendarSyncResult[] = [];
   try {
     results.push(...await syncCalendarFeeds({ ...opts, stylistId, staleBefore: new Date(now - APPROVAL_REFRESH_MINUTES * 60_000) }));
-    results.push(...await syncCalendarFeeds({ ...opts, staleBefore: new Date(now - CALENDAR_POLL_MINUTES * 60_000) }));
+    // A feed the first pass just tried is not asked again: one that failed
+    // still has lastError, which the second pass would otherwise select.
+    const tried = results.map((result) => result.connectionId);
+    results.push(...await syncCalendarFeeds({ ...opts, staleBefore: new Date(now - CALENDAR_POLL_MINUTES * 60_000), excludeConnectionIds: tried }));
   } catch (error) {
     // The readiness check that follows reports the effect; this records the cause.
     console.error('Calendar refresh before approval failed:', { stylistId, ...describeFault(error) });

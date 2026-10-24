@@ -1,6 +1,7 @@
 import { after, afterEach, before, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { matchesWhere } from '../../test/prisma-where';
 import { translator } from '../../i18n/messages';
 import { ERASED_CUSTOMER_NAME, erasedEmailFor, erasureConfirmationFor, erasureConfirmed } from '../lib/customer-erasure';
 import { isPlaceholderEmail, placeholderEmailFor } from '../lib/walk-in-customer';
@@ -95,7 +96,7 @@ function table(rows: Rows, name: string, counts: Record<string, number>) {
   };
 }
 
-function fixture(options: { role?: 'ADMIN' | 'USER'; resend?: 'ok' | 'not-found' | 'error' | 'throws'; beforeWrite?: (rows: Rows) => void } = {}) {
+function fixture(options: { role?: 'ADMIN' | 'USER'; resend?: 'ok' | 'not-found' | 'error' | 'throws' | 'hangs'; beforeWrite?: (rows: Rows) => void } = {}) {
   let rows = seed();
   const counts = { reads: 0, writes: 0 };
   const removed: unknown[] = [];
@@ -136,6 +137,7 @@ function fixture(options: { role?: 'ADMIN' | 'USER'; resend?: 'ok' | 'not-found'
       contacts = { remove: async (payload: unknown) => {
         removed.push(payload);
         if (options.resend === 'throws') throw new Error('network down');
+        if (options.resend === 'hangs') return new Promise<never>(() => {});
         if (options.resend === 'error') return { data: null, error: { message: 'Internal server error', statusCode: 500 } };
         if (options.resend === 'not-found') return { data: null, error: { message: 'Contact not found', statusCode: 404 } };
         return { data: { deleted: true }, error: null };
@@ -302,6 +304,19 @@ test('a marketing-list failure never undoes the erasure; the admin is told to fi
   }
 });
 
+test('a marketing list that never answers is given up after 10 seconds; the admin is told to finish it by hand', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  context.mock.method(console, 'error', () => {});
+  process.env.RESEND_API_KEY = 're_test';
+  process.env.RESEND_AUDIENCE_ID = 'audience-1';
+  const f = fixture({ resend: 'hangs' });
+  const result = f.actions.eraseCustomerData('customer-1', 'amy@example.com');
+  while (!f.removed.length) await new Promise((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(10_000);
+  assert.deepEqual(await result, { success: true, message: t('users.erasure.doneMarketingManual', { email: 'amy@example.com' }) });
+  assert.equal(user(f.rows(), 'customer-1').name, ERASED_CUSTOMER_NAME);
+});
+
 test('without a marketing audience configured nothing is sent to Resend', async () => {
   const f = fixture();
   assert.equal((await f.actions.eraseCustomerData('customer-1', 'amy@example.com')).success, true);
@@ -351,7 +366,11 @@ test('an erased customer is never offered when staff search customers for a new 
     { id: 'kept', name: 'Erasmus Lee', email: 'erasmus@example.com', phone: null, createdAt: NOW },
   ];
   const schedule = loadServerModule<typeof import('./admin-schedule')>('src/app/actions/admin-schedule.ts', {
-    '@/app/lib/prisma': { user: { findMany: async () => candidates } },
+    '@/app/lib/prisma': {
+      __esModule: true,
+      default: { user: { findMany: async ({ where }: { where: Record<string, unknown> }) => candidates.filter((row) => matchesWhere({ ...row, role: 'USER' }, where)) } },
+      getDatabaseProvider: () => 'postgresql',
+    },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: 'ADMIN' }) },
     '@/app/services/booking-service': {},
     '@/app/services/notification-outbox-service': {},

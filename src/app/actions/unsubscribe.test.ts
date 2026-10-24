@@ -10,7 +10,7 @@ process.env.RESEND_AUDIENCE_ID = 'audience-fixture';
 
 type Contact = { unsubscribed: boolean } | 'missing';
 
-function setup(options: { contact?: Contact; allow?: (prefix: string, key: string) => boolean } = {}) {
+function setup(options: { contact?: Contact; allow?: (prefix: string, key: string) => boolean; hangs?: boolean } = {}) {
   const updates: unknown[] = [];
   const lookups: unknown[] = [];
   const sent: string[] = [];
@@ -22,12 +22,14 @@ function setup(options: { contact?: Contact; allow?: (prefix: string, key: strin
     contacts = {
       get: async (query: unknown) => {
         lookups.push(query);
+        if (options.hangs) return new Promise<never>(() => {});
         return contact === 'missing'
           ? { data: null, error: { message: 'Contact not found', statusCode: 404, name: 'not_found' } }
           : { data: { id: 'contact-1', email: 'x', unsubscribed: contact.unsubscribed }, error: null };
       },
       update: async (payload: unknown) => {
         updates.push(payload);
+        if (options.hangs) return new Promise<never>(() => {});
         return contact === 'missing'
           ? { data: null, error: { message: 'Contact not found', statusCode: 404, name: 'not_found' } }
           : { data: { id: 'contact-1', object: 'contact' }, error: null };
@@ -154,6 +156,31 @@ for (const [label, token] of [['a forged', 'eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6InZ
     assert.equal(f.updates.length, 0);
   });
 }
+
+// The provider sometimes stops answering without failing; the SDK has no
+// time limit of its own (review 2026-10-24).
+const untilCalled = async (calls: unknown[]) => { while (!calls.length) await new Promise((resolve) => setImmediate(resolve)); };
+
+test('a provider that never answers the unsubscribe gives up after 10 seconds and says it failed', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  context.mock.method(console, 'error', () => {});
+  const f = setup({ contact: { unsubscribed: false }, hangs: true });
+  const result = f.actions.confirmUnsubscribe({ status: 'idle' }, tokenForm(await createUnsubscribeToken('customer@example.com')));
+  await untilCalled(f.updates);
+  context.mock.timers.tick(10_000);
+  assert.deepEqual(await result, { status: 'error', message: t('unsubscribe.results.FAILED') });
+});
+
+test('a provider that never answers the lookup gives up after 10 seconds and sends nothing', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  context.mock.method(console, 'error', () => {});
+  const f = setup({ contact: { unsubscribed: false }, hangs: true });
+  assert.deepEqual(await f.actions.unsubscribeFromMarketing({ status: 'idle' }, emailForm('customer@example.com')), LINK_SENT);
+  await untilCalled(f.lookups);
+  context.mock.timers.tick(10_000);
+  await f.settle();
+  assert.deepEqual(f.sent, []);
+});
 
 test('an expired link changes nothing', async () => {
   const f = setup({ contact: { unsubscribed: false } });

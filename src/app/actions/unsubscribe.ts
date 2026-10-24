@@ -7,6 +7,7 @@ import { after } from 'next/server';
 import { Resend } from 'resend';
 import { createRateLimiter, emailSendDailyLimiter } from '@/app/lib/rate-limit';
 import { verifyUnsubscribeToken } from '@/app/lib/unsubscribe-token';
+import { withinTimeout } from '@/app/lib/within-timeout';
 import { sendMarketingUnsubscribeConfirmation } from '@/app/services/email-service';
 import { getActionT } from '@/i18n/request';
 
@@ -45,6 +46,8 @@ function isNotFound(error: { message?: string; statusCode?: number | null }): bo
   return error.statusCode === 404 || /not.?found|does not exist|could not find/i.test(error.message ?? '');
 }
 
+// The SDK has no time limit of its own; an email send gives up after 10 seconds too (review 2026-10-24).
+const RESEND_CONTACT_TIMEOUT_MS = 10_000;
 const unsubLimiter = createRateLimiter({ prefix: 'rl:unsub', limit: 3, windowSeconds: 60 * 60 });
 // However many IPs ask, one address receives at most this many confirmation emails.
 const unsubEmailLimiter = createRateLimiter({ prefix: 'rl:unsub-email', limit: 2, windowSeconds: 60 * 60 });
@@ -99,7 +102,7 @@ export async function unsubscribeFromMarketing(
   // visible), which told anyone timing the form who is subscribed.
   after(async () => {
     try {
-      const contact = await resend.contacts.get({ email, audienceId });
+      const contact = await withinTimeout(resend.contacts.get({ email, audienceId }), RESEND_CONTACT_TIMEOUT_MS);
       if (contact.error) {
         // Never subscribed: already not receiving marketing, and no contact is created.
         if (isNotFound(contact.error)) return;
@@ -144,7 +147,7 @@ export async function confirmUnsubscribe(
   }
 
   try {
-    const update = await resend.contacts.update({ email, audienceId, unsubscribed: true });
+    const update = await withinTimeout(resend.contacts.update({ email, audienceId, unsubscribed: true }), RESEND_CONTACT_TIMEOUT_MS);
     if (update.error) {
       // Removed from the list since the link was sent: already not receiving
       // marketing. Never create a contact here.

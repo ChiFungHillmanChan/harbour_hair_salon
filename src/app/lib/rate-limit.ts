@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { SlidingWindow } from '@/app/lib/sliding-window';
+import { withinTimeout } from '@/app/lib/within-timeout';
 import { resolveRedisCredentials, REDIS_URL_KEYS, REDIS_TOKEN_KEYS } from '@/app/lib/redis-credentials';
 
 /**
@@ -144,12 +145,6 @@ type RedisFailureCounter = {
   limit(key: string): Promise<{ success: boolean; reason?: string }>;
   getRemaining(key: string): Promise<{ remaining: number }>;
 };
-
-function withinTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), ms); });
-  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
-}
 
 export function createFailureLimiter(
   policy: RateLimitPolicy,

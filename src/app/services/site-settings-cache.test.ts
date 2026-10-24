@@ -8,6 +8,7 @@ import { loadServerModule } from '../../test/load-server-module';
  */
 function settingsFixture() {
   let reachable = false;
+  let translationsReachable = true;
   const store = new Map<string, unknown>();
   const settingsRow = {
     id: 'singleton', phone: '0113 000 0000', twitterHandle: '', gscVerification: '', googleBusinessUrl: '', facebookUrl: '',
@@ -19,18 +20,24 @@ function settingsFixture() {
     '@/app/lib/prisma': { siteSettings: {
       findUnique: async () => { if (!reachable) throw new Error("Can't reach database server"); return settingsRow; },
       create: async () => { throw new Error('unexpected create'); },
+    }, contentTranslation: {
+      findMany: async () => {
+        if (!translationsReachable) throw new Error("Can't reach database server");
+        return [{ entityId: 'singleton', fieldsJson: JSON.stringify({ heroTitleLine1: '店主標題' }) }];
+      },
     } },
     'next/cache': {
-      unstable_cache: (read: () => Promise<unknown>, keyParts: string[]) => async () => {
-        const key = keyParts.join('/');
-        if (!store.has(key)) store.set(key, await read());
+      // Keyed by its arguments too, as Next's is.
+      unstable_cache: (read: (...args: unknown[]) => Promise<unknown>, keyParts: string[]) => async (...args: unknown[]) => {
+        const key = [...keyParts, ...args.map(String)].join('/');
+        if (!store.has(key)) store.set(key, await read(...args));
         return store.get(key);
       },
     },
     // React's per-render cache is irrelevant across these calls.
     react: { cache: <T>(fn: T) => fn },
   });
-  return { service, store, row: settingsRow, reach: () => { reachable = true; } };
+  return { service, store, row: settingsRow, reach: () => { reachable = true; }, translations: (up: boolean) => { translationsReachable = up; } };
 }
 
 test('a cold or unreachable database is never cached as the site\'s settings', async () => {
@@ -73,4 +80,26 @@ test('beta testers\' emails stay out of the public cached settings; only the edi
   assert.equal('bookingBetaEmails' in cached, false, 'personal data never enters the copy every public page reads');
   assert.equal(JSON.stringify([...f.store.values()]).includes('tester@example.com'), false);
   assert.equal((await f.service.getSiteSettingsForEditing()).bookingBetaEmails, 'tester@example.com');
+});
+
+test('a failed Chinese hero read shows English this once and is never cached for the hour', async (context) => {
+  context.mock.method(console, 'error', () => {});
+  const f = settingsFixture();
+  f.reach();
+  f.translations(false);
+  const fallback = await f.service.getHeroContent('zh-HK');
+  assert.deepEqual([fallback.heroTitleLine1, fallback.translated], ['Owner title', false]);
+  assert.equal(f.store.has('site-settings-hero/zh-HK'), false, 'the English fallback is not stored');
+  f.translations(true);
+  const hero = await f.service.getHeroContent('zh-HK');
+  assert.deepEqual([hero.heroTitleLine1, hero.translated], ['店主標題', true], 'the next visit reads the published translation');
+});
+
+test('an unreachable database still renders the homepage hero from the defaults', async (context) => {
+  context.mock.method(console, 'error', () => {});
+  const f = settingsFixture();
+  const hero = await f.service.getHeroContent('zh-HK');
+  assert.equal(hero.translated, false);
+  assert.equal(typeof hero.heroTitleLine1, 'string');
+  assert.equal(f.store.size, 0);
 });

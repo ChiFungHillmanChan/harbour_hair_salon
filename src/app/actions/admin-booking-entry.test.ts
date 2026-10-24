@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { matchesWhere } from '../../test/prisma-where';
 import { assertFeedInvalidatesBeforeDelivery, type NotificationTimingHooks } from '../../test/stalled-notification';
 import { isPlaceholderEmail, placeholderEmailFor, displayableEmail } from '../lib/walk-in-customer';
 
@@ -86,7 +87,10 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
     user: {
       findUnique: async ({ where }: { where: Row }) =>
         users.find((row) => (where.id && row.id === where.id) || (where.email && row.email === where.email)) ?? null,
-      findMany: async () => users.map((row) => ({ ...row, createdAt: UPDATED_AT })),
+      findMany: async ({ where, select }: { where?: Row; select?: Record<string, boolean> } = {}) => users
+        .map((row) => ({ role: 'USER', ...row, createdAt: UPDATED_AT }))
+        .filter((row) => matchesWhere(row, where))
+        .map((row) => (select ? Object.fromEntries(Object.keys(select).map((key) => [key, row[key as keyof typeof row]])) : row)),
       create: async ({ data }: { data: Row }) => {
         const row = { ...data, id: `user-${users.length + 1}` };
         users.push(row);
@@ -133,7 +137,7 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
   );
 
   const actions = loadServerModule<typeof import('./admin-schedule')>('src/app/actions/admin-schedule.ts', {
-    '@/app/lib/prisma': db,
+    '@/app/lib/prisma': { __esModule: true, default: db, getDatabaseProvider: () => 'postgresql' },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
     '@/app/services/booking-service': bookingService,
     '@/app/services/notification-outbox-service': queue,

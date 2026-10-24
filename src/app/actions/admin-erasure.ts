@@ -7,6 +7,7 @@ import { appendAuditEvent } from '@/app/lib/audit';
 import { ERASED_CUSTOMER_NAME, erasedEmailFor, erasureConfirmed, isErasedEmail } from '@/app/lib/customer-erasure';
 import { hashPassword } from '@/app/lib/password';
 import { verifySession } from '@/app/lib/session';
+import { withinTimeout } from '@/app/lib/within-timeout';
 import { runSerializableWithRetry } from '@/app/services/booking-service';
 import { scheduleGoogleCalendarPush } from '@/app/services/stylist-ical-cache';
 import { revalidateAllLocales } from '@/i18n/revalidate';
@@ -148,13 +149,17 @@ export async function eraseCustomerData(userId: string, confirmation: string): P
  * The marketing list lives in a Resend audience, not in our database. Best
  * effort, after the erasure has committed: a failure only asks the admin to
  * remove the address by hand. No audience configured means no list to clean.
+ * The SDK has no time limit of its own, so a provider that stops answering is
+ * given up on after 10 seconds, like an email send (review 2026-10-24).
  */
+const RESEND_CONTACT_TIMEOUT_MS = 10_000;
+
 async function removeFromMarketingAudience(email: string): Promise<'removed' | 'not-configured' | 'failed'> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const audienceId = process.env.RESEND_AUDIENCE_ID?.trim();
   if (!apiKey || !audienceId) return 'not-configured';
   try {
-    const { error } = await new Resend(apiKey).contacts.remove({ email, audienceId });
+    const { error } = await withinTimeout(new Resend(apiKey).contacts.remove({ email, audienceId }), RESEND_CONTACT_TIMEOUT_MS);
     // Never on the list (or already removed): nothing to erase there.
     if (!error || error.statusCode === 404 || /not.?found|does not exist|could not find/i.test(error.message ?? '')) return 'removed';
     console.error('Removing an erased customer from the marketing audience failed:', error.statusCode ?? 'unknown');
