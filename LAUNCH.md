@@ -1,7 +1,8 @@
 # Launch checklist — Harbour Hair Salon
 
 Last verified against production: **2026-10-25** (read-only: the Vercel Production variable
-names, `/book` showing the closed notice, `/api/health` up, `main` @ `3f0ba58` deployed). The full
+names, `/book` showing the closed notice, `/api/health` up, `main` @ `a0bf849` deployed; then the
+Operations diagnostics, Neon usage and the Square Dashboard for the owner's §3 replies). The full
 read-only check and production-readiness review were on 2026-10-13 (`main` @ `def37c4`).
 
 > **Status:** the public site is live and stable. **Online booking is closed to the public**
@@ -31,8 +32,8 @@ Work top to bottom. The order in §3 is **load-bearing**.
 | Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals. *2026-10-18:* Lox's and Shania's "takes bookings" are off in Admin (Shania's switched off that day), so the gate no longer checks them; Lox's gap and Shania's status: §3.3 |
 | Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed) |
 | Housekeeping | `HOUSEKEEPING_ENABLED` unset, so it is **on** since release 1 (it runs unless set to `false`; the privacy notice's retention periods depend on it). First run 03:15 UTC on 2026-10-14; checked before the deploy, production had nothing for it to close or remove (no pending requests, no expired rows) |
-| Operations diagnostics | Last run 2026-09-20, **never passed** |
-| Neon | Free plan (100 CU-h/month, overrun **suspends** the database until next month); Oct 1–12 used 17.6 CU-h (~45/month pace); 6-hour restore history |
+| Operations diagnostics | Last run 2026-09-20, **never passed**. *2026-10-25:* 5 of 6 pass; only Notification delivery fails, as it must until §3.5 (§3.7) |
+| Neon | Free plan (100 CU-h/month, overrun **suspends** the database until next month); Oct 1–12 used 17.6 CU-h (~45/month pace); 6-hour restore history. *2026-10-25:* Oct 1–25 used 37.17 CU-h (~47/month pace); the preview database 2.30 (§3.1) |
 | Crons (UTC) | reminders `0 8` (+ daily ops alert), notifications `*/30 8-19`, calendar-sync `*/30` (staff hours ±15 min), housekeeping `15 3` |
 | Migrations | 22 applied — release 2's deploy added `20261013120000_square_deposits` on 2026-10-13 (additive only; no drift afterwards). The preview database has it too |
 | Accounts | 1 admin, 12 customers |
@@ -51,7 +52,8 @@ Work top to bottom. The order in §3 is **load-bearing**.
 - Customer email language saved at sign-up / Google sign-in / booking; staff choose it for
   walk-ins.
 - Privacy notice rewritten (lawful basis, retention, rights, ICO, processors, cookies) and linked
-  from sign-in and registration. **Owner to confirm** the legal entity name and retention periods.
+  from sign-in and registration. **Owner to confirm** the legal entity name and retention periods
+  (the name is confirmed as it stands, 2026-10-25: §4).
 - Email verification needs a click on a confirm page (mail scanners can no longer verify);
   per-IP daily caps on registration, verification and reset emails.
 - Duplicate retries no longer create two requests (the wizard says it was already requested; a
@@ -130,13 +132,14 @@ Square and payment records.
       `readme/square-acceptance-2026-10-14.md` (screenshots kept outside the public repo).
 - [x] Owner: Square seller account in the salon's legal name (UK, GBP, identity checks, bank).
       Identity checks are complete and the payout bank account is linked (checked 2026-10-14).
-      The account's own card rate is still to be confirmed (runbook §8).
+      The account's own card rate, read in the Square Dashboard on 2026-10-25: "API 1.40% + £0.25"
+      (runbook §8).
 - [x] Production credentials — set 2026-10-18 on the owner's word, after §4 passed (2026-10-17/18).
       Five non-secret values by CLI, the access token and signature key by the owner (Production
       only; the team's "Separate Production Secret Values" rule keeps them off Preview, which now has
       no Square token or key until the sandbox ones are re-added). Location `LMDPK9XXXTJEM`
-      ("FaithArkLtd (Main)", address "2 Chapel Street": the owner may rename it and use the salon's
-      address in the Square Dashboard, since card statements show it). S1–S4 are built: S3 captures a hold on approval, releases
+      (named "FaithArkLtd" in the Square Dashboard on 2026-10-25, address 2 Chapel Street, Leeds: the
+      owner may rename it and use the salon's address there, since card statements show it). S1–S4 are built: S3 captures a hold on approval, releases
       it on decline, withdrawal, lapse or expiry, and refunds cancellations; S4 (the Square webhook
       and the daily reconciliation) follows up a payment whose outcome was unclear, a failed
       release and a refund left pending. Production application in the **salon's** Square
@@ -157,7 +160,9 @@ Square and payment records.
       Short Over Ears; hold → live `payment.created` → the owner approved (CAPTURED) → the customer
       cancelled (refund requested; Square's `refund.created`/`refund.updated` processed; refund
       PENDING at the time of writing, as real-card refunds are; the owner confirms it COMPLETED
-      in the Square Dashboard) → four tester emails sent. The override is kept on purpose for
+      in the Square Dashboard) → four tester emails sent. *2026-10-25:* the refund is COMPLETED in
+      the database since 2026-10-19, and the Square Dashboard shows it as "Refund via API",
+      deducted. The override is kept on purpose for
       beta testers; remove it before booking opens (§3.8). Public booking stays closed until §3.
 
 ---
@@ -172,8 +177,15 @@ Square and payment records.
       2026-10-18 — salon alert, confirmation, usually a reminder — plus any change or
       cancellation; free is 100/day); Vercel Spend
       Management US$10 **alerts only** (never pause production).
-- [ ] **3.2 Treatwell decision.** It cannot be synced (no export feed). Recommended: close it.
+      *Owner, 2026-10-25:* Neon has no need to move yet: Oct 1–25 used 37.17 CU-h, a pace of about
+      47 a month against the free 100 (the preview database used 2.30). Upgrade at public launch,
+      in Vercel (Storage → the Neon integration → Settings → Change Configuration). That switches
+      **every** database in the integration, and it also holds 8 of the developer's other projects
+      (about 20 CU-h a month between them). Launch costs US$0.106 per CU-h: about US$5–6 a month for
+      Harbour, about US$8 for the whole integration. Resend stays on Free for now.
+- [x] **3.2 Treatwell decision.** It cannot be synced (no export feed). Recommended: close it.
       Otherwise copy every Treatwell booking into Fresha at once, or accept the risk.
+      *Owner, 2026-10-25:* Treatwell stays as it is: the risk is accepted (the blind spot in §0).
 - [ ] **3.3 Fresha (facts corrected 2026-10-18, live data).** Funky and Ivan: Fresha sells them,
       inbound sync on, outbound subscription confirmed — two-way, done. **Lox:** the owner says
       Fresha does sell Lox, but in Admin → Integrations Lox's "This provider takes bookings" is
@@ -184,25 +196,54 @@ Square and payment records.
       confirming a Lox request. Still open for Fresha support: why Lox's blocked times are not
       exported. **Shania:** not sold on Fresha (owner); her "This provider takes bookings" was
       switched off in Admin (2026-10-18), and she is hidden from the website anyway — nothing to link.
+      *2026-10-25:* Lox is still paused. The Fresha side needs the salon's Fresha login, which the
+      developer does not have. Production read that day: Lox has a feed token, inbound is on and
+      fresh, `receivesBookings=false`, `outboundConfirmedAt` null, so it is safe to resume. **Keep
+      this order:** if "takes bookings" is ticked before outbound is confirmed,
+      `evaluateSyncCoverage` fails closed and beta booking closes with it.
+      1. Fresha → Team → Lox → Edit → Settings → Linked calendars → Link a calendar → Other
+         calendars → "Import events from an external calendar". Paste Lox's busy-feed URL from
+         Admin → Integrations (it carries a secret token: paste it, never post it anywhere), choose
+         "Time and duration only", save.
+      2. Wait until the Vercel logs of the current production deployment show Fresha fetching
+         `/api/ical/<Lox's stylist id>` with 200 (about every 15 minutes).
+      3. Admin → Integrations → confirm outbound for Lox / FRESHA.
+      4. Last, tick "This provider takes bookings", then check that beta booking is still open.
+
+      Never press "generate token" for Lox: it changes the feed URL Fresha holds and clears
+      `outboundConfirmedAt`.
 - [x] **3.3b Google Calendar** — ON since 2026-10-16, on the HarbourHair diary since 2026-10-17. Original steps: Follow
       `docs/google-calendar-setup.md`: Google Cloud service account, the "Harbour website bookings"
       calendar shared with it, the five `GOOGLE_CALENDAR_*` variables on Vercel **Production only**,
       redeploy, Admin → Integrations → Sync now, then the §4 test (a booking appears; `Ivan: test`,
       with the name exactly as in Admin → Stylists, blocks Ivan only). After the merge apply the preview-database migration
       `20261016150000_google_calendar_sync` by hand (`pnpm db:vercel:deploy` with the preview env).
-- [ ] **3.4 Second admin account** (Admin → Users).
+- [ ] **3.4 Second admin account** (Admin → Users). *Owner, 2026-10-25:* to be added later.
 - [ ] **3.5 Environment, then redeploy** (env changes only reach the runtime after a deploy):
       leave `HOUSEKEEPING_ENABLED` unset (on), then `NOTIFICATIONS_ENABLED=true` (sends real email);
       `SALON_NOTIFY_EMAIL` if salon alerts should not go to `EMAIL_REPLY_TO`.
+      *Owner, 2026-10-25:* set later. Nothing old goes out when it is: the queue's four PENDING
+      deliveries (a confirmation and three reschedules, 2026-10-16) all belong to one test booking
+      that is cancelled and in the past, so the outbox skips them (`isCurrent`), and housekeeping
+      clears them 30 days after they were queued.
 - [x] **3.6 Square** — §2 complete (production keys, webhook and a real £0.01 test, 2026-10-18).
+      Checked in the Square Dashboard on 2026-10-25: card rate "API 1.40% + £0.25"; location
+      `LMDPK9XXXTJEM` is named "FaithArkLtd", 2 Chapel Street, Leeds; the £0.01 refund shows
+      "Refund via API", deducted (COMPLETED in the database since 2026-10-19). Square Appointments
+      Plus (£29) ended on 2026-10-17 and has no payment method attached.
 - [ ] **3.7 Run Admin → Operations diagnostics LAST.** The report is invalidated by changes to
       `EMAIL_FROM`, `EMAIL_REPLY_TO`, `SALON_NOTIFY_EMAIL`, `RESEND_API_KEY`, `CRON_SECRET`,
       `NOTIFICATIONS_ENABLED`, `POSTGRES_URL`, `DATABASE_URL` or the Redis credentials.
+      *2026-10-25, 16:06 London:* run as a dry check. Booking email settings, scheduled-job
+      authentication, the database, the Resend sender domain and Redis pass; Notification delivery
+      fails, as it must until §3.5. All five scheduled jobs succeeded that day and none has ever
+      failed; no payment needs attention. Run it again after §3.5, less than 24 hours before §3.8.
 - [ ] **3.8 Admin → Settings → turn booking on.** Never write `bookingEnabled` straight into the
       database. **First** remove the £0.01 test deposit on "Short Over Ears - Wash, Haircut & Blow
       Dry" (Admin → Services & Pricing → that service → empty "Deposit for this service"; kept on
       purpose for beta testers since 2026-10-18), and decide whether to keep the beta tester list
-      (it no longer matters once booking is open to everyone).
+      (it no longer matters once booking is open to everyone). *Owner, 2026-10-25:* both stay for
+      now.
 
 ---
 
@@ -254,7 +295,9 @@ Square and payment records.
         `20261018200000_deposit_locked_at`.
 - [ ] Staff approval time (holds expire after 7 days; aim for same-day replies).
 - [ ] Legal entity name and retention periods for the privacy notice (payment records: 6 years)
-      and the booking terms.
+      and the booking terms. *Owner, 2026-10-25:* the name stays as written. FaithArkLtd (the
+      Square account) and Harbour Hair Salon are the same company. The retention periods are still
+      to be confirmed.
 - [ ] Minimum notice for online requests (default 2 hours).
 
 ---

@@ -11,13 +11,15 @@ Guidance for Claude Code in this repository. This file is the short core. The de
 - **Other channels stay in sync.** Fresha and the website swap busy time through iCal feeds both ways. The salon's Google Calendar ("HarbourHair") syncs both ways and shows as the staff diary in Admin → Schedule.
 - **Brand:** monochrome black, white and grey (client requirement).
 
-## 2. Current state (2026-10-18)
+## 2. Current state (2026-10-25)
 
 - The public site is live. **Online booking is closed to the public**: customers book by phone, Fresha or Treatwell. It is open to **beta testers** only (Admin → Settings → Beta testers, currently the owner's account).
-- Square **production** keys and the webhook are set. A real £0.01 test booking passed end to end. The assistant never captures or refunds real money: staff press those buttons.
+- Square **production** keys and the webhook are set. A real £0.01 test booking passed end to end (its refund COMPLETED on 2026-10-19). The account's card rate is "API 1.40% + £0.25", and the location `LMDPK9XXXTJEM` is named "FaithArkLtd". The assistant never captures or refunds real money: staff press those buttons.
+- **Operations diagnostics (2026-10-25):** everything passes except Notification delivery, which fails until `NOTIFICATIONS_ENABLED=true`. Run them again after that, less than 24 hours before booking opens (`LAUNCH.md` §3.7).
 - Production flags: `NOTIFICATIONS_ENABLED=false`, `CALENDAR_SYNC_ENABLED=true`, Google Calendar sync on, housekeeping on, late-arrival rule off.
 - **Remove before public launch:** the £0.01 test deposit on "Short Over Ears - Wash, Haircut & Blow Dry" (`LAUNCH.md` §3.8).
-- **Fresha gap:** Lox is not linked both ways, and the owner has paused changes. Staff check Fresha before confirming a Lox request.
+- **Fresha gap:** Lox is not linked both ways, and the owner has paused changes. Staff check Fresha before confirming a Lox request. Still paused on 2026-10-25: it needs the salon's Fresha login, which the developer does not have. When it resumes, the order of the steps is load-bearing, or beta booking closes (`LAUNCH.md` §3.3).
+- **Owner decisions (2026-10-25, `LAUNCH.md` §3/§4):** Resend stays on Free for now; Neon moves to Launch at public launch; Treatwell stays (risk accepted); the second admin and `NOTIFICATIONS_ENABLED` come later; the £0.01 override and the beta tester list stay for now; the privacy notice's entity name stays (FaithArkLtd and Harbour Hair Salon are the same company).
 - The preview database is migrated through `20261018200000_deposit_locked_at`.
 - Full dated detail: `docs/agents/production-state.md`. The launch steps, in order: `LAUNCH.md` §3, then the owner decisions in §4.
 
@@ -27,15 +29,15 @@ Guidance for Claude Code in this repository. This file is the short core. The de
 |---|---|---|---|
 | App | **Next.js 16** (App Router), React 19, TypeScript, Tailwind v4, pnpm, Node 24 | `vercel.json` pins region `lhr1` (London) | — |
 | Hosting | **Vercel** | Deployed **only** by GitHub Actions after CI (`.github/workflows/deploy.yml`); Vercel's git builds are off. The project firewall is in `infra/vercel-firewall/`; preview URLs sit behind Vercel login | Pro, US$20/month |
-| Database | **Neon PostgreSQL 18**, `eu-west-2` | Prisma 6. Production `damp-wildflower-12426644`; preview has its own copy, `aged-glitter-18950253` (real customer data: treat it like production) | Free (100 CU-h/month; going over **suspends** the database). Move to Launch (~US$5–15/month) at public launch |
+| Database | **Neon PostgreSQL 18**, `eu-west-2` | Prisma 6. Production `damp-wildflower-12426644`; preview has its own copy, `aged-glitter-18950253` (real customer data: treat it like production) | Free (100 CU-h/month; going over **suspends** the database). October 2026 pace ~47 CU-h. Move to Launch at public launch (~US$5–6/month at that pace); the switch moves every database in the Vercel-managed integration |
 | Rate limits | **Upstash Redis**, `eu-west-2` | `lib/rate-limit.ts`; never fails open | Free |
-| Email | **Resend** (REST) + React Email | Booking emails go through an outbox; previews only email an allowlist | Free (100/day). Move to Pro (US$20/month) at launch |
-| Payments | **Square** (Web Payments SDK + REST + webhook) | The salon's own account; production keys on Vercel Production only, sandbox on Preview only. Runbook: `docs/square-payments-setup.md` | 1.4% + 25p per UK card; no monthly fee |
+| Email | **Resend** (REST) + React Email | Booking emails go through an outbox; previews only email an allowlist | Free (100/day); the owner keeps Free for now (2026-10-25). Pro is US$20/month |
+| Payments | **Square** (Web Payments SDK + REST + webhook) | The salon's own account; production keys on Vercel Production only, sandbox on Preview only. Runbook: `docs/square-payments-setup.md` | 1.4% + 25p per UK card (the account's rate, checked 2026-10-25); no monthly fee |
 | Google | Google Cloud project `harbourhair` (`harbourhair-511821`) | The OAuth client for Google sign-in, plus a service account for Calendar sync. Runbook: `docs/google-calendar-setup.md` | Free |
 | DNS | IONOS | `www.harbourhair.co.uk` is canonical; DMARC is live | Domain renewal yearly |
 | Crons | Vercel crons (UTC) | reminders `0 8`, notifications `*/30 8-19`, calendar-sync `*/30` (staff hours only), housekeeping `15 3` | Read `docs/agents/neon-budget.md` before adding one |
 
-**Running cost:** about US$20/month now, about US$45–55/month once public booking opens (Vercel Pro, plus Neon Launch and Resend Pro), plus Square's per-payment fees. Also set a Vercel spend alert of US$10 (**alerts only**: pausing would take production offline). Environment variables: `docs/agents/environment.md`.
+**Running cost:** about US$20/month now, about US$25–30/month once public booking opens (Vercel Pro plus Neon Launch; Resend Pro would add US$20), plus Square's per-payment fees. Also set a Vercel spend alert of US$10 (**alerts only**: pausing would take production offline). Environment variables: `docs/agents/environment.md`.
 
 ## 4. Repository structure
 
