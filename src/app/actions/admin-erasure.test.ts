@@ -310,9 +310,18 @@ test('a marketing list that never answers is given up after 10 seconds; the admi
   process.env.RESEND_API_KEY = 're_test';
   process.env.RESEND_AUDIENCE_ID = 'audience-1';
   const f = fixture({ resend: 'hangs' });
-  const result = f.actions.eraseCustomerData('customer-1', 'amy@example.com');
-  while (!f.removed.length) await new Promise((resolve) => setImmediate(resolve));
-  context.mock.timers.tick(10_000);
+  let settled = false;
+  const result = f.actions.eraseCustomerData('customer-1', 'amy@example.com').finally(() => { settled = true; });
+  // Bounded, so a Resend call that never happens fails here instead of
+  // spinning the test run forever (review 2026-10-25).
+  for (let turn = 0; !f.removed.length; turn++) {
+    assert.ok(turn < 1_000, 'Resend was never asked to remove the contact');
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  context.mock.timers.tick(9_999);
+  for (let turn = 0; turn < 20; turn++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false, 'still waiting a moment before 10 seconds');
+  context.mock.timers.tick(1);
   assert.deepEqual(await result, { success: true, message: t('users.erasure.doneMarketingManual', { email: 'amy@example.com' }) });
   assert.equal(user(f.rows(), 'customer-1').name, ERASED_CUSTOMER_NAME);
 });

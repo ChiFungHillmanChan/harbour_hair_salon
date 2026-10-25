@@ -4,6 +4,7 @@ import { loadServerModule } from '../../test/load-server-module';
 import { matchesWhere } from '../../test/prisma-where';
 import { assertFeedInvalidatesBeforeDelivery, type NotificationTimingHooks } from '../../test/stalled-notification';
 import { isPlaceholderEmail, placeholderEmailFor, displayableEmail } from '../lib/walk-in-customer';
+import { ERASED_CUSTOMER_NAME, erasedEmailFor } from '../lib/customer-erasure';
 
 // The salon takes bookings by phone and WhatsApp all day. These cover the entry
 // path for work that never touched the website.
@@ -419,6 +420,16 @@ test('a new-customer entry whose email is already on file fills in a missing lan
   assert.equal(users[0].preferredLocale, 'zh-HK');
   assert.equal(users[0].phone, '07700900999', 'the blank phone is filled in the same write');
   assert.equal(created[0].notificationLocale, 'zh-HK');
+});
+
+test('a customer erased while the dialog was open is refused, and nothing is booked or written onto their row', async () => {
+  const { actions, created, updates } = fixture({ existingUser: onFile({ name: ERASED_CUSTOMER_NAME, email: erasedEmailFor('user-9') }) });
+
+  const result = await actions.createAppointmentByAdmin(newBooking({ customer: { kind: 'existing', userId: 'user-9' }, customerLocale: 'zh-HK' }));
+
+  assert.deepEqual(result, { success: false, error: 'That customer no longer exists — search again.' });
+  assert.equal(created.length, 0);
+  assert.deepEqual(updates, [], 'the anonymised row keeps no new language');
 });
 
 test('an existing customer booked without a language choice still defaults to English', async () => {

@@ -112,8 +112,8 @@ Public booking buttons come from the URLs in Admin → Site Settings. Calendar r
 ### Customer data erasure (Admin → Users) — procedure in `docs/data-erasure.md`
 - `src/app/actions/admin-erasure.ts` — `eraseCustomerData(userId, confirmation)`: admin-only; refuses ADMIN accounts, the acting admin, already-erased accounts and customers with upcoming PENDING/CONFIRMED bookings. One serializable transaction anonymises the User (row kept — deleting it cascades the appointment history), deletes OAuth links and reset links, clears appointment notes/language, stops and empties outbox copies, audits `USER.ERASED` (counts only); then best-effort removal from the Resend marketing audience.
 - `src/app/lib/customer-erasure.ts` — `ERASED_CUSTOMER_NAME`, `erasedEmailFor` (`erased-<id>@erased.invalid`), `isErasedEmail`, `erasureConfirmationFor`/`erasureConfirmed` (their email, or `ERASE` for a phone booking). `lib/walk-in-customer.ts` `isPlaceholderEmail` also covers the erased domain, so nothing is ever queued for it.
-- `src/components/admin/CustomerErasureSection.tsx` (server, `?erase=` search, ≥ 2 characters, ≤ 10 matches) + `EraseCustomerButton.tsx` (typed-confirmation prompt).
-- `review-service.ts` shows an erased customer's review under the anonymous label; `searchAdminCustomers` never offers an erased account.
+- `src/components/admin/CustomerErasureSection.tsx` (server, `?erase=` search, ≥ 2 characters, ≤ 10 matches, names in any case) + `EraseCustomerButton.tsx` (typed-confirmation prompt).
+- `review-service.ts` shows an erased customer's review under the anonymous label; `searchAdminCustomers` never offers an erased account, and `createAppointmentByAdmin` refuses one a still-open dialog picked (`CUSTOMER_GONE`).
 - `src/app/actions/admin.ts` `createAdminUser` stores the email trimmed and lower-case (sign-in looks it up that way).
 
 ## Services

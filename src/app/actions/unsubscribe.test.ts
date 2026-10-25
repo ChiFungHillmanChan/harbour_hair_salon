@@ -159,15 +159,25 @@ for (const [label, token] of [['a forged', 'eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6InZ
 
 // The provider sometimes stops answering without failing; the SDK has no
 // time limit of its own (review 2026-10-24).
-const untilCalled = async (calls: unknown[]) => { while (!calls.length) await new Promise((resolve) => setImmediate(resolve)); };
+// Bounded, so a call that never happens fails instead of spinning forever.
+const untilCalled = async (calls: unknown[]) => {
+  for (let turn = 0; !calls.length; turn++) {
+    assert.ok(turn < 1_000, 'the provider was never called');
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+};
 
 test('a provider that never answers the unsubscribe gives up after 10 seconds and says it failed', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   context.mock.method(console, 'error', () => {});
   const f = setup({ contact: { unsubscribed: false }, hangs: true });
-  const result = f.actions.confirmUnsubscribe({ status: 'idle' }, tokenForm(await createUnsubscribeToken('customer@example.com')));
+  let settled = false;
+  const result = f.actions.confirmUnsubscribe({ status: 'idle' }, tokenForm(await createUnsubscribeToken('customer@example.com'))).finally(() => { settled = true; });
   await untilCalled(f.updates);
-  context.mock.timers.tick(10_000);
+  context.mock.timers.tick(9_999);
+  for (let turn = 0; turn < 20; turn++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false, 'still waiting a moment before 10 seconds');
+  context.mock.timers.tick(1);
   assert.deepEqual(await result, { status: 'error', message: t('unsubscribe.results.FAILED') });
 });
 

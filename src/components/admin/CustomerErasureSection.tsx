@@ -1,4 +1,4 @@
-import prisma from '@/app/lib/prisma';
+import prisma, { getDatabaseProvider } from '@/app/lib/prisma';
 import { erasureConfirmationFor, isErasedEmail } from '@/app/lib/customer-erasure';
 import { displayableEmail } from '@/app/lib/walk-in-customer';
 import { localizeHref } from '@/i18n/paths';
@@ -7,6 +7,10 @@ import { EraseCustomerButton } from './EraseCustomerButton';
 
 /** Shortest search that reaches the database; anything shorter lists nobody. */
 const ERASURE_SEARCH_MIN_LENGTH = 2;
+
+function anyCase(term: string) {
+  return getDatabaseProvider() === 'postgresql' ? { contains: term, mode: 'insensitive' as const } : { contains: term };
+}
 
 /**
  * Admin -> Users: find a customer and erase their personal data on request
@@ -18,8 +22,10 @@ export async function CustomerErasureSection({ query }: { query: string }) {
   const term = query.length >= ERASURE_SEARCH_MIN_LENGTH ? query : '';
   const customers = term
     ? await prisma.user.findMany({
-      // Addresses are stored lower-case; names and phones are matched as typed.
-      where: { role: 'USER', OR: [{ name: { contains: term } }, { email: { contains: term.toLowerCase() } }, { phone: { contains: term } }] },
+      // Addresses are stored lower-case. Names ignore case, so "smith" finds
+      // "Smith": Postgres `contains` is case-sensitive, and `mode` exists only
+      // there (SQLite's LIKE already ignores ASCII case). Review 2026-10-25.
+      where: { role: 'USER', OR: [{ name: anyCase(term) }, { email: { contains: term.toLowerCase() } }, { phone: { contains: term } }] },
       select: { id: true, name: true, email: true, phone: true, _count: { select: { appointments: true } } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 10,

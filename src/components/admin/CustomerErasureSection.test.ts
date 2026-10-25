@@ -27,11 +27,15 @@ const customers = [
   { id: 'gone', name: ERASED_CUSTOMER_NAME, email: erasedEmailFor('gone'), phone: null, _count: { appointments: 2 } },
 ];
 
-function load() {
+function load(provider: 'postgresql' | 'sqlite' = 'postgresql') {
   const queries: Record<string, unknown>[] = [];
   const Button = () => null;
   const { CustomerErasureSection } = loadServerModule<typeof import('./CustomerErasureSection')>('src/components/admin/CustomerErasureSection.tsx', {
-    '@/app/lib/prisma': { user: { findMany: async (query: Record<string, unknown>) => { queries.push(query); return customers; } } },
+    '@/app/lib/prisma': {
+      __esModule: true,
+      default: { user: { findMany: async (query: Record<string, unknown>) => { queries.push(query); return customers; } } },
+      getDatabaseProvider: () => provider,
+    },
     '@/i18n/server': { getLocale: async () => 'en-GB', getT: async () => translator('en-GB', 'adminOps') },
     './EraseCustomerButton': { EraseCustomerButton: Button },
   });
@@ -47,14 +51,20 @@ test('the erasure search reads nothing until at least two characters are typed',
   assert.deepEqual(f.queries, []);
 });
 
-test('customers are found by name, lower-cased email or phone, ten at most, customers only', async () => {
+test('customers are found by name in any case, lower-cased email or phone, ten at most, customers only', async () => {
   const f = load();
   await f.CustomerErasureSection({ query: 'Amy@Example' });
   assert.deepEqual(f.queries[0].where, {
     role: 'USER',
-    OR: [{ name: { contains: 'Amy@Example' } }, { email: { contains: 'amy@example' } }, { phone: { contains: 'Amy@Example' } }],
+    OR: [{ name: { contains: 'Amy@Example', mode: 'insensitive' } }, { email: { contains: 'amy@example' } }, { phone: { contains: 'Amy@Example' } }],
   });
   assert.equal(f.queries[0].take, 10);
+});
+
+test('the dev SQLite schema gets no `mode`, which only Postgres accepts (its LIKE already ignores case)', async () => {
+  const f = load('sqlite');
+  await f.CustomerErasureSection({ query: 'smith' });
+  assert.deepEqual((f.queries[0].where as { OR: unknown[] }).OR[0], { name: { contains: 'smith' } });
 });
 
 test('each match offers erasure with the confirmation it needs; an erased account is only labelled', async () => {

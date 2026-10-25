@@ -191,8 +191,11 @@ const heroOf = (settings: SiteSettings) => ({ heroEyebrow: settings.heroEyebrow,
  * The homepage hero in `locale`: English from the settings row, Chinese from
  * its PUBLISHED translation. Cached per language under the same tag, so the
  * publish step (which revalidates 'site-settings') refreshes both at once.
- * A failed read throws out of the cache and falls back below, so an English
- * fallback is never stored for the hour (review 2026-10-24).
+ * A failed read throws out of the cache and falls back below, so the Data
+ * Cache never stores the English fallback (review 2026-10-24). The page that
+ * renders it still can: right after a settings save expires the tag, a failed
+ * read leaves /zh-hk in English until the page's own hourly revalidation, as
+ * DEFAULTS do on every cached page (review 2026-10-25).
  */
 const getHeroFromStore = unstable_cache(async (locale: Locale): Promise<HeroContent> => {
   const hero = heroOf(await getSiteSettingsFromStore());

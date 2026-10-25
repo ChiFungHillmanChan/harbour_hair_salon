@@ -82,7 +82,7 @@ test('beta testers\' emails stay out of the public cached settings; only the edi
   assert.equal((await f.service.getSiteSettingsForEditing()).bookingBetaEmails, 'tester@example.com');
 });
 
-test('a failed Chinese hero read shows English this once and is never cached for the hour', async (context) => {
+test('a failed Chinese hero read falls back to English without storing it in the hero cache', async (context) => {
   context.mock.method(console, 'error', () => {});
   const f = settingsFixture();
   f.reach();

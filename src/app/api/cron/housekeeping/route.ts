@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
   // phase failing) answers 503 but no longer skips the steps below: none of
   // them depends on retention, and losing them meant a day without
   // reconciliation or Google channel renewal (review 2026-10-24).
-  // runHousekeeping records its own failure on the `housekeeping` job row.
+  // A failure once runHousekeeping holds its lock lands on the `housekeeping`
+  // job row; one before that (the lock's own first query) only reaches this log.
   let result: Awaited<ReturnType<typeof runHousekeeping>> | null = null;
   try {
     result = await runHousekeeping();

@@ -28,6 +28,7 @@ import { getActionLocale } from '@/i18n/request';
 import { isLocale, type Locale } from '@/i18n/config';
 import { revalidateAllLocales } from '@/i18n/revalidate';
 import { ERASED_EMAIL_DOMAIN, PLACEHOLDER_EMAIL_DOMAIN, isPlaceholderEmail, placeholderEmailFor } from '@/app/lib/walk-in-customer';
+import { isErasedEmail } from '@/app/lib/customer-erasure';
 import { resolveSalonDateTime, salonDateKey, SALON_DATE_RE, SALON_TIME_RE } from '@/app/services/salon-time';
 import { MIN_DURATION_MINUTES } from '@/app/lib/calendar-geometry';
 import { isArrivalWindowOpen } from '@/app/lib/late-arrival';
@@ -531,7 +532,9 @@ async function resolveCustomer(
 ): Promise<{ id: string; email: string; preferredLocale: string | null }> {
   if (customer.kind === 'existing') {
     const existing = await tx.user.findUnique({ where: { id: customer.userId }, select: { id: true, email: true, role: true, preferredLocale: true } });
-    if (!existing) throw new BookingError('CUSTOMER_GONE');
+    // The search never offers an erased account, but a dialog left open while
+    // the customer was erased still holds their id (review 2026-10-25).
+    if (!existing || isErasedEmail(existing.email)) throw new BookingError('CUSTOMER_GONE');
     return fillCustomerGaps(tx, existing, { locale: chosenLocale });
   }
 

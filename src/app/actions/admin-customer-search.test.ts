@@ -8,7 +8,7 @@ import { ERASED_CUSTOMER_NAME, erasedEmailFor } from '@/app/lib/customer-erasure
 type UserRow = { id: string; name: string; email: string; phone: string | null; preferredLocale: string | null; role: string; createdAt: Date };
 type Where = Record<string, unknown>;
 
-function searchWith(rows: UserRow[]) {
+function searchWith(rows: UserRow[], role = 'ADMIN') {
   const queries: { where: Where; take?: number }[] = [];
   const db = {
     user: {
@@ -22,7 +22,7 @@ function searchWith(rows: UserRow[]) {
   };
   const schedule = loadServerModule<typeof import('./admin-schedule')>('src/app/actions/admin-schedule.ts', {
     '@/app/lib/prisma': { __esModule: true, default: db, getDatabaseProvider: () => 'postgresql' },
-    '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: 'ADMIN' }) },
+    '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role }) },
     '@/app/services/booking-service': {},
     '@/app/services/notification-outbox-service': {},
     '@/app/services/stylist-ical-cache': {},
@@ -78,8 +78,17 @@ test('the database returns only the handful of rows the dialog shows', async () 
   const { search, queries } = searchWith(Array.from({ length: 50 }, (_, index) => customer(index)));
 
   const found = await search('customer');
-  assert.equal(found.length, 8);
+  assert.deepEqual(found.map((row) => row.id), ['user-49', 'user-48', 'user-47', 'user-46', 'user-45', 'user-44', 'user-43', 'user-42'], 'the newest eight');
   assert.ok(queries.every((query) => query.take !== undefined && query.take <= 8), 'no bulk read of the customer table');
+});
+
+test('a signed-in customer gets nothing and reads nothing', async () => {
+  // Every Server Action is a public endpoint: without the admin check, any
+  // account could page through customers' names, emails and phones.
+  const { search, queries } = searchWith([customer(1)], 'USER');
+
+  assert.deepEqual(await search('customer'), []);
+  assert.equal(queries.length, 0);
 });
 
 test('administrators are never offered as customers', async () => {
