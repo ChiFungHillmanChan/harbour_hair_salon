@@ -99,13 +99,15 @@ export async function createEmployee(formData: FormData): Promise<EmployeeAction
 
   const d = parsed.data;
   try {
+    // bcrypt is slow: hash before the transaction, not while it holds a connection.
+    const pinHash = await hashPin(pin);
     await auditedWrite({ actorUserId: session.userId, action: 'EMPLOYEE.CREATE', targetType: 'Employee' }, async (tx) => tx.employee.create({
       data: {
         // One transaction: the stylist exists only if the employee does.
         stylistId: d.addAsStylist ? await createStylistForEmployee(tx, { name: d.name, title: d.title, adminId: session.userId }) : d.stylistId || null,
         name: d.name,
         title: d.title,
-        pinHash: await hashPin(pin),
+        pinHash,
         payType: d.payType,
         hourlyRate: d.hourlyRate ?? null,
         monthlySalary: d.monthlySalary ?? null,
@@ -191,7 +193,8 @@ export async function setEmployeePin(id: string, pin: string): Promise<EmployeeA
   if (!isValidPin(pin)) return employeeError('PIN_INVALID');
 
   try {
-    await auditedWrite({ actorUserId: session.userId, action: 'EMPLOYEE.PIN_RESET', targetType: 'Employee', targetId: id }, async (tx) => tx.employee.update({ where: { id }, data: { pinHash: await hashPin(pin) } }));
+    const pinHash = await hashPin(pin);
+    await auditedWrite({ actorUserId: session.userId, action: 'EMPLOYEE.PIN_RESET', targetType: 'Employee', targetId: id }, async (tx) => tx.employee.update({ where: { id }, data: { pinHash } }));
   } catch (err) {
     console.error('setEmployeePin failed:', err);
     return employeeError('PIN_FAILED');

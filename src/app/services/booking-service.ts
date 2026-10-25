@@ -670,12 +670,15 @@ export async function precheckBookingRequest(data: NewBookingInput & ({ stylistI
 /**
  * Eligibility for booking a colour service on `colourDate`:
  * the user must have a COMPLETED patch-test appointment >=48h before and within 6 months.
+ * A caller inside a transaction passes its `tx`, so the read is part of that
+ * snapshot instead of taking a second pooled connection.
  */
 export async function getValidPatchTest(
   userId: string,
   colourDate: Date,
+  db: Pick<Prisma.TransactionClient, 'appointment'> = prisma,
 ): Promise<EligibilityResult> {
-  const tests = await prisma.appointment.findMany({
+  const tests = await db.appointment.findMany({
     where: { userId, service: { isPatchTest: true } },
     select: { date: true, status: true },
     orderBy: { date: 'desc' },

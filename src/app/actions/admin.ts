@@ -405,25 +405,28 @@ export async function deleteAdminUser(id: string): Promise<AdminUserActionState>
     return { error: await adminUserError('DELETE_SELF') };
   }
 
-  // Their appointments carry the booking history and hold a foreign key to the
-  // user row, so the account has to stay. Say why — silently doing nothing left
-  // the admin clicking Delete over and over.
-  const appointmentCount = await prisma.appointment.count({
-    where: { userId: id },
-  });
+  // Their appointments carry the booking history, and deleting the user row
+  // would cascade them away (Appointment.user is onDelete: Cascade), so the
+  // account has to stay. Say why — silently doing nothing left the admin
+  // clicking Delete over and over. Counted and deleted in one Serializable
+  // transaction, so a booking that lands in between stops the delete instead
+  // of being deleted with it (review 2026-10-25).
+  let appointmentCount = 0;
+  try {
+    appointmentCount = await runSerializableWithRetry(async (tx) => {
+      const count = await tx.appointment.count({ where: { userId: id } });
+      if (count > 0) return count;
+      await tx.user.delete({ where: { id, role: 'ADMIN' } });
+      await appendAuditEvent({ actorUserId: session.userId, action: 'ADMIN.DELETED', targetType: 'User', targetId: id }, tx);
+      return 0;
+    });
+  } catch (error) {
+    console.error('deleteAdminUser failed:', describeFault(error));
+    return { error: await adminUserError('DELETE_FAILED') };
+  }
 
   if (appointmentCount > 0) {
     return { error: await adminUserError('HAS_APPOINTMENTS', { count: appointmentCount }) };
-  }
-
-  try {
-    await prisma.$transaction(async (tx) => {
-      await tx.user.delete({ where: { id, role: 'ADMIN' } });
-      await appendAuditEvent({ actorUserId: session.userId, action: 'ADMIN.DELETED', targetType: 'User', targetId: id }, tx);
-    });
-  } catch (error) {
-    console.error('deleteAdminUser failed:', error);
-    return { error: await adminUserError('DELETE_FAILED') };
   }
 
   revalidateAllLocales(revalidatePath, '/admin/users');
@@ -841,7 +844,7 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
       const readiness = await checkCalendarBookingReadiness(tx);
       if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
       if (current.service.requiresPatchTest) {
-        const eligibility = await getValidPatchTest(current.userId, requested);
+        const eligibility = await getValidPatchTest(current.userId, requested, tx);
         if (!eligibility.ok) {
           throw new BookingError(eligibility.reason === 'too_soon' ? 'PATCH_TEST_TOO_SOON'
             : eligibility.reason === 'expired' ? 'PATCH_TEST_EXPIRED' : 'PATCH_TEST_REQUIRED');

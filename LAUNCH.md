@@ -1,14 +1,14 @@
 # Launch checklist — Harbour Hair Salon
 
-Last verified against production: **2026-10-13 18:55 UTC** (read-only checks after both
-releases deployed, `main` @ `def37c4`), plus the 2026-10-13 production-readiness review.
+Last verified against production: **2026-10-25** (read-only: the Vercel Production variable
+names, `/book` showing the closed notice, `/api/health` up, `main` @ `3f0ba58` deployed). The full
+read-only check and production-readiness review were on 2026-10-13 (`main` @ `def37c4`).
 
-> **Status:** the public site is live and stable. **Online booking is closed** — by the
-> Square lock in code (production opens only with Square production credentials, see §2)
-> and by configuration (§3). The 2026-10-13 review's code findings are fixed in the
-> "review follow-ups" release (§1, #62); Square deposits are the second release (§2, #63).
-> Both are live since 2026-10-13; production online booking stays locked until Square
-> production credentials are set.
+> **Status:** the public site is live and stable. **Online booking is closed to the public**
+> by configuration (§3). The Square lock in code is open: production credentials were set on
+> 2026-10-18 (§2), so beta testers (Admin → Settings → Beta testers) book and pay real deposits.
+> The 2026-10-13 review's code findings are fixed in the "review follow-ups" release (§1, #62);
+> Square deposits are the second release (§2, #63). Both are live since 2026-10-13.
 >
 > **Deploys:** merge to `main`; GitHub Actions tests and deploys. Runs on `main` queue
 > (never cancel mid-flight); a queued run is superseded by a newer one, so the newest commit
@@ -25,7 +25,7 @@ Work top to bottom. The order in §3 is **load-bearing**.
 | Area | State |
 |---|---|
 | Tests / `tsc` / lint / audit | All green — 1,284 tests with release 1 and 1,644 with release 2 (1,057 before); CI also replays migrations on PostgreSQL 18 and runs the integration, booking-lifecycle and HTTP suites |
-| Online booking | **CLOSED** — `SiteSettings.bookingEnabled=false`, plus the Square lock |
+| Online booking | **CLOSED** — `SiteSettings.bookingEnabled=false`, plus the Square lock. *2026-10-18:* the Square lock is open (production credentials, §2); only beta testers can book |
 | Notifications | `NOTIFICATIONS_ENABLED=false` — customers get no booking email yet |
 | Calendar sync | `CALENDAR_SYNC_ENABLED=true`; Fresha inbound OK for all 4 stylists |
 | Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals. *2026-10-18:* Lox's and Shania's "takes bookings" are off in Admin (Shania's switched off that day), so the gate no longer checks them; Lox's gap and Shania's status: §3.3 |
@@ -156,8 +156,9 @@ Square and payment records.
       2026-10-18, through beta booking (#81, tester `hillmanchan709@gmail.com`): a £0.01 override on
       Short Over Ears; hold → live `payment.created` → the owner approved (CAPTURED) → the customer
       cancelled (refund requested; Square's `refund.created`/`refund.updated` processed; refund
-      PENDING at the time of writing, as real-card refunds are) → four tester emails sent. The
-      override was removed straight after. Public booking stays closed until §3.
+      PENDING at the time of writing, as real-card refunds are; the owner confirms it COMPLETED
+      in the Square Dashboard) → four tester emails sent. The override is kept on purpose for
+      beta testers; remove it before booking opens (§3.8). Public booking stays closed until §3.
 
 ---
 
@@ -165,7 +166,8 @@ Square and payment records.
 
 `assertOnlineBookingReady` (`src/app/lib/booking-maintenance.ts`) fails closed.
 
-- [ ] **3.1 Upgrades before customers arrive.** Neon → Launch (pay-as-you-go, ~US$11–15/month,
+- [ ] **3.1 Upgrades before customers arrive.** Neon → Launch (pay-as-you-go, ~US$5–15/month: about US$5 at the 2026-10 pace of ~48 CU-hours,
+      more as traffic grows;
       7-day restore); Resend → Pro (an online booking sends 3 emails since the short set of
       2026-10-18 — salon alert, confirmation, usually a reminder — plus any change or
       cancellation; free is 100/day); Vercel Spend

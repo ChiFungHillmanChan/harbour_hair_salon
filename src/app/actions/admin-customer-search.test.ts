@@ -8,7 +8,7 @@ import { ERASED_CUSTOMER_NAME, erasedEmailFor } from '@/app/lib/customer-erasure
 type UserRow = { id: string; name: string; email: string; phone: string | null; preferredLocale: string | null; role: string; createdAt: Date };
 type Where = Record<string, unknown>;
 
-function searchWith(rows: UserRow[], role = 'ADMIN') {
+function searchWith(rows: UserRow[], role = 'ADMIN', provider: 'postgresql' | 'sqlite' = 'postgresql') {
   const queries: { where: Where; take?: number }[] = [];
   const db = {
     user: {
@@ -21,7 +21,7 @@ function searchWith(rows: UserRow[], role = 'ADMIN') {
     },
   };
   const schedule = loadServerModule<typeof import('./admin-schedule')>('src/app/actions/admin-schedule.ts', {
-    '@/app/lib/prisma': { __esModule: true, default: db, getDatabaseProvider: () => 'postgresql' },
+    '@/app/lib/prisma': { __esModule: true, default: db, getDatabaseProvider: () => provider },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role }) },
     '@/app/services/booking-service': {},
     '@/app/services/notification-outbox-service': {},
@@ -96,3 +96,11 @@ test('administrators are never offered as customers', async () => {
 
   assert.deepEqual((await search('owner')).map((row) => row.id), ['user-2']);
 });
+
+test('the dev SQLite schema gets no `mode`, which only Postgres accepts (its LIKE already ignores case)', async () => {
+  const { search, queries } = searchWith([customer(1, { name: 'Mei Ling' })], 'ADMIN', 'sqlite');
+
+  assert.deepEqual((await search('Mei')).map((row) => row.id), ['user-1']);
+  assert.doesNotMatch(JSON.stringify(queries[0].where), /"mode"/);
+});
+

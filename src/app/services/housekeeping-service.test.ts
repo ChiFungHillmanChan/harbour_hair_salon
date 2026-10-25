@@ -120,3 +120,14 @@ test('retention deletes diary entries 30 days after they end, also while the Goo
   assert.equal(result.deletedDiaryEntries, 1);
   assert.deepEqual(f.diary.map((row) => row.id), ['kept', 'future']);
 });
+
+test('a failing retention phase is recorded on the job row and rethrown with its own code, for the cron\'s log', async () => {
+  const f = fixture();
+  const fault = Object.assign(new Error('Timed out fetching a new connection'), { name: 'PrismaClientKnownRequestError', code: 'P2024' });
+  (f.db.notificationDelivery as unknown as { findMany: () => Promise<never> }).findMany = async () => { throw fault; };
+  await assert.rejects(runHousekeeping({ db: f.db, now }), (error) => error === fault);
+  const job = f.jobs.find((row) => row.name === 'housekeeping');
+  assert.ok(job && job.lastFailedAt instanceof Date);
+  assert.equal(job.lastError, 'Housekeeping failed. Check database availability and retention backlog.', 'a state key: never reworded');
+  assert.equal(job.lockToken, null, 'the lock is released');
+});

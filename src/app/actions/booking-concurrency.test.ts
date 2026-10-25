@@ -86,6 +86,9 @@ function fixture(options: {
   const audits: { action: string; metadata: Record<string, unknown> }[] = [];
   let externallyCommitted: Partial<typeof appointment> = {};
   let reads = 0;
+  /** Which client served each patch-test read: the transaction's, or the global one beside it. */
+  const patchTestReads: ('tx' | 'global')[] = [];
+  let viaGlobalClient = false;
   const applyData = (data: Record<string, unknown>) => {
     for (const [key, value] of Object.entries(data)) {
       const record = appointment as unknown as Record<string, unknown>;
@@ -126,6 +129,7 @@ function fixture(options: {
       },
       findMany: async ({ where }: { where: Record<string, unknown> }) => {
         if ((where.service as { isPatchTest?: boolean } | undefined)?.isPatchTest) {
+          patchTestReads.push(viaGlobalClient ? 'global' : 'tx');
           return options.patchTestDate ? [{ date: options.patchTestDate, status: 'COMPLETED' }] : [];
         }
         return [appointment, ...(options.conflictingBooking ? [{
@@ -162,6 +166,10 @@ function fixture(options: {
   };
   const db = {
     ...tx,
+    appointment: { ...tx.appointment, findMany: async (args: { where: Record<string, unknown> }) => {
+      viaGlobalClient = true;
+      try { return await tx.appointment.findMany(args); } finally { viaGlobalClient = false; }
+    } },
     // The customer has confirmed their address (managing a booking needs it).
     user: { findUnique: async () => ({ email: 'customer@example.com', emailVerifiedAt: new Date('2026-01-01T00:00:00Z'), oauthAccounts: [] }) },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -270,7 +278,7 @@ function fixture(options: {
   const admin = loadServerModule<typeof import('./admin')>('src/app/actions/admin.ts', dependencies);
   return {
     appointment, originalDate, messages, events, dispatches: () => dispatches, actions, admin,
-    transactions: () => transactions, writes: () => writes, limiterKeys, audits, googlePushes, gateUserIds,
+    transactions: () => transactions, writes: () => writes, limiterKeys, audits, googlePushes, gateUserIds, patchTestReads,
   };
 }
 
@@ -891,6 +899,7 @@ test('the colour patch-test rule is re-checked against the requested date on app
   assert.equal(f.appointment.rescheduleRequestedAt?.toISOString(), OPEN_REQUEST.requestedAt.toISOString(), 'staff can still decline it');
   assert.equal(f.appointment.date.getTime(), f.originalDate.getTime());
   assert.equal(f.events.length, 0);
+  assert.deepEqual(f.patchTestReads, ['tx'], 'read inside the approval\'s own snapshot, not on a second connection');
 });
 
 test('a declined request\'s email carries the salon phone from settings, and none without a settings row', async () => {

@@ -513,9 +513,12 @@ Only once §4 has passed on `main` — locally and in the owner's Preview check 
 run"); it did for 13dbe8f on 2026-10-17/18 (S1–S4 are merged and deployed since 2026-10-13, #63).
 
 **Owner**
-- [ ] A Square **seller** account in the salon's legal name (the merchant of record), United
+- [x] A Square **seller** account in the salon's legal name (the merchant of record), United
       Kingdom, GBP; identity checks complete; payout bank account added; the Leeds location
       (Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX) can take card payments.
+      Done 2026-10-14 (`LAUNCH.md` §2). The location in use, `LMDPK9XXXTJEM`, is named
+      "FaithArkLtd (Main)" with the address "2 Chapel Street": card statements show it, so the
+      owner may rename it and give it the salon's address in the Square Dashboard.
 - [x] The deposit policy (§1.1) and the late-cancellation / no-show line on `/booking-terms`
       (`legal.bookingTerms.cancelling.lateOrNoShow`, en + zh; the booking page repeats it before the
       card form, `booking.deposit.lateOrNoShow`) — change both if the rule differs. Decided
@@ -525,25 +528,29 @@ run"); it did for 13dbe8f on 2026-10-17/18 (S1–S4 are merged and deployed sinc
       Keep the percentage proportionate: Admin → Site Settings warns above 50%.
 
 **Developer, signed in to the Developer Console with the salon's Square account**
-- [ ] The production application must belong to the **salon's** account: the code uses one
+- [x] The production application must belong to the **salon's** account: the code uses one
       personal access token, which acts as that account. (A developer-owned app would need OAuth,
       which is not built.)
-- [ ] Application → **Production**: Credentials → Application ID (`sq0idp-…`) and Production Access
+- [x] Application → **Production**: Credentials → Application ID (`sq0idp-…`) and Production Access
       token (full access to the salon's Square account — treat it like a bank password);
       Locations → the Leeds location ID (GB, GBP).
-- [ ] **Webhooks → Subscriptions → Add subscription** (Production): URL exactly
+- [x] **Webhooks → Subscriptions → Add subscription** (Production): URL exactly
       `https://www.harbourhair.co.uk/api/webhooks/square` — `https`, `www`, no trailing slash, no
       query. The bare domain and `harbourhairsalon.vercel.app` redirect to `www`, and Square treats
       any non-2xx answer, a redirect included, as a failed delivery. API version 2026-09-16;
       events `payment.created`, `payment.updated`, `refund.created`, `refund.updated`. Copy the
       Signature Key.
-- [ ] Vercel **Production** env: the seven variables of §2. Then deploy (re-run the latest `main`
-      "CI/CD Pipeline" run if there is no new merge).
-- [ ] Admin → Site Settings no longer says booking is locked until Square production credentials
-      are configured. "Send test event" on the production subscription gets `200`.
-- [ ] Admin → Site Settings → Deposits: on, percent, minimum. Admin → Services & Pricing → the
-      per-service overrides.
-- [ ] Open booking in the order of `LAUNCH.md` §3, then one **real** booking on the owner's card:
+- [x] Vercel **Production** env: the seven variables of §2. Then deploy (re-run the latest `main`
+      "CI/CD Pipeline" run if there is no new merge). Set 2026-10-18; all seven listed on
+      Production only (checked 2026-10-25).
+- [x] Admin → Site Settings no longer says booking is locked until Square production credentials
+      are configured. "Send test event" on the production subscription gets `200`. (2026-10-18:
+      the test event got 200, and the real beta booking below went through, so the lock is open.)
+- [x] Admin → Site Settings → Deposits: on, percent, minimum. Admin → Services & Pricing → the
+      per-service overrides. (2026-10-15: on, 50%, minimum £0; £15 on both consultations.)
+- [ ] Open booking in the order of `LAUNCH.md` §3. The **real** booking on the owner's card was
+      done first, through beta booking, on 2026-10-18 (`LAUNCH.md` §2); its £0.01 override is
+      kept for beta testers and comes off at §3.8. The steps, for any later re-test:
       give one service a temporary fixed deposit of £0.01 (Square's minimum), request it, approve
       (Square shows the payment completed), cancel at least 48 hours ahead (refund pending, then
       completed in Square), and put the override back. Square keeps its fee (about 25p) even after

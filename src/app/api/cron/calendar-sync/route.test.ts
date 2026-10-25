@@ -124,6 +124,40 @@ test('runs the late-arrival step after the sync and records it', async () => {
   });
 });
 
+test('a feed import that throws still runs the late-arrival and Google steps, answers 503 and logs no message', async (t) => {
+  const logged: unknown[][] = [];
+  t.mock.method(console, 'error', (...args: unknown[]) => { logged.push(args); });
+  const { loadServerModule } = await import('../../../../test/load-server-module');
+  const order: string[] = [];
+  const jobs: Record<string, unknown>[] = [];
+  const route = loadServerModule<{ GET: typeof GET }>('src/app/api/cron/calendar-sync/route.ts', {
+    '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => true },
+    '@/app/lib/prisma': { backgroundJobState: {
+      upsert: async () => ({}),
+      update: async ({ where, data }: { where: { name: string }; data: Record<string, unknown> }) => { jobs.push({ name: where.name, ...data }); },
+    } },
+    '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => {
+      order.push('sync');
+      throw Object.assign(new Error('Server has closed the connection to db.secret-host.neon.tech'), { name: 'PrismaClientKnownRequestError', code: 'P1017' });
+    } },
+    '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => { order.push('late'); return { enabled: false, cancelled: 0, skipped: 0, failed: 0 }; } },
+    '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => { order.push('google'); return { skipped: 'disabled' }; } },
+  });
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true' }, async () => {
+    const response = await route.GET(authedRequest());
+    assert.equal(response.status, 503);
+    const body = await response.json();
+    assert.equal(body.ok, false);
+    assert.deepEqual(order, ['sync', 'late', 'google']);
+    assert.deepEqual(body.googleCalendar, { skipped: 'disabled' });
+    const row = jobs.find((job) => job.name === 'calendar-sync');
+    assert.ok(row && row.lastFailedAt instanceof Date);
+    assert.equal(row.lastError, 'Calendar worker could not complete. Check database and connection configuration.', 'a state key: never reworded');
+    assert.deepEqual(logged, [['Calendar feed import failed:', { error: 'PrismaClientKnownRequestError', code: 'P1017' }]]);
+    assert.doesNotMatch(JSON.stringify(logged), /secret-host/, 'the driver message can name the database host');
+  });
+});
+
 test('a failing late-arrival step never fails the sync response', async () => {
   const { loadServerModule } = await import('../../../../test/load-server-module');
   const jobs: Record<string, unknown>[] = [];

@@ -37,6 +37,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Calendar opening hours could not be checked.' }, { status: 503 });
   }
   const db = (await import('@/app/lib/prisma')).default;
+  // A feed step that throws (its job row, the candidate list or a lease, e.g.
+  // on a dropped connection) still answers 503, but no longer skips the steps
+  // below: neither depends on the feed import (review 2026-10-25, as
+  // housekeeping does since 2026-10-24).
+  const feeds = await runFeedImport(db);
+  const lateArrivals = await runLateArrivals(db);
+  // After the late-arrival step, so its cancellations reach Google in the same run.
+  const googleCalendar = await runGoogleCalendar(db, deadline);
+  if (!feeds) return NextResponse.json({ ok: false, error: 'Calendar sync could not complete.', lateArrivals, googleCalendar }, { status: 503 });
+  return NextResponse.json({ ok: feeds.ok, results: feeds.results, lateArrivals, googleCalendar }, { status: feeds.ok ? 200 : 502 });
+}
+
+/** The Fresha / Treatwell feed import and its `calendar-sync` job row; null when it could not run. */
+async function runFeedImport(db: Pick<PrismaClient, 'backgroundJobState'>) {
   const name = 'calendar-sync';
   try {
     await db.backgroundJobState.upsert({ where: { name }, create: { name, lastStartedAt: new Date() }, update: { lastStartedAt: new Date() } });
@@ -46,15 +60,13 @@ export async function GET(request: NextRequest) {
       ...(ok ? { lastSucceededAt: new Date(), lastError: null } : { lastFailedAt: new Date(), lastError: 'Some calendar connections failed. Check Integrations; previous busy periods were retained.' }),
       lastResultJson: JSON.stringify({ connections: results.length, succeeded: results.filter((entry) => entry.ok && !entry.skipped).length, failed: results.filter((entry) => !entry.ok).length }),
     } });
-    const lateArrivals = await runLateArrivals(db);
-    // After the late-arrival step, so its cancellations reach Google in the same run.
-    const googleCalendar = await runGoogleCalendar(db, deadline);
-    return NextResponse.json({ ok, results, lateArrivals, googleCalendar }, { status: ok ? 200 : 502 });
-  } catch {
+    return { ok, results };
+  } catch (error) {
+    console.error('Calendar feed import failed:', describeFault(error));
     try {
       await db.backgroundJobState.update({ where: { name }, data: { lastFailedAt: new Date(), lastError: 'Calendar worker could not complete. Check database and connection configuration.' } });
     } catch { /* A database outage may also prevent saving its own diagnostic. */ }
-    return NextResponse.json({ ok: false, error: 'Calendar sync could not complete.' }, { status: 503 });
+    return null;
   }
 }
 
