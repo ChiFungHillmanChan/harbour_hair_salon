@@ -517,8 +517,9 @@ run"); it did for 13dbe8f on 2026-10-17/18 (S1–S4 are merged and deployed sinc
       Kingdom, GBP; identity checks complete; payout bank account added; the Leeds location
       (Upper Floor, Unit 15 Central Arcade, Central Rd, Leeds LS1 6DX) can take card payments.
       Done 2026-10-14 (`LAUNCH.md` §2). The location in use, `LMDPK9XXXTJEM`, is named
-      "FaithArkLtd (Main)" with the address "2 Chapel Street": card statements show it, so the
-      owner may rename it and give it the salon's address in the Square Dashboard.
+      "FaithArkLtd" (Square Dashboard, 2026-10-25) with the address 2 Chapel Street, Leeds: card
+      statements show it, so the owner may rename it and give it the salon's address in the Square
+      Dashboard.
 - [x] The deposit policy (§1.1) and the late-cancellation / no-show line on `/booking-terms`
       (`legal.bookingTerms.cancelling.lateOrNoShow`, en + zh; the booking page repeats it before the
       card form, `booking.deposit.lateOrNoShow`) — change both if the rule differs. Decided
@@ -694,8 +695,8 @@ Illustrative UK-card fees, calculated from that advertised rate:
 | £100 | £1.65 | £98.35 | 1.65% |
 
 The fixed 25p weighs heavily on small deposits. Square does not return its processing fee when a
-payment is refunded, so a refunded deposit still costs the fee. Confirm the account's own rate
-before launch. The UK card minimum is **£0.01**; a zero deposit means no payment at all, never a
+payment is refunded, so a refunded deposit still costs the fee. The account's own rate, read in
+the Square Dashboard on 2026-10-25, is "API 1.40% + £0.25": the advertised UK-card rate above. The UK card minimum is **£0.01**; a zero deposit means no payment at all, never a
 zero-value authorization. Amounts are integer pence, currency `GBP`.
 
 ---
