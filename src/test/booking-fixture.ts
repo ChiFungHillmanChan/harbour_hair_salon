@@ -22,7 +22,7 @@ export const SANDBOX_SQUARE_ENV = {
 };
 
 type Row = { id: string; userId: string; serviceId: string; stylistId: string; date: Date; status: string; durationAtBooking: number; notificationVersion: number };
-type Where = { userId?: string; serviceId?: string; date?: Date | { gte?: Date; lte?: Date }; stylistId?: string | { in: string[] }; status?: { in?: string[]; not?: string } };
+type Where = { userId?: string; serviceId?: string; date?: Date | { gt?: Date; gte?: Date; lt?: Date; lte?: Date }; stylistId?: string | { in: string[] }; status?: { in?: string[]; not?: string } };
 
 /** A PaymentAttempt row as the fake database keeps it. */
 export type AttemptRow = {
@@ -130,7 +130,8 @@ export function bookingFixture(options: {
   const dateMatches = (filter: Where['date'], date: Date) => {
     if (filter === undefined) return true;
     if (filter instanceof Date) return filter.getTime() === date.getTime();
-    return (!filter.gte || date >= filter.gte) && (!filter.lte || date <= filter.lte);
+    return (!filter.gt || date > filter.gt) && (!filter.gte || date >= filter.gte)
+      && (!filter.lt || date < filter.lt) && (!filter.lte || date <= filter.lte);
   };
   type AttemptWhere = Partial<Pick<AttemptRow, 'id' | 'userId' | 'status' | 'appointmentId'>>;
   const attemptMatches = (row: AttemptRow, where: AttemptWhere) => Object.entries(where).every(([key, value]) => row[key as keyof AttemptRow] === value);
@@ -151,7 +152,8 @@ export function bookingFixture(options: {
           .map((dayOfWeek) => ({ stylistId, dayOfWeek, ...FIXTURE_HOURS }))),
     },
     appointment: {
-      count: async ({ where }: { where: Where }) => rows.filter((row) => row.userId === where.userId && statusMatches(where.status, row.status)).length,
+      count: async ({ where }: { where: Where }) => rows.filter((row) => row.userId === where.userId
+        && statusMatches(where.status, row.status) && dateMatches(where.date, row.date)).length,
       findFirst: async ({ where }: { where: Where }) => {
         const row = rows.find((candidate) => candidate.userId === where.userId && candidate.serviceId === where.serviceId
           && dateMatches(where.date, candidate.date) && stylistMatches(where.stylistId, candidate.stylistId)

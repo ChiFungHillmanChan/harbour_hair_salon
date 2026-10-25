@@ -29,6 +29,10 @@ jobs:
   ci-check:
     name: CI - Backend, migrations, build and security
     runs-on: ubuntu-latest
+    # A run takes about 10 minutes. A test stuck on a promise that never
+    # settles otherwise holds the job (and any deploy queued behind it on main)
+    # for GitHub's 6-hour default (review 2026-10-25).
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:18

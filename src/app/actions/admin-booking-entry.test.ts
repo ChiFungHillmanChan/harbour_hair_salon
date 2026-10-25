@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { matchesWhere } from '../../test/prisma-where';
 import { assertFeedInvalidatesBeforeDelivery, type NotificationTimingHooks } from '../../test/stalled-notification';
 import { isPlaceholderEmail, placeholderEmailFor, displayableEmail } from '../lib/walk-in-customer';
+import { ERASED_CUSTOMER_NAME, erasedEmailFor } from '../lib/customer-erasure';
 
 // The salon takes bookings by phone and WhatsApp all day. These cover the entry
 // path for work that never touched the website.
@@ -86,7 +88,10 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
     user: {
       findUnique: async ({ where }: { where: Row }) =>
         users.find((row) => (where.id && row.id === where.id) || (where.email && row.email === where.email)) ?? null,
-      findMany: async () => users.map((row) => ({ ...row, createdAt: UPDATED_AT })),
+      findMany: async ({ where, select }: { where?: Row; select?: Record<string, boolean> } = {}) => users
+        .map((row) => ({ role: 'USER', ...row, createdAt: UPDATED_AT }))
+        .filter((row) => matchesWhere(row, where))
+        .map((row) => (select ? Object.fromEntries(Object.keys(select).map((key) => [key, row[key as keyof typeof row]])) : row)),
       create: async ({ data }: { data: Row }) => {
         const row = { ...data, id: `user-${users.length + 1}` };
         users.push(row);
@@ -133,7 +138,7 @@ function fixture(options: { role?: string; conflicting?: boolean; existingUser?:
   );
 
   const actions = loadServerModule<typeof import('./admin-schedule')>('src/app/actions/admin-schedule.ts', {
-    '@/app/lib/prisma': db,
+    '@/app/lib/prisma': { __esModule: true, default: db, getDatabaseProvider: () => 'postgresql' },
     '@/app/lib/session': { verifySession: async () => ({ userId: 'admin-1', role: options.role ?? 'ADMIN' }) },
     '@/app/services/booking-service': bookingService,
     '@/app/services/notification-outbox-service': queue,
@@ -415,6 +420,16 @@ test('a new-customer entry whose email is already on file fills in a missing lan
   assert.equal(users[0].preferredLocale, 'zh-HK');
   assert.equal(users[0].phone, '07700900999', 'the blank phone is filled in the same write');
   assert.equal(created[0].notificationLocale, 'zh-HK');
+});
+
+test('a customer erased while the dialog was open is refused, and nothing is booked or written onto their row', async () => {
+  const { actions, created, updates } = fixture({ existingUser: onFile({ name: ERASED_CUSTOMER_NAME, email: erasedEmailFor('user-9') }) });
+
+  const result = await actions.createAppointmentByAdmin(newBooking({ customer: { kind: 'existing', userId: 'user-9' }, customerLocale: 'zh-HK' }));
+
+  assert.deepEqual(result, { success: false, error: 'That customer no longer exists — search again.' });
+  assert.equal(created.length, 0);
+  assert.deepEqual(updates, [], 'the anonymised row keeps no new language');
 });
 
 test('an existing customer booked without a language choice still defaults to English', async () => {

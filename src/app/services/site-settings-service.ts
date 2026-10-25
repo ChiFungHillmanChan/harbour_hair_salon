@@ -185,25 +185,35 @@ export type HeroContent = Pick<SiteSettings, 'heroEyebrow' | 'heroTitleLine1' | 
 
 const HERO_KEYS = ['heroEyebrow', 'heroTitleLine1', 'heroTitleLine2', 'heroSubtitle'] as const;
 
+const heroOf = (settings: SiteSettings) => ({ heroEyebrow: settings.heroEyebrow, heroTitleLine1: settings.heroTitleLine1, heroTitleLine2: settings.heroTitleLine2, heroSubtitle: settings.heroSubtitle });
+
 /**
  * The homepage hero in `locale`: English from the settings row, Chinese from
  * its PUBLISHED translation. Cached per language under the same tag, so the
  * publish step (which revalidates 'site-settings') refreshes both at once.
+ * A failed read throws out of the cache and falls back below, so the Data
+ * Cache never stores the English fallback (review 2026-10-24). The page that
+ * renders it still can: right after a settings save expires the tag, a failed
+ * read leaves /zh-hk in English until the page's own hourly revalidation, as
+ * DEFAULTS do on every cached page (review 2026-10-25).
  */
 const getHeroFromStore = unstable_cache(async (locale: Locale): Promise<HeroContent> => {
-  const settings = await getSiteSettingsFromStore();
-  const hero = { heroEyebrow: settings.heroEyebrow, heroTitleLine1: settings.heroTitleLine1, heroTitleLine2: settings.heroTitleLine2, heroSubtitle: settings.heroSubtitle };
+  const hero = heroOf(await getSiteSettingsFromStore());
   if (locale === 'en-GB') return { ...hero, translated: true };
-  try {
-    const translations = await loadPublishedTranslations(prisma, 'SITE_SETTINGS', [SINGLETON_ID], locale);
-    return overlay(hero, translations.get(SINGLETON_ID), [...HERO_KEYS]);
-  } catch (error) {
-    console.error('Failed to load hero translation:', error);
-    return { ...hero, translated: false };
-  }
+  const translations = await loadPublishedTranslations(prisma, 'SITE_SETTINGS', [SINGLETON_ID], locale);
+  return overlay(hero, translations.get(SINGLETON_ID), [...HERO_KEYS]);
 }, ['site-settings-hero'], { revalidate: 3600, tags: ['site-settings'] });
 
-export const getHeroContent = cache(getHeroFromStore);
+async function getHeroOrFallback(locale: Locale): Promise<HeroContent> {
+  try {
+    return await getHeroFromStore(locale);
+  } catch (error) {
+    console.error('Failed to load hero content:', error);
+    return { ...heroOf(await getSiteSettingsOrDefaults()), translated: locale === 'en-GB' };
+  }
+}
+
+export const getHeroContent = cache(getHeroOrFallback);
 
 export function buildSameAsArray(settings: SiteSettings): string[] {
   return [

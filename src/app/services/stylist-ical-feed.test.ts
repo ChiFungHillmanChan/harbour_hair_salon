@@ -14,6 +14,14 @@ function statusMatches(row: FakeAppt, filter: unknown): boolean {
   throw new Error(`Unhandled status filter ${JSON.stringify(filter)}`);
 }
 
+/** Applies the query's date cut-off too, so a lookback that is too short drops a running booking. */
+function dateMatches(row: FakeAppt, filter: unknown): boolean {
+  if (filter === undefined) return true;
+  const { gte, ...rest } = filter as { gte?: Date };
+  if (Object.keys(rest).length || !(gte instanceof Date)) throw new Error(`Unhandled date filter ${JSON.stringify(filter)}`);
+  return row.date.getTime() >= gte.getTime();
+}
+
 function fakeDb(
   stylist: { id: string; icalToken: string | null } | null,
   appointments: FakeAppt[] = [],
@@ -35,7 +43,8 @@ function fakeDb(
     appointment: {
       findMany: async (args: { where: unknown; select: unknown; orderBy: unknown }) => {
         findManyCalls.push(args);
-        return appointments.filter((row) => statusMatches(row, (args.where as { status?: unknown }).status));
+        const where = args.where as { status?: unknown; date?: unknown };
+        return appointments.filter((row) => statusMatches(row, where.status) && dateMatches(row, where.date));
       },
     },
     // Applies the query's own filters, so a missing source/stylist/end filter leaks rows.
@@ -152,6 +161,18 @@ test('a booking marked completed before it ends keeps blocking the rest of its t
   const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW });
   assert.equal(result.status, 200);
   if (result.status === 200) assert.match(result.body, /UID:finished-early@/);
+});
+
+test('a booking as long as the longest service stays in the feed until it ends', async () => {
+  // Services may last up to 1,440 minutes (actions/admin-services.ts), so the
+  // query's look-back must reach a whole day: this one started 23 h 59 min ago.
+  const started = new Date(NOW.getTime() - (24 * 60 - 1) * 60_000);
+  const db = fakeDb({ id: 's1', icalToken: 'tok' }, [
+    { id: 'all-day-colour', date: started, service: { duration: 24 * 60 } } as FakeAppt,
+  ]);
+  const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW });
+  assert.equal(result.status, 200);
+  if (result.status === 200) assert.match(result.body, /UID:all-day-colour@/);
 });
 
 test('booked duration remains fixed when the current service duration changes', async () => {

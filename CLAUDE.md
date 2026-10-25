@@ -88,7 +88,7 @@ pnpm db:prod:migrate  # Create prod migrations
 pnpm db:prod:deploy   # Deploy prod migrations
 
 # Tests (CI runs all of these on every PR and every push to main)
-pnpm test                    # Every src/**/*.test.ts (node:test + tsx, react-server conditions)
+pnpm test                    # Every src/**/*.test.ts (node:test + tsx, react-server conditions, TZ=UTC like CI)
 pnpm test:square             # The Square deposit subset
 pnpm exec tsc --noEmit       # Type check
 pnpm test:integration        # Real PostgreSQL suites: they refuse anything but SALON_TEST_DATABASE_URL

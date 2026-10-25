@@ -1,6 +1,6 @@
 import { AdminResponsiveTable } from '@/components/admin/AdminResponsiveTable';
 import { requireAdmin } from '@/app/lib/session';
-import prisma from '@/app/lib/prisma';
+import prisma, { getDatabaseProvider } from '@/app/lib/prisma';
 import { AdminUserForm } from '@/components/admin/AdminUserForm';
 import { CustomerErasureSection } from '@/components/admin/CustomerErasureSection';
 import { deleteAdminUser, promoteGoogleUserToAdmin } from '@/app/actions/admin';
@@ -32,8 +32,9 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
     where: {
       role: 'USER',
       // Addresses are stored lower-case (sign-in, registration and admin forms
-      // all normalise them), so search them that way.
-      ...(q ? { OR: [{ name: { contains: q } }, { email: { contains: q.toLowerCase() } }] } : {}),
+      // all normalise them), so search them that way. Names ignore case; `mode`
+      // is Postgres-only, and SQLite's LIKE already ignores ASCII case.
+      ...(q ? { OR: [{ name: getDatabaseProvider() === 'postgresql' ? { contains: q, mode: 'insensitive' as const } : { contains: q } }, { email: { contains: q.toLowerCase() } }] } : {}),
       oauthAccounts: { some: { provider: 'google' } },
     },
     select: { id: true, name: true, email: true, createdAt: true },

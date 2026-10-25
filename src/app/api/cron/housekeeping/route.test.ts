@@ -88,6 +88,36 @@ test('a failing booking-request lapse never hides a successful housekeeping run'
   }
 });
 
+test('a failing retention run still lets the lapses, payment checks and Google run happen, and answers 503', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const previous = { cron: process.env.CRON_SECRET, housekeeping: process.env.HOUSEKEEPING_ENABLED };
+  process.env.CRON_SECRET = 'fixture-secret';
+  process.env.HOUSEKEEPING_ENABLED = 'true';
+  try {
+    const order: string[] = [];
+    const reconciled = { skipped: false, checked: 1, lateCaptureRefunds: 0, unresolved: 0, failed: 0, outOfTime: false };
+    const route = loadServerModule<{ GET(request: NextRequest): Promise<Response> }>('src/app/api/cron/housekeeping/route.ts', {
+      // A cold Neon start (P1001) on the first query of the night, or one retention phase failing.
+      '@/app/services/housekeeping-service': { runHousekeeping: async () => { order.push('retention'); throw new Error('Housekeeping failed'); } },
+      '@/app/services/pending-request-lapse': { lapseStartedPendingRequests: async () => { order.push('lapse'); return { lapsed: 1, failed: 0 }; } },
+      '@/app/services/payment-reconciliation': { reconcilePayments: async () => { order.push('payments'); return reconciled; } },
+      '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => { order.push('google:daily'); return { skipped: 'disabled' }; } },
+    });
+    const response = await route.GET(new NextRequest('https://example.invalid/api/cron/housekeeping', { headers: { authorization: 'Bearer fixture-secret' } }));
+    // None of the later steps depends on retention: a lost day of reconciliation or channel renewal is not worth it.
+    assert.deepEqual(order, ['retention', 'lapse', 'payments', 'google:daily']);
+    // Still a failed run in Vercel's cron log (the housekeeping job row records it too).
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      error: 'Housekeeping failed', requestsLapsed: 1, requestLapseFailed: 0, payments: reconciled, googleCalendar: { skipped: 'disabled' },
+    });
+  } finally {
+    for (const [key, value] of Object.entries({ CRON_SECRET: previous.cron, HOUSEKEEPING_ENABLED: previous.housekeeping })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
 // ── Google Calendar (task G8 of docs/superpowers/plans/2026-10-16-google-calendar-two-way-sync.md) ──
 // End to end through the real job module (services/google-calendar-job.ts),
 // with only its I/O replaced.

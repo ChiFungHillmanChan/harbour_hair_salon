@@ -43,7 +43,10 @@ export function toSalonDateStr(date: string | Date): string {
 /**
  * Convert a salon-local calendar date + "HH:mm" wall-clock time into the correct
  * absolute UTC instant, interpreting the time in the salon's timezone
- * (Europe/London) so DST is handled correctly. Host-timezone independent.
+ * (Europe/London) so DST is handled correctly. Host-timezone independent,
+ * except for the repeated 01:00–02:00 on the clocks-back Sunday: date-fns-tz
+ * picks the occurrence by the host's zone there. That hour is never inside
+ * opening hours, and Vercel and CI run in UTC (`pnpm test` pins TZ=UTC).
  */
 export function resolveSalonDateTime(date: string | Date, time: string): SalonDateTime {
   const dateStr = toSalonDateStr(date);

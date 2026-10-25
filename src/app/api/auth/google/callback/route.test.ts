@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { loadServerModule } from '../../../../../test/load-server-module';
 import { decideGoogleLink, isGoogleAuthoritativeEmail, type GoogleProfile } from '../../../../lib/google-oauth';
@@ -18,7 +19,10 @@ function callbackFixture(
   linked: { providerAccountId: string; userId: string }[] = [],
   /** The language of the page sign-in started from, as the signed state carries it. */
   stateLocale?: 'en-GB' | 'zh-HK',
+  /** How many times the transaction first fails as PostgreSQL's Serializable conflict (P2034). */
+  options: { serializationConflicts?: number } = {},
 ) {
+  let conflicts = options.serializationConflicts ?? 0;
   const resetTokens = users.map((user) => ({ userId: user.id, usedAt: null as Date | null }));
   const sessions: { userId: string; role: string }[] = [];
   const audits: { action: string; targetId?: string | null; metadata?: Record<string, unknown> }[] = [];
@@ -62,7 +66,10 @@ function callbackFixture(
     },
   };
   const route = loadServerModule<typeof import('./route')>('src/app/api/auth/google/callback/route.ts', {
-    '@/app/lib/prisma': { ...tx, $transaction: async (run: (client: typeof tx) => Promise<unknown>) => run(tx) },
+    '@/app/lib/prisma': { ...tx, $transaction: async (run: (client: typeof tx) => Promise<unknown>) => {
+      if (conflicts > 0) { conflicts--; throw new Prisma.PrismaClientKnownRequestError('could not serialize access', { code: 'P2034', clientVersion: 'test' }); }
+      return run(tx);
+    } },
     '@/app/lib/session': { createSession: async (userId: string, role: string) => { sessions.push({ userId, role }); } },
     '@/app/lib/audit': { appendAuditEvent: async (event: typeof audits[number]) => { audits.push(event); } },
     '@/app/lib/google-oauth': {
@@ -175,6 +182,26 @@ test('an identity already linked by Google id keeps signing in, whatever its add
   assert.equal(location.pathname, '/admin');
   assert.deepEqual(f.sessions, [{ userId: 'admin-1', role: 'ADMIN' }]);
   assert.equal(f.users[0].password, 'admin-hash');
+});
+
+// Two first sign-ins at once (a double tap on Google's consent screen) can
+// abort each other under Serializable; one retry must sign the customer in
+// rather than send them back with "Google sign-in failed" (review 2026-10-24).
+test('a first Google sign-in that hits a serialization conflict is retried and signs in', async (context) => {
+  context.mock.method(console, 'error', () => {});
+  const f = callbackFixture({ id: 'google-sub-new', email: 'mei@gmail.com', name: 'Mei' }, [], [], undefined, { serializationConflicts: 2 });
+  const location = await f.run();
+  assert.equal(location.pathname, '/appointments');
+  assert.equal(f.users.length, 1);
+  assert.deepEqual(f.sessions, [{ userId: 'user-1', role: 'USER' }]);
+});
+
+test('a conflict that never clears still ends with the sign-in error', async (context) => {
+  context.mock.method(console, 'error', () => {});
+  const f = callbackFixture({ id: 'google-sub-new', email: 'mei@gmail.com', name: 'Mei' }, [], [], undefined, { serializationConflicts: 99 });
+  const location = await f.run();
+  assert.equal(location.searchParams.get('error'), 'google_failed');
+  assert.deepEqual(f.sessions, []);
 });
 
 // The language of the page sign-in started from is the language of the mail

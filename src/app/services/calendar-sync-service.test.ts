@@ -22,7 +22,7 @@ function fakeDb(rows = [connection()]) {
   const writes = { individual: 0, batches: [] as number[], failBatch: false };
   const db = {
     calendarConnection: {
-      findMany: async ({ where }: { where: Record<string, unknown> }) => rows.filter((row) => row.inboundEnabled && row.inboundUrl && (!where.id || row.id === where.id) && (!where.stylistId || row.stylistId === where.stylistId) && (!where.provider || typeof where.provider !== 'string' || row.provider === where.provider) && isStale(row, where.OR as StalePart[] | undefined)).map((row) => ({ ...row })),
+      findMany: async ({ where }: { where: Record<string, unknown> }) => rows.filter((row) => row.inboundEnabled && row.inboundUrl && (!where.id || row.id === where.id) && (!where.stylistId || row.stylistId === where.stylistId) && (!where.provider || typeof where.provider !== 'string' || row.provider === where.provider) && isStale(row, where.OR as StalePart[] | undefined) && !(where.NOT as { id: { in: string[] } } | undefined)?.id.in.includes(row.id)).map((row) => ({ ...row })),
       updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Partial<CalendarConnection> }) => {
         predicates.push(where);
         const row = rows.find((item) => item.id === where.id);
@@ -191,6 +191,19 @@ test('approval refresh leaves another stylist\'s feed alone while it is within t
   assert.deepEqual(results.map((result) => result.connectionId), ['c1']);
   assert.equal(fetches, 1);
   assert.equal(state.rows[1].lastSuccessAt?.toISOString(), minutesAgo(10).toISOString());
+});
+
+// A failing feed keeps lastError, which the second pass also selects: without
+// this it was fetched twice in the same Confirm (review 2026-10-24).
+test('approval refresh asks a feed that just failed only once', async (t) => {
+  t.mock.method(console, 'error', () => undefined);
+  const state = fakeDb([connection('c1', 's1', 'FRESHA'), { ...connection('c2', 's2', 'FRESHA'), lastSuccessAt: minutesAgo(10) }]);
+  const fetched: string[] = [];
+  const results = await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: state.db, now, fetchFeed: async (url) => {
+    fetched.push(url); throw new Error('feed host unreachable');
+  } }));
+  assert.equal(fetched.length, 1);
+  assert.deepEqual(results.map((result) => [result.connectionId, result.ok]), [['c1', false]]);
 });
 
 test('approval refresh respects the kill-switch and never throws', async (t) => {

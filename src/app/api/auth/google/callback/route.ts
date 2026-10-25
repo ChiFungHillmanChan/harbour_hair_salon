@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/prisma';
 import { createSession } from '@/app/lib/session';
 import { appendAuditEvent } from '@/app/lib/audit';
+import { retryOnSerializationFailure } from '@/app/lib/serializable-retry';
 import {
   decideGoogleLink,
   exchangeGoogleCode,
@@ -72,7 +73,9 @@ export async function GET(request: NextRequest) {
     // the salon later sends on this customer's behalf (e.g. a booking staff enter).
     const signInLocale = state.locale ?? locale;
 
-    const user = await prisma.$transaction(async (tx) => {
+    // Two first sign-ins at once can abort each other under Serializable: the
+    // retry then finds the account the other one linked (review 2026-10-24).
+    const user = await retryOnSerializationFailure(() => prisma.$transaction(async (tx) => {
       const linkedAccount = await tx.oAuthAccount.findUnique({
         where: {
           provider_providerAccountId: {
@@ -132,7 +135,7 @@ export async function GET(request: NextRequest) {
         },
       });
       return matchedUser;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
 
     if (!user.preferredLocale) {
       // An existing account with no language saved yet (made before languages

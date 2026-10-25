@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
 import { invalidateStylistIcalFeed } from '@/app/services/stylist-ical-cache';
 import type { Prisma, User } from '@prisma/client';
-import prisma from '@/app/lib/prisma';
+import prisma, { getDatabaseProvider } from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { runSerializableWithRetry } from '@/app/services/booking-service';
 import { describeAdminMoveClashes, type MoveClash } from '@/app/services/admin-move-clashes';
@@ -27,7 +27,7 @@ import { capturedDepositPence, findApplicableConsultationCredit } from '@/app/se
 import { getActionLocale } from '@/i18n/request';
 import { isLocale, type Locale } from '@/i18n/config';
 import { revalidateAllLocales } from '@/i18n/revalidate';
-import { isPlaceholderEmail, placeholderEmailFor } from '@/app/lib/walk-in-customer';
+import { ERASED_EMAIL_DOMAIN, PLACEHOLDER_EMAIL_DOMAIN, isPlaceholderEmail, placeholderEmailFor } from '@/app/lib/walk-in-customer';
 import { isErasedEmail } from '@/app/lib/customer-erasure';
 import { resolveSalonDateTime, salonDateKey, SALON_DATE_RE, SALON_TIME_RE } from '@/app/services/salon-time';
 import { MIN_DURATION_MINUTES } from '@/app/lib/calendar-geometry';
@@ -532,7 +532,9 @@ async function resolveCustomer(
 ): Promise<{ id: string; email: string; preferredLocale: string | null }> {
   if (customer.kind === 'existing') {
     const existing = await tx.user.findUnique({ where: { id: customer.userId }, select: { id: true, email: true, role: true, preferredLocale: true } });
-    if (!existing) throw new BookingError('CUSTOMER_GONE');
+    // The search never offers an erased account, but a dialog left open while
+    // the customer was erased still holds their id (review 2026-10-25).
+    if (!existing || isErasedEmail(existing.email)) throw new BookingError('CUSTOMER_GONE');
     return fillCustomerGaps(tx, existing, { locale: chosenLocale });
   }
 
@@ -582,36 +584,41 @@ export type AdminCustomerMatch = Pick<User, 'id' | 'name' | 'email' | 'phone' | 
 /**
  * Type-ahead over the salon's customers for the booking form.
  *
- * Filtered in memory on a bounded read rather than with `contains`, because the
- * three schema providers disagree about case sensitivity — Prisma's
- * `mode: 'insensitive'` is Postgres-only and throws on the SQLite dev schema.
- * At salon scale the cap below is never reached; the client debounces and
- * requires two characters, so this stays a handful of reads per booking.
+ * Narrowed in the database, so a long-standing customer is found however many
+ * have registered since. It used to read the newest 2,000 rows and filter them
+ * in memory, which silently missed everyone older once walk-in and erased rows
+ * filled the cap (review 2026-10-24). Prisma's `mode: 'insensitive'` is
+ * Postgres-only and throws on the SQLite dev schema, whose `contains` (LIKE)
+ * already ignores ASCII case. The client debounces and requires two
+ * characters, so this stays a handful of small reads per booking.
  */
 export async function searchAdminCustomers(query: string): Promise<AdminCustomerMatch[]> {
   const unauthorised = await requireAdmin(await getActionLocale());
   if (unauthorised) return [];
 
-  const needle = query.trim().toLowerCase();
+  const needle = query.trim();
   if (needle.length < 2) return [];
+  const matches = getDatabaseProvider() === 'postgresql'
+    ? { contains: needle, mode: 'insensitive' as const }
+    : { contains: needle };
 
-  const candidates = await prisma.user.findMany({
-    where: { role: 'USER' },
-    select: { id: true, name: true, email: true, phone: true, preferredLocale: true, createdAt: true },
+  return prisma.user.findMany({
+    where: {
+      role: 'USER',
+      // An erased customer's record is history only; a returning customer is
+      // booked as someone new (actions/admin-erasure.ts).
+      NOT: { email: { endsWith: `@${ERASED_EMAIL_DOMAIN}` } },
+      OR: [
+        { name: matches },
+        { phone: matches },
+        // A walk-in's synthetic address is never what staff are typing.
+        { AND: [{ email: matches }, { NOT: { email: { endsWith: `@${PLACEHOLDER_EMAIL_DOMAIN}` } } }] },
+      ],
+    },
+    select: { id: true, name: true, email: true, phone: true, preferredLocale: true },
     orderBy: { createdAt: 'desc' },
-    take: 2000,
+    take: 8,
   });
-
-  return candidates
-    // An erased customer's record is history only; a returning customer is
-    // booked as someone new (actions/admin-erasure.ts).
-    .filter((row) => !isErasedEmail(row.email))
-    .filter((row) =>
-      [row.name, isPlaceholderEmail(row.email) ? null : row.email, row.phone]
-        .some((field) => field?.toLowerCase().includes(needle)),
-    )
-    .slice(0, 8)
-    .map(({ id, name, email, phone, preferredLocale }) => ({ id, name, email, phone, preferredLocale }));
 }
 
 function revalidateSchedule() {
