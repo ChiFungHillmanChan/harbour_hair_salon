@@ -121,3 +121,24 @@ test('outside a request (a script) the booking change still succeeds; the next c
   assert.deepEqual(h.tags, ['update:stylist-ical-feed']);
   assert.equal(logged.length, 2);
 });
+
+test('a feed request with no token is refused before any database read', async () => {
+  const lookups: string[] = [];
+  const cache = loadServerModule<typeof import('./stylist-ical-cache')>('src/app/services/stylist-ical-cache.ts', {
+    'next/cache': { unstable_cache: (callback: unknown) => callback, updateTag: () => {}, revalidateTag: () => {} },
+    'next/server': { after: () => {} },
+    './stylist-ical-feed': {
+      loadStylistToken: async (stylistId: string) => { lookups.push(stylistId); return 'right-token'; },
+      loadBusyEvents: async () => [],
+      renderIcalFeed: () => 'BEGIN:VCALENDAR',
+      tokenMatches: (supplied: string, stored: string | null) => Boolean(supplied) && supplied === stored,
+    },
+    '@/app/lib/google-calendar-config': { googleCalendarConfig: () => null },
+  });
+
+  assert.deepEqual(await cache.buildCachedStylistIcalFeed('made-up-id', ''), { status: 404 });
+  assert.deepEqual(lookups, [], 'a tokenless probe never reaches the token lookup');
+  assert.equal((await cache.buildCachedStylistIcalFeed('stylist-1', 'right-token')).status, 200, 'a real poller still gets its feed');
+  assert.deepEqual(lookups, ['stylist-1']);
+});
+

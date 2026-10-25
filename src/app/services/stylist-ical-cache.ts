@@ -94,6 +94,10 @@ export async function buildCachedStylistIcalFeed(
   token: string,
   now = new Date(),
 ): Promise<IcalFeedResult> {
+  // tokenMatches refuses an empty token anyway; refusing it first keeps a
+  // tokenless probe with a made-up stylist id (a fresh cache key each time)
+  // from waking the database (review 2026-10-25).
+  if (!token) return { status: 404 };
   const stored = await readToken(stylistId);
   if (!tokenMatches(token, stored)) return { status: 404 };
   return { status: 200, body: renderIcalFeed(await readBusyEvents(stylistId), now) };

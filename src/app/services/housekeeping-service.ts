@@ -70,9 +70,11 @@ export async function runHousekeeping(options: { db?: PrismaClient; now?: Date }
 
     await db.backgroundJobState.updateMany({ where: { name, lockToken }, data: { lastSucceededAt: now, lastError: null, lastResultJson: JSON.stringify(result) } });
     return result;
-  } catch {
+  } catch (error) {
     await db.backgroundJobState.updateMany({ where: { name, lockToken }, data: { lastFailedAt: now, lastError: 'Housekeeping failed. Check database availability and retention backlog.' } });
-    throw new Error('Housekeeping failed');
+    // The original error, so the route's log keeps its Prisma code (it logs
+    // only the name and code, never a message that could quote the host).
+    throw error;
   } finally {
     await db.backgroundJobState.updateMany({ where: { name, lockToken }, data: { lockToken: null, lockedUntil: null } });
   }

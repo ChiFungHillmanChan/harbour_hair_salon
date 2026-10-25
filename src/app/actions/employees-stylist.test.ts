@@ -79,3 +79,34 @@ test('a title of only spaces is refused before anything is made', async () => {
   assert.ok(refused.error);
   assert.deepEqual([f.made.length, f.writes.length], [0, 0]);
 });
+
+test('a PIN is hashed before the transaction opens, never while it holds a connection', async () => {
+  const order: string[] = [];
+  const tx = {
+    employee: {
+      create: async () => { order.push('write'); return { id: 'e1' }; },
+      update: async () => { order.push('write'); return { id: 'e1' }; },
+    },
+  };
+  const actions = loadServerModule<typeof import('./employees')>('src/app/actions/employees.ts', {
+    '@/app/lib/session': { verifySession: async () => ({ userId: 'admin', role: 'ADMIN' }) },
+    '@/app/lib/audited-write': { auditedWrite: async (_event: unknown, mutate: (db: typeof tx) => Promise<unknown>) => {
+      order.push('transaction');
+      try { return await mutate(tx); } finally { order.push('commit'); }
+    } },
+    '@/app/lib/prisma': {},
+    '@/app/lib/pin': { isValidPin: () => true, hashPin: async () => { order.push('hash'); return 'hash'; } },
+    '@/app/services/stylist-from-employee': {},
+    '@/i18n/request': { getActionT: async (namespace: Namespace) => translator('en-GB', namespace) },
+    'next/cache': { revalidatePath: () => undefined },
+  });
+  const data = new FormData();
+  data.set('name', 'Mei'); data.set('title', 'Assistant'); data.set('payType', 'HOURLY'); data.set('pin', '1234');
+
+  assert.deepEqual(await actions.createEmployee(data), { success: true });
+  assert.deepEqual(order, ['hash', 'transaction', 'write', 'commit']);
+  order.length = 0;
+  assert.deepEqual(await actions.setEmployeePin('e1', '4321'), { success: true });
+  assert.deepEqual(order, ['hash', 'transaction', 'write', 'commit']);
+});
+
