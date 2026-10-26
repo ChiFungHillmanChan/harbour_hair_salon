@@ -14,6 +14,6 @@ const readSyncHours = unstable_cache(async () => {
   });
 }, ['calendar-sync-hours'], { revalidate: false, tags: ['calendar-sync-hours'] });
 
-export async function isScheduledCalendarSyncOpen(now = new Date()): Promise<boolean> {
-  return isCalendarSyncWindow(await readSyncHours(), now);
+export async function isScheduledCalendarSyncOpen(now = new Date(), options: { afterCloseMs?: number } = {}): Promise<boolean> {
+  return isCalendarSyncWindow(await readSyncHours(), now, options);
 }

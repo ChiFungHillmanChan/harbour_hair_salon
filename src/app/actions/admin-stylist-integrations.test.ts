@@ -12,6 +12,7 @@ for (const legacyInput of [undefined, 'https://old-editor.example.test/calendar.
       } },
       '@/app/lib/session': { verifySession: async () => ({ role: 'ADMIN' }) },
       '@/app/stylists/slug': { slugify: () => 'stylist' },
+      '@/app/services/fresha-watch-connections': { invalidateFreshaWatchConnections: () => undefined },
       '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
       'next/cache': { revalidatePath: () => undefined },
       'next/navigation': {},
@@ -45,6 +46,7 @@ test('deleting a stylist retires their outbound feed token immediately', async (
     },
     '@/app/lib/session': { verifySession: async () => ({ role: 'ADMIN' }) },
     '@/app/stylists/slug': { slugify: () => 'gone' },
+    '@/app/services/fresha-watch-connections': { invalidateFreshaWatchConnections: () => { calls.push('fresha-watch'); } },
     '@/app/services/stylist-ical-cache': {
       invalidateStylistIcalFeed: () => undefined,
       invalidateStylistIcalToken: () => { calls.push('token'); },
@@ -55,5 +57,6 @@ test('deleting a stylist retires their outbound feed token immediately', async (
   const form = new FormData();
   form.set('id', 'stylist-1');
   await actions.deleteStylist(form);
-  assert.deepEqual(calls, ['translations', 'drafts', 'delete', 'token']);
+  // The Fresha watch's cached feed list forgets a deleted stylist at once too.
+  assert.deepEqual(calls, ['translations', 'drafts', 'delete', 'fresha-watch', 'token']);
 });

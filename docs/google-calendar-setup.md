@@ -376,3 +376,33 @@ Cloud.
   after it ends, by the pull and by housekeeping (also with the sync off). The privacy notice
   says so (`legal.privacy.retention.googleDiary`). Erasure cannot find a customer in it:
   see `docs/data-erasure.md`.
+
+## 9. The Fresha mirror calendar (Fresha → Google, optional)
+
+So staff can see Fresha's bookings and blocked time in Google Calendar while they get used to
+the website, the Fresha watch (`/api/cron/fresha-watch`) copies each stylist's Fresha busy
+times into a **separate** calendar within 5 minutes of the change (opening hours only). Titles are
+"<stylist> · Fresha booking" or "<stylist> · Fresha blocked time" (Fresha's export never
+carries a customer's details), in the stylist's Google colour. Spec:
+`docs/superpowers/specs/2026-10-26-fresha-watch-and-google-mirror-design.md`.
+
+1. Signed in as **harbourhairuk@gmail.com**, Google Calendar → Other calendars → **+** →
+   Create new calendar, e.g. **"Fresha（自動同步）"**.
+2. Its Settings and sharing → Share with specific people → the service account
+   (`harbour-website-calendar@harbourhair-511821.iam.gserviceaccount.com`) with
+   **Make changes to events** (變更活動). Staff who should see it get **See all event details**.
+3. Settings → Integrate calendar → copy the **Calendar ID** (`…@group.calendar.google.com`).
+4. Vercel → Production only: `GOOGLE_FRESHA_MIRROR_CALENDAR_ID` = that id, and
+   `FRESHA_WATCH_ENABLED` = `true` (the watch itself). Redeploy (merge to `main`).
+5. Check: the next Fresha change shows in the new calendar within 5–10 minutes; Vercel logs
+   show `/api/cron/fresha-watch` answering 200 with `"mirrored"` above 0 after a change.
+
+- **Never use HarbourHair (`GOOGLE_CALENDAR_ID`) for this.** The website reads HarbourHair back:
+  the copies would become GOOGLE busy time and go back to Fresha. The code refuses that id.
+- **Read-only copies.** Change bookings in Fresha; a copy edited or deleted in Google is written
+  back at the next change of that stylist's Fresha feed. Past copies are left as they were.
+- **Stop copying Fresha bookings into HarbourHair by hand** once this runs: a hand-made copy in
+  red (no stylist) takes a walk-in chair on top of the Fresha block (the diary chair rule).
+- Turning it off: delete `GOOGLE_FRESHA_MIRROR_CALENDAR_ID` (the watch keeps importing) or set
+  `FRESHA_WATCH_ENABLED` to anything but `true` (both stop; the half-hourly import goes on).
+  The copies already made stay in the calendar until someone hides or deletes it.

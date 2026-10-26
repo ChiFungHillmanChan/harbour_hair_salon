@@ -48,18 +48,37 @@ test('the cron interval helper reads ranges, steps and lists correctly', () => {
   ] as const) assert.equal(smallestGap(fireTimes(schedule)), gap, schedule);
 });
 
+/**
+ * The one exception (owner decision 2026-10-26): the Fresha watch runs every
+ * 5 minutes in staff hours but never wakes the database for an unchanged feed —
+ * its kill-switches, cached hours, Redis state and cached feed list all come
+ * first (api/cron/fresha-watch/route.test.ts locks that), and only a feed that
+ * changed is imported. Nothing else may join this list without the same proof.
+ */
+const DATABASE_FREE_TICKS = new Set(['/api/cron/fresha-watch']);
+
 test('no scheduled job runs more often than every 30 minutes', async () => {
   for (const cron of (await vercelConfig()).crons) {
+    if (DATABASE_FREE_TICKS.has(cron.path)) continue;
     const gap = smallestGap(fireTimes(cron.schedule));
     assert.ok(gap >= 30, `${cron.path} runs every ${gap} minutes.`);
   }
 });
 
+test('the 5-minute Fresha watch is limited to daytime UTC hours', async () => {
+  const job = (await vercelConfig()).crons.find((cron) => cron.path === '/api/cron/fresha-watch');
+  assert.ok(job, 'the exception list names a job that is no longer scheduled: remove it');
+  const range = /^(\d+)-(\d+)$/.exec(job.schedule.split(' ')[1]);
+  assert.ok(range, `Expected an hour range, got "${job.schedule}"`);
+  assert.ok(Number(range[2]) - Number(range[1]) + 1 <= 12, 'the Fresha watch should run at most 12 hours a day');
+});
+
 test('the repeating jobs share their wakes instead of interleaving', async () => {
   // calendar-sync and notifications must land in the SAME minutes (:00/:30):
   // staggered at :15/:45 each would still pass the per-job rule above while
-  // waking the database every 15 minutes. Once-a-day jobs are left out.
-  const repeating = (await vercelConfig()).crons.filter((cron) => fireTimes(cron.schedule).length > 1);
+  // waking the database every 15 minutes. Once-a-day jobs are left out, and
+  // so is the database-free watch above.
+  const repeating = (await vercelConfig()).crons.filter((cron) => fireTimes(cron.schedule).length > 1 && !DATABASE_FREE_TICKS.has(cron.path));
   const gap = smallestGap(repeating.flatMap((cron) => fireTimes(cron.schedule)));
   assert.ok(gap >= 30, `together the repeating jobs wake the database every ${gap} minutes`);
 });

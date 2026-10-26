@@ -263,6 +263,12 @@ const emails: Localized<Messages['emails']> = {
     editWarning: '請在後台修改此預約。在此處所作的更改會被還原。',
     nameNotGiven: '未提供姓名',
   },
+  freshaMirror: {
+    booking: 'Fresha 預約',
+    blocked: 'Fresha 封鎖時間',
+    busy: 'Fresha 忙碌',
+    description: '由網站從 Fresha 複製。請在 Fresha 修改：在此處所作的更改會被還原。',
+  },
   marketingUnsubscribe: {
     subject: '確認取消訂閱 — Harbour Hair Salon',
     preview: '按一下即可停止接收 Harbour Hair Salon 推廣電郵',

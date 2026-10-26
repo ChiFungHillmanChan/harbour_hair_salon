@@ -20,6 +20,7 @@ function load(holders: Holder[] = [], settings: { googleUnassignedColorId: strin
     },
     '@/app/lib/session': { verifySession: async () => ({ role: 'ADMIN' }) },
     '@/app/stylists/slug': { slugify: () => 'lox' },
+    '@/app/services/fresha-watch-connections': { invalidateFreshaWatchConnections: () => undefined },
     '@/app/services/stylist-ical-cache': { invalidateStylistIcalFeed: () => undefined, invalidateStylistIcalToken: () => undefined },
     '@/i18n/request': { getActionT: async (namespace: Namespace) => translator('en-GB', namespace), localizedPath: async (path: string) => path },
     'next/cache': { revalidatePath: () => undefined },

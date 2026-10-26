@@ -10,6 +10,7 @@ import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { slugify } from '@/app/stylists/slug';
 import { invalidateStylistIcalToken } from '@/app/services/stylist-ical-cache';
+import { invalidateFreshaWatchConnections } from '@/app/services/fresha-watch-connections';
 import { getActionT, localizedPath } from '@/i18n/request';
 import type { MessageParams } from '@/i18n/format';
 import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
@@ -230,6 +231,8 @@ export async function updateStylist(
     },
   });
 
+  // The Google mirror titles and colours its copies with the stylist's name and Google colour.
+  invalidateFreshaWatchConnections();
   refreshStylistPages(existing.slug, slug);
   return { status: 'success' };
 }
@@ -274,6 +277,7 @@ export async function deleteStylist(formData: FormData): Promise<void> {
     await tx.stylist.delete({ where: { id }, select: { id: true } });
   });
   updateTag('calendar-sync-hours');
+  invalidateFreshaWatchConnections();
   // The token cache has no short timer, so a deleted stylist's feed URL would
   // otherwise keep answering until the week-long safety net expired.
   invalidateStylistIcalToken();
