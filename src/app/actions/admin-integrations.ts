@@ -12,6 +12,7 @@ import { verifySession } from '@/app/lib/session';
 import { syncCalendarFeeds } from '@/app/services/calendar-sync-service';
 import { CALENDAR_PROVIDERS } from '@/app/services/treatwell-sync-coverage';
 import { saveCalendarConnectionSettings } from '@/app/services/calendar-connection-settings';
+import { invalidateFreshaWatchConnections } from '@/app/services/fresha-watch-connections';
 import { localizedPath } from '@/i18n/request';
 
 async function requireAdmin() {
@@ -30,6 +31,8 @@ export async function saveCalendarConnectionAction(formData: FormData): Promise<
   const result = await saveCalendarConnectionSettings(formData, prisma, session.userId);
   // A code, not text: the page words it in the admin's language.
   if (!result.ok) redirect(await localizedPath(`/admin/integrations?calendarError=${result.code ?? 'INVALID_INPUT'}`));
+  // The Fresha watch reads its feed list from the Data Cache (a new or changed import link).
+  invalidateFreshaWatchConnections();
   refreshIntegrations();
   redirect(await localizedPath('/admin/integrations?calendar=saved'));
 }

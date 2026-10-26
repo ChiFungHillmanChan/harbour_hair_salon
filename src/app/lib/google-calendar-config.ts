@@ -29,3 +29,17 @@ export function googleCalendarConfig(env: NodeJS.ProcessEnv = process.env): Goog
   if (!calendarId || !clientEmail || !privateKey || !webhookSecret) return null;
   return { calendarId, clientEmail, privateKey, webhookSecret };
 }
+
+/**
+ * The Fresha mirror's configuration (services/fresha-mirror.ts): the same
+ * service account, writing to a SEPARATE calendar, GOOGLE_FRESHA_MIRROR_CALENDAR_ID,
+ * that the salon shares with it. Null when the Google sync is off, the id is
+ * unset, or it names the salon calendar itself: the pull reads that one, so it
+ * would import the copies as the salon's own busy time and send them back to Fresha.
+ */
+export function freshaMirrorCalendarConfig(env: NodeJS.ProcessEnv = process.env): GoogleCalendarConfig | null {
+  const base = googleCalendarConfig(env);
+  const calendarId = present(env.GOOGLE_FRESHA_MIRROR_CALENDAR_ID?.trim());
+  if (!base || !calendarId || calendarId.toLowerCase() === base.calendarId.toLowerCase()) return null;
+  return { ...base, calendarId };
+}

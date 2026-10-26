@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { googleCalendarConfig } from './google-calendar-config';
+import { freshaMirrorCalendarConfig, googleCalendarConfig } from './google-calendar-config';
 
 const KEY = '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----';
 const VARIABLES = [
@@ -78,4 +78,25 @@ test('reads process.env by default, at call time', () => {
     for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
     Object.assign(process.env, saved);
   }
+});
+
+test('the Fresha mirror writes to its own calendar with the same service account', () => {
+  const config = freshaMirrorCalendarConfig(environment({ GOOGLE_FRESHA_MIRROR_CALENDAR_ID: ' fresha@group.calendar.google.com ' }));
+  assert.equal(config?.calendarId, 'fresha@group.calendar.google.com');
+  assert.equal(config?.clientEmail, 'sync@harbour.iam.gserviceaccount.com');
+});
+
+test('the Fresha mirror is off without its calendar, without the Google sync, or on a preview', () => {
+  assert.equal(freshaMirrorCalendarConfig(environment()), null);
+  for (const value of ['', '  ', '[SENSITIVE]']) {
+    assert.equal(freshaMirrorCalendarConfig(environment({ GOOGLE_FRESHA_MIRROR_CALENDAR_ID: value })), null, JSON.stringify(value));
+  }
+  const mirror = { GOOGLE_FRESHA_MIRROR_CALENDAR_ID: 'fresha@group.calendar.google.com' };
+  assert.equal(freshaMirrorCalendarConfig(environment({ ...mirror, GOOGLE_CALENDAR_SYNC_ENABLED: 'false' })), null);
+  assert.equal(freshaMirrorCalendarConfig(environment({ ...mirror, GOOGLE_CALENDAR_SA_PRIVATE_KEY: undefined })), null);
+  assert.equal(freshaMirrorCalendarConfig(environment({ ...mirror, VERCEL_ENV: 'preview' })), null);
+});
+
+test('the Fresha mirror refuses the salon calendar itself (its pull would send the copies back to Fresha)', () => {
+  assert.equal(freshaMirrorCalendarConfig(environment({ GOOGLE_FRESHA_MIRROR_CALENDAR_ID: 'ABC123@group.calendar.google.com' })), null);
 });

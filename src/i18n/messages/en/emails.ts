@@ -277,6 +277,13 @@ const emails = {
     editWarning: 'Change this booking in Admin. Changes made here are undone.',
     nameNotGiven: 'Name not given',
   },
+  /** Titles of the website's copy of Fresha busy time in the separate Google calendar (services/fresha-mirror.ts). */
+  freshaMirror: {
+    booking: 'Fresha booking',
+    blocked: 'Fresha blocked time',
+    busy: 'Fresha busy',
+    description: 'Copied from Fresha by the website. Change it in Fresha: changes made here are undone.',
+  },
   marketingUnsubscribe: {
     subject: 'Confirm you want to unsubscribe — Harbour Hair Salon',
     preview: 'One click to stop Harbour Hair Salon marketing emails',

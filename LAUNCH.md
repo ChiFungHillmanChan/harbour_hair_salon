@@ -317,6 +317,11 @@ Square and payment records.
 
 ## 6. Deferred — not blocking launch
 
+- [ ] **Fresha watch + Google mirror** (built 2026-10-26, ships OFF): create the separate
+      "Fresha（自動同步）" Google calendar and share it with the service account, then set
+      `GOOGLE_FRESHA_MIRROR_CALENDAR_ID` and `FRESHA_WATCH_ENABLED=true` on Vercel Production and
+      redeploy (`docs/google-calendar-setup.md` §9). Then staff stop hand-copying Fresha bookings
+      into HarbourHair, and someone watches Neon's operations log for a week (`docs/agents/neon-budget.md`).
 - [ ] Per-stylist booking gate (today one stale feed closes booking and approvals for everyone).
 - [ ] Live Fresha check at submit (`docs/superpowers/specs/2026-09-29-booking-slot-hold-and-live-sync-design.md`).
 - [ ] Website-first CTAs, `ReserveAction` JSON-LD and the Google Business Profile booking link once

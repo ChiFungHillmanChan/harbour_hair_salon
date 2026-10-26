@@ -16,7 +16,10 @@ export type CalendarSyncResult = {
 export type CalendarSyncDependencies = {
   db?: PrismaClient;
   now?: Date;
-  /** Trusted test seam; production always uses pinned HTTPS transport. */
+  /**
+   * Trusted seam: tests, and the Fresha watch, which hands over the text it
+   * has just fetched with the same pinned HTTPS transport.
+   */
   fetchFeed?: (url: string) => Promise<string>;
   connectionId?: string;
   /** Only this stylist's connections. */

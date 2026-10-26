@@ -23,6 +23,22 @@ Rules that follow from this:
   local in either season. Short `*/10` runs can allow suspension, but consume
   roughly 90 CU-hours per 30-day month at 0.25 CU with a five-minute idle tail;
   aligned `*/30` runs start around 30 CU-hours before execution time and traffic.
+- **The one minute-by-minute cron, the Fresha watch** (`/api/cron/fresha-watch`, `* 8-19` UTC,
+  owner decision 2026-10-26), is allowed only because an unchanged minute never reaches Neon:
+  auth, both kill-switches (`CALENDAR_SYNC_ENABLED`, `FRESHA_WATCH_ENABLED`), the cached staff
+  hours, the Upstash state and the Data-Cache feed list all come before any query, and it only
+  imports a Fresha feed whose fingerprint changed (once per change, failed or not; the
+  half-hourly import is the retry). Without Redis it does nothing rather than import every
+  minute. **Hard ceiling:** at most `MAX_IMPORT_TICKS_PER_HOUR` (4) ticks an hour may import
+  (`services/fresha-watch.ts`), so a feed that started changing on every request (a new
+  volatile field besides `DTSTAMP`) cannot pin the compute; changes over it wait for the next
+  allowed tick or the half-hourly import, and the log says `hourly import budget spent`. Expected cost: about 5–15 CU-hours a month on top of the October 2026 pace (each
+  Fresha change that does not land inside an existing wake costs one five-minute tail),
+  ~22,000 Upstash commands and ~22,000 Vercel invocations. `fresha-watch/route.test.ts` locks
+  the order; `neon-compute-budget.test.ts` names it as the only exception to the 30-minute rule.
+  Watch Neon's operations log for a week after turning it on. Its feed-list cache
+  (`fresha-watch-connections`) expires daily (one wake a day at most) and is dropped by
+  Admin → Integrations saves and stylist edits; a direct SQL edit of a connection is seen the next day.
 - **Put cost kill-switches above the first DB call**, never below. Entering a
   function that opens with a query already wakes the compute, so an early return
   that sits after the query has bought nothing. `treatwell-sync/route.ts` has a

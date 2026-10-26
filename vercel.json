@@ -19,6 +19,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/fresha-watch",
+      "schedule": "* 8-19 * * *"
+    },
+    {
       "path": "/api/cron/housekeeping",
       "schedule": "15 3 * * *"
     }
