@@ -35,7 +35,7 @@ Guidance for Claude Code in this repository. This file is the short core. The de
 | Payments | **Square** (Web Payments SDK + REST + webhook) | The salon's own account; production keys on Vercel Production only, sandbox on Preview only. Runbook: `docs/square-payments-setup.md` | 1.4% + 25p per UK card (the account's rate, checked 2026-10-25); no monthly fee |
 | Google | Google Cloud project `harbourhair` (`harbourhair-511821`) | The OAuth client for Google sign-in, plus a service account for Calendar sync. Runbook: `docs/google-calendar-setup.md` | Free |
 | DNS | IONOS | `www.harbourhair.co.uk` is canonical; DMARC is live | Domain renewal yearly |
-| Crons | Vercel crons (UTC) | reminders `0 8`, notifications `*/30 8-19`, calendar-sync `*/30` (staff hours only), fresha-watch `* 8-19` (staff hours only; off until `FRESHA_WATCH_ENABLED=true`), housekeeping `15 3` | Read `docs/agents/neon-budget.md` before adding one |
+| Crons | Vercel crons (UTC) | reminders `0 8`, notifications `*/30 8-19`, calendar-sync `*/30` (staff hours only), fresha-watch `*/5 8-19` (15 minutes before opening until closing; off until `FRESHA_WATCH_ENABLED=true`), housekeeping `15 3` | Read `docs/agents/neon-budget.md` before adding one |
 
 **Running cost:** about US$20/month now, about US$25–30/month once public booking opens (Vercel Pro plus Neon Launch; Resend Pro would add US$20), plus Square's per-payment fees. Also set a Vercel spend alert of US$10 (**alerts only**: pausing would take production offline). Environment variables: `docs/agents/environment.md`.
 
@@ -116,7 +116,7 @@ git push origin main  # (or merge a PR) → .github/workflows/deploy.yml tests, 
 
 Each rule has its full story in the linked file.
 
-- **Neon wakes cost money, not queries.** New crons run every 30 minutes or less often, in business hours where possible. The one exception is the minute-by-minute Fresha watch, which never reaches the database unless a Fresha feed changed (owner decision 2026-10-26); nothing joins it without the same proof. Kill-switches go **above** the first database call. Public pages stay on ISR or the Data Cache. Anything external that polls a route counts as a cron you do not control. → `neon-budget.md`
+- **Neon wakes cost money, not queries.** New crons run every 30 minutes or less often, in business hours where possible. The one exception is the 5-minute Fresha watch, which never reaches the database unless a Fresha feed changed (owner decision 2026-10-26); nothing joins it without the same proof. Kill-switches go **above** the first database call. Public pages stay on ISR or the Data Cache. Anything external that polls a route counts as a cron you do not control. → `neon-budget.md`
 - **Never return a fallback from inside `unstable_cache`.** It caches the fallback. Let the read throw and fall back outside the cache. → `neon-budget.md`
 - **Every Server Action is a public endpoint.** Admin actions call `requireAdmin` / `verifySession` + a role check before any read; customer actions check ownership. `getSession()` checks only the signature: never show or answer from it without `isSessionCurrent`. → `security.md`
 - **Money safety.** Square is never called inside a database transaction. Deposit amounts come from the server, never the browser. Outside a production build, only sandbox credentials work. Production booking stays locked without Square production credentials. A refund claims its row before Square is called. → `booking-and-payments.md`

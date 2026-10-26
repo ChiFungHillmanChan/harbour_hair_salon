@@ -15,6 +15,14 @@ test('same London hours follow winter time, irrespective of the server timezone'
   assert.equal(isCalendarSyncWindow(hours, new Date('2026-10-26T19:15:45Z')), true);
   assert.equal(isCalendarSyncWindow(hours, new Date('2026-10-26T19:16:00Z')), false);
 });
+test('a window may end at closing time instead (the Fresha watch, owner decision 2026-10-26)', () => {
+  // 10:00-19:00 London in winter: 09:45 to 19:00 exactly, the closing minute included.
+  const atClose = { afterCloseMs: 0 };
+  assert.equal(isCalendarSyncWindow(hours, new Date('2026-10-26T09:45:00Z'), atClose), true);
+  assert.equal(isCalendarSyncWindow(hours, new Date('2026-10-26T19:00:30Z'), atClose), true);
+  assert.equal(isCalendarSyncWindow(hours, new Date('2026-10-26T19:01:00Z'), atClose), false);
+  assert.equal(isCalendarSyncWindow(hours, new Date('2026-10-26T19:01:00Z')), true, 'the default keeps its 15 minutes');
+});
 test('closed days, empty schedules, malformed rows and off-duty rows never open a window', () => {
   const now = new Date('2026-09-21T11:00:00Z');
   assert.equal(isCalendarSyncWindow([], now), false);

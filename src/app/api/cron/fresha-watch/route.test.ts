@@ -36,7 +36,13 @@ function loadRoute(options: { open?: boolean; store?: boolean; state?: FreshaWat
   const writes: FreshaWatchState[] = [];
   const route = loadServerModule<{ GET: (request: NextRequest) => Promise<Response> }>('src/app/api/cron/fresha-watch/route.ts', {
     '@/app/lib/prisma': new Proxy({}, { get: () => { throw new Error('the watch route must not reach the database itself'); } }),
-    '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => { used.push('hours'); return options.open ?? true; } },
+    '@/app/services/calendar-sync-schedule': {
+      isScheduledCalendarSyncOpen: async (_now: Date, window: { afterCloseMs?: number }) => {
+        assert.equal(window?.afterCloseMs, 0, 'the watch stops at closing time');
+        used.push('hours');
+        return options.open ?? true;
+      },
+    },
     '@/app/services/fresha-watch-state': {
       freshaWatchStore: () => {
         used.push('store');
@@ -76,7 +82,7 @@ test('rejects an unauthenticated request before anything else', async () => {
   assert.deepEqual(used, []);
 });
 
-// The load-bearing tests: this route is scheduled every minute. With either
+// The load-bearing tests: this route is scheduled every 5 minutes. With either
 // switch off it must not even look at the cached hours (a cache miss reads the database).
 test('either kill-switch off: nothing runs', async () => {
   for (const vars of [{ FRESHA_WATCH_ENABLED: undefined }, { FRESHA_WATCH_ENABLED: 'TRUE' }, { CALENDAR_SYNC_ENABLED: 'false' }]) {
@@ -96,7 +102,7 @@ test('outside staff hours: no state, no feed list, no Fresha request', async () 
   assert.deepEqual(used, ['hours']);
 });
 
-test('without Redis the watch does nothing (it would otherwise import every minute)', async () => {
+test('without Redis the watch does nothing (it would otherwise import on every tick)', async () => {
   const { route, used } = loadRoute({ store: false });
   await withEnv(ON, async () => {
     assert.equal((await (await route.GET(authedRequest())).json()).skipped, 'no-state');

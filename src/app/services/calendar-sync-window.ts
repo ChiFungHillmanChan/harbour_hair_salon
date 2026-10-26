@@ -8,8 +8,13 @@ export type SyncHours = Pick<Availability, 'dayOfWeek' | 'startTime' | 'endTime'
 export const CALENDAR_POLL_MINUTES = 30;
 const BUFFER_MS = 15 * 60_000;
 
-/** London opening hours at cron-minute precision, including adjacent-date buffers. */
-export function isCalendarSyncWindow(hours: readonly SyncHours[], now = new Date()): boolean {
+/**
+ * London opening hours at cron-minute precision, including adjacent-date
+ * buffers: 15 minutes before the first start and, unless `afterCloseMs` says
+ * otherwise, 15 minutes after the last end.
+ */
+export function isCalendarSyncWindow(hours: readonly SyncHours[], now = new Date(), options: { afterCloseMs?: number } = {}): boolean {
+  const afterClose = options.afterCloseMs ?? BUFFER_MS;
   // Vercel starts within the scheduled minute, not necessarily at second zero.
   // Keep the final buffered tick eligible without admitting the following minute.
   const currentMinute = Math.floor(now.getTime() / 60_000) * 60_000;
@@ -22,7 +27,7 @@ export function isCalendarSyncWindow(hours: readonly SyncHours[], now = new Date
       if (row.isOff || row.dayOfWeek !== day.getUTCDay() ||
           !isValidSalonTime(row.startTime) || !isValidSalonTime(row.endTime) || row.startTime >= row.endTime) continue;
       const start = resolveSalonDateTime(date, row.startTime).utc.getTime() - BUFFER_MS;
-      const end = resolveSalonDateTime(date, row.endTime).utc.getTime() + BUFFER_MS;
+      const end = resolveSalonDateTime(date, row.endTime).utc.getTime() + afterClose;
       if (currentMinute >= start && currentMinute <= end) return true;
     }
   }

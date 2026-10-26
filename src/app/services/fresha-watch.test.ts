@@ -77,7 +77,7 @@ test('first run: every feed is imported once and remembered', async () => {
   assert.equal(calls.writes[0].feeds['conn-0'].imported, seen(feed('1')));
 });
 
-test('an unchanged minute imports nothing and writes no state (no database wake)', async () => {
+test('an unchanged tick imports nothing and writes no state (no database wake)', async () => {
   const fingerprint = seen(feed('1'));
   const { deps, calls } = setup({
     state: { feeds: { 'conn-0': { imported: fingerprint }, 'conn-1': { imported: fingerprint } }, importTicks: [] },
@@ -130,7 +130,7 @@ test('a failed import is remembered anyway: each attempt wakes Neon, and the hal
   }
 });
 
-test('an import that found the lease taken is tried again next minute', async () => {
+test('an import that found the lease taken is tried again next tick', async () => {
   const { deps, calls } = setup({ importResult: () => ({ ok: true, skipped: 'locked' }) });
   await runFreshaWatch(deps);
   assert.equal(calls.writes[0].feeds['conn-0'].imported, undefined);
@@ -160,7 +160,7 @@ test('a mirror behind the import catches up without importing again', async () =
   assert.deepEqual(calls.google, ['insert Stylist 0 · Fresha booking']);
 });
 
-test('a Google hiccup is retried next minute; a refusal only after MIRROR_RETRY_MS', async () => {
+test('a Google hiccup is retried next tick; a refusal only after MIRROR_RETRY_MS', async () => {
   const hiccup = setup({ mirror: true, googleError: new GoogleCalendarError('retryable', 503) });
   await runFreshaWatch(hiccup.deps);
   assert.equal(hiccup.calls.writes[0].feeds['conn-0'].mirrored, undefined);
@@ -194,7 +194,7 @@ test('one tick that imports spends one unit of the hourly budget, however many f
   assert.deepEqual(calls.writes[0].importTicks, [NOW - 10 * 60_000, NOW]);
 });
 
-test('a feed that changes every minute cannot pin Neon: past the hourly budget nothing is imported', async () => {
+test('a feed that changes on every tick cannot pin Neon: past the hourly budget nothing is imported', async () => {
   const spent = Array.from({ length: MAX_IMPORT_TICKS_PER_HOUR }, (_, index) => NOW - (index + 1) * 60_000);
   const { deps, calls } = setup({ mirror: true, state: { feeds: {}, importTicks: spent } });
   const result = await runFreshaWatch(deps);

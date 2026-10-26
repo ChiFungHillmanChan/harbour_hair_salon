@@ -381,7 +381,7 @@ Cloud.
 
 So staff can see Fresha's bookings and blocked time in Google Calendar while they get used to
 the website, the Fresha watch (`/api/cron/fresha-watch`) copies each stylist's Fresha busy
-times into a **separate** calendar within about a minute of the change. Titles are
+times into a **separate** calendar within 5 minutes of the change (opening hours only). Titles are
 "<stylist> · Fresha booking" or "<stylist> · Fresha blocked time" (Fresha's export never
 carries a customer's details), in the stylist's Google colour. Spec:
 `docs/superpowers/specs/2026-10-26-fresha-watch-and-google-mirror-design.md`.
@@ -394,7 +394,7 @@ carries a customer's details), in the stylist's Google colour. Spec:
 3. Settings → Integrate calendar → copy the **Calendar ID** (`…@group.calendar.google.com`).
 4. Vercel → Production only: `GOOGLE_FRESHA_MIRROR_CALENDAR_ID` = that id, and
    `FRESHA_WATCH_ENABLED` = `true` (the watch itself). Redeploy (merge to `main`).
-5. Check: the next Fresha change shows in the new calendar within a minute or two; Vercel logs
+5. Check: the next Fresha change shows in the new calendar within 5–10 minutes; Vercel logs
    show `/api/cron/fresha-watch` answering 200 with `"mirrored"` above 0 after a change.
 
 - **Never use HarbourHair (`GOOGLE_CALENDAR_ID`) for this.** The website reads HarbourHair back:

@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { resolveRedisCredentials } from '@/app/lib/redis-credentials';
 import type { FreshaWatchState, FreshaWatchStore } from './fresha-watch';
 
-// The watch's memory lives in Upstash, not Neon: reading it every minute must
-// not wake the database. One key, so a tick is one read (and one write only
-// when something changed): about 22,000 commands a month in staff hours.
+// The watch's memory lives in Upstash, not Neon: reading it every 5 minutes
+// must not wake the database. One key, so a tick is one read (and one write
+// only when something changed): about 4,000 commands a month in staff hours.
 const KEY = 'fresha-watch:v1';
 /** A lost key only means one extra import of each feed; a week keeps it across a quiet spell. */
 const TTL_SECONDS = 7 * 24 * 60 * 60;

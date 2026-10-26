@@ -50,7 +50,7 @@ test('the cron interval helper reads ranges, steps and lists correctly', () => {
 
 /**
  * The one exception (owner decision 2026-10-26): the Fresha watch runs every
- * minute in staff hours but never wakes the database for an unchanged feed —
+ * 5 minutes in staff hours but never wakes the database for an unchanged feed —
  * its kill-switches, cached hours, Redis state and cached feed list all come
  * first (api/cron/fresha-watch/route.test.ts locks that), and only a feed that
  * changed is imported. Nothing else may join this list without the same proof.
@@ -65,7 +65,7 @@ test('no scheduled job runs more often than every 30 minutes', async () => {
   }
 });
 
-test('the minute-by-minute Fresha watch is limited to daytime UTC hours', async () => {
+test('the 5-minute Fresha watch is limited to daytime UTC hours', async () => {
   const job = (await vercelConfig()).crons.find((cron) => cron.path === '/api/cron/fresha-watch');
   assert.ok(job, 'the exception list names a job that is no longer scheduled: remove it');
   const range = /^(\d+)-(\d+)$/.exec(job.schedule.split(' ')[1]);

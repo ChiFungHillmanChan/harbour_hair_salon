@@ -6,8 +6,8 @@ import type { FreshaWatchSnapshot } from './fresha-watch';
 const TAG = 'fresha-watch-connections';
 
 /**
- * The Fresha feeds the minute-by-minute watch reads, from the Data Cache: the
- * watch runs 60 times an hour and must not wake Neon to learn its own list.
+ * The Fresha feeds the watch reads, from the Data Cache: the watch runs 12
+ * times an hour and must not wake Neon to learn its own list.
  * Admin → Integrations (save) and stylist edits and deletion drop the tag.
  * The day-long timer is only so that a direct SQL edit still heals: at most
  * one wake a day (docs/agents/neon-budget.md). Never return a fallback from

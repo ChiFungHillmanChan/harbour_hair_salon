@@ -1,7 +1,7 @@
 // The Fresha watch (docs/superpowers/specs/2026-10-26-fresha-watch-and-google-mirror-design.md):
-// every minute in staff hours, read each stylist's Fresha export and compare
+// every 5 minutes in staff hours, read each stylist's Fresha export and compare
 // it with the last one seen. Only a feed that CHANGED is imported (one Neon
-// wake) and copied to the Google mirror; an unchanged minute costs the Fresha
+// wake) and copied to the Google mirror; an unchanged tick costs the Fresha
 // requests and one Redis read, never the database. The half-hourly
 // calendar-sync import stays as it was: it keeps every feed's lastSuccessAt
 // fresh for the booking gate whether or not this watch runs.
@@ -44,8 +44,8 @@ export type FreshaWatchResult = {
   deferred: number;
 };
 
-/** A feed that cannot be fetched is left alone for this long: Fresha is never asked every minute while it fails. */
-export const FEED_RETRY_MS = 5 * 60_000;
+/** A feed that cannot be fetched is left alone for this long (three ticks): Fresha is not asked on every tick while it fails. */
+export const FEED_RETRY_MS = 15 * 60_000;
 /** A mirror Google refuses (calendar not shared, wrong id) is tried again after this long. */
 export const MIRROR_RETRY_MS = 30 * 60_000;
 /**
@@ -53,7 +53,7 @@ export const MIRROR_RETRY_MS = 30 * 60_000;
  * import (each is one Neon wake, however many feeds it imports). Real Fresha
  * changes come a few an hour and rarely reach it. It is there for the day the
  * export gains another field that changes on every request: without it, every
- * minute would look like a change and pin Neon awake, the August 2026 failure.
+ * tick would look like a change and pin Neon awake, the August 2026 failure.
  */
 export const MAX_IMPORT_TICKS_PER_HOUR = 4;
 const HOUR_MS = 60 * 60_000;
@@ -61,7 +61,7 @@ const HOUR_MS = 60 * 60_000;
 /**
  * The feed's identity for change detection. Fresha renders the export afresh
  * on every request and stamps each event's DTSTAMP with the request time
- * (measured 2026-10-26), so DTSTAMP is left out or every minute would look
+ * (measured 2026-10-26), so DTSTAMP is left out or every tick would look
  * like a change. Folded lines are unfolded first and line endings ignored.
  */
 export function feedFingerprint(text: string): string {
@@ -123,7 +123,7 @@ export async function runFreshaWatch(deps: FreshaWatchDependencies): Promise<Fre
       importedThisTick = true;
       try {
         const imported = await deps.importFeed(connection.id, { url: connection.inboundUrl, text });
-        // Another import holds the lease (the half-hourly one): try again next minute.
+        // Another import holds the lease (the half-hourly one): try again next tick.
         if (!imported.some((run) => run.skipped)) { entry.imported = fingerprint; dirty = true; }
         result.imported += imported.filter((run) => run.ok && !run.skipped).length;
         result.failed += imported.filter((run) => !run.ok).length;
@@ -153,13 +153,13 @@ export async function runFreshaWatch(deps: FreshaWatchDependencies): Promise<Fre
         gateway: deps.mirror, connection: { id: connection.id, stylistName: connection.stylistName, googleColorId: connection.googleColorId },
         intervals, locale: snapshot.locale, now, windowEnd, deadline: deps.deadline, clock,
       });
-      // Cut off by the deadline: the rest is written next minute (the ids are stable).
+      // Cut off by the deadline: the rest is written next tick (the ids are stable).
       if (mirrored.complete) { entry.mirrored = fingerprint; delete entry.mirrorRetryAt; dirty = true; }
       result.mirrored += 1;
     } catch (error) {
       const kind = error instanceof GoogleCalendarError ? error.kind : 'unknown';
       console.error('Fresha watch: Google mirror failed:', { connectionId: connection.id, kind });
-      // A Google hiccup is retried next minute; a refusal (the calendar not shared) only every half hour.
+      // A Google hiccup is retried next tick; a refusal (the calendar not shared) only every half hour.
       if (kind !== 'retryable') { entry.mirrorRetryAt = clock() + MIRROR_RETRY_MS; dirty = true; }
       result.failed += 1;
     }

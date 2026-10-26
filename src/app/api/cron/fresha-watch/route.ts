@@ -10,11 +10,13 @@ import { readFreshaWatchSnapshot } from '@/app/services/fresha-watch-connections
 import { freshaWatchStore } from '@/app/services/fresha-watch-state';
 import { createGoogleCalendarGateway } from '@/app/services/google-calendar-gateway';
 
-// Every minute in staff hours (owner decision 2026-10-26: Fresha bookings
-// reach the website and the Google mirror within about a minute). This route
-// never touches the database by itself: the kill-switches, the cached staff
-// hours, the Redis state and the cached feed list all come first, and only a
-// feed that changed is imported. docs/agents/neon-budget.md has the budget.
+// Every 5 minutes from 15 minutes before the first stylist starts until the
+// last one finishes (owner decision 2026-10-26: Fresha bookings reach the
+// website and the Google mirror within 5 minutes; nothing runs at night, when
+// staff approvals refresh Fresha themselves). This route never touches the
+// database by itself: the kill-switches, the cached staff hours, the Redis
+// state and the cached feed list all come first, and only a feed that changed
+// is imported. docs/agents/neon-budget.md has the budget.
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
@@ -32,11 +34,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, skipped: 'disabled' });
   }
   try {
-    if (!await isScheduledCalendarSyncOpen()) return NextResponse.json({ ok: true, skipped: 'outside-opening-hours' });
+    // Ends at closing time, not 15 minutes after it as the half-hourly import does.
+    if (!await isScheduledCalendarSyncOpen(new Date(), { afterCloseMs: 0 })) return NextResponse.json({ ok: true, skipped: 'outside-opening-hours' });
   } catch {
     return NextResponse.json({ ok: false, error: 'Calendar opening hours could not be checked.' }, { status: 503 });
   }
-  // Without Redis there is no memory of the last feed, and importing every minute instead would pin Neon awake.
+  // Without Redis there is no memory of the last feed, and importing on every tick instead would pin Neon awake.
   const store = freshaWatchStore();
   if (!store) return NextResponse.json({ ok: true, skipped: 'no-state' });
   const mirror = freshaMirrorCalendarConfig() ? createGoogleCalendarGateway({ loadConfig: () => freshaMirrorCalendarConfig() }) : null;
