@@ -64,7 +64,7 @@ Work top to bottom. The order in §3 is **load-bearing**.
   never confirmed gets no calendar file.
 - Deploy pipeline: concurrency (main queues; the newest commit deploys last), pinned Vercel CLI,
   optional Neon snapshot before migrations (needs `NEON_API_KEY` secret + `NEON_PROJECT_ID`
-  variable in GitHub).
+  variable in GitHub; both set 2026-10-27, so it runs on every production deploy).
 - Daily "needs attention" email to the salon (failed emails, failing jobs, dead feeds, waiting
   requests, housekeeping switched off) — sent from the 08:00 UTC reminders run, so only while
   notifications are on.
