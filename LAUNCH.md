@@ -32,7 +32,7 @@ Work top to bottom. The order in §3 is **load-bearing**.
 | Notifications | `NOTIFICATIONS_ENABLED=false` — customers get no booking email yet |
 | Calendar sync | `CALENDAR_SYNC_ENABLED=true`; Fresha inbound OK for all 4 stylists |
 | Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals. *2026-10-18:* Lox's and Shania's "takes bookings" are off in Admin (Shania's switched off that day), so the gate no longer checks them; Lox's gap and Shania's status: §3.3. *2026-11-03:* **Lox ✅**, two-way, and its "takes bookings" is ticked (§3.3). Shania is unchanged: not sold on Fresha |
-| Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed). *2026-11-03:* Treatwell fetches Funky's, Ivan's and Lox's busy feeds every 5 minutes with 200, and its external blocks for 3–8 November match the website feeds exactly. Its bookings reach the website only as red `TW` copies in HarbourHair, made by staff |
+| Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed). *2026-11-03:* Treatwell fetches Funky's, Ivan's and Lox's busy feeds every 5 minutes with 200, and its external blocks for 3–8 November match the website feeds exactly. Its bookings reach the website only as red `TW` copies in HarbourHair, made by staff. Fresha's bookings did not reach Treatwell at all: fixed by Treatwell's own URL (§3.3c) |
 | Housekeeping | `HOUSEKEEPING_ENABLED` unset, so it is **on** since release 1 (it runs unless set to `false`; the privacy notice's retention periods depend on it). First run 03:15 UTC on 2026-10-14; checked before the deploy, production had nothing for it to close or remove (no pending requests, no expired rows) |
 | Operations diagnostics | Last run 2026-09-20, **never passed**. *2026-10-25:* 5 of 6 pass; only Notification delivery fails, as it must until §3.5 (§3.7) |
 | Neon | Free plan (100 CU-h/month, overrun **suspends** the database until next month); Oct 1–12 used 17.6 CU-h (~45/month pace); 6-hour restore history. *2026-10-25:* Oct 1–25 used 37.17 CU-h (~47/month pace); the preview database 2.30 (§3.1) |
@@ -185,6 +185,13 @@ Square and payment records.
       **every** database in the integration, and it also holds 8 of the developer's other projects
       (about 20 CU-h a month between them). Launch costs US$0.106 per CU-h: about US$5–6 a month for
       Harbour, about US$8 for the whole integration. Resend stays on Free for now.
+      *2026-11-03 (read in the Neon console, read-only):* Nov 1–3 used 3.21 CU-h on production, a
+      pace of about 39 a month (the 5-minute Fresha watch added nothing visible); the whole
+      integration used 4.94 (about 60 a month). With public booking, expect about 50–70 CU-h a month
+      for production, about 85 if the compute stays awake through opening hours. That is close to
+      the free 100, and going over **suspends** the database until the 1st. Launch at that pace:
+      about US$4–9 a month for Harbour, about US$6–11 for the whole integration. Vercel the same day:
+      US$1.04 of the US$20 Pro credit used in the cycle to Nov 24 (Harbour US$0.47).
 - [x] **3.2 Treatwell decision.** It cannot be synced (no export feed). Recommended: close it.
       Otherwise copy every Treatwell booking into Fresha at once, or accept the risk.
       *Owner, 2026-10-25:* Treatwell stays as it is: the risk is accepted (the blind spot in §0).
@@ -243,6 +250,18 @@ Square and payment records.
       redeploy, Admin → Integrations → Sync now, then the §4 test (a booking appears; `Ivan: test`,
       with the name exactly as in Admin → Stylists, blocks Ivan only). After the merge apply the preview-database migration
       `20261016150000_google_calendar_sync` by hand (`pnpm db:vercel:deploy` with the preview env).
+- [ ] **3.3c Treatwell holds each stylist's Treatwell URL** (shipped 2026-11-03, owner's choice).
+      Before it, a Fresha booking never reached Treatwell: Treatwell imports only the website's
+      busy feed, and that feed never carries Fresha's time (it would loop back into Fresha). The
+      same URL with `&for=treatwell` adds the stylist's Fresha bookings and blocked time. Treatwell
+      exports nothing back, so it cannot loop. Admin → Integrations → each stylist → "For
+      Treatwell" shows it.
+      1. For Funky, Ivan and Lox in Treatwell Connect, replace the linked external calendar with
+         that stylist's Treatwell URL (Treatwell allows one per staff member). The owner pastes it.
+      2. Check: Vercel logs show `Apache-HttpClient` fetching `/api/ical/<id>` with 200 and the
+         stylist's Fresha blocks appear in Treatwell. Never paste the Treatwell URL into Fresha.
+      3. Fresha keeps the plain URL. Nothing in Admin changes: no rotation, and the "takes
+         bookings" ticks stay as they are.
 - [ ] **3.4 Second admin account** (Admin → Users). *Owner, 2026-10-25:* to be added later.
 - [ ] **3.5 Environment, then redeploy** (env changes only reach the runtime after a deploy):
       leave `HOUSEKEEPING_ENABLED` unset (on), then `NOTIFICATIONS_ENABLED=true` (sends real email);
@@ -269,6 +288,15 @@ Square and payment records.
       purpose for beta testers since 2026-10-18), and decide whether to keep the beta tester list
       (it no longer matters once booking is open to everyone). *Owner, 2026-10-25:* both stay for
       now.
+- [ ] **3.9 Opening day: Monday 2026-11-09** (owner's decision, 2026-11-03). In this order, each
+      step confirmed with the owner as it is done:
+      1. §3.3c done (Treatwell holds the Treatwell URLs), and Admin → Integrations still passes.
+      2. §3.1 Neon → Launch in Vercel (a paid change: confirm the cost first). Vercel spend alert
+         US$10, alerts only.
+      3. §3.5 `NOTIFICATIONS_ENABLED=true` on Vercel Production, then a deploy (merge to `main`).
+      4. §3.7 diagnostics: all pass, and less than 24 hours before step 5.
+      5. §3.8 remove the £0.01 test deposit, then Admin → Settings → turn booking on.
+      6. §5 checks the same day. Resend stays on Free (100 emails a day, about 30 bookings).
 
 ---
 

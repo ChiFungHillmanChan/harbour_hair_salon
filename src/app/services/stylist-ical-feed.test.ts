@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStylistIcalFeed } from './stylist-ical-feed';
+import { buildStylistIcalFeed, feedViewFromParam } from './stylist-ical-feed';
 
 type FakeBlock = { externalUid: string; source: string; stylistId: string; start: Date; end: Date };
 type FakeAppt = { id: string; date: Date; service: { duration: number }; status?: string };
@@ -240,4 +240,55 @@ test('appointments and Google blocks share one feed, ordered by start', async ()
   if (result.status !== 200) return;
   assert.ok(result.body.indexOf('UID:g-early@') >= 0);
   assert.ok(result.body.indexOf('UID:g-early@') < result.body.indexOf('UID:a1@'));
+});
+
+// Treatwell's own URL (`&for=treatwell`, 2026-11-03): Treatwell imports only
+// this feed, so without Fresha's time it could sell an hour Fresha already sold.
+// Treatwell exports nothing back, so this cannot loop; Fresha's URL is unchanged.
+test('Treatwell view adds Fresha busy time, but never Treatwell\'s own', async () => {
+  const db = fakeDb(
+    { id: 's1', icalToken: 'tok' },
+    [{ id: 'a1', date: new Date('2026-08-05T12:00:00Z'), service: { duration: 30 } }],
+    [
+      block('fresha-1', '2026-08-05T09:00:00Z', '2026-08-05T10:00:00Z', { source: 'FRESHA' }),
+      block('fresha-over', '2026-07-21T09:00:00Z', '2026-07-21T10:00:00Z', { source: 'FRESHA' }),
+      block('fresha-other', '2026-08-05T09:00:00Z', '2026-08-05T10:00:00Z', { source: 'FRESHA', stylistId: 's2' }),
+      block('tw-1', '2026-08-05T11:00:00Z', '2026-08-05T12:00:00Z', { source: 'TREATWELL' }),
+      block('google-1', '2026-08-05T14:00:00Z', '2026-08-05T15:00:00Z'),
+    ],
+  );
+  const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW, view: 'treatwell' });
+  assert.equal(result.status, 200);
+  if (result.status !== 200) return;
+  const uids = [...result.body.matchAll(/UID:(\S+)@harbourhair\.co\.uk/g)].map((match) => match[1]);
+  assert.deepEqual(uids, ['f-fresha-1', 'a1', 'g-google-1']);
+  assert.doesNotMatch(result.body, /tw-1/);
+  assert.deepEqual(db.blockQueries.map((query) => query.where.source).sort(), ['FRESHA', 'GOOGLE']);
+  assert.match(result.body, /SUMMARY:Busy/);
+});
+
+test('the standard view (Fresha\'s URL) never reads Fresha\'s blocks at all', async () => {
+  const db = fakeDb({ id: 's1', icalToken: 'tok' }, [], [
+    block('fresha-1', '2026-08-05T09:00:00Z', '2026-08-05T10:00:00Z', { source: 'FRESHA' }),
+  ]);
+  const result = await buildStylistIcalFeed('s1', 'tok', { db: db as never, now: NOW, view: 'standard' });
+  assert.equal(result.status, 200);
+  assert.deepEqual(db.blockQueries.map((query) => query.where.source), ['GOOGLE']);
+});
+
+test('Treatwell view with a wrong token is a 404 that reads no busy time', async () => {
+  const db = fakeDb({ id: 's1', icalToken: 'tok' }, [], [
+    block('fresha-1', '2026-08-05T09:00:00Z', '2026-08-05T10:00:00Z', { source: 'FRESHA' }),
+  ]);
+  const result = await buildStylistIcalFeed('s1', 'wrong', { db: db as never, now: NOW, view: 'treatwell' });
+  assert.equal(result.status, 404);
+  assert.equal(db.blockQueries.length, 0);
+  assert.equal(db.findManyCalls.length, 0);
+});
+
+test('only `for=treatwell` selects the Treatwell view', () => {
+  assert.equal(feedViewFromParam('treatwell'), 'treatwell');
+  for (const value of [null, undefined, '', 'fresha', 'Treatwell', 'treatwell ', 'TREATWELL']) {
+    assert.equal(feedViewFromParam(value), 'standard', String(value));
+  }
 });

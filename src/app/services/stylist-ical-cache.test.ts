@@ -142,3 +142,63 @@ test('a feed request with no token is refused before any database read', async (
   assert.deepEqual(lookups, ['stylist-1']);
 });
 
+
+// Treatwell's view (2026-11-03) reads Fresha's time from its OWN entry, so a
+// Fresha import never empties the entry Fresha's feed is served from, and only
+// a changed Fresha import (calendar-sync-service.ts) drops it.
+function viewHarness() {
+  const reads: string[] = [];
+  const entries: { keyParts: string[]; tags: string[]; revalidate: number }[] = [];
+  const revalidated: { tag: string; profile: unknown }[] = [];
+  const deferred: unknown[] = [];
+  const cache = loadServerModule<typeof import('./stylist-ical-cache')>('src/app/services/stylist-ical-cache.ts', {
+    'next/cache': {
+      unstable_cache: (callback: unknown, keyParts: string[], options: { tags: string[]; revalidate: number }) => {
+        entries.push({ keyParts, tags: options.tags, revalidate: options.revalidate });
+        return callback;
+      },
+      updateTag: () => {},
+      revalidateTag: (tag: string, profile: unknown) => { revalidated.push({ tag, profile }); },
+    },
+    'next/server': { after: (callback: unknown) => { deferred.push(callback); } },
+    './stylist-ical-feed': {
+      loadStylistToken: async () => 'right-token',
+      loadBusyEvents: async () => { reads.push('website'); return [{ id: 'a1', startMs: 2, minutes: 30 }]; },
+      loadFreshaBusyEvents: async () => { reads.push('fresha'); return [{ id: 'f-1', startMs: 1, minutes: 60 }]; },
+      mergeBusyEvents: (...lists: { startMs: number }[][]) => lists.flat().sort((a, b) => a.startMs - b.startMs),
+      renderIcalFeed: (events: { id: string }[]) => events.map((event) => event.id).join(','),
+      tokenMatches: (supplied: string, stored: string | null) => Boolean(supplied) && supplied === stored,
+    },
+    '@/app/lib/google-calendar-config': { googleCalendarConfig: () => CONFIG },
+  });
+  return { cache, reads, entries, revalidated, deferred };
+}
+
+test('Fresha\'s feed never reads Fresha time; Treatwell\'s adds it in start order', async () => {
+  const h = viewHarness();
+  assert.deepEqual(await h.cache.buildCachedStylistIcalFeed('stylist-1', 'right-token'), { status: 200, body: 'a1' });
+  assert.deepEqual(h.reads, ['website']);
+  h.reads.length = 0;
+  assert.deepEqual(await h.cache.buildCachedStylistIcalFeed('stylist-1', 'right-token', new Date(), 'treatwell'), { status: 200, body: 'f-1,a1' });
+  assert.deepEqual(h.reads.sort(), ['fresha', 'website']);
+  h.reads.length = 0;
+  assert.deepEqual(await h.cache.buildCachedStylistIcalFeed('stylist-1', 'wrong', new Date(), 'treatwell'), { status: 404 });
+  assert.deepEqual(h.reads, [], 'a wrong token reads no busy time in either view');
+});
+
+test('Fresha time has its own cache entry, kept a day like the others', () => {
+  const h = viewHarness();
+  const fresha = h.entries.find((entry) => entry.tags.includes('stylist-ical-fresha'));
+  assert.ok(fresha);
+  assert.equal(fresha.revalidate, h.cache.EVENTS_REVALIDATE_SECONDS);
+  assert.ok(h.cache.EVENTS_REVALIDATE_SECONDS >= 24 * 60 * 60, 'a timed expiry is a poll: keep it a day or more');
+  const website = h.entries.find((entry) => entry.tags.includes('stylist-ical-feed'));
+  assert.ok(website && !website.tags.includes('stylist-ical-fresha'), 'a Fresha import must not empty Fresha\'s own feed entry');
+});
+
+test('dropping Treatwell\'s Fresha time expires only that entry, at once, and never pushes to Google', () => {
+  const h = viewHarness();
+  h.cache.invalidateTreatwellFreshaBusy();
+  assert.deepEqual(h.revalidated, [{ tag: 'stylist-ical-fresha', profile: { expire: 0 } }]);
+  assert.equal(h.deferred.length, 0);
+});

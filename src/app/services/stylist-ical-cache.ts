@@ -5,10 +5,13 @@ import { googleCalendarConfig } from '@/app/lib/google-calendar-config';
 import { describeFault } from '@/app/lib/fault';
 import {
   loadBusyEvents,
+  loadFreshaBusyEvents,
   loadStylistToken,
+  mergeBusyEvents,
   renderIcalFeed,
   tokenMatches,
   type BusyEvent,
+  type FeedView,
   type IcalFeedResult,
 } from './stylist-ical-feed';
 
@@ -58,9 +61,17 @@ import {
  * when the blocks it stored actually changed (an unchanged pull wakes no poller).
  * The timed expiry below stays a day for the same reason as before: both
  * kinds of change invalidate the tag.
+ *
+ * Treatwell's view (`?for=treatwell`, since 2026-11-03) adds Fresha's busy
+ * time from a THIRD entry, kept apart so that Fresha's own feed is untouched
+ * by Fresha imports. Treatwell polls every five minutes, so that entry follows
+ * the same rule: the Fresha import (services/calendar-sync-service.ts) drops
+ * its tag only when the Fresha blocks it stored actually changed, and the
+ * half-hourly re-import of an unchanged feed wakes nothing.
  */
 const EVENTS_TAG = 'stylist-ical-feed';
 const TOKEN_TAG = 'stylist-ical-token';
+const FRESHA_TAG = 'stylist-ical-fresha';
 
 /** Safety net only; every appointment mutation invalidates this immediately. */
 export const EVENTS_REVALIDATE_SECONDS = 24 * 60 * 60;
@@ -88,11 +99,19 @@ const readBusyEvents = unstable_cache(
   { revalidate: EVENTS_REVALIDATE_SECONDS, tags: [EVENTS_TAG] },
 );
 
+/** Same safety net as the events entry; a changed Fresha import drops it at once. */
+const readFreshaBusyEvents = unstable_cache(
+  async (stylistId: string): Promise<BusyEvent[]> => loadFreshaBusyEvents(stylistId, new Date()),
+  ['stylist-ical-fresha-events'],
+  { revalidate: EVENTS_REVALIDATE_SECONDS, tags: [FRESHA_TAG] },
+);
+
 /** Cache-backed equivalent of `buildStylistIcalFeed`, used by the live route. */
 export async function buildCachedStylistIcalFeed(
   stylistId: string,
   token: string,
   now = new Date(),
+  view: FeedView = 'standard',
 ): Promise<IcalFeedResult> {
   // tokenMatches refuses an empty token anyway; refusing it first keeps a
   // tokenless probe with a made-up stylist id (a fresh cache key each time)
@@ -100,7 +119,9 @@ export async function buildCachedStylistIcalFeed(
   if (!token) return { status: 404 };
   const stored = await readToken(stylistId);
   if (!tokenMatches(token, stored)) return { status: 404 };
-  return { status: 200, body: renderIcalFeed(await readBusyEvents(stylistId), now) };
+  if (view !== 'treatwell') return { status: 200, body: renderIcalFeed(await readBusyEvents(stylistId), now) };
+  const [events, fresha] = await Promise.all([readBusyEvents(stylistId), readFreshaBusyEvents(stylistId)]);
+  return { status: 200, body: renderIcalFeed(mergeBusyEvents(events, fresha), now) };
 }
 
 /**
@@ -174,6 +195,17 @@ export function scheduleGoogleCalendarPush(appointmentIds?: string[]): void {
     // Outside a request (a script) `after` throws: the next calendar-sync run pushes instead.
     console.error('Google Calendar push could not be scheduled', describeFault(error));
   }
+}
+
+/**
+ * Drop the cached Fresha busy time in Treatwell's view of the feeds. The Fresha
+ * import calls it only when the blocks it stored changed. It runs in Route
+ * Handlers (the crons) and Server Actions (Test and sync, approvals) alike, so
+ * it uses `revalidateTag` with `{ expire: 0 }`, which is valid in both. It
+ * never pushes to Google: Fresha's time is not the website's to write there.
+ */
+export function invalidateTreatwellFreshaBusy(): void {
+  revalidateTag(FRESHA_TAG, { expire: 0 });
 }
 
 /** Call when a stylist's outbound feed secret is regenerated or cleared. */
