@@ -1,6 +1,8 @@
 # Launch checklist — Harbour Hair Salon
 
-Last verified against production: **2026-10-25** (read-only: the Vercel Production variable
+Last verified against production: **2026-11-03**, calendars only. That day Lox was linked to
+Fresha both ways (§3.3), and the Treatwell and Fresha links and the Vercel logs of the busy feeds
+were checked. The last wider check was on **2026-10-25** (read-only: the Vercel Production variable
 names, `/book` showing the closed notice, `/api/health` up, `main` @ `a0bf849` deployed; then the
 Operations diagnostics, Neon usage and the Square Dashboard for the owner's §3 replies). The full
 read-only check and production-readiness review were on 2026-10-13 (`main` @ `def37c4`).
@@ -29,8 +31,8 @@ Work top to bottom. The order in §3 is **load-bearing**.
 | Online booking | **CLOSED** — `SiteSettings.bookingEnabled=false`, plus the Square lock. *2026-10-18:* the Square lock is open (production credentials, §2); only beta testers can book |
 | Notifications | `NOTIFICATIONS_ENABLED=false` — customers get no booking email yet |
 | Calendar sync | `CALENDAR_SYNC_ENABLED=true`; Fresha inbound OK for all 4 stylists |
-| Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals. *2026-10-18:* Lox's and Shania's "takes bookings" are off in Admin (Shania's switched off that day), so the gate no longer checks them; Lox's gap and Shania's status: §3.3 |
-| Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed) |
+| Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals. *2026-10-18:* Lox's and Shania's "takes bookings" are off in Admin (Shania's switched off that day), so the gate no longer checks them; Lox's gap and Shania's status: §3.3. *2026-11-03:* **Lox ✅**, two-way, and its "takes bookings" is ticked (§3.3). Shania is unchanged: not sold on Fresha |
+| Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed). *2026-11-03:* Treatwell fetches Funky's, Ivan's and Lox's busy feeds every 5 minutes with 200, and its external blocks for 3–8 November match the website feeds exactly. Its bookings reach the website only as red `TW` copies in HarbourHair, made by staff |
 | Housekeeping | `HOUSEKEEPING_ENABLED` unset, so it is **on** since release 1 (it runs unless set to `false`; the privacy notice's retention periods depend on it). First run 03:15 UTC on 2026-10-14; checked before the deploy, production had nothing for it to close or remove (no pending requests, no expired rows) |
 | Operations diagnostics | Last run 2026-09-20, **never passed**. *2026-10-25:* 5 of 6 pass; only Notification delivery fails, as it must until §3.5 (§3.7) |
 | Neon | Free plan (100 CU-h/month, overrun **suspends** the database until next month); Oct 1–12 used 17.6 CU-h (~45/month pace); 6-hour restore history. *2026-10-25:* Oct 1–25 used 37.17 CU-h (~47/month pace); the preview database 2.30 (§3.1) |
@@ -186,7 +188,7 @@ Square and payment records.
 - [x] **3.2 Treatwell decision.** It cannot be synced (no export feed). Recommended: close it.
       Otherwise copy every Treatwell booking into Fresha at once, or accept the risk.
       *Owner, 2026-10-25:* Treatwell stays as it is: the risk is accepted (the blind spot in §0).
-- [ ] **3.3 Fresha (facts corrected 2026-10-18, live data).** Funky and Ivan: Fresha sells them,
+- [x] **3.3 Fresha (facts corrected 2026-10-18, live data; Lox done 2026-11-03, below).** Funky and Ivan: Fresha sells them,
       inbound sync on, outbound subscription confirmed — two-way, done. **Lox:** the owner says
       Fresha does sell Lox, but in Admin → Integrations Lox's "This provider takes bookings" is
       unticked (`receivesBookings=false`) **and** Fresha has not subscribed to Lox's website busy feed
@@ -212,6 +214,29 @@ Square and payment records.
 
       Never press "generate token" for Lox: it changes the feed URL Fresha holds and clears
       `outboundConfirmedAt`.
+
+      *Done 2026-11-03 (GMT), with the owner's OK.* The developer drove the salon's signed-in
+      Chrome, and the owner pasted every URL.
+      - **Before:** Fresha had no import on Lox, only two exports. Shania's own profile imports
+        Shania's feed. That is harmless, because her Fresha "Calendar bookings" is off, and it is
+        kept. No profile held another stylist's URL. Treatwell's links for Funky, Ivan and Lox each
+        hold their own stylist's URL, and Treatwell allows one external calendar per staff member.
+      - **Lox's Fresha export replaced** (owner's choice, because its URL appeared in a tool
+        output that session). The new export includes "Blocked times". It was saved as Lox / FRESHA's
+        inbound feed at 11:22, and "Test and sync" read 1 feed with 0 failed and 16 upserted. The
+        old export was removed at 11:32. A third export, unread since 2026-09-29, is kept (owner).
+        Fresha's settings API reports `blocked-time-sync-enabled: true` on every Lox export, so the
+        open question above ("why Lox's blocked times are not exported") no longer matches Fresha's
+        setting. The feed's content was not read.
+      - **Steps 1–4:** the Fresha import was saved at 11:25 with "Time and duration only". Fresha
+        accepted it: the 422 of 2026-09-19 did not recur. Vercel logs show `hackney/1.25.0`
+        fetching Lox's feed with 200 at 11:25:27 and 11:25:59, and Lox's Fresha calendar shows
+        the imported blocks. Outbound was confirmed at 11:28. "Takes bookings" was ticked and saved
+        at 11:29, and Integrations still showed "Calendar setup checks pass".
+      - **Not rotated:** Lox's website busy-feed URL (with its token) appeared in a screenshot that
+        session. Treatwell and Fresha both hold it. To rotate it later, first untick "takes
+        bookings" for Lox / FRESHA, then re-paste the new URL in Treatwell and Fresha, confirm
+        outbound, and tick it again.
 - [x] **3.3b Google Calendar** — ON since 2026-10-16, on the HarbourHair diary since 2026-10-17. Original steps: Follow
       `docs/google-calendar-setup.md`: Google Cloud service account, the "Harbour website bookings"
       calendar shared with it, the five `GOOGLE_CALENDAR_*` variables on Vercel **Production only**,

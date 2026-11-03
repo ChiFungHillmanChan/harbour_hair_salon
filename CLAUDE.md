@@ -11,14 +11,14 @@ Guidance for Claude Code in this repository. This file is the short core. The de
 - **Other channels stay in sync.** Fresha and the website swap busy time through iCal feeds both ways. The salon's Google Calendar ("HarbourHair") syncs both ways and shows as the staff diary in Admin → Schedule.
 - **Brand:** monochrome black, white and grey (client requirement).
 
-## 2. Current state (2026-10-25)
+## 2. Current state (2026-11-03)
 
 - The public site is live. **Online booking is closed to the public**: customers book by phone, Fresha or Treatwell. It is open to **beta testers** only (Admin → Settings → Beta testers, currently the owner's account).
 - Square **production** keys and the webhook are set. A real £0.01 test booking passed end to end (its refund COMPLETED on 2026-10-19). The account's card rate is "API 1.40% + £0.25", and the location `LMDPK9XXXTJEM` is named "FaithArkLtd". The assistant never captures or refunds real money: staff press those buttons.
 - **Operations diagnostics (2026-10-25):** everything passes except Notification delivery, which fails until `NOTIFICATIONS_ENABLED=true`. Run them again after that, less than 24 hours before booking opens (`LAUNCH.md` §3.7).
 - Production flags: `NOTIFICATIONS_ENABLED=false`, `CALENDAR_SYNC_ENABLED=true`, Google Calendar sync on, housekeeping on, late-arrival rule off, Fresha watch and its Google mirror on since 2026-10-27 (`FRESHA_WATCH_ENABLED=true`, `GOOGLE_FRESHA_MIRROR_CALENDAR_ID` = the separate "Fresha（自動同步）" calendar; `docs/google-calendar-setup.md` §9).
 - **Remove before public launch:** the £0.01 test deposit on "Short Over Ears - Wash, Haircut & Blow Dry" (`LAUNCH.md` §3.8).
-- **Fresha gap:** Lox is not linked both ways, and the owner has paused changes. Staff check Fresha before confirming a Lox request. Still paused on 2026-10-25: it needs the salon's Fresha login, which the developer does not have. When it resumes, the order of the steps is load-bearing, or beta booking closes (`LAUNCH.md` §3.3).
+- **Calendars (checked 2026-11-03):** Funky, Ivan and Lox swap busy time with Fresha both ways. Lox was linked on 2026-11-03 with the owner's OK, and Lox / FRESHA now takes bookings with its outbound subscription confirmed. Treatwell reads all three website busy feeds every 5 minutes and shows the same blocks. A Treatwell booking reaches the website only when staff copy it into HarbourHair (red `TW`): the accepted blind spot. Never rotate a stylist's busy-feed URL while any provider takes their bookings. Untick "takes bookings" first, or beta booking closes (`LAUNCH.md` §3.3).
 - **Owner decisions (2026-10-25, `LAUNCH.md` §3/§4):** Resend stays on Free for now; Neon moves to Launch at public launch; Treatwell stays (risk accepted); the second admin and `NOTIFICATIONS_ENABLED` come later; the £0.01 override and the beta tester list stay for now; the privacy notice's entity name stays (FaithArkLtd and Harbour Hair Salon are the same company).
 - The preview database is migrated through `20261018200000_deposit_locked_at`.
 - Full dated detail: `docs/agents/production-state.md`. The launch steps, in order: `LAUNCH.md` §3, then the owner decisions in §4.
