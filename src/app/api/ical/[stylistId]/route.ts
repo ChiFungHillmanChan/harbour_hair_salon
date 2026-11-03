@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildCachedStylistIcalFeed } from '@/app/services/stylist-ical-cache';
+import { feedViewFromParam } from '@/app/services/stylist-ical-feed';
 
 // The response still varies per request (the token is checked every time and
 // `DTSTAMP`/"already ended" are re-evaluated), so the route stays dynamic. The
@@ -13,8 +14,11 @@ export async function GET(
 ) {
   const { stylistId } = await params;
   const token = request.nextUrl.searchParams.get('token') ?? '';
+  // `&for=treatwell` is the URL Treatwell holds: it also carries Fresha's busy
+  // time. Fresha keeps the plain URL, which never sends Fresha its own time back.
+  const view = feedViewFromParam(request.nextUrl.searchParams.get('for'));
 
-  const result = await buildCachedStylistIcalFeed(stylistId, token);
+  const result = await buildCachedStylistIcalFeed(stylistId, token, new Date(), view);
   if (result.status !== 200) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }

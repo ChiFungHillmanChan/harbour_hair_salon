@@ -29,7 +29,23 @@ export type CalendarSyncDependencies = {
   staleBefore?: Date;
   /** Never these connections (already tried earlier in the same refresh). */
   excludeConnectionIds?: string[];
+  /**
+   * Called after a Fresha import whose stored blocks changed. Default: drop
+   * the cached Fresha time in Treatwell's view of the busy feeds.
+   */
+  onFreshaBusyChanged?: () => void | Promise<void>;
 };
+
+/** Order-free identity of a stored window: which events, and exactly when. */
+function blockSetKey(blocks: { uid: string; start: Date; end: Date }[]): string {
+  return blocks.map((block) => `${block.uid}|${block.start.getTime()}|${block.end.getTime()}`).sort().join('\n');
+}
+
+async function dropTreatwellFreshaBusy(): Promise<void> {
+  // Imported on use: the cache module needs the Next request scope, which tests and scripts lack.
+  const { invalidateTreatwellFreshaBusy } = await import('./stylist-ical-cache');
+  invalidateTreatwellFreshaBusy();
+}
 
 /**
  * One lease per stylist/provider, and a transactional compare-and-set before
@@ -85,13 +101,22 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
       // Hash provider-owned UIDs to bound database index size without collisions
       // from truncation. Source and stylist remain separate parts of the key.
       const blocks = intervals.map((interval) => ({ ...interval, uid: createHash('sha256').update(interval.uid).digest('hex') }));
-      const pruned = await db.$transaction(async (tx) => {
+      const { removed: pruned, changed } = await db.$transaction(async (tx) => {
         const current = await tx.calendarConnection.updateMany({
           where: { id: connection.id, lockToken: token, lockedUntil: { gt: completed }, inboundEnabled: true, inboundUrl: connection.inboundUrl },
           data: { lastSuccessAt: completed, lastError: null, lockedUntil: null, lockToken: null },
         });
         if (!current.count) throw new CalendarFeedError('Calendar configuration changed or the sync lease expired. Run the test again.');
         const scope = { source: connection.provider, stylistId: connection.stylistId };
+        // Fresha's blocks feed Treatwell's view of the busy feed (stylist-ical-cache.ts),
+        // whose cache must drop only on a real change: the half-hourly import of
+        // an unchanged feed must not turn Treatwell's next poll into a Neon wake.
+        const before = connection.provider === 'FRESHA'
+          ? await tx.externalBusyBlock.findMany({
+            where: { ...scope, start: { lt: windowEnd }, end: { gt: completed } },
+            select: { externalUid: true, start: true, end: true },
+          })
+          : null;
         // Replace this validated window inside the same transaction: readers
         // never observe an empty intermediate calendar. This avoids thousands
         // of network round trips and works on PostgreSQL, SQLite and SQL Server.
@@ -108,8 +133,18 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
             summary: storedBusySummary(block.summary), lastSyncAt: completed,
           })) });
         }
-        return removed;
+        const changed = before !== null
+          && blockSetKey(before.map((block) => ({ uid: block.externalUid, start: block.start, end: block.end }))) !== blockSetKey(blocks);
+        return { removed, changed };
       }, { timeout: 15_000, maxWait: 5_000 });
+      if (changed) {
+        // After the commit. A failed drop is healed by the cache's one-day safety net.
+        try {
+          await (deps.onFreshaBusyChanged ?? dropTreatwellFreshaBusy)();
+        } catch (error) {
+          console.error('Dropping the Treatwell busy-feed cache after a Fresha import failed:', describeFault(error));
+        }
+      }
       results.push({ ...base, ok: true, upserted: blocks.length, pruned: pruned.count });
     } catch (error) {
       // A feed problem is already reported to the admin as lastError. Anything

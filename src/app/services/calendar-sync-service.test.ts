@@ -39,6 +39,9 @@ function fakeDb(rows = [connection()]) {
         const old = blocks.find((item) => item.source === key.source && item.stylistId === key.stylistId && item.externalUid === key.externalUid);
         if (old) Object.assign(old, update); else blocks.push(create);
       },
+      findMany: async ({ where }: { where: { source: string; stylistId: string; start: { lt: Date }; end: { gt: Date } } }) => blocks
+        .filter((b) => b.source === where.source && b.stylistId === where.stylistId && b.start < where.start.lt && b.end > where.end.gt)
+        .map((b) => ({ externalUid: b.externalUid, start: b.start, end: b.end })),
       createMany: async ({ data }: { data: Block[] }) => {
         writes.batches.push(data.length);
         if (writes.failBatch) throw new Error('Synthetic insert failure');
@@ -83,7 +86,7 @@ test('failure preserves blocks and old lastSuccessAt; errors never reveal secret
 });
 test('same UID remains isolated across stylists and providers and prune is source-scoped', async () => {
   const state = fakeDb([connection(), connection('c2', 's2'), connection('c3', 's1', 'FRESHA')]);
-  await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => busy }); assert.equal(state.blocks.length, 3);
+  await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => busy, onFreshaBusyChanged: () => {} }); assert.equal(state.blocks.length, 3);
   await syncCalendarFeeds({ db: state.db, now, connectionId: 'c1', fetchFeed: async () => empty });
   assert.deepEqual(state.blocks.map((b) => `${b.source}/${b.stylistId}`).sort(), ['FRESHA/s1', 'TREATWELL/s2']);
 });
@@ -275,7 +278,7 @@ test('only a recognised generic title is stored; free text never reaches the dat
     event('appt', '20260913T100000Z', 'Fresha Appointment'),
     event('private', '20260914T100000Z', 'Jane Smith - colour'),
   ].join('\r\n') + '\r\nEND:VCALENDAR');
-  const [result] = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => feed });
+  const [result] = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => feed, onFreshaBusyChanged: () => {} });
   assert.equal(result.ok, true);
   const summaries = state.blocks.map((block) => [block.start.toISOString(), block.summary]).sort();
   assert.deepEqual(summaries, [
@@ -283,4 +286,43 @@ test('only a recognised generic title is stored; free text never reaches the dat
     ['2026-09-13T10:00:00.000Z', 'Fresha Appointment'],
     ['2026-09-14T10:00:00.000Z', null],
   ]);
+});
+
+// Treatwell's view of the busy feed carries Fresha's blocks (2026-11-03) from a
+// cached entry. Treatwell polls every five minutes, so dropping that entry on
+// every half-hourly re-import would turn each one into a Neon wake: only a real
+// change of the stored Fresha window may drop it.
+test('a Fresha import drops the Treatwell feed cache only when its blocks changed', async () => {
+  const state = fakeDb([connection('c1', 's1', 'FRESHA')]);
+  let drops = 0;
+  const run = (feed: string) => syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => feed, onFreshaBusyChanged: () => { drops++; } });
+  assert.equal((await run(busy))[0].ok, true);
+  assert.equal(drops, 1, 'a new booking');
+  await run(busy);
+  assert.equal(drops, 1, 'the same feed again');
+  await run(busy.replace('T110000Z', 'T113000Z'));
+  assert.equal(drops, 2, 'the booking got longer');
+  await run(empty);
+  assert.equal(drops, 3, 'the booking was cancelled');
+  await run(empty);
+  assert.equal(drops, 3, 'still nothing');
+});
+
+test('a Treatwell import never drops the Treatwell feed cache', async () => {
+  const state = fakeDb([connection('c1', 's1', 'TREATWELL')]);
+  let drops = 0;
+  await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => busy, onFreshaBusyChanged: () => { drops++; } });
+  assert.equal(state.blocks.length, 1);
+  assert.equal(drops, 0);
+});
+
+test('a failed Treatwell cache drop is logged and never fails the Fresha import', async (t) => {
+  const logged = t.mock.method(console, 'error', () => undefined);
+  const state = fakeDb([connection('c1', 's1', 'FRESHA')]);
+  const [result] = await syncCalendarFeeds({ db: state.db, now, fetchFeed: async () => busy, onFreshaBusyChanged: () => { throw new Error('outside a request scope'); } });
+  assert.equal(result.ok, true);
+  assert.equal(state.rows[0].lastError, null);
+  assert.equal(state.blocks.length, 1);
+  assert.equal(logged.mock.callCount(), 1);
+  assert.doesNotMatch(JSON.stringify(logged.mock.calls[0].arguments), /token=secret/);
 });

@@ -160,9 +160,13 @@ export async function listCalendarConnectionsForAdmin(siteUrl: string) {
       calendarConnections: { select: { id: true, provider: true, receivesBookings: true, inboundUrl: true, inboundEnabled: true, outboundConfirmedAt: true, lastAttemptAt: true, lastSuccessAt: true, lastError: true } },
     },
   });
-  return stylists.map((stylist) => ({
-    id: stylist.id, name: stylist.name, feedToken: stylist.icalToken,
-    feedUrl: stylist.icalToken ? `${siteUrl.replace(/\/$/, '')}/api/ical/${stylist.id}?token=${stylist.icalToken}` : null,
-    connections: stylist.calendarConnections.map(({ inboundUrl, ...connection }) => ({ ...connection, inboundUrlConfigured: Boolean(inboundUrl?.trim()) })),
-  }));
+  return stylists.map((stylist) => {
+    const feedUrl = stylist.icalToken ? `${siteUrl.replace(/\/$/, '')}/api/ical/${stylist.id}?token=${stylist.icalToken}` : null;
+    return {
+      id: stylist.id, name: stylist.name, feedToken: stylist.icalToken, feedUrl,
+      // Treatwell's own URL: the same feed plus Fresha's busy time (stylist-ical-feed.ts).
+      treatwellFeedUrl: feedUrl ? `${feedUrl}&for=treatwell` : null,
+      connections: stylist.calendarConnections.map(({ inboundUrl, ...connection }) => ({ ...connection, inboundUrlConfigured: Boolean(inboundUrl?.trim()) })),
+    };
+  });
 }

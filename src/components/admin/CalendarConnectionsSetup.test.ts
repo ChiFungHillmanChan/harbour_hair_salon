@@ -35,6 +35,7 @@ async function render(locale: Locale) {
   return CalendarConnectionsSetup({ stylists: [{
     id: 'stylist-1', name: 'Example stylist', feedToken: 'example-token',
     feedUrl: 'https://example.test/api/ical/stylist-1?token=example-token',
+    treatwellFeedUrl: 'https://example.test/api/ical/stylist-1?token=example-token&for=treatwell',
     connections: [{
       id: 'connection-1', provider: 'FRESHA', receivesBookings: true, inboundEnabled: true,
       inboundUrlConfigured: true, outboundConfirmedAt: null, lastAttemptAt: null,
@@ -75,4 +76,20 @@ test('expanding connections retains each independent save, sync and required con
   const urls = nodes.filter((node) => node.props.name === 'inboundUrl');
   assert.equal(urls.length, 2);
   assert.ok(urls.every((node) => node.props['data-no-preserve'] && node.props.value === undefined));
+});
+
+test('both feed URLs are shown, each labelled with the provider it is for, in both languages', async () => {
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const t = translator(locale, 'adminOps');
+    const nodes = elements(await render(locale));
+    const codes = nodes.filter((node) => node.type === 'code').map((node) => text(node));
+    assert.deepEqual(codes, [
+      'https://example.test/api/ical/stylist-1?token=example-token',
+      'https://example.test/api/ical/stylist-1?token=example-token&for=treatwell',
+    ]);
+    const labels = nodes.filter((node) => node.type === 'p').map((node) => text(node));
+    const standard = labels.indexOf(t('integrations.connections.outboundStandard'));
+    const treatwell = labels.indexOf(t('integrations.connections.outboundTreatwell'));
+    assert.ok(standard >= 0 && treatwell > standard, `${locale}: the Fresha label comes first, then Treatwell's`);
+  }
 });

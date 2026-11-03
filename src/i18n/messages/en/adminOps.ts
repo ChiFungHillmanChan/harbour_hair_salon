@@ -129,7 +129,7 @@ const adminOps = {
     setup: {
       title: 'Treatwell and Fresha calendar setup',
       direction: "Use the provider's supported per-stylist iCal export and external-calendar subscription if available for your account. If either direction is unavailable, leave its setup unconfirmed and keep website booking closed. No private provider API is assumed.",
-      loops: 'The website imports provider busy times and exports website bookings with a fixed “Busy” title. Imported Treatwell blocks are not forwarded to Fresha, or vice versa, because forwarded events can create calendar loops. Staff must reconcile bookings between the provider calendars.',
+      loops: 'The website imports provider busy times and exports website bookings with a fixed “Busy” title. Fresha’s busy times are forwarded to Treatwell only, through its own URL below: Treatwell has no export feed, so this cannot loop. Nothing is forwarded to Fresha, and Treatwell bookings still have to be copied into the salon’s Google Calendar by staff.',
       format: 'Feeds must use HTTPS and discrete events with UTC or named time zones. Recurrence rules, redirects and ambiguous feed formats fail the test and retain previous busy times. Successful empty feeds clear canceled busy times.',
       scheduledOn: 'Scheduled inbound sync runs every 30 minutes during saved active-stylist opening hours (UK time), from up to 15 minutes before opening until 15 minutes after closing. Provider delays can add to this. Manual tests remain available outside these hours, and confirming a request refreshes any out-of-date feed first. Overnight, stale feeds can pause website booking until a fresh import succeeds.',
       scheduledOff: 'Scheduled inbound sync is off. Manual tests are available below. Enable CALENDAR_SYNC_ENABLED=true in the deployment only after configuring and testing feeds.',
@@ -139,6 +139,8 @@ const adminOps = {
       rotate: 'Rotate secret URL',
       generate: 'Generate secret URL',
       outboundHelp: "Subscribe to this stylist's URL in each provider that supports external calendar subscriptions. Keep it private. Rotating it invalidates existing subscriptions and clears every confirmation below.",
+      outboundStandard: 'For Fresha: website bookings and the busy time added in Google Calendar.',
+      outboundTreatwell: 'For Treatwell: the same, plus Fresha bookings and blocked time. Never paste this one into Fresha.',
       receivesBookings: 'This provider takes bookings for {name}.',
       receivesBookingsHelp: 'Independent of the public booking link in Site Settings.',
       inboundLabel: 'Provider → website private iCal feed',

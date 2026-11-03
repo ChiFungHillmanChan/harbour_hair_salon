@@ -11,9 +11,21 @@ export type IcalFeedResult = { status: 200; body: string } | { status: 404 };
  */
 export type BusyEvent = { id: string; startMs: number; minutes: number };
 
+/**
+ * Which subscriber the feed is for. `standard` is the URL Fresha (and anything
+ * else) holds; `treatwell` is the same URL with `&for=treatwell`, which also
+ * carries Fresha's busy time (loadFreshaBusyEvents). Anything else is standard.
+ */
+export type FeedView = 'standard' | 'treatwell';
+
+export function feedViewFromParam(value: string | null | undefined): FeedView {
+  return value === 'treatwell' ? 'treatwell' : 'standard';
+}
+
 type Deps = {
   db?: PrismaClient;
   now?: Date;
+  view?: FeedView;
 };
 
 // Query cut-off margin: appointments that STARTED up to this long ago may still
@@ -102,6 +114,36 @@ export async function loadBusyEvents(stylistId: string, now: Date, db?: PrismaCl
 }
 
 /**
+ * Fresha's busy time for one stylist (its bookings and blocked time, as the
+ * website imported them), for the Treatwell view of the feed only.
+ *
+ * Treatwell imports this feed and nothing else, so before 2026-11-03 a Fresha
+ * booking never reached Treatwell, which could sell the same hour (found on
+ * 2026-11-03; owner chose this fix the same day). Treatwell has no export feed
+ * and imports nothing back from here, so forwarding Fresha's time to it cannot
+ * loop. Fresha's own URL (the standard view) still never carries these:
+ * loadBusyEvents above is unchanged. TREATWELL blocks are not sent anywhere.
+ */
+export async function loadFreshaBusyEvents(stylistId: string, now: Date, db?: PrismaClient): Promise<BusyEvent[]> {
+  const client = await resolveDb(db);
+  const blocks = await client.externalBusyBlock.findMany({
+    where: { stylistId, source: 'FRESHA', end: { gt: now } },
+    select: { externalUid: true, start: true, end: true },
+  });
+  return blocks.map((block) => ({
+    // `externalUid` is a hash of Fresha's UID, so the UID is stable across imports.
+    id: `f-${block.externalUid}`,
+    startMs: new Date(block.start).getTime(),
+    minutes: (new Date(block.end).getTime() - new Date(block.start).getTime()) / 60_000,
+  }));
+}
+
+/** Both lists in start order, as `renderIcalFeed` expects. */
+export function mergeBusyEvents(...lists: BusyEvent[][]): BusyEvent[] {
+  return lists.flat().sort((a, b) => a.startMs - b.startMs);
+}
+
+/**
  * Render the busy feed. Pure, and deliberately re-evaluated per request even
  * when the events came from cache: `DTSTAMP` and the "already ended" filter
  * both depend on the current time, so freezing them alongside the rows would
@@ -164,5 +206,6 @@ export async function buildStylistIcalFeed(
   if (!tokenMatches(token, stored)) return { status: 404 };
 
   const events = await loadBusyEvents(stylistId, now, db);
-  return { status: 200, body: renderIcalFeed(events, now) };
+  const fresha = deps.view === 'treatwell' ? await loadFreshaBusyEvents(stylistId, now, db) : [];
+  return { status: 200, body: renderIcalFeed(mergeBusyEvents(events, fresha), now) };
 }

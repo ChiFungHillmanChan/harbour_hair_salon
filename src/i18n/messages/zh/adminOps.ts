@@ -126,7 +126,7 @@ const adminOps: Localized<Messages['adminOps']> = {
     setup: {
       title: 'Treatwell 及 Fresha 日曆設定',
       direction: '如你的帳戶支援，請使用平台提供的個別髮型師 iCal 匯出及外部日曆訂閱功能。若任何一個方向無法使用，請保持該項設定為未確認，並繼續關閉網上預約。系統不會假設可使用平台的非公開 API。',
-      loops: '網站會匯入各平台的忙碌時段，並以固定的「Busy」標題匯出網站預約。從 Treatwell 匯入的時段不會轉發至 Fresha，反之亦然，因為轉發事件可能造成日曆循環。員工須自行核對各平台日曆之間的預約。',
+      loops: '網站會匯入各平台的忙碌時段，並以固定的「Busy」標題匯出網站預約。Fresha 的忙碌時段只會經下方 Treatwell 專用網址轉發至 Treatwell：Treatwell 沒有匯出來源，所以不會造成日曆循環。網站不會轉發任何時段至 Fresha，而 Treatwell 的預約仍須由員工抄入髮廊的 Google 日曆。',
       format: '日曆來源必須使用 HTTPS，並以 UTC 或具名時區提供獨立事件。重複規則、轉址及格式不明確的來源會導致測試失敗，並保留先前的忙碌時段。成功同步的空白來源會清除已取消的忙碌時段。',
       scheduledOn: '排程匯入同步會在已儲存的在職髮型師營業時間內（英國時間）每 30 分鐘執行一次，由開門前最多 15 分鐘至關門後 15 分鐘。平台本身的延誤可能令時間更長。非營業時間仍可手動測試，而確認預約申請時會先更新任何過時的來源。晚上期間，過時的來源可能會暫停網上預約，直至再次成功匯入為止。',
       scheduledOff: '排程匯入同步目前已關閉，可使用下方的手動測試。請在設定並測試日曆來源後，才在部署中啟用 CALENDAR_SYNC_ENABLED=true。',
@@ -136,6 +136,8 @@ const adminOps: Localized<Messages['adminOps']> = {
       rotate: '更換私密網址',
       generate: '產生私密網址',
       outboundHelp: '請在每個支援外部日曆訂閱的平台訂閱此髮型師的網址，並保持私密。更換網址後，現有訂閱會失效，下方所有確認亦會被清除。',
+      outboundStandard: 'Fresha 用：網站預約及在 Google 日曆加入的忙碌時段。',
+      outboundTreatwell: 'Treatwell 用：同上，另加 Fresha 的預約及封鎖時段。切勿把此網址貼到 Fresha。',
       receivesBookings: '此平台接受 {name} 的預約。',
       receivesBookingsHelp: '與網站設定中的公開預約連結互不影響。',
       inboundLabel: '平台 → 網站私人 iCal 來源',

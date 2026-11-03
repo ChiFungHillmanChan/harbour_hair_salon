@@ -61,7 +61,11 @@ Rules that follow from this:
   still the largest Neon cost in September 2026 (~45 wakes, ~1.7 CU-h a day —
   about half the free plan), because every expiry turned the next marketplace
   poll into a wake. When mutations already invalidate a tag, keep the timed
-  expiry to a day or more. Measure with Neon's operations log
+  expiry to a day or more. Treatwell's view of the feed (`&for=treatwell`, 2026-11-03) adds
+  Fresha's busy time from a third entry (tag `stylist-ical-fresha`, also a day): the Fresha
+  import drops it only when the stored Fresha window really changed, so the half-hourly
+  re-import of an unchanged feed costs Treatwell's polls nothing
+  (`calendar-sync-service.test.ts` locks it). Measure with Neon's operations log
   (`start_compute`/`suspend_compute`), not guesses.
   Before shipping any public route that touches the database, ask who polls it
   and how often, and check the runtime logs for the real cadence — not just

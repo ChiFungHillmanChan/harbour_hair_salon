@@ -33,7 +33,14 @@ export async function CalendarConnectionsSetup({ stylists }: Props) {
             </form>
           </div>
           <p className="mt-2 text-sm leading-6 text-zinc-600">{t('integrations.connections.outboundHelp')}</p>
-          {stylist.feedUrl && <code className="mt-3 block break-all whitespace-normal rounded border border-zinc-200 bg-white p-2 text-xs">{stylist.feedUrl}</code>}
+          {stylist.feedUrl && <>
+            <p className="mt-3 text-sm font-medium text-zinc-800">{t('integrations.connections.outboundStandard')}</p>
+            <code className="mt-1 block break-all whitespace-normal rounded border border-zinc-200 bg-white p-2 text-xs">{stylist.feedUrl}</code>
+          </>}
+          {stylist.treatwellFeedUrl && <>
+            <p className="mt-3 text-sm font-medium text-zinc-800">{t('integrations.connections.outboundTreatwell')}</p>
+            <code className="mt-1 block break-all whitespace-normal rounded border border-zinc-200 bg-white p-2 text-xs">{stylist.treatwellFeedUrl}</code>
+          </>}
         </div>
         <div className="mt-3 grid gap-3 sm:mt-5 sm:gap-5 lg:grid-cols-2">
           {CALENDAR_PROVIDERS.map((provider) => {
