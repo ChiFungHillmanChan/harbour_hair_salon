@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Ratelimit } from '@upstash/ratelimit';
-import { createFailureLimiter, createRateLimiter, DEPOSIT_DECLINE_ACCOUNT_POLICY, DEPOSIT_DECLINE_IP_POLICY } from './rate-limit';
+import { createFailureLimiter, createRateLimiter, DEPOSIT_DECLINE_ACCOUNT_POLICY, DEPOSIT_DECLINE_IP_POLICY, EMAIL_SEND_DAILY_POLICY, EMAIL_SEND_SITE_DAILY_POLICY, emailSendDailyLimiter } from './rate-limit';
 
 const policy = { prefix: 'rl:test', limit: 2, windowSeconds: 60 };
 
@@ -95,6 +95,18 @@ test('Redis\'s count is trusted when it answers: declines another instance saw c
   assert.equal(await shared.allows('user:1'), false);
   await shared.record('user:9');
   assert.deepEqual(recorded, ['user:9'], 'a decline is counted in Redis');
+});
+
+test('public-form email has a site-wide daily ceiling that leaves Resend Free room for booking mail', async () => {
+  assert.equal(EMAIL_SEND_SITE_DAILY_POLICY.windowSeconds, 86_400);
+  assert.ok(EMAIL_SEND_SITE_DAILY_POLICY.limit <= 40, 'at least 60 of the 100 a day stay free');
+  // An address over its own cap spends nothing of the shared budget...
+  const perAddress = EMAIL_SEND_DAILY_POLICY.limit;
+  for (let i = 0; i < perAddress; i++) assert.equal(await emailSendDailyLimiter.check('busy'), true);
+  assert.equal(await emailSendDailyLimiter.check('busy'), false);
+  // ...so exactly the rest of the budget is left for everyone else.
+  for (let i = perAddress; i < EMAIL_SEND_SITE_DAILY_POLICY.limit; i++) assert.equal(await emailSendDailyLimiter.check(`address-${i}`), true, `send ${i}`);
+  assert.equal(await emailSendDailyLimiter.check('one-address-too-many'), false);
 });
 
 test('deposit declines: 3 per account and 5 per address in 24 hours', () => {

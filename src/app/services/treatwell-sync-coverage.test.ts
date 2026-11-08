@@ -22,6 +22,27 @@ test('fresh successful empty feeds count and stale feeds block readiness', () =>
   row.calendarConnections[0].lastSuccessAt = new Date(now.getTime() - CALENDAR_FRESHNESS_MINUTES * 60_000);
   assert.equal(evaluateSyncCoverage({ stylists: [row], now }).safeToEnableOnlineBooking, true);
 });
+// Owner decision 2026-11-08: at night only the import stops. The fixture's
+// hours are 09:00-17:00 London, so in BST the import pauses at 16:15Z.
+const lastGoodAt = (iso: string) => { const row = stylist(); row.calendarConnections[0].lastSuccessAt = new Date(iso); return row; };
+test('at night a feed that was healthy when the import paused keeps booking open', () => {
+  assert.equal(evaluateSyncCoverage({ stylists: [lastGoodAt('2026-09-11T16:00:00Z')], now: new Date('2026-09-11T23:00:00Z') }).safeToEnableOnlineBooking, true);
+});
+test('at night a feed already broken when the import paused still closes booking', () => {
+  const result = evaluateSyncCoverage({ stylists: [lastGoodAt('2026-09-11T14:30:00Z')], now: new Date('2026-09-11T23:00:00Z') });
+  assert.equal(result.safeToEnableOnlineBooking, false);
+  assert.equal(result.missingInbound, 1);
+});
+test('a feed that has never succeeded closes booking at night too', () => {
+  const row = stylist(); row.calendarConnections[0].lastSuccessAt = null;
+  assert.equal(evaluateSyncCoverage({ stylists: [row], now: new Date('2026-09-11T23:00:00Z') }).safeToEnableOnlineBooking, false);
+});
+test('the morning import gets its first 90 minutes, then the normal rule is back', () => {
+  const lastEvening = '2026-09-11T16:00:00Z';
+  assert.equal(evaluateSyncCoverage({ stylists: [lastGoodAt(lastEvening)], now: new Date('2026-09-12T08:30:00Z') }).safeToEnableOnlineBooking, true);
+  assert.equal(evaluateSyncCoverage({ stylists: [lastGoodAt(lastEvening)], now: new Date('2026-09-12T09:30:00Z') }).safeToEnableOnlineBooking, false);
+});
+
 test('one failed import does not close booking while the last success is still fresh', () => {
   // A slow or rate-limited marketplace run is routine; it must count like a
   // skipped run, not close booking for the whole salon until the next tick.

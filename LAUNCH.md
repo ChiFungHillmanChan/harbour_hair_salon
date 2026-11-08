@@ -179,6 +179,9 @@ Square and payment records.
       2026-10-18 — salon alert, confirmation, usually a reminder — plus any change or
       cancellation; free is 100/day); Vercel Spend
       Management US$10 **alerts only** (never pause production).
+      *Owner, 2026-11-08: Neon stays on Free* (this replaces the upgrade above): Nov 1–8 used 12.68
+      CU-h, about 48 per 30 days, and about 65 is expected once booking is open, against 100. Going
+      over suspends the database, so it is re-measured a week after opening (§3.9 step 7).
       *Owner, 2026-10-25:* Neon has no need to move yet: Oct 1–25 used 37.17 CU-h, a pace of about
       47 a month against the free 100 (the preview database used 2.30). Upgrade at public launch,
       in Vercel (Storage → the Neon integration → Settings → Change Configuration). That switches
@@ -291,12 +294,18 @@ Square and payment records.
 - [ ] **3.9 Opening day: Monday 2026-11-09** (owner's decision, 2026-11-03). In this order, each
       step confirmed with the owner as it is done:
       1. §3.3c done (Treatwell holds the Treatwell URLs), and Admin → Integrations still passes.
-      2. §3.1 Neon → Launch in Vercel (a paid change: confirm the cost first). Vercel spend alert
-         US$10, alerts only.
+      2. Vercel spend alert US$10, alerts only. Neon stays on Free (owner, 2026-11-08).
       3. §3.5 `NOTIFICATIONS_ENABLED=true` on Vercel Production, then a deploy (merge to `main`).
       4. §3.7 diagnostics: all pass, and less than 24 hours before step 5.
       5. §3.8 remove the £0.01 test deposit, then Admin → Settings → turn booking on.
       6. §5 checks the same day. Resend stays on Free (100 emails a day, about 30 bookings).
+      7. A week after opening (2026-11-16): re-measure Neon (`docs/agents/neon-budget.md`). If the
+         month is heading past about 85 CU-h, move to Launch (a paid change: confirm the cost first).
+
+      Online booking stays open overnight (owner decision 2026-11-08), so step 5 does not have to
+      wait for the morning's first feed import. Once booking is on, a **failed** Operations
+      diagnostics run closes it until a run passes (the button says so), and the salon gets one
+      email a day while booking is on but closed.
 
 ---
 

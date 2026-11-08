@@ -6,7 +6,7 @@ import { BookingWizard } from '@/components/booking/BookingWizard';
 import { BookingClosedNotice, type BookingClosedContact } from '@/components/booking/BookingClosedNotice';
 import { getAggregateRating } from '@/app/services/review-service';
 import { redirect } from 'next/navigation';
-import { isBookingEnabledFor } from '@/app/lib/booking-maintenance';
+import { isBookingAdvertised, isBookingEnabledFor } from '@/app/lib/booking-maintenance';
 import { publicSquareConfig } from '@/app/lib/online-booking-lock';
 import { activeMarketplaces } from '@/app/services/marketplace-channels';
 import { getSession } from '@/app/lib/session';
@@ -50,7 +50,10 @@ export async function generateMetadata(): Promise<Metadata> {
 // for why that is safe. Keep it that way — and note the gate MUST stay above the
 // sign-in redirect below, because a signed-out visitor is supposed to see the
 // marketplace/phone page when booking is closed, not a sign-in redirect. The
-// same order holds on /zh-hk/book.
+// same order holds on /zh-hk/book. A signed-out visitor is answered from the
+// day-cached switch alone (2026-11-08): the full gate would wake Neon on every
+// crawler hit. If a feed outage has closed booking in opening hours they meet
+// the closed page after signing in rather than before.
 //
 // Beta booking: while the public gate is closed, a signed-in account on the beta
 // list (Admin → Settings) still gets the wizard. The session is read from the
@@ -92,7 +95,13 @@ export default async function BookPage() {
   const [locale, t] = await Promise.all([getLocale(), getT('booking')]);
 
   const session = await getSession();
-  if (!(await isBookingEnabledFor(session?.userId))) {
+  // A signed-out visitor is only being shown the way in, so the day-cached
+  // setting is enough and nothing here reaches Neon. The full gate runs for a
+  // signed-in customer and again inside the booking transaction.
+  const open = session?.userId
+    ? await isBookingEnabledFor(session.userId)
+    : isBookingAdvertised((await getSiteSettings()).bookingEnabled);
+  if (!open) {
     const contact = await closedContact();
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4 py-8 sm:py-16">

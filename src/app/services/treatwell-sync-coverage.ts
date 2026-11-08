@@ -1,10 +1,12 @@
 import type { Availability, CalendarConnection, Stylist } from '@prisma/client';
 import { validateWeek } from './opening-hours';
+import { calendarFreshnessReference } from './calendar-sync-window';
 
 /**
  * How stale a successful inbound sync may be before a connection stops counting
  * as covered — and, because `assertOnlineBookingReady` re-checks this on every
- * booking attempt, how long online booking survives without one.
+ * booking attempt, how long online booking survives without one while the
+ * import is supposed to be running.
  *
  * This MUST stay a comfortable multiple of the `/api/cron/calendar-sync`
  * schedule in `vercel.json` (every 30 minutes during buffered opening hours). At the original 45
@@ -17,8 +19,13 @@ import { validateWeek } from './opening-hours';
  * A failed attempt counts exactly like a skipped one: only the age of the last
  * success decides. The failure stays visible to admins as `lastError` on
  * Integrations, and changing a feed URL clears `lastSuccessAt`.
- * Closed-hours imports deliberately pause; do not exempt overnight data from
- * freshness checks, since marketplaces can still accept bookings overnight.
+ *
+ * Out of hours (owner decision 2026-11-08) only the import pauses: the age is
+ * measured from the moment it paused (calendarFreshnessReference), so customers
+ * can still request a booking at night. A marketplace can sell the same time
+ * overnight and the website will not know, which is acceptable because every
+ * online booking is a request: staff confirming it re-import that stylist's
+ * feeds and re-check the slot, and a clash is refused and its hold released.
  *
  * The cost of widening it is the window in which a marketplace booking is not
  * yet visible to the site. That window was never really 45 minutes anyway —
@@ -55,7 +62,9 @@ export type SyncCoverage = {
 /** Configuration checks reduce risk; delayed calendar polling is never a reservation guarantee. */
 export function evaluateSyncCoverage(input: { stylists: CoverageStylist[]; now?: Date }): SyncCoverage {
   const now = input.now ?? new Date();
-  const cutoff = new Date(now.getTime() - CALENDAR_FRESHNESS_MINUTES * 60_000);
+  const freshnessMs = CALENDAR_FRESHNESS_MINUTES * 60_000;
+  const reference = calendarFreshnessReference(input.stylists.flatMap((stylist) => stylist.availabilities), now, freshnessMs);
+  const cutoff = new Date(reference.getTime() - freshnessMs);
   const blockers: string[] = [];
   const issues: CalendarIssue[] = [];
   const block = (text: string, issue: CalendarIssue) => { blockers.push(text); issues.push(issue); };

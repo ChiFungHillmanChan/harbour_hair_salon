@@ -59,12 +59,15 @@ function loadPage(options: { enabled: boolean; locale?: Locale; stylistTranslati
     '@/components/booking/BookingClosedNotice': { BookingClosedNotice: ClosedNotice },
     '@/components/auth/VerifyEmailResendForm': { VerifyEmailResendForm: () => null },
     '@/app/services/review-service': { getAggregateRating: async () => ({ count: 0, average: 0 }) },
-    '@/app/lib/booking-maintenance': { isBookingEnabledFor: async (asked: string | null | undefined) => {
-      gateAsked.push(asked);
-      return options.enabled || Boolean(asked && options.betaTester);
-    } },
+    '@/app/lib/booking-maintenance': {
+      isBookingEnabledFor: async (asked: string | null | undefined) => {
+        gateAsked.push(asked);
+        return options.enabled || Boolean(asked && options.betaTester);
+      },
+      isBookingAdvertised: (bookingEnabled: boolean) => bookingEnabled,
+    },
     '@/app/lib/session': { getSession: async () => (userId ? { userId, sessionVersion: 0 } : null) },
-    '@/app/services/site-settings-service': { getSiteSettings: async () => SETTINGS },
+    '@/app/services/site-settings-service': { getSiteSettings: async () => ({ ...SETTINGS, bookingEnabled: options.enabled }) },
     '@/app/services/pricing/public-catalog': { getPublicCatalog: async () => ({ services: [], offerings: [], categories: [] }) },
     '@/i18n/server': { getLocale: async () => locale, getT: async (namespace: Namespace) => translator(locale, namespace) },
     '@/i18n/ClientMessages': { ClientMessages: Messages },
@@ -85,7 +88,7 @@ test('closed: a signed-out visitor gets the closed notice, never a sign-in redir
   const tree = await loadPage({ enabled: false, userId: null }).default();
   assert.ok(find(tree, ClosedNotice)[0]);
   assert.deepEqual(find(tree, Wizard), []);
-  assert.deepEqual(gateAsked, [undefined], 'the gate is told nobody is signed in (no beta query)');
+  assert.deepEqual(gateAsked, [], 'a signed-out visit never reaches the database-backed gate');
 });
 
 test('beta: while booking is closed, a signed-in beta tester gets the wizard', async () => {
@@ -104,6 +107,7 @@ test('beta: while booking is closed, any other signed-in account gets the closed
 test('open: a signed-out visitor is sent to sign in, in their language', async () => {
   await assert.rejects(loadPage({ enabled: true, userId: null }).default(), /redirected to \/auth\/signin\?redirect=%2Fbook/);
   await assert.rejects(loadPage({ enabled: true, userId: null, locale: 'zh-HK' }).default(), /redirected to \/zh-hk\/auth\/signin\?redirect=%2Fzh-hk%2Fbook/);
+  assert.deepEqual(gateAsked, [], 'crawlers and signed-out visitors cost Neon nothing here');
 });
 
 test('a token revoked by sign-out is signed out: sent to sign in, the account never shown', async () => {

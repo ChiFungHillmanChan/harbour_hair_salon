@@ -274,7 +274,7 @@ const adminOps: Localized<Messages['adminOps']> = {
     report: {
       title: '最新就緒報告',
       lastRun: '上次執行：{time}。開放預約前，須有一份以目前設定產生、不超過 24 小時且全部通過的報告。',
-      empty: '沒有已儲存的報告。請執行唯讀診斷以檢查目前設定。',
+      empty: '沒有已儲存的報告。請執行診斷以檢查目前設定。',
       caveat: '檢查通過並不代表顧客一定收到電郵、平台已訂閱你的日曆，或備份可以還原。請與髮廊一同完成這些驗收測試。',
     },
     checkStatus: {
@@ -412,8 +412,8 @@ const adminOps: Localized<Messages['adminOps']> = {
     controls: {
       title: '檢查及通知工具',
       diagnosticsTitle: '檢查連線',
-      diagnosticsHelp: '檢查資料庫、電郵網域及共用 Redis 連線。此操作只會讀取平台狀態並儲存報告。',
-      runDiagnostics: '執行唯讀診斷',
+      diagnosticsHelp: '檢查資料庫、電郵網域及共用 Redis 連線。此操作不會發送任何內容，但網上預約需要一份通過的報告：如果今次檢查不通過，網上預約會關閉，直至有一次檢查通過為止。',
+      runDiagnostics: '執行診斷',
       checking: '正在檢查…',
       sendTitle: '發送到期通知',
       sendHelp: '處理佇列中最多十個符合條件的通知。此操作可能會向顧客及髮廊發送真實電郵。',
@@ -423,6 +423,10 @@ const adminOps: Localized<Messages['adminOps']> = {
       disabled: '通知發送已停用。',
     },
     results: {
+      checksNeedAttentionBookingClosed: {
+        one: '有 1 項檢查需要處理。網上預約現已關閉，直至有一次檢查通過為止。未有發送任何電郵。',
+        other: '有 {count} 項檢查需要處理。網上預約現已關閉，直至有一次檢查通過為止。未有發送任何電郵。',
+      },
       checksNeedAttention: {
         other: '有 {count} 項檢查需要處理。未有發送任何電郵。',
       },
@@ -433,6 +437,20 @@ const adminOps: Localized<Messages['adminOps']> = {
       processed: '已發送：{sent}。失敗：{failed}。延後：{deferred}。略過：{skipped}。',
       processFailed: '通知處理未能完成。重試前請先查看發送紀錄。',
     },
+  },
+  bookingClosedAlert: {
+    subject: 'Harbour Hair：網上預約已自動關閉',
+    preview: '問題解決前，客人只會見到電話預約頁面。',
+    eyebrow: '需要處理',
+    title: '網上預約已關閉',
+    intro: '設定內的網上預約已開啟，但有一項安全檢查未能通過，所以客人現時只會見到電話及預約平台頁面。員工仍可確認預約申請。',
+    label: '原因',
+    reasons: {
+      calendar: '日曆檢查未能通過。請到「後台 → 整合設定」查看：可能有日曆連結中斷，或網站上有髮型師未設定工作時間。',
+      diagnostics: '最近一次營運診斷未能通過。請到「後台 → 營運」再執行一次。',
+    },
+    cta: '開啟營運頁面',
+    footnote: '此電郵每日最多發送一次。檢查通過後，網上預約會立即重新開放。',
   },
   opsAlert: {
     subject: { other: 'Harbour Hair：有 {count} 項需要處理' },

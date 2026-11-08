@@ -3,6 +3,31 @@ import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
 import { BookingError } from '@/app/services/booking-errors';
 
+test('what a signed-out visitor is told follows the switch and the two environment guards, with no query', () => {
+  const previous = process.env.NOTIFICATIONS_ENABLED;
+  let locked = false;
+  const maintenance = loadServerModule<typeof import('./booking-maintenance')>('src/app/lib/booking-maintenance.ts', {
+    '@/app/lib/prisma': {}, // any query would throw
+    '@/app/lib/online-booking-lock': { isOnlineBookingLockedForPayments: () => locked },
+    '@/app/services/integration-readiness': {},
+    '@/app/services/operations-readiness': {},
+    'next/cache': { unstable_cache: (callback: () => Promise<boolean>) => callback },
+  });
+  try {
+    process.env.NOTIFICATIONS_ENABLED = 'true';
+    assert.equal(maintenance.isBookingAdvertised(true), true);
+    assert.equal(maintenance.isBookingAdvertised(false), false);
+    locked = true;
+    assert.equal(maintenance.isBookingAdvertised(true), false);
+    locked = false;
+    process.env.NOTIFICATIONS_ENABLED = 'false';
+    assert.equal(maintenance.isBookingAdvertised(true), false);
+  } finally {
+    if (previous === undefined) delete process.env.NOTIFICATIONS_ENABLED;
+    else process.env.NOTIFICATIONS_ENABLED = previous;
+  }
+});
+
 test('disabled notifications close both readiness paths without reading the database or cache', async () => {
   const previous = process.env.NOTIFICATIONS_ENABLED;
   let databaseReads = 0;

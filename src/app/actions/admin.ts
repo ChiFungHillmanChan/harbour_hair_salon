@@ -13,7 +13,6 @@ import { z } from 'zod';
 import { revalidateCategoryPages } from '@/app/actions/admin-services';
 import { changedTreatwellSyncStatus, getTreatwellApiConfiguration } from '@/app/services/treatwell-api';
 import { enqueueAppointmentNotification, dispatchAppointmentNotifications } from '@/app/services/notification-outbox-service';
-import { checkCalendarBookingReadiness } from '@/app/services/integration-readiness';
 import { refreshCalendarFeedsBeforeApproval } from '@/app/services/calendar-sync-service';
 import { assertAppointmentSlotAvailable, getValidPatchTest, runSerializableWithRetry } from '@/app/services/booking-service';
 import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
@@ -535,9 +534,8 @@ export async function updateAppointmentStatus(
       if (step === 'CAPTURE' && deposit && !depositGatewayFor(deposit)) throw new BookingError('DEPOSIT_PAYMENTS_UNAVAILABLE');
       depositStep = step;
       // Network I/O stays outside the serializable transaction below. Re-import
-      // this stylist's recent Fresha sales, and any stylist's feed the paused
-      // out-of-hours import has let go stale, or an evening confirmation fails
-      // the all-stylist calendar-freshness check until the next morning.
+      // this stylist's recent Fresha sales so a clash is seen; a feed that
+      // cannot be read never stops staff confirming (owner decision 2026-11-08).
       if (target) await refreshCalendarFeedsBeforeApproval(target.stylistId);
     } else {
       // A capture nobody saw finish is settled first (Square is asked), so the
@@ -576,8 +574,6 @@ export async function updateAppointmentStatus(
         if (status === 'COMPLETED' && !started) throw new BookingError('COMPLETE_BEFORE_START');
 
         if (status === 'CONFIRMED') {
-          const readiness = await checkCalendarBookingReadiness(tx);
-          if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
           // Imported bookings or opening hours may have changed since the request.
           // Staff decide; the diary chair rule only refuses customers (spec §6).
           await assertAppointmentSlotAvailable(tx, current, current.date, undefined, { chairRule: false });
@@ -687,8 +683,6 @@ async function approveWithDeposit(appointmentId: string, actorUserId: string): P
     if (current.status === 'CONFIRMED') return { kind: 'DONE' as const, notified: false };
     if (current.status !== 'PENDING') throw new BookingError('ONLY_PENDING_CONFIRM');
     if (hasAppointmentStarted(current.date, now)) throw new BookingError('REQUEST_EXPIRED');
-    const readiness = await checkCalendarBookingReadiness(tx);
-    if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
     // Staff decide; the diary chair rule only refuses customers (spec §6).
     await assertAppointmentSlotAvailable(tx, current, current.date, undefined, { chairRule: false });
     const claim = await claimDepositForCapture(tx, appointmentId, now);
@@ -841,8 +835,6 @@ export async function decideRescheduleRequest(appointmentId: string, decision: '
       // Too close to the requested time, or the original visit has already
       // happened (moving it would email a "moved" notice for a past booking).
       if (isRescheduleRequestMoot({ date: current.date, rescheduleRequestedDate: requested })) throw new BookingError('RESCHEDULE_REQUEST_EXPIRED');
-      const readiness = await checkCalendarBookingReadiness(tx);
-      if (!readiness.ready) throw new BookingError('CALENDAR_SETUP_NEEDED');
       if (current.service.requiresPatchTest) {
         const eligibility = await getValidPatchTest(current.userId, requested, tx);
         if (!eligibility.ok) {

@@ -15,6 +15,7 @@ import { getActionT, localizedPath } from '@/i18n/request';
 import type { MessageParams } from '@/i18n/format';
 import { ContentError, createPublished, deleteContent } from '@/app/services/content/drafts';
 import { AdminNoticeError } from '@/app/lib/admin-notice';
+import { validateWeek } from '@/app/services/opening-hours';
 
 async function requireAdmin() {
   const session = await verifySession();
@@ -89,6 +90,12 @@ export type StylistActionState =
 async function message(code: string, params?: MessageParams): Promise<string> {
   const t = await getActionT('adminContent');
   return t.dynamic(`stylists.errors.${code}`, params, t('stylists.errors.INVALID'));
+}
+
+/** One visible stylist without a full valid week closes online booking for everyone. */
+async function hasValidWeek(stylistId: string): Promise<boolean> {
+  const week = await prisma.availability.findMany({ where: { stylistId }, select: { dayOfWeek: true, isOff: true, startTime: true, endTime: true } });
+  return validateWeek(week).ok;
 }
 
 async function errorState(code: string, params?: MessageParams): Promise<StylistActionState> {
@@ -169,7 +176,9 @@ export async function createStylist(
           googleColorId: parsed.data.googleColorId,
           googleAliases: parsed.data.googleAliases,
           takesWalkIns: parsed.data.takesWalkIns,
-          showOnWebsite: parsed.data.showOnWebsite,
+          // A new stylist has no hours yet, and one visible stylist without a
+          // valid week closes online booking for the whole salon.
+          showOnWebsite: false,
           role: typeof english.role === 'string' ? english.role : '',
           bio: optionalText(english.bio),
           tagline: optionalText(english.tagline),
@@ -199,7 +208,7 @@ export async function updateStylist(
   const id = formData.get('id');
   if (typeof id !== 'string' || !id) return errorState('MISSING_ID');
 
-  const existing = await prisma.stylist.findUnique({ where: { id }, select: { slug: true } });
+  const existing = await prisma.stylist.findUnique({ where: { id }, select: { slug: true, showOnWebsite: true } });
   if (!existing) return errorState('NOT_FOUND');
 
   const parsed = parseSettings(formData);
@@ -213,6 +222,7 @@ export async function updateStylist(
   }
   const colourProblem = await googleColourProblem(parsed.data.googleColorId, id);
   if (colourProblem) return colourProblem;
+  if (parsed.data.showOnWebsite && existing.showOnWebsite === false && !(await hasValidWeek(id))) return errorState('HOURS_NEEDED');
 
   await prisma.stylist.update({
     where: { id },
@@ -248,8 +258,9 @@ export type StylistSwitch = (typeof STYLIST_SWITCHES)[number];
 export async function setStylistSwitch(id: string, name: StylistSwitch, on: boolean): Promise<{ error?: string; success?: boolean }> {
   await requireAdmin();
   if (!STYLIST_SWITCHES.includes(name) || typeof on !== 'boolean') return { error: await message('INVALID') };
-  const existing = await prisma.stylist.findUnique({ where: { id }, select: { slug: true, name: true } });
+  const existing = await prisma.stylist.findUnique({ where: { id }, select: { slug: true, name: true, showOnWebsite: true } });
   if (!existing) return { error: await message('NOT_FOUND') };
+  if (name === 'showOnWebsite' && on && existing.showOnWebsite === false && !(await hasValidWeek(id))) return { error: await message('HOURS_NEEDED') };
   await prisma.stylist.update({ where: { id }, select: { id: true }, data: { [name]: on } });
   // A profile from before slugs were stored is served at its name's slug.
   refreshStylistPages(existing.slug ?? slugify(existing.name));

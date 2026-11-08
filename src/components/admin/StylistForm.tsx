@@ -174,13 +174,17 @@ export function StylistForm({ mode, action, stylist, saved, treatwellExternalId,
 
       <section className="bg-white rounded-lg border border-zinc-200 p-3 sm:p-6 space-y-4">
         <h2 className="text-sm uppercase tracking-wider font-bold text-zinc-700">{t('stylists.form.websiteAndBooking')}</h2>
-        <div>
-          <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-zinc-900">
-            <input type="checkbox" name="showOnWebsite" defaultChecked={showOnWebsite} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4" />
-            {t('stylists.form.showOnWebsite')}
-          </label>
-          <p className="text-xs text-zinc-500 mt-1">{t('stylists.form.showOnWebsiteHelp')}</p>
-        </div>
+        {mode === 'edit' ? (
+          <div>
+            <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-zinc-900">
+              <input type="checkbox" name="showOnWebsite" defaultChecked={showOnWebsite} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4" />
+              {t('stylists.form.showOnWebsite')}
+            </label>
+            <p className="text-xs text-zinc-500 mt-1">{t('stylists.form.showOnWebsiteHelp')}</p>
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-600">{t('stylists.form.showOnWebsiteAfterHours')}</p>
+        )}
         <div>
           <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-zinc-900">
             <input type="checkbox" name="takesWalkIns" defaultChecked={takesWalkIns} className="h-5 w-5 shrink-0 sm:h-4 sm:w-4" />

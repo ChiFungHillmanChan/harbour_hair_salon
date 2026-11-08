@@ -4,7 +4,7 @@ import Link from '@/i18n/link';
 import prisma from '@/app/lib/prisma';
 import { pageNumber } from '@/app/lib/pagination';
 import { Pagination } from '@/components/admin/Pagination';
-import { OPERATIONS_READINESS_JOB, parseOperationsChecks } from '@/app/services/operations-readiness';
+import { BOOKING_CLOSED_ALERT_JOB, OPERATIONS_READINESS_JOB, parseOperationsChecks } from '@/app/services/operations-readiness';
 import { operationsMessageKey } from '@/app/services/operations-messages';
 import { OperationsControls } from '@/components/admin/OperationsControls';
 import { collectPaymentAttention, pageWindows } from '@/app/services/payment-attention';
@@ -38,7 +38,7 @@ export default async function OperationsPage({ searchParams }: { searchParams: P
   ]);
   const report = jobs.find((job) => job.name === OPERATIONS_READINESS_JOB);
   const checks = parseOperationsChecks(report?.lastResultJson).filter((check) => check.id !== 'configuration');
-  const cronJobs = jobs.filter((job) => job.name !== OPERATIONS_READINESS_JOB);
+  const cronJobs = jobs.filter((job) => job.name !== OPERATIONS_READINESS_JOB && job.name !== BOOKING_CLOSED_ALERT_JOB);
   const none = t('operations.none');
   // Our own fixed lastError sentences are translated; anything else (older
   // rows, feed or provider text) stays exactly as recorded, marked English.

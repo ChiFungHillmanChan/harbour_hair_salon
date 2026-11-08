@@ -10,8 +10,9 @@ import { OPERATIONS_READINESS_JOB } from './operations-readiness';
 import { alertWindows, collectPaymentAttention, countPaymentAttention, type PaymentAttentionCounts } from './payment-attention';
 
 /**
- * The salon's daily "needs attention" email. Nothing else pushes a problem to
- * anyone: failed emails, a failing scheduled job, a dead Fresha feed or a card
+ * The salon's daily "needs attention" email. Apart from the booking-closed
+ * notice (booking-closed-alert.ts), nothing else pushes a problem to anyone:
+ * failed emails, a failing scheduled job, a dead Fresha feed or a card
  * deposit nothing could settle (payment-attention.ts) only show up if someone
  * opens Admin → Operations. It runs inside the existing
  * 08:00 UTC reminders cron (the same Neon wake — no new schedule) and sends

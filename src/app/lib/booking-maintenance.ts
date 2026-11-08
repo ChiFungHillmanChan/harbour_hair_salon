@@ -7,6 +7,7 @@ import { BookingError } from '@/app/services/booking-errors';
 import { checkOperationsRuntimeReadiness } from '@/app/services/operations-readiness';
 import { isOnlineBookingLockedForPayments } from '@/app/lib/online-booking-lock';
 import { isBookingBetaTester } from '@/app/lib/booking-beta';
+import { BOOKING_OPEN_TAG } from '@/app/lib/booking-constants';
 
 // Online-booking master switch.
 //
@@ -139,10 +140,13 @@ export async function assertOnlineBookingReadyFor(db: Prisma.TransactionClient, 
  * something external polls" cost vector CLAUDE.md warns about.
  *
  * Sixty seconds, tagged `site-settings` so Admin -> Settings invalidates it the
- * instant the salon flips the switch. The staleness is bounded and safe: the
+ * instant the salon flips the switch, and `BOOKING_OPEN_TAG` so each
+ * calendar-sync tick drops it too. Staleness is safe but not bounded by the 60
+ * seconds: `unstable_cache` serves the old answer first and refreshes behind
+ * it, so on a quiet site the old answer can be hours old for one visitor. The
  * authoritative check still runs uncached inside the booking transaction, so a
  * booking can never be WRITTEN against a stale reading — at worst a customer
- * sees the form for up to a minute after booking closed and is refused on submit.
+ * sees the form after booking closed and is refused on submit.
  */
 const readBookingOpen = unstable_cache(
   async (): Promise<boolean> => {
@@ -156,8 +160,16 @@ const readBookingOpen = unstable_cache(
     }
   },
   ['booking-open'],
-  { revalidate: 60, tags: ['site-settings'] },
+  { revalidate: 60, tags: ['site-settings', BOOKING_OPEN_TAG] },
 );
+
+/**
+ * What a signed-out visitor is shown: `bookingEnabled` comes from the day-cached
+ * settings, so this costs no query. Signing in runs the full gate.
+ */
+export function isBookingAdvertised(bookingEnabled: boolean): boolean {
+  return bookingEnabled && !isOnlineBookingLockedForPayments() && process.env.NOTIFICATIONS_ENABLED === 'true';
+}
 
 /** Configuration failures close the public booking flow; cancellation remains available. */
 export async function isBookingEnabled(): Promise<boolean> {

@@ -224,7 +224,20 @@ export const registerLimiter = createRateLimiter({ prefix: 'rl:register', limit:
  * Checked on top of each form's own limits, never instead of them.
  */
 export const EMAIL_SEND_DAILY_POLICY: RateLimitPolicy = { prefix: 'rl:email-ip-day', limit: 20, windowSeconds: 24 * 60 * 60 };
-export const emailSendDailyLimiter = createRateLimiter(EMAIL_SEND_DAILY_POLICY);
+/**
+ * The ceiling across every address together. Per-address limits alone let a few
+ * addresses spend the whole of Resend Free's 100 a day, and the salon stays on
+ * Free (owner, 2026-10-25), so at least 60 a day are kept for booking mail.
+ * Real sign-ups and resets come to a handful a day.
+ */
+export const EMAIL_SEND_SITE_DAILY_POLICY: RateLimitPolicy = { prefix: 'rl:email-site-day', limit: 40, windowSeconds: 24 * 60 * 60 };
+const emailSendPerAddress = createRateLimiter(EMAIL_SEND_DAILY_POLICY);
+const emailSendSiteWide = createRateLimiter(EMAIL_SEND_SITE_DAILY_POLICY);
+/** Per address first, so an address already over its cap spends none of the shared budget. */
+export const emailSendDailyLimiter: RateLimiter = {
+  backend: () => emailSendPerAddress.backend(),
+  check: async (ip) => (await emailSendPerAddress.check(ip)) && emailSendSiteWide.check('site'),
+};
 export const bookingLimiter = createRateLimiter({ prefix: 'rl:booking', limit: 6, windowSeconds: 60 * 60 });
 // Each request and each withdrawal emails the customer (and a request the
 // salon too), and a withdrawal frees the slot to be requested again: without a

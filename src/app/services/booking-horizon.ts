@@ -5,7 +5,11 @@ import { CALENDAR_FRESHNESS_MINUTES } from './treatwell-sync-coverage';
 
 const DAY_MS = 86_400_000;
 
-/** Leave room for the oldest feed still accepted by the readiness check. */
+/**
+ * Leave room for the oldest feed the readiness check accepts in opening hours.
+ * Overnight the last import can be older, which only matters on the very last
+ * bookable day, and staff re-import the stylist's feeds before confirming.
+ */
 export function bookingCoverageEndsAt(now = new Date()): Date {
   return new Date(now.getTime() + CALENDAR_WINDOW_DAYS * DAY_MS - CALENDAR_FRESHNESS_MINUTES * 60_000);
 }

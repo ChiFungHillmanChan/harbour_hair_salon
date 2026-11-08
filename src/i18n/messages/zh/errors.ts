@@ -17,7 +17,6 @@ const errors: Localized<Messages['errors']> = {
     ONLY_CONFIRMED_ARRIVAL: '只有已確認的預約可以標記為已到達。',
     LATE_CANCELLED_USE_RESTORE: '此預約已因遲到規則被取消。請在「到達」面板按「還原」。',
     LATE_CANCEL_NOT_RESTORABLE: '此預約已無法還原，請重新建立預約。',
-    CALENDAR_SETUP_NEEDED: '日曆設定需要處理。確認此預約前，請先檢查「整合設定」。',
     STALE: '此預約已有變更，請重新整理後再試。',
     MAINTENANCE: '網上預約暫時關閉，請致電本店預約。謝謝，不便之處敬請原諒。',
     MAX_UPCOMING: '你的未來預約已達上限，請先管理現有預約。',

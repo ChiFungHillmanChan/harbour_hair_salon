@@ -520,11 +520,11 @@ test('admin approval refreshes stale marketplace feeds first; other status chang
   assert.deepEqual(calls, ['approve']);
 });
 
-test('the feed refresh runs BEFORE the approval readiness check, or evening approvals fail again', async () => {
+test('a staff confirmation refreshes the stylist\'s feeds and never runs the calendar readiness gate', async () => {
   const trace: string[] = [];
   const f = fixture({ status: 'PENDING', trace });
   assert.equal((await f.admin.updateAppointmentStatus(f.appointment.id, 'CONFIRMED')).success, true);
-  assert.deepEqual(trace, ['refresh', 'readiness']);
+  assert.deepEqual(trace, ['refresh']);
 });
 
 // Date is mocked (2099-09-01T12:00Z), so the boundary is exact, not flaky.
@@ -591,13 +591,18 @@ test('rescheduling rechecks readiness in the transaction even when the earlier p
   assert.equal(f.dispatches(), 0);
 });
 
-test('admin approval cannot bypass calendar readiness', async () => {
+// Owner decision 2026-11-08: a hand confirmation does not need the sync.
+test('staff can confirm while the calendars are stale or failing, at any hour', async () => {
   const f = fixture({ status: 'PENDING', calendarReady: false });
   const result = await f.admin.updateAppointmentStatus(f.appointment.id, 'CONFIRMED');
-  assert.equal(result.success, false);
-  assert.equal(f.appointment.status, 'PENDING');
-  assert.equal(f.events.length, 0);
-  assert.equal(f.dispatches(), 0);
+  assert.equal(result.success, true);
+  assert.equal(f.appointment.status, 'CONFIRMED');
+  assert.equal(f.dispatches(), 1, 'the customer is still told');
+});
+
+test('staff can approve a reschedule request while the calendars are stale or failing', async () => {
+  const f = fixture({ openRequest: OPEN_REQUEST, calendarReady: false });
+  assert.equal((await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString())).success, true);
 });
 
 test('cancellation remains available while online booking and calendar readiness are blocked', async () => {
@@ -777,12 +782,12 @@ test('once locked, a deposit stays locked through later moves; without a taken d
   assert.equal(JSON.parse(noDeposit.events[0].payloadJson).options.depositLocked, undefined);
 });
 
-test('approval refreshes the stylist\'s Fresha feeds before the readiness check', async () => {
+test('approving a reschedule refreshes the stylist\'s Fresha feeds and runs no readiness gate', async () => {
   const trace: string[] = [];
   const refreshed: string[] = [];
   const f = fixture({ openRequest: OPEN_REQUEST, trace, onFeedRefresh: (stylistId) => refreshed.push(stylistId) });
   assert.equal((await f.admin.decideRescheduleRequest(f.appointment.id, 'APPROVE', OPEN_REQUEST.requestedAt.toISOString())).success, true);
-  assert.deepEqual(trace, ['refresh', 'readiness']);
+  assert.deepEqual(trace, ['refresh']);
   assert.deepEqual(refreshed, ['stylist-1'], 'the same shared helper as new-booking approval');
 });
 

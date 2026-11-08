@@ -1,8 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isCalendarSyncWindow, payloadArrival, shouldRefreshCalendar } from './calendar-sync-window';
+import { calendarFreshnessReference, isCalendarSyncWindow, payloadArrival, shouldRefreshCalendar } from './calendar-sync-window';
 
 const hours = [{ dayOfWeek: 1, startTime: '10:00', endTime: '19:00', isOff: false }];
+const week = Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, startTime: '10:00', endTime: '19:00', isOff: false }));
+const NINETY = 90 * 60_000;
+// 2026-11-09 is a Monday, in winter time: London is UTC.
+for (const [label, at, expected] of [
+  ['the evening: from when the import paused', '2026-11-09T22:00:00Z', '2026-11-09T19:15:00.000Z'],
+  ['after midnight: still last evening', '2026-11-10T03:00:00Z', '2026-11-09T19:15:00.000Z'],
+  ['before the morning buffer: still last evening', '2026-11-10T09:44:00Z', '2026-11-09T19:15:00.000Z'],
+  ['the first ticks of the morning: last evening', '2026-11-10T10:30:00Z', '2026-11-09T19:15:00.000Z'],
+  ['90 minutes into the window: the normal rule', '2026-11-10T11:15:00Z', '2026-11-10T11:15:00.000Z'],
+  ['during the day: the normal rule', '2026-11-10T15:00:00Z', '2026-11-10T15:00:00.000Z'],
+  ['the closing buffer: the normal rule', '2026-11-10T19:15:00Z', '2026-11-10T19:15:00.000Z'],
+] as const) {
+  test(`freshness is measured from the right moment: ${label}`, () => {
+    assert.equal(calendarFreshnessReference(week, new Date(at), NINETY).toISOString(), expected);
+  });
+}
+test('freshness: a closed day looks back to the last working day, and no working day at all means now', () => {
+  const mondayOnly = [{ dayOfWeek: 1, startTime: '10:00', endTime: '19:00', isOff: false }];
+  const wednesday = new Date('2026-11-11T03:00:00Z');
+  assert.equal(calendarFreshnessReference(mondayOnly, wednesday, NINETY).toISOString(), '2026-11-09T19:15:00.000Z');
+  assert.equal(calendarFreshnessReference([], wednesday, NINETY), wednesday);
+  assert.equal(calendarFreshnessReference([{ ...mondayOnly[0], isOff: true }, { ...mondayOnly[0], startTime: 'bad' }], wednesday, NINETY), wednesday);
+});
+test('freshness: the latest closing of a day counts when stylists finish at different times', () => {
+  const split = [{ dayOfWeek: 1, startTime: '10:00', endTime: '15:00', isOff: false }, { dayOfWeek: 1, startTime: '12:00', endTime: '19:00', isOff: false }];
+  assert.equal(calendarFreshnessReference(split, new Date('2026-11-09T22:00:00Z'), NINETY).toISOString(), '2026-11-09T19:15:00.000Z');
+});
+
 test('sync includes the buffered closing cron minute despite scheduling delay in BST', () => {
   for (const [time, expected] of [['08:44:59', false], ['08:45:00', true], ['18:15:00', true], ['18:15:45', true], ['18:15:59.999', true], ['18:16:00', false]] as const) {
     assert.equal(isCalendarSyncWindow(hours, new Date(`2026-09-21T${time}Z`)), expected, time);

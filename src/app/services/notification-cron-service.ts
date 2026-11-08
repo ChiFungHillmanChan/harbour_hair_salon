@@ -6,7 +6,7 @@ import { enqueueAppointmentNotification, dispatchPendingNotifications } from './
 import { lapseExpiredRescheduleRequests } from './reschedule-request-lapse';
 import { lapseStartedPendingRequests } from './pending-request-lapse';
 import { reminderWindowEnd, reviewWindow } from '@/app/api/cron/reminders/reminder-window';
-import { isReminderWanted } from '@/app/lib/booking-constants';
+import { isReminderDueAfterConfirmation, isReminderWanted } from '@/app/lib/booking-constants';
 import { isRetiredCustomerEmailKind } from './email-content';
 
 /**
@@ -105,6 +105,8 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
           service: { select: { name: true, price: true, duration: true, isConsultation: true, isPatchTest: true } },
           // CONFIRMATION too: when the booking was confirmed decides whether it gets a reminder.
           notifications: { where: { kind: { in: [kind, 'CONFIRMATION'] } }, select: { eventKey: true, kind: true, createdAt: true } },
+          // The reminder states what is left to pay, deposit and credit together.
+          paymentAttempt: { select: { status: true, amountPence: true } },
         },
         orderBy: { id: 'asc' },
         take: 100,
@@ -118,7 +120,9 @@ export async function runNotificationCron(name: 'notifications' | 'reminders') {
         // start: its confirmation email was the reminder (owner decision
         // 2026-10-18). Nothing is queued; it is looked at again while it is
         // in the window, like a walk-in placeholder, and dispatch re-checks.
-        if (kind === 'REMINDER' && !isReminderWanted(appointment.date, confirmedAt(appointment.notifications))) {
+        // Nor is one sent straight after its confirmation: it waits its turn.
+        const confirmed = confirmedAt(appointment.notifications);
+        if (kind === 'REMINDER' && (!isReminderWanted(appointment.date, confirmed) || !isReminderDueAfterConfirmation(confirmed, now))) {
           remindersNotWanted++;
         } else if (!appointment.notifications.some((notification) => notification.eventKey === eventKey)) {
           // Walk-in placeholder addresses queue nothing (and are rescanned

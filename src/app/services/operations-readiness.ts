@@ -6,6 +6,8 @@ import { resolveRedisCredentials } from '@/app/lib/redis-credentials';
 import { mailboxAddress as mailbox } from '@/app/lib/mailbox';
 
 export const OPERATIONS_READINESS_JOB = 'operations-readiness';
+/** Holds the London day of the last booking-closed email (booking-closed-alert.ts). */
+export const BOOKING_CLOSED_ALERT_JOB = 'booking-closed-alert';
 const REQUIRED_CHECKS = ['configuration', 'database', 'email', 'resend', 'redis', 'notifications', 'cron'];
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 5000;

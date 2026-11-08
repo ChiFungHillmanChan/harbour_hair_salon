@@ -21,9 +21,10 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 /**
- * End of the appointment-reminder lookahead window: `now + 36h`. 36h (not
- * 24h) so a send that fails today is retried on tomorrow's run while still
- * within the window (the cron only runs once per day).
+ * End of the appointment-reminder lookahead window: `now + 36h`, so the first
+ * cron tick of the day before catches the whole of the next day. The half-hourly
+ * notifications cron scans it too; `isReminderDueAfterConfirmation` keeps a
+ * booking confirmed inside the window from being reminded at once.
  */
 export function reminderWindowEnd(now: Date): Date {
   return new Date(now.getTime() + 36 * HOUR_MS);

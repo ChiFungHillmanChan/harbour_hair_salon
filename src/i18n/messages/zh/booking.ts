@@ -69,6 +69,7 @@ const booking: Localized<Messages['booking']> = {
     evening: '晚上',
     loadFailed: '未能載入可預約時間',
     loadFailedHelp: '請稍後再試，或致電本店預約。',
+    tryAgain: '再試一次',
     noneAvailable: '暫無可預約時段',
     noneAvailableHelp: '請選擇其他日期或髮型師。',
     selectedAt: '{date} {time}',
