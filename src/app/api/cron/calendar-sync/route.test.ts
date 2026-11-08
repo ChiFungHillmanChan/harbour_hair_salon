@@ -82,6 +82,52 @@ test('an enabled failed sync persists a safe failure status for the operations p
   });
 });
 
+function routeWithGateFollowUp(alert: () => Promise<unknown>, tags: unknown[][], loadServerModule: typeof import('../../../../test/load-server-module').loadServerModule) {
+  return loadServerModule<{ GET: typeof GET }>('src/app/api/cron/calendar-sync/route.ts', {
+    'next/cache': { revalidateTag: (...args: unknown[]) => { tags.push(args); } },
+    '@/app/services/calendar-sync-schedule': { isScheduledCalendarSyncOpen: async () => true },
+    '@/app/lib/prisma': { backgroundJobState: { upsert: async () => ({}), update: async () => ({}) } },
+    '@/app/services/calendar-sync-service': { syncCalendarFeeds: async () => [] },
+    '@/app/services/late-arrival-cancel': { cancelLateArrivals: async () => ({ enabled: false, cancelled: 0, skipped: 0, failed: 0 }) },
+    '@/app/services/google-calendar-job': { runGoogleCalendarJob: async () => ({ skipped: 'disabled' }) },
+    '@/app/services/booking-closed-alert': { sendBookingClosedAlert: alert },
+    '@/app/services/email-service': { sendSalonNotice: async () => undefined },
+  });
+}
+
+test('after the import, a live deployment drops the cached booking answer and checks whether booking closed itself', async () => {
+  const { loadServerModule } = await import('../../../../test/load-server-module');
+  const tags: unknown[][] = [];
+  let alerts = 0;
+  const route = routeWithGateFollowUp(async () => { alerts++; return { sent: false }; }, tags, loadServerModule);
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true', NOTIFICATIONS_ENABLED: 'true' }, async () => {
+    assert.equal((await route.GET(authedRequest())).status, 200);
+  });
+  assert.deepEqual(tags, [['booking-open', { expire: 0 }]]);
+  assert.equal(alerts, 1);
+});
+
+test('the booking-closed follow-up does nothing while notifications are off', async () => {
+  const { loadServerModule } = await import('../../../../test/load-server-module');
+  const tags: unknown[][] = [];
+  let alerts = 0;
+  const route = routeWithGateFollowUp(async () => { alerts++; return { sent: false }; }, tags, loadServerModule);
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true', NOTIFICATIONS_ENABLED: 'false' }, async () => {
+    assert.equal((await route.GET(authedRequest())).status, 200);
+  });
+  assert.deepEqual(tags, []);
+  assert.equal(alerts, 0);
+});
+
+test('a failing booking-closed follow-up never fails the sync', async (t) => {
+  t.mock.method(console, 'error', () => undefined);
+  const { loadServerModule } = await import('../../../../test/load-server-module');
+  const route = routeWithGateFollowUp(async () => { throw new Error('email down'); }, [], loadServerModule);
+  await withEnv({ CRON_SECRET: SECRET, CALENDAR_SYNC_ENABLED: 'true', NOTIFICATIONS_ENABLED: 'true' }, async () => {
+    assert.equal((await route.GET(authedRequest())).status, 200);
+  });
+});
+
 test('closed-hours ticks do not access job state or run a feed import', async () => {
   const { loadServerModule } = await import('../../../../test/load-server-module');
   let queries = 0;

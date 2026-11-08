@@ -1195,8 +1195,10 @@ async function main() {
     assert.equal(failed[0].ok, false);
     assert.deepEqual(await db.externalBusyBlock.findMany({ orderBy: { externalUid: 'asc' } }), beforeFailure, 'Failed imports must preserve the exact last-known busy rows');
     assert.equal((await checkCalendarBookingReadiness(db)).ready, true, 'One failed import must not close booking while the last success is fresh');
-    // Three missed imports later the last success is stale, and booking must close.
-    await db.calendarConnection.update({ where: { id: channel.id }, data: { lastSuccessAt: new Date(Date.now() - (CALENDAR_FRESHNESS_MINUTES + 1) * 60_000) } });
+    // Long after the last success, booking must close. A full day older than the
+    // window, because out of hours the age is measured from when the import
+    // paused, and this suite runs at any hour of the day.
+    await db.calendarConnection.update({ where: { id: channel.id }, data: { lastSuccessAt: new Date(Date.now() - (24 * 60 + CALENDAR_FRESHNESS_MINUTES + 1) * 60_000) } });
     assert.equal((await checkCalendarBookingReadiness(db)).ready, false);
     assert.equal(await slotAvailable(bookingDay, '11:00'), false);
     await assert.rejects(create(day(17), '10:00'), /Online booking is closed/);

@@ -889,6 +889,11 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                   </svg>
                   <p className="font-medium">{slotLoadFailed ? t('date.loadFailed') : t('date.noneAvailable')}</p>
                   <p className="text-sm text-zinc-500 mt-1">{slotLoadFailed ? t('date.loadFailedHelp') : t('date.noneAvailableHelp')}</p>
+                  {slotLoadFailed && (
+                    <button type="button" onClick={() => setDaysVersion((version) => version + 1)} className="mt-3 min-h-11 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50">
+                      {t('date.tryAgain')}
+                    </button>
+                  )}
                 </div>
               )}
               {dayString === salonToday && !daysLoading && !slotLoadFailed && (

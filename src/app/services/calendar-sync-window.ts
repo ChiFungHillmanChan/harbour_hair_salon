@@ -34,6 +34,44 @@ export function isCalendarSyncWindow(hours: readonly SyncHours[], now = new Date
   return false;
 }
 
+/** Each working day's staff hours as one buffered span, newest first, from today back a week. */
+function recentSyncSpans(hours: readonly SyncHours[], now: Date): { start: number; end: number }[] {
+  const noon = new Date(`${salonDateKey(now)}T12:00:00Z`).getTime();
+  const spans: { start: number; end: number }[] = [];
+  for (let offset = 0; offset >= -7; offset--) {
+    const day = new Date(noon + offset * 86_400_000);
+    const date = day.toISOString().slice(0, 10);
+    const rows = hours.filter((row) => !row.isOff && row.dayOfWeek === day.getUTCDay() &&
+      isValidSalonTime(row.startTime) && isValidSalonTime(row.endTime) && row.startTime < row.endTime);
+    if (!rows.length) continue;
+    spans.push({
+      start: Math.min(...rows.map((row) => resolveSalonDateTime(date, row.startTime).utc.getTime())) - BUFFER_MS,
+      end: Math.max(...rows.map((row) => resolveSalonDateTime(date, row.endTime).utc.getTime())) + BUFFER_MS,
+    });
+  }
+  return spans;
+}
+
+/**
+ * The instant a feed's age is measured from. The scheduled import only runs in
+ * staff hours (owner decision 2026-11-08: at night only the import stops, the
+ * website does not), so a feed is judged by when the import last had the
+ * chance to run:
+ *   - while the import has been running for at least `freshnessMs`: now;
+ *   - after closing: the moment the import paused;
+ *   - in the first `freshnessMs` of the morning: the moment it paused the
+ *     evening before, because the first ticks have not had time to succeed.
+ * A feed that was already failing when the import paused still counts as stale.
+ * With no working day in the past week there is nothing to measure from: now.
+ */
+export function calendarFreshnessReference(hours: readonly SyncHours[], now: Date, freshnessMs: number): Date {
+  const [latest, previous] = recentSyncSpans(hours, now).filter((span) => span.start <= now.getTime());
+  if (!latest) return now;
+  if (now.getTime() > latest.end) return new Date(latest.end);
+  if (now.getTime() - latest.start >= freshnessMs || !previous) return now;
+  return new Date(previous.end);
+}
+
 /** A local timer may tick frequently; only this decision causes a server read. */
 export function shouldRefreshCalendar(hours: readonly SyncHours[], now: Date, lastLoaded: Date, visible: boolean): boolean {
   // Follow the cron's import boundaries, allowing its 90-second runtime.

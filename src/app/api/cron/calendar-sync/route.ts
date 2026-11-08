@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { timingSafeEqual } from 'node:crypto';
 import { syncCalendarFeeds } from '@/app/services/calendar-sync-service';
 import { isScheduledCalendarSyncOpen } from '@/app/services/calendar-sync-schedule';
@@ -7,6 +8,7 @@ import { cancelLateArrivals } from '@/app/services/late-arrival-cancel';
 import { runGoogleCalendarJob, type GoogleCalendarJobDb } from '@/app/services/google-calendar-job';
 import { OPERATIONS_MESSAGES } from '@/app/services/operations-messages';
 import { describeFault } from '@/app/lib/fault';
+import { BOOKING_OPEN_TAG } from '@/app/lib/booking-constants';
 
 // Mostly network wait. The feed import starts no new feed after 40 seconds;
 // the Google push starts no new write after 40 seconds (each Google call may
@@ -45,8 +47,29 @@ export async function GET(request: NextRequest) {
   const lateArrivals = await runLateArrivals(db);
   // After the late-arrival step, so its cancellations reach Google in the same run.
   const googleCalendar = await runGoogleCalendar(db, deadline);
+  await followUpBookingGate(db);
   if (!feeds) return NextResponse.json({ ok: false, error: 'Calendar sync could not complete.', lateArrivals, googleCalendar }, { status: 503 });
   return NextResponse.json({ ok: feeds.ok, results: feeds.results, lateArrivals, googleCalendar }, { status: feeds.ok ? 200 : 502 });
+}
+
+/**
+ * Feeds may have just changed whether booking is open: drop the cached answer
+ * so the next visitor is told the truth, and tell the salon once a day if
+ * booking is switched on but refusing customers. On this run's existing wake.
+ * Never fails the cron.
+ */
+async function followUpBookingGate(db: PrismaClient) {
+  try {
+    if (process.env.NOTIFICATIONS_ENABLED !== 'true') return;
+    revalidateTag(BOOKING_OPEN_TAG, { expire: 0 });
+    const [{ sendBookingClosedAlert }, { sendSalonNotice }] = await Promise.all([
+      import('@/app/services/booking-closed-alert'),
+      import('@/app/services/email-service'),
+    ]);
+    await sendBookingClosedAlert({ db, now: new Date(), env: process.env, send: sendSalonNotice });
+  } catch (error) {
+    console.error('Booking-closed follow-up failed:', describeFault(error));
+  }
 }
 
 /** The Fresha / Treatwell feed import and its `calendar-sync` job row; null when it could not run. */

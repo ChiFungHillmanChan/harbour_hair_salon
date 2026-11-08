@@ -4,7 +4,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { CalendarFeedError, CALENDAR_WINDOW_DAYS, parseCalendarBusyIntervals } from './calendar-ical';
 import { fetchCalendarFeed, MAX_CALENDAR_FEED_BYTES, validateCalendarFeedUrl } from './calendar-feed-url';
 import { CALENDAR_PROVIDERS, type CalendarProvider } from './treatwell-sync-coverage';
-import { CALENDAR_POLL_MINUTES } from './calendar-sync-window';
 import { describeFault } from '@/app/lib/fault';
 import { storedBusySummary } from './calendar-busy-kind';
 
@@ -27,8 +26,6 @@ export type CalendarSyncDependencies = {
   provider?: CalendarProvider;
   /** Only connections that have not succeeded since this instant (or whose last attempt failed). */
   staleBefore?: Date;
-  /** Never these connections (already tried earlier in the same refresh). */
-  excludeConnectionIds?: string[];
   /**
    * Called after a Fresha import whose stored blocks changed. Default: drop
    * the cached Fresha time in Treatwell's view of the busy feeds.
@@ -70,7 +67,6 @@ export async function syncCalendarFeeds(deps: CalendarSyncDependencies = {}): Pr
       ...(deps.connectionId ? { id: deps.connectionId } : {}),
       ...(deps.stylistId ? { stylistId: deps.stylistId } : {}),
       ...(deps.staleBefore ? { OR: [{ lastSuccessAt: null }, { lastSuccessAt: { lt: deps.staleBefore } }, { lastError: { not: null } }] } : {}),
-      ...(deps.excludeConnectionIds?.length ? { NOT: { id: { in: deps.excludeConnectionIds } } } : {}),
     },
     orderBy: { lastAttemptAt: { sort: 'asc', nulls: 'first' } },
     take: 20,
@@ -169,37 +165,29 @@ export const APPROVAL_REFRESH_MINUTES = 5;
 
 /**
  * The one refresh both staff approval paths run (a new booking's Confirm and a
- * reschedule request's Approve), outside their transactions and before the
- * readiness check:
+ * reschedule request's Approve), outside their transactions: the approved
+ * stylist's feeds older than APPROVAL_REFRESH_MINUTES (or failing), so a Fresha
+ * sale made since the last import is seen by the slot check that follows. That
+ * matters most at night, when the scheduled import is paused.
  *
- * 1. the approved stylist's feeds older than APPROVAL_REFRESH_MINUTES, so a
- *    Fresha sale made since the last half-hourly import is seen;
- * 2. then every stylist's feeds older than one poll interval (or failing), as
- *    the old all-stylist refresh did. The readiness gate needs EVERY receiving
- *    stylist's feed fresh within 90 minutes, and the scheduled import pauses
- *    outside staff hours, so refreshing only the approved stylist would fail an
- *    evening approval with CALENDAR_SETUP_NEEDED.
+ * Staff confirming never depends on this (owner decision 2026-11-08): no sync
+ * is needed for a hand confirmation, so a feed that cannot be read only means
+ * the slot is checked against what the website already knows.
  *
  * The admin's own request already wakes Neon, so this adds no separate wake.
  * The CALENDAR_SYNC_ENABLED kill-switch is checked before any database read.
- * Never throws: a failed import is reported by the readiness check that follows.
+ * Never throws.
  */
 export async function refreshCalendarFeedsBeforeApproval(
   stylistId: string,
-  opts: Omit<CalendarSyncDependencies, 'staleBefore' | 'stylistId' | 'excludeConnectionIds'> = {},
+  opts: Omit<CalendarSyncDependencies, 'staleBefore' | 'stylistId'> = {},
 ): Promise<CalendarSyncResult[]> {
   if (process.env.CALENDAR_SYNC_ENABLED !== 'true') return [];
   const now = (opts.now ?? new Date()).getTime();
-  const results: CalendarSyncResult[] = [];
   try {
-    results.push(...await syncCalendarFeeds({ ...opts, stylistId, staleBefore: new Date(now - APPROVAL_REFRESH_MINUTES * 60_000) }));
-    // A feed the first pass just tried is not asked again: one that failed
-    // still has lastError, which the second pass would otherwise select.
-    const tried = results.map((result) => result.connectionId);
-    results.push(...await syncCalendarFeeds({ ...opts, staleBefore: new Date(now - CALENDAR_POLL_MINUTES * 60_000), excludeConnectionIds: tried }));
+    return await syncCalendarFeeds({ ...opts, stylistId, staleBefore: new Date(now - APPROVAL_REFRESH_MINUTES * 60_000) });
   } catch (error) {
-    // The readiness check that follows reports the effect; this records the cause.
     console.error('Calendar refresh before approval failed:', { stylistId, ...describeFault(error) });
+    return [];
   }
-  return results;
 }

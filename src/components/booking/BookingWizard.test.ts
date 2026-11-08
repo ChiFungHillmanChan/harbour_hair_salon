@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule } from '../../test/load-server-module';
+import { readFileSync } from 'node:fs';
 import { translator, type Namespace } from '../../i18n/messages';
 
 type Element = { type: unknown; props: Record<string, unknown> };
@@ -58,6 +59,15 @@ function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unkno
   const props = { services: [SERVICE], offerings: [], categories: [], stylists: [STYLIST], closedContact: { phone: '0113 496 0000', marketplaces: [] }, ...extraProps };
   return { render: () => wizard.BookingWizard(props as never), sets };
 }
+
+// Effects never run in this harness, so the failed state cannot be reached;
+// the source shows the button exists only there and re-runs the days lookup.
+test('a failed availability lookup offers a retry, in both languages', () => {
+  const source = readFileSync('src/components/booking/BookingWizard.tsx', 'utf8');
+  assert.match(source, /slotLoadFailed && \(\s*<button type="button" onClick=\{\(\) => setDaysVersion\(\(version\) => version \+ 1\)\}/);
+  assert.equal(translator('en-GB', 'booking')('date.tryAgain'), 'Try again');
+  assert.equal(translator('zh-HK', 'booking')('date.tryAgain'), '再試一次');
+});
 
 const ALREADY = 'You already have a request for this time — see My Bookings.';
 const HELD = 'We’ve placed a £20.00 hold on your card. It is only taken if the salon confirms your booking.';

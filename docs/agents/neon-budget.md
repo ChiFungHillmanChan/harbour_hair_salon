@@ -39,6 +39,8 @@ Rules that follow from this:
   Watch Neon's operations log for a week after turning it on. Its feed-list cache
   (`fresha-watch-connections`) expires daily (one wake a day at most) and is dropped by
   Admin → Integrations saves and stylist edits; a direct SQL edit of a connection is seen the next day.
+- **A signed-out `/book` costs no query** (2026-11-08): it reads the day-cached `bookingEnabled` plus the two environment guards (`isBookingAdvertised`). Only a signed-in customer pays for the full gate. About 22 real `/book` hits a day would otherwise have added ~12 CU-hours a month once booking opens.
+- **The plan stays Free (owner decision 2026-11-08).** Measured Nov 1–8: 12.68 CU-h, 1.61 a day, ~48 per 30 days; ~65 expected after opening, against the 100 limit that suspends the database. Re-measure a week after opening; past a pace of ~85, move to Launch.
 - **Put cost kill-switches above the first DB call**, never below. Entering a
   function that opens with a query already wakes the compute, so an early return
   that sits after the query has bought nothing. `treatwell-sync/route.ts` has a

@@ -71,6 +71,7 @@ const booking = {
     evening: 'Evening',
     loadFailed: "We couldn't load available times",
     loadFailedHelp: 'Please try again in a moment, or call the salon to book.',
+    tryAgain: 'Try again',
     noneAvailable: 'No appointments available',
     noneAvailableHelp: 'Please try selecting a different date or stylist.',
     selectedAt: '{date} at {time}',

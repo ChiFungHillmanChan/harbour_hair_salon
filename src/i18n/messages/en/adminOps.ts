@@ -278,7 +278,7 @@ const adminOps = {
     report: {
       title: 'Latest readiness report',
       lastRun: 'Last run: {time}. Enabling booking requires a complete passing report from the current settings, less than 24 hours old.',
-      empty: 'No saved report. Run read-only diagnostics to check the current configuration.',
+      empty: 'No saved report. Run diagnostics to check the current configuration.',
       caveat: 'A passing check does not prove that customers receive emails, that a provider subscribes to your calendar, or that backups can be restored. Complete those acceptance tests with the salon.',
     },
     checkStatus: {
@@ -420,8 +420,8 @@ const adminOps = {
     controls: {
       title: 'Checks & notification tools',
       diagnosticsTitle: 'Check connections',
-      diagnosticsHelp: 'Check the database, email domain and shared Redis connection. This only reads provider status and saves the report.',
-      runDiagnostics: 'Run read-only diagnostics',
+      diagnosticsHelp: 'Check the database, email domain and shared Redis connection. It sends nothing, but online booking needs a passing report: if this run fails, online booking closes until a run passes.',
+      runDiagnostics: 'Run diagnostics',
       checking: 'Checking…',
       sendTitle: 'Send due notifications',
       sendHelp: 'Process up to ten eligible notifications already in the queue. This can send real emails to customers and the salon.',
@@ -431,6 +431,10 @@ const adminOps = {
       disabled: 'Notification delivery is disabled.',
     },
     results: {
+      checksNeedAttentionBookingClosed: {
+        one: '1 check needs attention. Online booking is now closed until a run passes. No emails were sent.',
+        other: '{count} checks need attention. Online booking is now closed until a run passes. No emails were sent.',
+      },
       checksNeedAttention: {
         one: '{count} check needs attention. No emails were sent.',
         other: '{count} checks need attention. No emails were sent.',
@@ -451,6 +455,20 @@ const adminOps = {
    * Reports saved before codes existed carry English text only.
    */
   // The daily "needs attention" email to the salon (services/ops-alert-service.ts).
+  bookingClosedAlert: {
+    subject: 'Harbour Hair: online booking has closed itself',
+    preview: 'Customers are being sent to the phone page until this is fixed.',
+    eyebrow: 'Needs attention',
+    title: 'Online booking is closed',
+    intro: 'Online booking is switched on in Settings, but a safety check is failing, so customers are being sent to the phone and marketplace page. Staff can still confirm requests.',
+    label: 'Why',
+    reasons: {
+      calendar: 'A calendar check is failing. Open Admin → Integrations: a feed may be down, or a stylist shown on the website may have no hours.',
+      diagnostics: 'The last Operations diagnostics did not pass. Open Admin → Operations and run them again.',
+    },
+    cta: 'Open Operations',
+    footnote: 'You get this email at most once a day. Online booking reopens as soon as the check passes.',
+  },
   opsAlert: {
     subject: { one: 'Harbour Hair: 1 thing needs attention', other: 'Harbour Hair: {count} things need attention' },
     preview: { one: '1 item to check in Admin → Operations.', other: '{count} items to check in Admin → Operations.' },

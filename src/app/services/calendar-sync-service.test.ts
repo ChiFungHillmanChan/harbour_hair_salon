@@ -158,47 +158,30 @@ async function withCalendarSync<T>(value: string | undefined, run: () => Promise
 
 const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
 
-test('approval refresh checks the target stylist at five minutes, then every stylist at one poll interval', async () => {
+test('approval refresh checks only the target stylist, at five minutes', async () => {
   const queries: Record<string, unknown>[] = [];
   const db = { calendarConnection: { findMany: async ({ where }: { where: Record<string, unknown> }) => { queries.push(where); return []; } } };
   await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: db as unknown as PrismaClient, now }));
-  assert.equal(queries.length, 2);
+  assert.equal(queries.length, 1);
   assert.equal(queries[0].stylistId, 's1');
   assert.deepEqual(queries[0].OR, [
     { lastSuccessAt: null },
     { lastSuccessAt: { lt: new Date('2026-09-11T11:55:00Z') } },
     { lastError: { not: null } },
   ]);
-  assert.equal('stylistId' in queries[1], false, 'the second pass covers every active stylist');
-  assert.deepEqual(queries[1].OR, [
-    { lastSuccessAt: null },
-    { lastSuccessAt: { lt: new Date('2026-09-11T11:30:00Z') } },
-    { lastError: { not: null } },
-  ]);
 });
 
-// The readiness gate needs EVERY receiving stylist's feed fresh within 90
-// minutes. Outside staff hours the scheduled import is paused, so refreshing
-// only the target stylist would fail any evening Confirm with CALENDAR_SETUP_NEEDED.
-test('approval refresh also re-imports another stylist\'s feed that is past the poll interval', async () => {
-  const state = fakeDb([{ ...connection('c1', 's1', 'FRESHA'), lastSuccessAt: minutesAgo(10) }, { ...connection('c2', 's2', 'FRESHA'), lastSuccessAt: minutesAgo(120) }]);
-  const results = await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: state.db, now, fetchFeed: async () => empty }));
-  assert.deepEqual(results.map((result) => [result.connectionId, result.ok]), [['c1', true], ['c2', true]]);
-  assert.deepEqual(state.rows.map((row) => row.lastSuccessAt?.toISOString()), [now.toISOString(), now.toISOString()]);
-});
-
-test('approval refresh leaves another stylist\'s feed alone while it is within the poll interval', async () => {
-  const state = fakeDb([{ ...connection('c1', 's1', 'FRESHA'), lastSuccessAt: minutesAgo(10) }, { ...connection('c2', 's2', 'FRESHA'), lastSuccessAt: minutesAgo(10) }]);
+// Staff confirming no longer needs every stylist fresh (owner decision 2026-11-08).
+test('approval refresh leaves another stylist\'s feed alone, however old it is', async () => {
+  const state = fakeDb([{ ...connection('c1', 's1', 'FRESHA'), lastSuccessAt: minutesAgo(10) }, { ...connection('c2', 's2', 'FRESHA'), lastSuccessAt: minutesAgo(600) }]);
   let fetches = 0;
   const results = await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: state.db, now, fetchFeed: async () => { fetches++; return empty; } }));
   assert.deepEqual(results.map((result) => result.connectionId), ['c1']);
   assert.equal(fetches, 1);
-  assert.equal(state.rows[1].lastSuccessAt?.toISOString(), minutesAgo(10).toISOString());
+  assert.equal(state.rows[1].lastSuccessAt?.toISOString(), minutesAgo(600).toISOString());
 });
 
-// A failing feed keeps lastError, which the second pass also selects: without
-// this it was fetched twice in the same Confirm (review 2026-10-24).
-test('approval refresh asks a feed that just failed only once', async (t) => {
+test('approval refresh reports a feed that cannot be read and carries on, asking it only once', async (t) => {
   t.mock.method(console, 'error', () => undefined);
   const state = fakeDb([connection('c1', 's1', 'FRESHA'), { ...connection('c2', 's2', 'FRESHA'), lastSuccessAt: minutesAgo(10) }]);
   const fetched: string[] = [];
@@ -218,7 +201,7 @@ test('approval refresh respects the kill-switch and never throws', async (t) => 
   }
   assert.equal(reads, 0, 'a disabled sync must not touch the database');
   assert.deepEqual(await withCalendarSync('true', () => refreshCalendarFeedsBeforeApproval('s1', { db: db as unknown as PrismaClient, now })), []);
-  assert.equal(reads, 1, 'a failed read ends the refresh; the readiness check that follows reports it');
+  assert.equal(reads, 1, 'a failed read ends the refresh; the confirmation carries on');
 });
 
 // A database or network fault (not a feed problem) used to vanish into the

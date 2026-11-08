@@ -103,10 +103,29 @@ export const BOOKING_BETA_MAX_TESTERS = 20;
  */
 export const REMINDER_MIN_CONFIRMED_AHEAD_HOURS = 24;
 
+/** Cache tag of the "is booking open" answer; calendar-sync drops it after importing. */
+export const BOOKING_OPEN_TAG = 'booking-open';
+
 /**
  * Whether a booking starting at `start` gets a reminder, given when it was
  * confirmed (null: not known — the reminder goes, as before the rule).
  */
 export function isReminderWanted(start: Date, confirmedAt: Date | null): boolean {
   return confirmedAt === null || meetsMinimumNotice(start, confirmedAt, REMINDER_MIN_CONFIRMED_AHEAD_HOURS * 60);
+}
+
+/**
+ * How long after its confirmation a reminder may be queued. The half-hourly
+ * cron looks 36 hours ahead, so a booking confirmed 24 to 36 hours before its
+ * start would otherwise get "see you tomorrow" within 30 minutes of the
+ * confirmation email. Every booking that is owed a reminder still gets one:
+ * 12 hours after a confirmation made at least 24 hours ahead is always at
+ * least 12 hours before the start, and the cron's longest quiet stretch
+ * (19:30 to 08:00 UTC) cannot swallow that before a daytime appointment.
+ */
+export const REMINDER_MIN_HOURS_AFTER_CONFIRMATION = 12;
+
+/** Whether enough time has passed since the confirmation (null: not known — the reminder goes). */
+export function isReminderDueAfterConfirmation(confirmedAt: Date | null, now: Date): boolean {
+  return confirmedAt === null || now.getTime() - confirmedAt.getTime() >= REMINDER_MIN_HOURS_AFTER_CONFIRMATION * 60 * 60_000;
 }

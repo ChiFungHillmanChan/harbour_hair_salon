@@ -22,7 +22,6 @@ const errors = {
     ONLY_CONFIRMED_ARRIVAL: 'Only a confirmed booking can be marked as arrived.',
     LATE_CANCELLED_USE_RESTORE: 'This booking was cancelled by the late-arrival rule. Use Restore in the Arrivals panel.',
     LATE_CANCEL_NOT_RESTORABLE: 'This booking can no longer be restored. Create a new booking instead.',
-    CALENDAR_SETUP_NEEDED: 'Calendar setup needs attention. Check Integrations before confirming this request.',
     STALE: 'This appointment has changed. Please refresh and try again.',
     MAINTENANCE: 'Online booking is closed at the moment. Please call the salon to book — thank you, and sorry for any inconvenience.',
     MAX_UPCOMING: 'You already have the maximum number of upcoming bookings. Please manage your existing appointments first.',

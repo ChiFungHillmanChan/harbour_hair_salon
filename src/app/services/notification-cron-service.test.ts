@@ -25,6 +25,7 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: str
     { id: 'reminder-target', status: 'CONFIRMED', date: new Date('2026-09-12T10:00:00Z'), notificationVersion: 0, reviewRequestSent: false, reminderSent: false, review: null, notifications: [] as Notice[] },
   ];
   const appointmentQueries: Record<string, unknown>[] = [];
+  const appointmentIncludes: Record<string, unknown>[] = [];
   let enqueueAttempts = 0;
   const jobStates = new Map<string, Record<string, unknown>>();
   const queued: string[] = [];
@@ -59,8 +60,9 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: str
       update: async ({ where, data }: { where: { name: string }; data: Record<string, unknown> }) => { Object.assign(jobStates.get(where.name)!, data); },
     },
     appointment: {
-      findMany: async ({ where, orderBy, take }: { where: Record<string, unknown>; orderBy: Record<string, unknown>; take: number }) => {
+      findMany: async ({ where, orderBy, take, include }: { where: Record<string, unknown>; orderBy: Record<string, unknown>; take: number; include?: Record<string, unknown> }) => {
         appointmentQueries.push(where);
+        appointmentIncludes.push(include ?? {});
         const key = Object.keys(orderBy)[0] as 'id' | 'date';
         return rows.filter((row) => matches(row, where)).sort((left, right) => left[key] < right[key] ? -1 : left[key] > right[key] ? 1 : 0).slice(0, take);
       },
@@ -93,7 +95,7 @@ function fixture(prefixSize = 100, advanceOnEnqueue = false, placeholderIds: str
       dispatchPendingNotifications: async (options: { now?: Date }) => (dispatchCalls++, steps.push('dispatch'), { sent: advanceOnEnqueue ? createdAt.filter((date) => date <= (options.now ?? new Date())).length : 0, failed: 0, skipped: 0, deferred: 0 }),
     },
   });
-  return { service, queued, jobStates, rows, cleanupCalls, steps, appointmentQueries, enqueueAttempts: () => enqueueAttempts, lapseCalls: () => lapseCalls, dispatchCalls: () => dispatchCalls };
+  return { service, queued, jobStates, rows, cleanupCalls, steps, appointmentQueries, appointmentIncludes, enqueueAttempts: () => enqueueAttempts, lapseCalls: () => lapseCalls, dispatchCalls: () => dispatchCalls };
 }
 
 test('a full batch of terminal reminder notices only delays an upcoming reminder to the next run', async () => {
@@ -190,9 +192,12 @@ test('the review-invitation phase is retired: no query for it, nothing queued, i
 
 // Owner decision 2026-10-18: a REMINDER only for a booking confirmed at least
 // 24 hours before its start (its earliest CONFIRMATION notice); with none, as before.
-test('a booking confirmed less than 24 hours before its start gets no reminder; 24 hours or more, or no confirmation notice, gets one', async () => {
+test('a booking confirmed less than 24 hours before its start gets no reminder; 24 hours or more, or no confirmation notice, gets one', async (t) => {
   const start = new Date('2026-09-12T10:00:00Z');
   const confirmation = (hoursBefore: number) => ({ eventKey: `confirmation-${hoursBefore}`, kind: 'CONFIRMATION', status: 'SENT', createdAt: new Date(start.getTime() - hoursBefore * 3_600_000) });
+  // Late enough that even "exactly 24 hours before" was over 12 hours ago.
+  mock.timers.setTime(new Date('2026-09-12T00:00:00Z').getTime());
+  t.after(() => mock.timers.setTime(now.getTime()));
   for (const [label, notices, expected] of [
     ['confirmed 23h59m before', [confirmation(23 + 59 / 60)], false],
     ['confirmed 2 hours before (a staff booking for today)', [confirmation(2)], false],
@@ -208,6 +213,27 @@ test('a booking confirmed less than 24 hours before its start gets no reminder; 
     assert.equal(f.queued.includes('reminder-target'), expected, label);
     assert.equal('remindersNotWanted' in result ? result.remindersNotWanted : undefined, expected ? 0 : 1, label);
   }
+});
+
+// Review 2026-11-08: the 36-hour window met the half-hourly cron, so a booking
+// confirmed 24-36 hours ahead got its reminder straight after its confirmation.
+test('a reminder waits 12 hours after the confirmation, then goes', async () => {
+  for (const [label, hoursAgo, expected] of [['confirmed an hour ago', 1, false], ['confirmed 11h59m ago', 11 + 59 / 60, false], ['confirmed 13 hours ago', 13, true]] as const) {
+    const f = fixture(0);
+    const target = f.rows.find((row) => row.id === 'reminder-target')!;
+    target.date = new Date('2026-09-12T18:00:00Z'); // 30 hours ahead of the fixed clock
+    target.notifications.push({ eventKey: 'confirmation', kind: 'CONFIRMATION', status: 'SENT', createdAt: new Date(now.getTime() - hoursAgo * 3_600_000) });
+    await f.service.runNotificationCron('notifications');
+    assert.equal(f.queued.includes('reminder-target'), expected, label);
+  }
+});
+
+// Review 2026-11-08: without the attempt the reminder ignored a deposit once a
+// consultation credit was recorded, and stated too large a balance.
+test('the reminder scan loads the deposit, so the balance it states is right', async () => {
+  const f = fixture(0);
+  await f.service.runNotificationCron('notifications');
+  assert.deepEqual(f.appointmentIncludes[0].paymentAttempt, { select: { status: true, amountPence: true } });
 });
 
 test('each claimed cron run lapses stale reschedule requests once; a busy run does not', async () => {

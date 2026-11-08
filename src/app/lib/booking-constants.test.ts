@@ -1,7 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MIN_BOOKING_NOTICE_MINUTES, meetsMinimumNotice } from './booking-constants';
+import { MIN_BOOKING_NOTICE_MINUTES, isReminderDueAfterConfirmation, meetsMinimumNotice } from './booking-constants';
 import { resolveSalonDateTime } from '../services/salon-time';
+
+test('a reminder is due 12 hours after the confirmation, and at once when no confirmation is known', () => {
+  const confirmed = new Date('2026-11-10T10:00:00Z');
+  assert.equal(isReminderDueAfterConfirmation(confirmed, new Date('2026-11-10T21:59:59Z')), false);
+  assert.equal(isReminderDueAfterConfirmation(confirmed, new Date('2026-11-10T22:00:00Z')), true);
+  assert.equal(isReminderDueAfterConfirmation(null, confirmed), true);
+});
 
 test('online requests need two hours of notice by default', () => {
   assert.equal(MIN_BOOKING_NOTICE_MINUTES, 120);

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { revalidateAllLocales } from '@/i18n/revalidate';
+import prisma from '@/app/lib/prisma';
 import { verifySession } from '@/app/lib/session';
 import { runOperationsDiagnostics } from '@/app/services/operations-readiness';
 import { dispatchPendingNotifications } from '@/app/services/notification-outbox-service';
@@ -21,9 +22,10 @@ export async function runOperationsDiagnosticsAction(): Promise<OperationsAction
     const checks = await runOperationsDiagnostics();
     revalidateAllLocales(revalidatePath, '/admin/operations');
     const failures = checks.filter((check) => check.status !== 'pass').length;
-    return { status: failures ? 'error' : 'success', message: failures
-      ? t('operations.results.checksNeedAttention', { count: failures })
-      : t('operations.results.checksPassed') };
+    if (!failures) return { status: 'success', message: t('operations.results.checksPassed') };
+    // A failed run closes online booking until one passes, so say so when it is on.
+    const settings = await prisma.siteSettings.findUnique({ where: { id: 'singleton' }, select: { bookingEnabled: true } });
+    return { status: 'error', message: t(settings?.bookingEnabled ? 'operations.results.checksNeedAttentionBookingClosed' : 'operations.results.checksNeedAttention', { count: failures }) };
   } catch {
     return { status: 'error', message: t('operations.results.reportFailed') };
   }
