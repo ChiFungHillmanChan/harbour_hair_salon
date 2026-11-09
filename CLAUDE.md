@@ -11,15 +11,15 @@ Guidance for Claude Code in this repository. This file is the short core. The de
 - **Other channels stay in sync.** Fresha and the website swap busy time through iCal feeds both ways. The salon's Google Calendar ("HarbourHair") syncs both ways and shows as the staff diary in Admin → Schedule.
 - **Brand:** monochrome black, white and grey (client requirement).
 
-## 2. Current state (2026-11-03)
+## 2. Current state (2026-11-09)
 
-- The public site is live. **Online booking is closed to the public**: customers book by phone, Fresha or Treatwell. It is open to **beta testers** only (Admin → Settings → Beta testers, currently the owner's account). The owner chose **Monday 2026-11-09** to open it to the public (decided 2026-11-03). The steps, in order, are in `LAUNCH.md` §3.9.
+- The public site is live. **Online booking is closed to the public**: customers book by phone, Fresha or Treatwell. It is open to **beta testers** only (Admin → Settings → Beta testers, currently the owner's account). The owner opened it to the public on 2026-11-09 at 13:23 and closed it again at 13:48 the same day (no bookings came in); reopening may be 2026-11-10, not yet fixed. Before it reopens: a passing diagnostics report under 24 hours old, then the switch in Admin → Settings. The full steps are in `LAUNCH.md` §3.9.
 - Square **production** keys and the webhook are set. A real £0.01 test booking passed end to end (its refund COMPLETED on 2026-10-19). The account's card rate is "API 1.40% + £0.25", and the location `LMDPK9XXXTJEM` is named "FaithArkLtd". The assistant never captures or refunds real money: staff press those buttons.
-- **Operations diagnostics (2026-10-25):** everything passes except Notification delivery, which fails until `NOTIFICATIONS_ENABLED=true`. Run them again after that, less than 24 hours before booking opens (`LAUNCH.md` §3.7).
-- Production flags: `NOTIFICATIONS_ENABLED=false`, `CALENDAR_SYNC_ENABLED=true`, Google Calendar sync on, housekeeping on, late-arrival rule off, Fresha watch and its Google mirror on since 2026-10-27 (`FRESHA_WATCH_ENABLED=true`, `GOOGLE_FRESHA_MIRROR_CALENDAR_ID` = the separate "Fresha（自動同步）" calendar; `docs/google-calendar-setup.md` §9).
-- **Remove before public launch:** the £0.01 test deposit on "Short Over Ears - Wash, Haircut & Blow Dry" (`LAUNCH.md` §3.8).
+- **Operations diagnostics (2026-11-09, 12:33):** all six checks pass, with `NOTIFICATIONS_ENABLED=true`. A report counts for 24 hours, so run them again if booking reopens after 12:33 on 2026-11-10 (`LAUNCH.md` §3.7).
+- Production flags: `NOTIFICATIONS_ENABLED=true` (since 2026-11-08), `CALENDAR_SYNC_ENABLED=true`, Google Calendar sync on, housekeeping on, late-arrival rule off, Fresha watch and its Google mirror on since 2026-10-27 (`FRESHA_WATCH_ENABLED=true`, `GOOGLE_FRESHA_MIRROR_CALENDAR_ID` = the separate "Fresha（自動同步）" calendar; `docs/google-calendar-setup.md` §9).
+- **The £0.01 test deposit** on "Short Over Ears - Wash, Haircut & Blow Dry" was removed on 2026-11-09: that service now follows the salon's 50% policy, beta testers included (`LAUNCH.md` §3.8).
 - **Calendars (checked 2026-11-03):** Funky, Ivan and Lox swap busy time with Fresha both ways. Lox was linked on 2026-11-03 with the owner's OK, and Lox / FRESHA now takes bookings with its outbound subscription confirmed. Treatwell reads all three website busy feeds every 5 minutes and shows the same blocks. A Treatwell booking reaches the website only when staff copy it into HarbourHair (red `TW`): the accepted blind spot. Fresha's bookings reach Treatwell only through Treatwell's own URL (`&for=treatwell`, shipped 2026-11-03), which adds Fresha's busy time. Each Treatwell link must hold that URL (`LAUNCH.md` §3.3c). Never rotate a stylist's busy-feed URL while any provider takes their bookings. Untick "takes bookings" first, or beta booking closes (`LAUNCH.md` §3.3).
-- **Owner decisions (2026-10-25, `LAUNCH.md` §3/§4):** Resend stays on Free for now; Treatwell stays (risk accepted); the second admin and `NOTIFICATIONS_ENABLED` come later; the £0.01 override and the beta tester list stay for now; the privacy notice's entity name stays (FaithArkLtd and Harbour Hair Salon are the same company).
+- **Owner decisions (2026-10-25, `LAUNCH.md` §3/§4):** Resend stays on Free for now; Treatwell stays (risk accepted); the second admin comes later; the beta tester list stays for now; the privacy notice's entity name stays (FaithArkLtd and Harbour Hair Salon are the same company).
 - The preview database is migrated through `20261018200000_deposit_locked_at`.
 - Full dated detail: `docs/agents/production-state.md`. The launch steps, in order: `LAUNCH.md` §3, then the owner decisions in §4.
 
@@ -37,7 +37,7 @@ Guidance for Claude Code in this repository. This file is the short core. The de
 | DNS | IONOS | `www.harbourhair.co.uk` is canonical; DMARC is live | Domain renewal yearly |
 | Crons | Vercel crons (UTC) | reminders `0 8`, notifications `*/30 8-19`, calendar-sync `*/30` (staff hours only), fresha-watch `*/5 8-19` (15 minutes before opening until closing; on since 2026-10-27, `FRESHA_WATCH_ENABLED`), housekeeping `15 3` | Read `docs/agents/neon-budget.md` before adding one |
 
-**Running cost:** about US$20/month (Vercel Pro; Neon Launch would add about US$7 and Resend Pro US$20, neither bought yet), plus Square's per-payment fees. Also set a Vercel spend alert of US$10 (**alerts only**: pausing would take production offline). Environment variables: `docs/agents/environment.md`.
+**Running cost:** about US$20/month (Vercel Pro; Neon Launch would add about US$7 and Resend Pro US$20, neither bought yet), plus Square's per-payment fees. Also set a Vercel spend alert of US$10 (**alerts only**: pausing would take production offline). Not done yet: the team budget was still US$50 with Pause on when checked on 2026-11-09, and the owner has not chosen. Environment variables: `docs/agents/environment.md`.
 
 ## 4. Repository structure
 

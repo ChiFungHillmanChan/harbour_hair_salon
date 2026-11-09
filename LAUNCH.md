@@ -1,6 +1,7 @@
 # Launch checklist — Harbour Hair Salon
 
-Last verified against production: **2026-11-03**, calendars only. That day Lox was linked to
+Last verified against production: **2026-11-09** (Admin → Operations, Settings and Integrations,
+`/book` open and closed, `main` @ `665a732`; §3.9). Before that, **2026-11-03**, calendars only. That day Lox was linked to
 Fresha both ways (§3.3), and the Treatwell and Fresha links and the Vercel logs of the busy feeds
 were checked. The last wider check was on **2026-10-25** (read-only: the Vercel Production variable
 names, `/book` showing the closed notice, `/api/health` up, `main` @ `a0bf849` deployed; then the
@@ -10,6 +11,7 @@ read-only check and production-readiness review were on 2026-10-13 (`main` @ `de
 > **Status:** the public site is live and stable. **Online booking is closed to the public**
 > by configuration (§3). The Square lock in code is open: production credentials were set on
 > 2026-10-18 (§2), so beta testers (Admin → Settings → Beta testers) book and pay real deposits.
+> Public booking was opened on 2026-11-09 at 13:23 and closed again at 13:48 by the owner (§3.9).
 > The 2026-10-13 review's code findings are fixed in the "review follow-ups" release (§1, #62);
 > Square deposits are the second release (§2, #63). Both are live since 2026-10-13.
 >
@@ -28,13 +30,13 @@ Work top to bottom. The order in §3 is **load-bearing**.
 | Area | State |
 |---|---|
 | Tests / `tsc` / lint / audit | All green — 1,284 tests with release 1 and 1,644 with release 2 (1,057 before); CI also replays migrations on PostgreSQL 18 and runs the integration, booking-lifecycle and HTTP suites |
-| Online booking | **CLOSED** — `SiteSettings.bookingEnabled=false`, plus the Square lock. *2026-10-18:* the Square lock is open (production credentials, §2); only beta testers can book |
-| Notifications | `NOTIFICATIONS_ENABLED=false` — customers get no booking email yet |
+| Online booking | **CLOSED** — `SiteSettings.bookingEnabled=false`, plus the Square lock. *2026-10-18:* the Square lock is open (production credentials, §2); only beta testers can book. *2026-11-09:* opened at 13:23, closed again by the owner at 13:48, no bookings in between (§3.9) |
+| Notifications | `NOTIFICATIONS_ENABLED=false` — customers get no booking email yet. *2026-11-08:* `true` on Production, deployed with #97 (§3.5) |
 | Calendar sync | `CALENDAR_SYNC_ENABLED=true`; Fresha inbound OK for all 4 stylists |
 | Fresha outbound confirmed | Funky ✅ Ivan ✅ **Lox ❌ Shania ❌** — blocks the go-live gate **and** staff approvals. *2026-10-18:* Lox's and Shania's "takes bookings" are off in Admin (Shania's switched off that day), so the gate no longer checks them; Lox's gap and Shania's status: §3.3. *2026-11-03:* **Lox ✅**, two-way, and its "takes bookings" is ticked (§3.3). Shania is unchanged: not sold on Fresha |
 | Treatwell | Active stylists `receivesBookings=false` (accepted blind spot: Treatwell has no export feed). *2026-11-03:* Treatwell fetches Funky's, Ivan's and Lox's busy feeds every 5 minutes with 200, and its external blocks for 3–8 November match the website feeds exactly. Its bookings reach the website only as red `TW` copies in HarbourHair, made by staff. Fresha's bookings did not reach Treatwell at all: fixed by Treatwell's own URL (§3.3c) |
 | Housekeeping | `HOUSEKEEPING_ENABLED` unset, so it is **on** since release 1 (it runs unless set to `false`; the privacy notice's retention periods depend on it). First run 03:15 UTC on 2026-10-14; checked before the deploy, production had nothing for it to close or remove (no pending requests, no expired rows) |
-| Operations diagnostics | Last run 2026-09-20, **never passed**. *2026-10-25:* 5 of 6 pass; only Notification delivery fails, as it must until §3.5 (§3.7) |
+| Operations diagnostics | Last run 2026-09-20, **never passed**. *2026-10-25:* 5 of 6 pass; only Notification delivery fails, as it must until §3.5 (§3.7). *2026-11-09, 12:33:* all 6 pass |
 | Neon | Free plan (100 CU-h/month, overrun **suspends** the database until next month); Oct 1–12 used 17.6 CU-h (~45/month pace); 6-hour restore history. *2026-10-25:* Oct 1–25 used 37.17 CU-h (~47/month pace); the preview database 2.30 (§3.1) |
 | Crons (UTC) | reminders `0 8` (+ daily ops alert), notifications `*/30 8-19`, calendar-sync `*/30` (staff hours ±15 min), housekeeping `15 3` |
 | Migrations | 22 applied — release 2's deploy added `20261013120000_square_deposits` on 2026-10-13 (additive only; no drift afterwards). The preview database has it too |
@@ -266,13 +268,15 @@ Square and payment records.
       3. Fresha keeps the plain URL. Nothing in Admin changes: no rotation, and the "takes
          bookings" ticks stay as they are.
 - [ ] **3.4 Second admin account** (Admin → Users). *Owner, 2026-10-25:* to be added later.
-- [ ] **3.5 Environment, then redeploy** (env changes only reach the runtime after a deploy):
+- [x] **3.5 Environment, then redeploy** (env changes only reach the runtime after a deploy):
       leave `HOUSEKEEPING_ENABLED` unset (on), then `NOTIFICATIONS_ENABLED=true` (sends real email);
       `SALON_NOTIFY_EMAIL` if salon alerts should not go to `EMAIL_REPLY_TO`.
       *Owner, 2026-10-25:* set later. Nothing old goes out when it is: the queue's four PENDING
       deliveries (a confirmation and three reschedules, 2026-10-16) all belong to one test booking
       that is cancelled and in the past, so the outbox skips them (`isCurrent`), and housekeeping
       clears them 30 days after they were queued.
+      *2026-11-08:* done. `NOTIFICATIONS_ENABLED=true` on Production (Config type), deployed with
+      #97 (`665a732`).
 - [x] **3.6 Square** — §2 complete (production keys, webhook and a real £0.01 test, 2026-10-18).
       Checked in the Square Dashboard on 2026-10-25: card rate "API 1.40% + £0.25"; location
       `LMDPK9XXXTJEM` is named "FaithArkLtd", 2 Chapel Street, Leeds; the £0.01 refund shows
@@ -285,12 +289,16 @@ Square and payment records.
       authentication, the database, the Resend sender domain and Redis pass; Notification delivery
       fails, as it must until §3.5. All five scheduled jobs succeeded that day and none has ever
       failed; no payment needs attention. Run it again after §3.5, less than 24 hours before §3.8.
+      *2026-11-09, 12:33 London:* all six pass after §3.5, and no payment needs attention. Left
+      unticked because a report only counts for 24 hours: run it again if booking reopens later.
 - [ ] **3.8 Admin → Settings → turn booking on.** Never write `bookingEnabled` straight into the
       database. **First** remove the £0.01 test deposit on "Short Over Ears - Wash, Haircut & Blow
       Dry" (Admin → Services & Pricing → that service → empty "Deposit for this service"; kept on
       purpose for beta testers since 2026-10-18), and decide whether to keep the beta tester list
       (it no longer matters once booking is open to everyone). *Owner, 2026-10-25:* both stay for
-      now.
+      now. *2026-11-09:* the £0.01 test deposit is removed (empty after a reload, so the service
+      follows the 50% policy); the beta tester list stays. Booking was switched on at 13:23 and
+      off again at 13:48 at the owner's request.
 - [ ] **3.9 Opening day: Monday 2026-11-09** (owner's decision, 2026-11-03). In this order, each
       step confirmed with the owner as it is done:
       1. §3.3c done (Treatwell holds the Treatwell URLs), and Admin → Integrations still passes.
@@ -301,6 +309,15 @@ Square and payment records.
       6. §5 checks the same day. Resend stays on Free (100 emails a day, about 30 bookings).
       7. A week after opening (2026-11-16): re-measure Neon (`docs/agents/neon-budget.md`). If the
          month is heading past about 85 CU-h, move to Launch (a paid change: confirm the cost first).
+
+      *Progress, 2026-11-09:* step 1: Admin → Integrations passes; the owner skipped the check that
+      Treatwell holds the Treatwell URLs. Step 2 is not done: Vercel has a team budget of US$50
+      with Pause on, and the owner has not chosen whether to change it. Steps 3 and 4 are done
+      (diagnostics 12:33). Step 5 was done at 13:23 and undone at 13:48 by the owner; reopening may
+      be 2026-11-10, not yet fixed, and needs step 4 again if the report is older than 24 hours by
+      then. Step 6: while open, `/book` signed out went to sign-in and signed in showed real times
+      from 11 November; the one real booking in §5 has not been made. Step 7 counts from the day
+      booking really opens.
 
       Online booking stays open overnight (owner decision 2026-11-08), so step 5 does not have to
       wait for the morning's first feed import. Once booking is on, a **failed** Operations
