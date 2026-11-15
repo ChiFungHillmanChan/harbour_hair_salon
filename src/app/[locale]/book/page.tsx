@@ -125,7 +125,8 @@ export default async function BookPage() {
   const account = await prisma.user.findUnique({
     where: { id: session.userId },
     // The name and email also go to Square with a card deposit, to verify the card.
-    select: { email: true, name: true, sessionVersion: true, ...EMAIL_VERIFICATION_SELECT },
+    // The phone pre-fills the contact number the booking asks for (lib/phone.ts).
+    select: { email: true, name: true, phone: true, sessionVersion: true, ...EMAIL_VERIFICATION_SELECT },
   });
   // The cookie alone is not enough to show the account: a token revoked by
   // sign-out (or an erased account) is signed out — verifySession's rule, in
@@ -198,6 +199,7 @@ export default async function BookPage() {
             categories={catalog.categories}
             stylists={stylists}
             closedContact={contact}
+            customerPhone={account.phone}
             // Card deposits: only Square's public values, read now (never at
             // build time) — null when no deposit can be taken here. The access
             // token never leaves the server.

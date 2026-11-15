@@ -91,10 +91,16 @@ export function bookingFixture(options: {
   betaTesters?: string[];
   /** The session cookie's token was revoked by sign-out (lib/session.ts isSessionCurrent). */
   revokedSession?: boolean;
+  /** The phone saved on the customer's account (default a valid one; null = none saved). */
+  savedPhone?: string | null;
 } = {}) {
   /** The signed-in customer and their address; `asCustomer` switches them (every account is verified). */
   let customerId = 'user-1';
   let clientIp = options.clientIp ?? '203.0.113.7';
+  // submitBooking needs a contact phone (lib/phone.ts): the account's, or one it saves.
+  let savedPhone = options.savedPhone === undefined ? '07700 900123' : options.savedPhone;
+  /** Each phone submitBooking saved, and how many bookings existed when it did. */
+  const phoneWrites: { phone: unknown; bookingsBefore: number }[] = [];
   // The real decline limiters, in memory (no Redis): they persist across this fixture's requests.
   const declineLimiters = {
     depositDeclineAccountLimiter: createFailureLimiter(DEPOSIT_DECLINE_ACCOUNT_POLICY, { redis: null }),
@@ -121,7 +127,7 @@ export function bookingFixture(options: {
   };
   const withRelations = (row: Row) => ({
     ...row,
-    user: { name: 'Customer', email: 'customer@example.test', phone: null },
+    user: { name: 'Customer', email: 'customer@example.test', phone: savedPhone },
     stylist: { name: row.stylistId },
     service: { name: liveService.name, price: liveService.price, duration: liveService.duration },
   });
@@ -196,7 +202,16 @@ export function bookingFixture(options: {
     },
     googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [] },
-    user: { findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }), update: async () => ({}) },
+    user: {
+      findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [], phone: savedPhone }),
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        if ('phone' in data) {
+          phoneWrites.push({ phone: data.phone, bookingsBefore: rows.length });
+          savedPhone = data.phone as string | null;
+        }
+        return {};
+      },
+    },
   };
   let commitAnswerLost = options.commitAnswerLost === true;
   const db = {
@@ -287,5 +302,5 @@ export function bookingFixture(options: {
     'next/server': { after: (callback: () => unknown) => callback() },
     'next/cache': { revalidatePath: () => undefined },
   });
-  return { service, actions, rows, attempts, notices, queuedDeposits, effects, squareCalls, liveService, gateway, gateUserIds, asCustomer: (id: string, ip?: string) => { customerId = id; if (ip) clientIp = ip; } };
+  return { service, actions, rows, attempts, notices, queuedDeposits, effects, squareCalls, phoneWrites, liveService, gateway, gateUserIds, asCustomer: (id: string, ip?: string) => { customerId = id; if (ip) clientIp = ip; } };
 }

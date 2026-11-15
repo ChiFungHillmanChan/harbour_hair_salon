@@ -649,3 +649,18 @@ test('resizing a retired option retains the price recorded on the booking', asyn
   assert.equal(calls[0].durationMin, 85);
   assert.equal(calls[0].expectedQuote, undefined);
 });
+
+// Staff open a booking to reach the customer about it: the phone and email
+// are links (tap to call, tap to email), and a booking with neither says so.
+test('an opened booking shows the customer phone and email as call and email links', () => {
+  const contact = { ...depositTarget('PENDING', { state: 'AUTHORIZED', amountPence: 2000 }) as Extract<DialogTarget, { mode: 'edit' }>, customerPhone: '07700 900123', customerEmail: 'mei@example.test' };
+  const nodes = dialog(contact, {}).render();
+  const links = nodes.filter((node) => node.type === 'a').map((node) => [node.props.href, text(node)]);
+  assert.deepEqual(links.filter(([href]) => String(href).startsWith('tel:')), [['tel:+447700900123', '07700 900123']], 'the phone dials in international form');
+  assert.deepEqual(links.filter(([href]) => String(href).startsWith('mailto:')), [['mailto:mei@example.test', 'mei@example.test']], 'the email opens a new mail');
+  assert.ok(!nodes.some((node) => text(node) === 'No phone or email on file for this customer.'), 'no missing-contact note');
+
+  const bare = dialog(depositTarget('CONFIRMED', { state: 'PAID', amountPence: 2000 }), {}).render();
+  assert.ok(!bare.some((node) => node.type === 'a' && /^(tel|mailto):/.test(String(node.props.href))), 'no contact links without contact details');
+  assert.ok(bare.some((node) => node.type === 'p' && text(node) === 'No phone or email on file for this customer.'), 'the missing-contact note');
+});

@@ -53,6 +53,8 @@ const errors = {
     INVALID_DATE_TIME: 'Invalid date or time',
     SLOTS_FAILED: 'Failed to fetch available slots',
     TOO_MANY_BOOKINGS: 'Too many booking attempts. Please try again shortly.',
+    PHONE_REQUIRED: 'Please add a phone number so the salon can contact you about your booking.',
+    PHONE_INVALID: 'Please enter a valid phone number, for example 07700 900123.',
     EMAIL_NOT_VERIFIED: 'Please confirm your email address before booking online. Use the link we emailed you, or reload the booking page to get a new one.',
     MANAGE_EMAIL_NOT_VERIFIED: 'Please confirm your email address to manage your bookings online. Use the link we emailed you, or call the salon.',
     TOO_MANY_CANCELLATIONS: 'Too many cancellations today. Please call the salon.',

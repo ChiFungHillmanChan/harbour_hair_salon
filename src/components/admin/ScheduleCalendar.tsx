@@ -32,6 +32,7 @@ import { useDraftState } from '@/i18n/draft-store';
 import { formatCalendarDay, formatMonth, formatMonthName, formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
 import type { Translate } from '@/i18n/translator';
 import type { Messages } from '@/i18n/messages/types-client';
+import { displayableEmail } from '@/app/lib/walk-in-customer';
 
 // Browser arrival time of each server payload this tab has shown; see payloadArrival.
 const payloadFirstSeen = new Map<string, number>();
@@ -618,6 +619,9 @@ export function ScheduleCalendar({
       durationMin: appt.durationAtBooking ?? appt.service.duration,
       notes: appt.notes ?? '',
       customerName: appt.user.name ?? t('appointment.customerFallback'),
+      // Only what staff can use: a walk-in's or an erased customer's placeholder address is no email.
+      ...(appt.user.phone?.trim() ? { customerPhone: appt.user.phone.trim() } : {}),
+      ...(displayableEmail(appt.user.email) ? { customerEmail: displayableEmail(appt.user.email) } : {}),
       status: appt.status,
       updatedAt: appt.updatedAt,
       price: appt.price,

@@ -68,7 +68,7 @@ function fixture(options: { requiresPatchTest?: boolean; patchTestDate?: Date } 
     },
     googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [] },
-    user: { findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }) },
+    user: { findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [], phone: '07700 900123' }) },
     notificationDelivery: { findUnique: async () => null, upsert: async () => ({ id: 'event-1' }) },
   };
   const db = { ...tx, $transaction: async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx) };

@@ -23,6 +23,7 @@ import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
 import { resolveConsultationTarget } from '@/app/services/consultation-routing';
 import { useLocale, useT } from '@/i18n/client';
 import { useDraftState, clearDraft } from '@/i18n/draft-store';
+import { CONTACT_PHONE_MAX_LENGTH, normalizeContactPhone } from '@/app/lib/phone';
 import { formatCalendarDay } from '@/i18n/dates';
 import { Duration, OptionLabel, PriceFinePrint, SurchargeBreakdown, useCategoryLabel, useFormatPrice, useFormatServicePrice } from '@/components/pricing/PriceParts';
 
@@ -52,6 +53,8 @@ interface BookingWizardProps {
    * now) and the account holder Square verifies the card against.
    */
   payment?: { square: SquarePublicConfig | null; payer: DepositPayer };
+  /** The phone saved on the account, pre-filling the contact number every booking needs. */
+  customerPhone?: string | null;
 }
 
 const STEPS: Step[] = ['SERVICE', 'STYLIST', 'DATE', 'CONFIRM'];
@@ -63,7 +66,7 @@ const isRoutingTarget = (service: ClientService) => service.isConsultation || se
 /** Can be picked in the wizard: bookable, or a consultation-routed service whose price is shown. */
 const isSelectable = (service: ClientService) => service.isBookable || service.requiresConsultation;
 
-export function BookingWizard({ services, offerings, categories, stylists, closedContact, payment = NO_PAYMENT }: BookingWizardProps) {
+export function BookingWizard({ services, offerings, categories, stylists, closedContact, payment = NO_PAYMENT, customerPhone = null }: BookingWizardProps) {
   const t = useT('booking');
   const tp = useT('pricing');
   const tc = useT('common');
@@ -104,6 +107,9 @@ export function BookingWizard({ services, offerings, categories, stylists, close
     .filter((group) => group.entries.length > 0), [categories]);
   const [selectedCategory, setSelectedCategory] = useDraftState<string>(`${DRAFT}:category`, () => browsable[0]?.category ?? 'Haircuts');
   const [isSubmitted, setIsSubmitted] = useDraftState(`${DRAFT}:submitted`, false);
+  // How the salon reaches the customer about this booking (lib/phone.ts):
+  // the account's saved number to start with, saved back when it changes.
+  const [contactPhone, setContactPhone] = useDraftState<string>(`${DRAFT}:phone`, () => customerPhone ?? '');
   // The server found this exact request already made (a lost answer, a second
   // tap): nothing new was booked, so the success screen says where it is.
   const [alreadyRequested, setAlreadyRequested] = useDraftState(`${DRAFT}:alreadyRequested`, false);
@@ -315,6 +321,12 @@ export function BookingWizard({ services, offerings, categories, stylists, close
     // One submission at a time: a second tap must never authorize the card twice.
     if (submitting.current) return;
     if (depositDue && !cardPayable) return;
+    // Checked before the card is: a missing number never reaches Square.
+    const phone = normalizeContactPhone(contactPhone);
+    if (!phone) {
+      setBookingError(t(contactPhone.trim() ? 'confirm.phoneInvalid' : 'confirm.phoneRequired'));
+      return;
+    }
     submitting.current = true;
 
     setIsLoading(true);
@@ -358,6 +370,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
         date: dayString,
         time: selectedTime,
         consultationForServiceId: consultationOrigin?.id,
+        phone,
         // The exact price on screen. If the price list changed meanwhile the
         // server books nothing and returns the new price to confirm.
         expectedQuote: activeQuote
@@ -976,6 +989,25 @@ export function BookingWizard({ services, offerings, categories, stylists, close
                 </div>
               )}
             </dl>
+          </div>
+
+          <div>
+            <label htmlFor="booking-phone" className="block text-sm font-medium text-zinc-900 mb-2">{t('confirm.phoneLabel')}</label>
+            <input
+              id="booking-phone"
+              name="phone"
+              type="tel"
+              autoComplete="tel"
+              inputMode="tel"
+              required
+              maxLength={CONTACT_PHONE_MAX_LENGTH}
+              value={contactPhone}
+              onChange={(event) => setContactPhone(event.target.value)}
+              aria-describedby="booking-phone-help"
+              placeholder={t('confirm.phonePlaceholder')}
+              className="block w-full rounded-md border-0 py-3 px-4 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-black sm:text-sm"
+            />
+            <p id="booking-phone-help" className="mt-2 text-xs text-zinc-500">{t('confirm.phoneHelp')}</p>
           </div>
 
           {depositDue && (

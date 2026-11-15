@@ -48,6 +48,8 @@ const errors: Localized<Messages['errors']> = {
     INVALID_DATE_TIME: '日期或時間無效',
     SLOTS_FAILED: '未能載入可預約時段',
     TOO_MANY_BOOKINGS: '預約嘗試次數過多，請稍後再試。',
+    PHONE_REQUIRED: '請填寫電話號碼，方便本店就你的預約聯絡你。',
+    PHONE_INVALID: '請輸入有效的電話號碼，例如 07700 900123。',
     EMAIL_NOT_VERIFIED: '網上預約前請先確認你的電郵地址。請按我們寄給你的連結，或重新載入預約頁面索取新連結。',
     MANAGE_EMAIL_NOT_VERIFIED: '請先確認你的電郵地址，才可在網上管理預約。請按我們寄給你的連結，或致電本店。',
     TOO_MANY_CANCELLATIONS: '今日取消次數過多，請致電本店。',

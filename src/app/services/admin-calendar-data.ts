@@ -23,7 +23,7 @@ export const calendarAppointmentSelect = {
   id: true, date: true, status: true, stylistId: true, serviceId: true, updatedAt: true,
   durationAtBooking: true, priceAtBooking: true, quoteJson: true, notes: true,
   rescheduleRequestedDate: true, rescheduleRequestedAt: true, arrivedAt: true, depositLockedAt: true,
-  user: { select: { id: true, name: true, email: true } },
+  user: { select: { id: true, name: true, email: true, phone: true } },
   stylist: { select: { name: true, calendarColor: true, googleColorId: true } },
   service: { select: { name: true, duration: true, calendarColor: true } },
   // The card deposit's state (deposit-display.ts) and our own refund ids —
@@ -59,7 +59,8 @@ export function serializeCalendarAppointment(row: CalendarRow, includeContact = 
     consultationCredit: row.consultationCreditPence !== null && row.consultationCreditFrom
       ? { amountPence: row.consultationCreditPence, consultationDate: row.consultationCreditFrom.date.toISOString() }
       : null,
-    user: { id: row.user.id, name: row.user.name, email: includeContact ? row.user.email : null },
+    // Contact details only where a booking opens (day and week): staff call or email the customer from the dialog.
+    user: { id: row.user.id, name: row.user.name, email: includeContact ? row.user.email : null, phone: includeContact ? row.user.phone : null },
     stylist: row.stylist,
     service: row.service,
   };
@@ -139,10 +140,12 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
   const { dateStr, view, range } = resolveAdminCalendarRange(query, now);
   const todayRange = resolveAdminCalendarRange({ view: 'day' }, now).range;
   const cursor = dateCursor(query.pending);
+  // The views whose bookings open the dialog, which shows the customer's phone and email.
+  const contactView = view === 'day' || view === 'week';
   const [appointments, todayStats, syncCoverage, stylists, busyBlocks, diaryRows, pendingRows, pendingCount, monthCounts, services, rescheduleRows] = await Promise.all([
     view === 'year' ? Promise.resolve([]) : prisma.appointment.findMany({
       where: { date: range },
-      select: { ...calendarAppointmentSelect, user: { select: { id: true, name: true, email: view === 'day' } } },
+      select: { ...calendarAppointmentSelect, user: { select: { id: true, name: true, email: contactView, phone: contactView } } },
       orderBy: [{ date: 'asc' }, { id: 'asc' }],
     }),
     prisma.appointment.groupBy({ by: ['status'], where: { date: todayRange }, _count: true }),
@@ -190,7 +193,7 @@ export async function getAdminCalendarData(query: CalendarQuery & { pending?: st
     dateStr, view, todayStats, syncCoverage, stylists, pendingCount, monthCounts, loadedAt: new Date().toISOString(),
     services: services.map((row) => serializeDialogService(row, serviceTranslations.get(row.id), row.offeringId ? offeringTranslations.get(row.offeringId) : undefined)),
     periodCount: view === 'year' ? monthCounts.reduce((sum, count) => sum + count, 0) : appointments.length,
-    appointments: appointments.map((row) => serializeCalendarAppointment(row, view === 'day')),
+    appointments: appointments.map((row) => serializeCalendarAppointment(row, contactView)),
     busyBlocks: busyBlocks.map((row) => ({ ...row, start: row.start.toISOString(), end: row.end.toISOString(), lastSyncAt: row.lastSyncAt.toISOString() })),
     diaryEntries: diaryRows.map(({ stylistIdsJson, kind, start, end, ...row }) => ({
       ...row, kind: kind as DiaryKind, stylistIds: parseDiaryStylistIds(stylistIdsJson), start: start.toISOString(), end: end.toISOString(),

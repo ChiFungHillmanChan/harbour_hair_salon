@@ -38,6 +38,7 @@ import { createSquareGateway } from '@/app/services/square-gateway';
 import { createPaymentAttemptService, depositPaymentNote, depositRequestJson, replayAnswer, type DepositAttempt } from '@/app/services/payment-attempts';
 import { OPERATIONS_MESSAGES } from '@/app/services/operations-messages';
 import { planDepositForClosing, settleDepositAfterCommit, settleDepositBeforeClosing } from '@/app/services/deposit-lifecycle';
+import { normalizeContactPhone } from '@/app/lib/phone';
 
 // bookingLimiter curbs calendar-blockade abuse. It comes from lib/rate-limit.ts,
 // which falls back to in-process limiting when Upstash is unconfigured. (The
@@ -137,6 +138,11 @@ type CreateBookingInput = {
   /** Square's single-use card token for the deposit — never card details. */
   paymentToken?: string;
   /**
+   * The phone the salon contacts the customer on (lib/phone.ts),
+   * saved to the account. Without it the account's saved phone is used.
+   */
+  phone?: string;
+  /**
    * The page's key for this one card tokenization (a UUID v4, new for every
    * tokenization). Sent again with the same token only to retry a request
    * whose answer was lost: the stored outcome is returned, never a second hold.
@@ -162,6 +168,8 @@ const createBookingSchema = z.object({
   paymentToken: z.string().min(1).max(2048).regex(/^\S+$/).optional(),
   // One spelling per key, so the same submission always finds its attempt.
   attemptKey: z.uuidv4().transform((key) => key.toLowerCase()).optional(),
+  // Checked by normalizeContactPhone below; the bound only keeps junk out of the parse.
+  phone: z.string().max(100).optional(),
 }) satisfies z.ZodType<CreateBookingInput>;
 
 // Shared business-hours guard for a resolved salon date/time against a stylist's
@@ -398,9 +406,18 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
   // A request holds a real slot and emails the address on the account, and
   // registering needs no mailbox: without this, throwaway accounts could each
   // hold their full allowance of slots. See lib/email-verification.ts.
-  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: { ...EMAIL_VERIFICATION_SELECT, preferredLocale: true } });
+  const account = await prisma.user.findUnique({ where: { id: session.userId }, select: { ...EMAIL_VERIFICATION_SELECT, preferredLocale: true, phone: true } });
   if (!account || !hasVerifiedEmail(account)) {
     return failure(locale, 'EMAIL_NOT_VERIFIED');
+  }
+
+  // A phone the salon can reach the customer on (owner request 2026-11-15):
+  // the one the page sent, else the one saved on the account (an older tab).
+  // Refused before any lookup, deposit or hold.
+  const typedPhone = validData.phone?.trim();
+  const phone = normalizeContactPhone(typedPhone || account.phone);
+  if (!phone) {
+    return failure(locale, typedPhone ? 'PHONE_INVALID' : 'PHONE_REQUIRED');
   }
 
   // Per-user rate limit. Degrades to in-process limiting on a Redis outage or
@@ -530,6 +547,12 @@ export async function submitBooking(data: z.infer<typeof createBookingSchema>): 
   // findRepeatRequest's rule before the transaction: the named stylist's
   // request, or any stylist's for "Anyone".
   const findRepeat = () => findExistingRequest(request, isAnyStylist ? undefined : validData.stylistId);
+
+  // Saved before the request is made, so the salon's new-request alert (and
+  // the Google diary entry) carry it. Written only when it changed.
+  if (phone !== account.phone) {
+    await prisma.user.update({ where: { id: session.userId }, data: { phone } });
+  }
 
   if (priced.deposit.depositPence > 0) {
     return submitWithDeposit({

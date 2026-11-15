@@ -74,7 +74,7 @@ function fixture(options: { hours?: Hours; existing?: { date: Date; durationMin:
     googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => [] },
     // A customer whose address is confirmed (see lib/email-verification.ts).
-    user: { findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }) },
+    user: { findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [], phone: '07700 900123' }) },
     discountCode: { findUnique: async () => null, update: async () => null },
     notificationDelivery: { findUnique: async () => null, upsert: async () => ({ id: 'event-1' }) },
   };

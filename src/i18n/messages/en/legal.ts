@@ -21,7 +21,7 @@ const legal = {
     collect: {
       title: 'What we collect',
       intro: 'We collect only what we need to run your account and your appointments:',
-      account: '<b>Account details:</b> your name, email address, phone number (optional) and a securely scrambled (hashed) version of your password. We also record when you confirmed your email address, and the language you use our site in so that our emails reach you in that language.',
+      account: '<b>Account details:</b> your name, email address, phone number (optional when you register, but needed to book online so the salon can contact you about your booking) and a securely scrambled (hashed) version of your password. We also record when you confirmed your email address, and the language you use our site in so that our emails reach you in that language.',
       google: '<b>Google sign-in:</b> if you choose “Continue with Google”, Google gives us your name, your email address and an ID for your Google account. We never see your Google password.',
       /** {minutes}: LATE_ARRIVAL_CANCEL_MINUTES (the late-arrival rule in the booking terms). */
       bookings: '<b>Bookings:</b> the service, stylist, date, time, price and status of each appointment, any change of time you ask for, and notes our staff add to help with your visit. We also record when you arrive for your appointment: if you are more than {minutes} minutes late without letting us know, your booking can be cancelled automatically, as our <terms>booking terms</terms> explain.',
@@ -35,7 +35,7 @@ const legal = {
       security: '<b>Security information:</b> your device’s IP address, used briefly to stop abuse such as repeated sign-in attempts or floods of emails; a record of account events such as sign-ins, email confirmations and password changes (it does not include your IP address); and the short-lived technical logs our hosting provider keeps.',
       visits: '<b>Visits:</b> we count page visits and clicks on our booking buttons, and measure how fast pages load, with Vercel Web Analytics and Speed Insights. They use no cookies and do not identify you.',
       tryColour: '<b>Virtual Hair Colour Try-On:</b> the tool works entirely on your device. Your photo, video or camera picture is never sent to us or stored.',
-      required: 'You do not have to give us your information, but without your name and email address we cannot create an account or take an online booking. You can always book by phone instead.',
+      required: 'You do not have to give us your information, but without your name and email address we cannot create an account, and without a phone number we cannot take an online booking. You can always book by phone instead.',
     },
     use: {
       title: 'How we use it, and our lawful basis',

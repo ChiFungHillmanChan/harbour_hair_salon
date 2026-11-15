@@ -84,6 +84,11 @@ const booking: Localized<Messages['booking']> = {
   },
   confirm: {
     summary: '預約摘要',
+    phoneLabel: '你的電話號碼',
+    phoneHelp: '本店會用此號碼就你的預約聯絡你，並會儲存到你的帳戶。',
+    phonePlaceholder: '07XXX XXX XXX',
+    phoneRequired: '請填寫電話號碼，方便本店就你的預約聯絡你。',
+    phoneInvalid: '請輸入有效的電話號碼，例如 07700 900123。',
     service: '服務',
     consultationFor: '諮詢項目',
     stylist: '髮型師',

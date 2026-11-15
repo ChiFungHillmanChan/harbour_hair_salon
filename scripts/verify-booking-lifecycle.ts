@@ -188,7 +188,8 @@ async function main() {
     await db.user.createMany({ data: [
       // Managing a booking online needs a proved address (security review 2026-10-16).
       { id: ids.customer, name: 'PRIVATE_WEBSITE_CUSTOMER', email: 'customer@example.invalid', emailVerifiedAt: new Date() },
-      { id: ids.other, name: 'Synthetic other customer', email: 'other@example.invalid' },
+      // Books online below, which needs a contact phone (lib/phone.ts normalizeContactPhone).
+      { id: ids.other, name: 'Synthetic other customer', email: 'other@example.invalid', phone: '07700 900123' },
       { id: ids.admin, name: 'Synthetic administrator', email: 'admin@example.invalid', role: 'ADMIN' },
     ] });
     await db.stylist.create({ data: { id: ids.stylist, name: 'Synthetic Stylist', role: 'Stylist', icalToken: token,

@@ -57,7 +57,7 @@ function bookingFixture(
     },
     googleDiaryEntry: { findMany: async () => [] },
     externalBusyBlock: { findMany: async () => { externalReads++; return []; } },
-    user: { update: async () => ({}), findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [] }) },
+    user: { update: async () => ({}), findUnique: async () => ({ emailVerifiedAt: new Date(), oauthAccounts: [], phone: '07700 900123' }) },
     discountCode: {
       findUnique: async () => ({ ...code }),
       update: async () => { code.usedCount++; return code; },

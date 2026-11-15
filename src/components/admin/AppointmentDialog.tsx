@@ -22,6 +22,7 @@ import { isRescheduleRequestMoot } from '@/app/lib/reschedule-request';
 import { isArrivalWindowOpen, lateCancelDueAt } from '@/app/lib/late-arrival';
 import { DEPOSIT_REFUND_NOTICE_HOURS, LATE_ARRIVAL_CANCEL_MINUTES } from '@/app/lib/booking-constants';
 import { formatSalonClock, formatSalonLongDate } from '@/i18n/dates';
+import { toTelHref } from '@/app/lib/phone';
 import { useLocale, useT } from '@/i18n/client';
 import { DEFAULT_LOCALE, HTML_LANG, LOCALE_LABEL, LOCALES, isLocale, type Locale } from '@/i18n/config';
 import { clearDraft, useDraftState } from '@/i18n/draft-store';
@@ -65,6 +66,9 @@ export type DialogTarget =
       durationMin: number;
       notes: string;
       customerName: string;
+      /** The customer's phone and email as staff can use them (no walk-in or erased placeholder), when known. */
+      customerPhone?: string | null;
+      customerEmail?: string | null;
       status: string;
       updatedAt: string;
       /** The price recorded on the appointment — never re-derived from today's list. */
@@ -530,6 +534,19 @@ export function AppointmentDialog({
               {/* A refund Square has not confirmed, which staff refunded themselves (Square Dashboard or cash).
                   Mounted for any deposit, so its answer outlives the refresh that drops the refund. */}
               {deposit && <DepositSettleRefundButton appointmentId={target.appointmentId} refund={deposit.refundToSettle ?? null} />}
+              {/* How staff reach the customer about this booking: tap to call or email. */}
+              {target.customerPhone || target.customerEmail ? (
+                <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-zinc-700">
+                  {target.customerPhone && (
+                    <span>{t('dialog.customerPhone')}: <a href={toTelHref(target.customerPhone)} className="underline">{target.customerPhone}</a></span>
+                  )}
+                  {target.customerEmail && (
+                    <span className="break-all">{t('dialog.customerEmail')}: <a href={`mailto:${target.customerEmail}`} className="underline">{target.customerEmail}</a></span>
+                  )}
+                </p>
+              ) : (
+                <p className="mt-1 text-zinc-500">{t('dialog.noCustomerContact')}</p>
+              )}
             </div>
           ) : (
             <fieldset>

@@ -54,7 +54,7 @@ function bookAs(saved: string | null, pageLocale: Locale) {
   const actions = loadServerModule<typeof import('./booking')>('src/app/actions/booking.ts', {
     '@/app/lib/prisma': {
       user: {
-        findUnique: async () => ({ emailVerifiedAt: new Date('2026-01-01'), oauthAccounts: [], preferredLocale: saved }),
+        findUnique: async () => ({ emailVerifiedAt: new Date('2026-01-01'), oauthAccounts: [], preferredLocale: saved, phone: '07700 900123' }),
         update: async ({ where, data }: { where: unknown; data: unknown }) => { writes.push({ where, data }); return {}; },
       },
       service: { findUnique: async () => ({

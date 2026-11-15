@@ -89,6 +89,11 @@ const booking = {
   },
   confirm: {
     summary: 'Booking Summary',
+    phoneLabel: 'Your phone number',
+    phoneHelp: 'The salon uses this to contact you about your booking. It is saved to your account.',
+    phonePlaceholder: '07XXX XXX XXX',
+    phoneRequired: 'Please add a phone number so the salon can contact you about your booking.',
+    phoneInvalid: 'Please enter a valid phone number, for example 07700 900123.',
     service: 'Service',
     consultationFor: 'Consultation for',
     stylist: 'Stylist',

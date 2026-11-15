@@ -56,7 +56,7 @@ function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unkno
       useFormatServicePrice: () => (service: { amountPence: number }) => `£${(service.amountPence / 100).toFixed(2)}`,
     },
   });
-  const props = { services: [SERVICE], offerings: [], categories: [], stylists: [STYLIST], closedContact: { phone: '0113 496 0000', marketplaces: [] }, ...extraProps };
+  const props = { services: [SERVICE], offerings: [], categories: [], stylists: [STYLIST], closedContact: { phone: '0113 496 0000', marketplaces: [] }, customerPhone: '07700 900123', ...extraProps };
   return { render: () => wizard.BookingWizard(props as never), sets };
 }
 
@@ -98,6 +98,47 @@ test('the wizard keeps what the server said: already requested, or a new request
     assert.deepEqual(sets.submitted, [true], JSON.stringify(answer));
     assert.deepEqual(sets.alreadyRequested, [already], JSON.stringify(answer));
     assert.deepEqual(sets.held, ['depositHeldPence' in answer ? answer.depositHeldPence : null], JSON.stringify(answer));
+  }
+});
+
+// The salon contacts the customer on this number (lib/phone.ts): the
+// confirm step asks for it, starting from the account's saved phone, and a
+// booking without one is never sent.
+test('the confirm step asks for a contact phone, and never sends a booking without one', async () => {
+  const confirmStep = { step: 'CONFIRM', service: 'service-1', stylist: 'lox', day: '2026-10-06', time: '11:00' };
+  const submit = async (draft: Record<string, unknown>, extraProps: Record<string, unknown> = {}) => {
+    const sent: Record<string, unknown>[] = [];
+    const { render, sets } = loadWizard(draft, async (input) => { sent.push(input as Record<string, unknown>); return { success: true }; }, extraProps);
+    const nodes = elements(render());
+    const field = nodes.find((node) => node.type === 'input' && node.props.type === 'tel');
+    const [form] = nodes.filter((node) => node.type === 'form');
+    await (form.props.onSubmit as (event: { preventDefault(): void }) => Promise<void>)({ preventDefault() {} });
+    return { field, sent, sets };
+  };
+
+  const saved = await submit(confirmStep);
+  assert.equal(saved.field?.props.value, '07700 900123', 'the saved phone fills the field');
+  assert.equal(saved.field?.props.required, true);
+  assert.equal(saved.sent[0]?.phone, '07700 900123', 'and is sent with the booking');
+
+  const none = await submit(confirmStep, { customerPhone: null });
+  assert.equal(none.field?.props.value, '');
+  assert.deepEqual(none.sent, [], 'no phone: nothing sent');
+  assert.equal(none.sets.submitted, undefined);
+
+  const junk = await submit({ ...confirmStep, phone: 'call me' }, { customerPhone: null });
+  assert.deepEqual(junk.sent, [], 'not a phone number: nothing sent');
+
+  const typed = await submit({ ...confirmStep, phone: ' 07700  900456 ' }, { customerPhone: null });
+  assert.equal(typed.sent[0]?.phone, '07700 900456', 'a typed phone is sent tidied');
+});
+
+test('the contact phone wording exists in both languages', () => {
+  for (const locale of ['en-GB', 'zh-HK'] as const) {
+    const t = translator(locale, 'booking');
+    for (const key of ['confirm.phoneLabel', 'confirm.phoneHelp', 'confirm.phoneRequired', 'confirm.phoneInvalid'] as const) {
+      assert.ok(t(key).length > 0, `${locale} ${key}`);
+    }
   }
 });
 
@@ -216,6 +257,7 @@ function mountWizard(options: { draft: Record<string, unknown>; preview?: unknow
   const props = {
     services: [SERVICE], offerings: [], categories: [], stylists: [STYLIST], closedContact: { phone: '0113 496 0000', marketplaces: [] },
     payment: { square: SQUARE, payer: { name: 'Ada Lovelace', email: 'ada@example.test' } },
+    customerPhone: '07700 900123',
   };
   let tree: unknown = null;
   async function settle(): Promise<unknown> {
