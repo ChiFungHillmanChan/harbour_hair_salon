@@ -13,7 +13,16 @@ const scriptSrcEval = isDev ? " 'unsafe-eval'" : '';
 // fonts (readme/square-acceptance-2026-10-14.md). API calls are already covered
 // by connect-src, which allows https:.
 const squareSdk = 'https://web.squarecdn.com https://sandbox.web.squarecdn.com';
-const squareChallengeFrames = 'https://api.squareupsandbox.com https://api.squareup.com';
+// The bank's own 3-D Secure pages. Square's SDK adds the challenge frame (and
+// the hidden "3DS method" frame) to THIS document and posts into it at the
+// card issuer's address, so our frame-src decides whether the bank can ask
+// the customer at all. Issuers' hosts cannot be listed in advance (Square:
+// "allow all sources in the frame-src directive"). The sandbox's challenge
+// lives on api.squareupsandbox.com, which is why acceptance passed; in
+// production a card whose bank asked was refused before reaching us
+// (customer report 2026-11-19). Site-wide, not just /book: a soft navigation
+// to /book keeps the policy of the page the visit started on.
+const bankChallengeFrames = 'https:';
 const squareFonts = 'https://square-fonts-production-f.squarecdn.com https://d1g145x70srn7h.cloudfront.net https://cash-f.squarecdn.com';
 
 const csp = [
@@ -25,7 +34,7 @@ const csp = [
   "media-src 'self' blob:",
   `font-src 'self' data: ${squareFonts}`,
   "connect-src 'self' https:",
-  `frame-src 'self' https://www.google.com ${squareSdk} ${squareChallengeFrames}`,
+  `frame-src 'self' ${bankChallengeFrames}`,
   "worker-src 'self' blob:",
 ].join('; ') + ';';
 

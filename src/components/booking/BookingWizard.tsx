@@ -16,7 +16,9 @@ import { isBookingClosedAnswer } from './closed-answer';
 import { reconcileSelection } from './reconcile-selection';
 import { DepositCardForm } from './DepositCardForm';
 import { DepositRows, DepositTerms, PaymentUnavailableNotice } from './DepositSummary';
-import { depositVerificationDetails, SQUARE_TOKENIZE_TIMEOUT_MS, withTimeout, type DepositCard, type DepositPayer, type SquarePublicConfig } from './square-web-payments';
+import { depositVerificationDetails, SQUARE_TOKENIZE_TIMEOUT_MS, SquareTimeoutError, withTimeout, type DepositCard, type DepositPayer, type SquarePublicConfig } from './square-web-payments';
+import { thrownReport } from '@/app/lib/card-check-report';
+import { sendCardCheckFailure } from './card-check-client';
 import { afterDepositAnswer, PAYMENT_ANSWER_CODES, reusableSubmission, submissionFingerprint, type DepositSubmission } from './deposit-submission';
 import { ANY_STYLIST_ID, BOOKING_DAYS_MAX, CONSULTATION_CREDIT_MONTHS, MIN_BOOKING_NOTICE_MINUTES, ONLINE_CANCEL_NOTICE_HOURS, isDepositRefundableOnCancel, meetsMinimumNotice } from '@/app/lib/booking-constants';
 import { resolveSalonDateTime, salonDateKey } from '@/app/services/salon-time';
@@ -331,6 +333,8 @@ export function BookingWizard({ services, offerings, categories, stylists, close
 
     setIsLoading(true);
     setBookingError(null);
+    // Which step a throw came from, for the card-step report below.
+    let phase: 'card' | 'submit' = 'card';
     try {
       // A deposit is due: the card is tokenized for exactly the amount shown
       // (Square may ask the bank to verify it with the customer), under a new
@@ -344,6 +348,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
         submission = reusableSubmission(pendingDeposit.current, fingerprint);
         if (!submission) {
           if (!depositCard) {
+            if (payment.square) sendCardCheckFailure({ kind: 'CARD_NOT_READY' }, payment.square.environment);
             setBookingError(t('deposit.cardNotReady'));
             return;
           }
@@ -361,6 +366,7 @@ export function BookingWizard({ services, offerings, categories, stylists, close
         pendingDeposit.current = submission;
       }
 
+      phase = 'submit';
       const result = await submitBooking({
         stylistId: selectedStylist.id,
         serviceId: selectedService.id,
@@ -420,13 +426,19 @@ export function BookingWizard({ services, offerings, categories, stylists, close
           setDaysVersion((version) => version + 1);
         }
       }
-    } catch {
+    } catch (error) {
       // A rejected action (dropped connection, DB error) — or a card check
       // that never answered — must not leave the button stuck on
       // "Processing…": surface a message and re-enable it. A card
       // authorization stays pending: retrying sends the same key and token,
       // so the server answers with what the first one did.
       setBookingError(t('confirm.genericError'));
+      // Neither ever reaches the server's logs on its own. A card check that
+      // threw was already reported from inside tokenize (square-web-payments).
+      if (payment.square && depositDue) {
+        if (phase === 'submit') sendCardCheckFailure(thrownReport('SUBMIT_FAILED', error), payment.square.environment);
+        else if (error instanceof SquareTimeoutError) sendCardCheckFailure(thrownReport('TOKENIZE_TIMEOUT', error), payment.square.environment);
+      }
     } finally {
       submitting.current = false;
       setCheckingCard(false);

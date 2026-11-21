@@ -46,6 +46,7 @@ function loadWizard(draft: Record<string, unknown>, submitBooking: (input: unkno
     '@/i18n/link': { __esModule: true, default: (props: Record<string, unknown>) => ({ type: 'a', props }) },
     '@/app/actions/booking': { fetchBookingDays: async () => ({ ok: true, days: [] }), submitBooking },
     '@/app/actions/booking-quote': { previewBookingQuote: async () => ({ ok: false }) },
+    './card-check-client': { sendCardCheckFailure: () => undefined },
     './DayAvailability': { DayChip: () => null, TimeSlotGrid: () => null, UnavailableDayBlock: () => null },
     './BookingClosedNotice': { BookingClosedNotice: () => null },
     './DepositCardForm': { DepositCardForm: () => null },
@@ -176,7 +177,8 @@ const DUE = { ok: true, amountPence: 4000, depositPence: 2000, remainderPence: 2
 const errors = translator('en-GB', 'errors');
 const booking = translator('en-GB', 'booking');
 
-type Answer = Record<string, unknown>;
+/** What submitBooking answers; an Error makes it reject instead. */
+type Answer = Record<string, unknown> | Error;
 type Submitted = { expectedDepositPence?: number; paymentToken?: string; attemptKey?: string };
 
 function mountWizard(options: { draft: Record<string, unknown>; preview?: unknown; answers?: Answer[] }) {
@@ -226,6 +228,7 @@ function mountWizard(options: { draft: Record<string, unknown>; preview?: unknow
   let daysCalls = 0;
   let days: unknown[] = [OPEN_DAY];
   const answers = [...(options.answers ?? [])];
+  const reports: Record<string, unknown>[] = [];
   const wizard = loadServerModule<typeof import('./BookingWizard')>('src/components/booking/BookingWizard.tsx', {
     react,
     '@/i18n/draft-store': {
@@ -241,8 +244,15 @@ function mountWizard(options: { draft: Record<string, unknown>; preview?: unknow
     '@/i18n/link': { __esModule: true, default: (props: Record<string, unknown>) => ({ type: 'a', props }) },
     '@/app/actions/booking': {
       fetchBookingDays: async () => { daysCalls++; return { ok: true, days }; },
-      submitBooking: async (input: Submitted) => { submissions.push(input); return answers.shift() ?? { success: true }; },
+      submitBooking: async (input: Submitted) => {
+        submissions.push(input);
+        const answer = answers.shift();
+        // An Error answer is a rejected action (dropped connection, server fault).
+        if (answer instanceof Error) throw answer;
+        return answer ?? { success: true };
+      },
     },
+    './card-check-client': { sendCardCheckFailure: (failure: Record<string, unknown>, environment: string) => { reports.push({ ...failure, environment }); } },
     '@/app/actions/booking-quote': { previewBookingQuote: async (serviceId: string) => { previews.push(serviceId); return options.preview ?? DUE; } },
     './DayAvailability': { DayChip: () => null, TimeSlotGrid, UnavailableDayBlock: () => null },
     './BookingClosedNotice': { BookingClosedNotice: () => null },
@@ -289,6 +299,8 @@ function mountWizard(options: { draft: Record<string, unknown>; preview?: unknow
     startSubmit: () => onSubmit()({ preventDefault() {} }),
     submissions,
     previews,
+    /** Card step failures the page reported to the server (card-check-client.ts). */
+    reports,
     get daysCalls() { return daysCalls; },
     /** The wizard's draft (step, time, …) as it stands. */
     draft,
@@ -358,6 +370,7 @@ test('a card Square does not accept (no token) is never submitted', async () => 
   const tree = await wizard.submit();
   assert.deepEqual(asked.map((details) => details.amount), ['20.00'], 'Square was asked to verify exactly the deposit shown');
   assert.deepEqual(wizard.submissions, [], 'nothing reaches the server');
+  assert.deepEqual(wizard.reports, [], 'Square’s refusal is reported from inside tokenize (square-web-payments), not twice');
   assert.equal(alertText(tree), booking('deposit.cardInvalid'));
   assert.equal(submitButton(tree).props.disabled, false, 'the customer can correct the card and try again');
 });
@@ -431,6 +444,7 @@ test('a card check that never answers lets go of the page after its time limit, 
   assert.equal(alertText(tree), booking('confirm.genericError'));
   assert.equal(submitButton(tree).props.disabled, false, 'the button works again');
   assert.deepEqual(wizard.submissions, [], 'nothing was sent without a token');
+  assert.deepEqual(wizard.reports.map((report) => [report.kind, report.errorKind, report.environment]), [['TOKENIZE_TIMEOUT', 'SquareTimeoutError', 'sandbox']], 'the server hears why');
 
   // The submission lock was released: pressing again checks the card again.
   const second = wizard.startSubmit();
@@ -558,4 +572,22 @@ test('the consultation gate promises the credit with the consultation’s own pr
   const zh = translator('zh-HK', 'booking');
   assert.equal(zh('gate.byConsultation', { fee: '£15.00', months: 6 }), '此服務需要先預約 £15.00 諮詢。如你在 6 個月內進行療程，£15.00 會在療程價錢中扣除。');
   assert.equal(zh('gate.byConsultationFree', { fee: zh('gate.freeFee') }), '此服務須先諮詢。我們會為你預約免費諮詢，商討後再為你安排服務。');
+});
+
+test('a card accepted but a request that could not be sent is reported, and so is confirming before the card field is ready', async () => {
+  const wizard = mountWizard({ draft: CONFIRM, answers: [new Error('Failed to fetch')] });
+  const { card } = fakeCard();
+  await withCardReady(wizard, card);
+  const tree = await wizard.submit();
+  assert.equal(alertText(tree), booking('confirm.genericError'));
+  assert.deepEqual(wizard.reports.map((report) => [report.kind, report.errorKind, report.detail]), [['SUBMIT_FAILED', 'Error', 'Failed to fetch']]);
+
+  const early = mountWizard({ draft: CONFIRM });
+  await early.settle();
+  // The button is disabled until the field is ready; a submit that gets
+  // through anyway (Enter in the phone field) is told so, and reported.
+  const after = await early.submit();
+  assert.equal(alertText(after), booking('deposit.cardNotReady'));
+  assert.deepEqual(early.reports.map((report) => [report.kind, report.environment]), [['CARD_NOT_READY', 'sandbox']]);
+  assert.deepEqual(early.submissions, []);
 });

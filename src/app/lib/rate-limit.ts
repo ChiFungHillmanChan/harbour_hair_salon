@@ -245,6 +245,9 @@ export const bookingLimiter = createRateLimiter({ prefix: 'rl:booking', limit: 6
 // (security review 2026-10-16). Far above what a real customer does.
 export const bookingDailyLimiter = createRateLimiter({ prefix: 'rl:booking-day', limit: 10, windowSeconds: 24 * 60 * 60 });
 export const cancelLimiter = createRateLimiter({ prefix: 'rl:cancel', limit: 10, windowSeconds: 24 * 60 * 60 });
+// Card step failures the booking page reports (actions/card-check.ts): each
+// one is a log line and an audit row, so one account gets a small budget.
+export const cardCheckReportLimiter = createRateLimiter({ prefix: 'rl:card-check', limit: 20, windowSeconds: 60 * 60 });
 export const discountLimiter = createRateLimiter({ prefix: 'rl:discount', limit: 10, windowSeconds: 15 * 60 });
 export const clockLimiter = createRateLimiter({ prefix: 'rl:clock', limit: 8, windowSeconds: 5 * 60 });
 export const passwordResetLimiter = createRateLimiter({ prefix: 'rl:pwreset', limit: 5, windowSeconds: 60 * 60 });

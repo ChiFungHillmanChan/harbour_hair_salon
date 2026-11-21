@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '@/i18n/client';
+import { cspViolationReport, thrownReport, type CardCheckFailure } from '@/app/lib/card-check-report';
+import { sendCardCheckFailure } from './card-check-client';
 import { attachDepositCard, mountSquareCard, type DepositCard, type SquarePublicConfig } from './square-web-payments';
 
 /**
@@ -17,7 +19,7 @@ export function DepositCardForm({ square, phone, onCardChange, mount = mountSqua
   phone: string;
   onCardChange: (card: DepositCard | null) => void;
   /** Tests replace Square's SDK. */
-  mount?: (config: SquarePublicConfig, container: HTMLElement) => Promise<DepositCard>;
+  mount?: (config: SquarePublicConfig, container: HTMLElement, load?: undefined, onCardCheckFailure?: (failure: CardCheckFailure) => void) => Promise<DepositCard>;
 }) {
   const t = useT('booking');
   const container = useRef<HTMLDivElement>(null);
@@ -27,18 +29,40 @@ export function DepositCardForm({ square, phone, onCardChange, mount = mountSqua
   useEffect(() => {
     const element = container.current;
     if (!element) return;
+    const report = (failure: CardCheckFailure) => sendCardCheckFailure(failure, environment);
     return attachDepositCard({
       config: { applicationId, locationId, environment },
       element,
-      mount,
+      // Square's refusals of the card are reported from inside tokenize.
+      mount: (config, container) => mount(config, container, undefined, report),
       onReady: (card) => {
         setState('ready');
         onCardChange(card);
       },
-      onFailed: () => setState('failed'),
+      onFailed: (error) => {
+        setState('failed');
+        report(thrownReport('CARD_FORM_FAILED', error));
+      },
       onGone: () => onCardChange(null),
     });
   }, [applicationId, locationId, environment, mount, onCardChange]);
+
+  // Anything the page's Content-Security-Policy blocks while the card form is
+  // shown — Square's frames, and the bank's 3-D Secure pages Square frames in
+  // this document — is reported once per directive and origin: a blocked
+  // challenge otherwise only shows the customer an error.
+  useEffect(() => {
+    const seen = new Set<string>();
+    const listener = (event: SecurityPolicyViolationEvent) => {
+      const failure = cspViolationReport(event);
+      const key = `${failure.directive} ${failure.blockedOrigin}`;
+      if (seen.has(key) || seen.size >= 10) return;
+      seen.add(key);
+      sendCardCheckFailure(failure, environment);
+    };
+    document.addEventListener('securitypolicyviolation', listener);
+    return () => document.removeEventListener('securitypolicyviolation', listener);
+  }, [environment]);
 
   return (
     <fieldset className="rounded-xl border border-zinc-200 bg-white p-4 sm:p-6">
