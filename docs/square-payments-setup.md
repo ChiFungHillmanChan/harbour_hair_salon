@@ -728,7 +728,15 @@ zero-value authorization. Amounts are integer pence, currency `GBP`.
 - Card form: Web Payments SDK card fields, Strong Customer Authentication through
   `card.tokenize(verificationDetails)` (amount as `"12.50"`, `GBP`, `CHARGE`, customer-initiated,
   not seller-keyed, billing contact from the account); the older separate `verifyBuyer()` is not
-  used. The page needs a secure context and the CSP in `next.config.ts`.
+  used. The page needs a secure context and the CSP in `next.config.ts`. **`frame-src` must
+  allow `https:`** (2026-11-21): when the bank asks, Square's SDK frames the card issuer's own
+  challenge page in our document, and issuers' hosts cannot be listed in advance. The sandbox
+  challenge sits on `api.squareupsandbox.com`, so sandbox acceptance cannot show this; in
+  production a customer whose bank asked could not pay (2026-11-19).
+- When the card step fails in the browser, the page reports why (`actions/card-check.ts`): a
+  `[card-check]` line in the Vercel runtime log and an audit event `BOOKING.CARD_CHECK_FAILED`
+  (Admin → Operations → audit). Square's status and error types, a thrown error's class, a blocked
+  frame's origin — never card data. Refusals by `submitBooking` log `[booking] request refused`.
 
 ---
 

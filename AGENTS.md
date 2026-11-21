@@ -126,6 +126,7 @@ Each rule has its full story in the linked file.
 - **Both languages, always.** Every UI string goes in `src/i18n/messages/en` **and** `zh` (`completeness.test.ts` enforces it). Links use the locale-aware helpers.
 - **Monochrome brand.** No blue `#174F7F`, no gold (`brand-monochrome.test.ts`).
 - **Calendars.** Cron code invalidates the iCal feeds with `invalidateStylistIcalFeedFromCron()`, because `updateTag` only works in Server Actions. A Google webhook or pull never pushes, or the sync would loop forever. Fresha's busy time goes out only in Treatwell's view of the feed (`&for=treatwell`). Fresha's own URL never carries it, and Treatwell's URL never goes into Fresha. → `architecture.md`
+- **CSP `frame-src` keeps `https:`, site-wide.** Square frames the card issuer's 3-D Secure page in our own document; with a host list the bank's page is blocked, and a customer whose bank asks cannot pay (2026-11-19). → `booking-and-payments.md`
 - **Never put `routes` + `mitigate` in `vercel.json`.** It challenged every request, which blocked Fresha's iCal pollers. Firewall rules live in `infra/vercel-firewall/`. → `security.md`
 - **`lastError` sentences are state keys.** Code reads them back. Never reword one in place; catalogue new ones in `services/operations-messages.ts`.
 - **Prefer reversible changes.** The owner wants things disabled or hidden, not deleted, unless they explicitly ask.

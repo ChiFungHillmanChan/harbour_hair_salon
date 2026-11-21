@@ -25,11 +25,15 @@ function fakePage(square?: SquareSdk) {
 }
 
 /** A fake SDK whose card records what the page asks of it. */
-function fakeSquare(options: { styledCardFails?: boolean; tokenResult?: { status: string; token?: string }; destroyFails?: boolean } = {}) {
+function fakeSquare(options: { styledCardFails?: boolean; tokenResult?: { status: string; token?: string; errors?: unknown }; tokenizeThrows?: Error; destroyFails?: boolean } = {}) {
   const calls: unknown[][] = [];
   const card = {
     attach: async (target: unknown) => { calls.push(['attach', target]); },
-    tokenize: async (details: unknown) => { calls.push(['tokenize', details]); return options.tokenResult ?? { status: 'OK', token: 'cnon:card-nonce-ok' }; },
+    tokenize: async (details: unknown) => {
+      calls.push(['tokenize', details]);
+      if (options.tokenizeThrows) throw options.tokenizeThrows;
+      return options.tokenResult ?? { status: 'OK', token: 'cnon:card-nonce-ok' };
+    },
     destroy: async () => { calls.push(['destroy']); if (options.destroyFails) throw new Error('already destroyed'); return true; },
   };
   const sdk: SquareSdk = {
@@ -382,4 +386,40 @@ test('a field removed while it waits for the page never starts, and frees its el
   attachDepositCard({ config: CONFIG, element, visibility: shown.visibility, mount: () => { events.push('second mount'); return deferred<DepositCard>().promise; }, onReady: () => undefined, onFailed: () => undefined, onGone: () => undefined });
   await flush();
   assert.deepEqual(events, ['gone', 'second mount']);
+});
+
+test('a card Square refuses is reported with Square’s status, error types and fields, never the card', async () => {
+  const details = depositVerificationDetails(1250, { name: 'Ada Lovelace', email: 'ada@example.test' });
+  const reports: unknown[] = [];
+  const refused = fakeSquare({ tokenResult: { status: 'Invalid', errors: [
+    { type: 'VALIDATION_ERROR', field: 'cardNumber', message: 'Card number 4111 1111 1111 1111 is not valid' },
+    { type: 'VALIDATION_ERROR', field: 'expirationDate', message: 'Expiration date is not valid' },
+  ] } });
+  const card = await mountSquareCard(CONFIG, ELEMENT, async () => refused.sdk, (failure) => reports.push(failure));
+  assert.equal(await card.tokenize(details), null, 'the page still gets no token');
+  assert.deepEqual(reports, [{
+    kind: 'TOKENIZE_REFUSED', status: 'Invalid', errorTypes: 'VALIDATION_ERROR', fields: 'cardNumber,expirationDate',
+    detail: 'Card number # is not valid | Expiration date is not valid',
+  }]);
+
+  const accepted = fakeSquare();
+  const quiet: unknown[] = [];
+  assert.equal(await (await mountSquareCard(CONFIG, ELEMENT, async () => accepted.sdk, (failure) => quiet.push(failure))).tokenize(details), 'cnon:card-nonce-ok');
+  assert.deepEqual(quiet, [], 'an accepted card reports nothing');
+});
+
+test('a tokenize that throws (e.g. a 3-D Secure frame the page blocked) is reported and still thrown', async () => {
+  const failure = Object.assign(new Error('Verification could not be completed'), { name: 'VerifyBuyerError' });
+  const reports: unknown[] = [];
+  const card = await mountSquareCard(CONFIG, ELEMENT, async () => fakeSquare({ tokenizeThrows: failure }).sdk, (report) => reports.push(report));
+  await assert.rejects(card.tokenize(depositVerificationDetails(1250, { name: null, email: null })), failure);
+  assert.deepEqual(reports, [{ kind: 'TOKENIZE_THREW', errorKind: 'VerifyBuyerError', detail: 'Verification could not be completed' }]);
+});
+
+test('a card field that fails to appear tells the form why', async () => {
+  const errors: unknown[] = [];
+  const broken = new Error('The Square payment form could not be loaded');
+  attachDepositCard({ config: CONFIG, element: { id: 'broken' } as unknown as HTMLElement, mount: async () => { throw broken; }, onReady: () => undefined, onFailed: (error) => errors.push(error), onGone: () => undefined, visibility: { hidden: () => false, onVisible: () => () => undefined } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(errors, [broken]);
 });

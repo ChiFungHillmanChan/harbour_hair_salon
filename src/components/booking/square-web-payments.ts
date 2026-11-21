@@ -1,4 +1,5 @@
 import { poundsFromPence } from '@/app/services/deposit-policy';
+import { thrownReport, tokenizeRefusalReport, type CardCheckFailure } from '@/app/lib/card-check-report';
 
 // The booking page's only contact with Square's Web Payments SDK
 // (docs/superpowers/specs/2026-10-13-square-deposits-design.md). Card numbers
@@ -26,7 +27,7 @@ export type VerificationDetails = {
   billingContact: { givenName?: string; familyName?: string; email?: string; countryCode: 'GB' };
 };
 
-type TokenResult = { status: string; token?: string };
+type TokenResult = { status: string; token?: string; errors?: unknown };
 type SquareCard = {
   attach(target: HTMLElement | string): Promise<void>;
   tokenize(details: VerificationDetails): Promise<TokenResult>;
@@ -149,6 +150,8 @@ export async function mountSquareCard(
   config: SquarePublicConfig,
   container: HTMLElement,
   load: (environment: SquarePublicConfig['environment']) => Promise<SquareSdk> = loadSquareSdk,
+  /** Told why tokenize gave no token (lib/card-check-report.ts); the answer to the page is unchanged. */
+  onCardCheckFailure?: (failure: CardCheckFailure) => void,
 ): Promise<DepositCard> {
   const square = await load(config.environment);
   const payments = await square.payments(config.applicationId, config.locationId);
@@ -162,8 +165,16 @@ export async function mountSquareCard(
   await card.attach(container);
   return {
     async tokenize(details) {
-      const result = await card.tokenize(details);
-      return result.status === 'OK' && typeof result.token === 'string' && result.token.length > 0 ? result.token : null;
+      let result: TokenResult;
+      try {
+        result = await card.tokenize(details);
+      } catch (error) {
+        onCardCheckFailure?.(thrownReport('TOKENIZE_THREW', error));
+        throw error;
+      }
+      if (result?.status === 'OK' && typeof result.token === 'string' && result.token.length > 0) return result.token;
+      onCardCheckFailure?.(tokenizeRefusalReport(result ?? {}));
+      return null;
     },
     async destroy() {
       try {
@@ -218,7 +229,8 @@ export function attachDepositCard(options: {
   element: HTMLElement;
   mount: (config: SquarePublicConfig, container: HTMLElement) => Promise<DepositCard>;
   onReady: (card: DepositCard) => void;
-  onFailed: () => void;
+  /** The field did not appear: what went wrong (a SquareTimeoutError when it took too long). */
+  onFailed: (error: unknown) => void;
   /** The field is gone (cleanup): it can no longer tokenize. */
   onGone: () => void;
   timeoutMs?: number;
@@ -246,9 +258,9 @@ export function attachDepositCard(options: {
       card = mounted;
       options.onReady(mounted);
     },
-    () => {
+    (error: unknown) => {
       leave();
-      if (active) options.onFailed();
+      if (active) options.onFailed(error);
     },
   );
   const visibility = options.visibility ?? pageVisibility;

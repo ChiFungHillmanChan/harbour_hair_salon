@@ -50,3 +50,18 @@ test('the saved phone unchanged, or an older page that sends none, writes nothin
   assert.deepEqual(await f.actions.submitBooking(request()), { success: true });
   assert.deepEqual(f.phoneWrites, []);
 });
+
+test('a refused request leaves one log line with its code and account (it was invisible before, 2026-11-19)', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => undefined);
+  const f = fixture({ savedPhone: null });
+  await f.actions.submitBooking(request());
+  const lines = warn.mock.calls.filter((call) => call.arguments[0] === '[booking] request refused');
+  assert.equal(lines.length, 1);
+  const fields = lines[0].arguments[1] as Record<string, unknown>;
+  assert.deepEqual([fields.code, fields.withCard], ['PHONE_REQUIRED', false]);
+  assert.equal(typeof fields.userId, 'string');
+
+  warn.mock.resetCalls();
+  await fixture({ savedPhone: '07700 900123' }).actions.submitBooking(request());
+  assert.equal(warn.mock.calls.filter((call) => call.arguments[0] === '[booking] request refused').length, 0, 'a booking made logs nothing');
+});

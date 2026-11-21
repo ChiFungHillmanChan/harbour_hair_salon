@@ -375,6 +375,23 @@ export type SubmitBookingResult =
   | { success: false; code?: BookingErrorCode; error: string; quote?: ClientQuote; deposit?: DepositSplit };
 
 export async function submitBooking(data: z.infer<typeof createBookingSchema>): Promise<SubmitBookingResult> {
+  const result = await submitBookingRequest(data);
+  // Refusals are ordinary answers and left no trace, so a customer who could
+  // not book was invisible in the logs (customer report 2026-11-19). One line
+  // per refusal: the code and the account (the cookie's, for the log only).
+  if (!result.success) {
+    let userId: string | null = null;
+    try {
+      userId = (await getSession())?.userId ?? null;
+    } catch {
+      // The log line still says what was refused.
+    }
+    console.warn('[booking] request refused', { code: result.code ?? 'UNKNOWN', userId, withCard: Boolean(data?.paymentToken) });
+  }
+  return result;
+}
+
+async function submitBookingRequest(data: z.infer<typeof createBookingSchema>): Promise<SubmitBookingResult> {
   const locale = await getActionLocale();
   // Hard server-side block while online booking is in maintenance — checked
   // before anything else so no client (or direct action call) can bypass it.

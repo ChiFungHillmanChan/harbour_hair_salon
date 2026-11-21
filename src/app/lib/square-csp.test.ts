@@ -18,24 +18,30 @@ test('the document policy lets the Square Web Payments SDK load its script, card
   // The 3D walkthrough asset extends the same policy, so both are checked.
   for (const source of ['/(.*)', '/harbour-hair-3d.html']) {
     const csp = await documentPolicy(source);
-    for (const directive of ['script-src', 'script-src-elem', 'frame-src', 'style-src']) {
+    for (const directive of ['script-src', 'script-src-elem', 'style-src']) {
       for (const origin of SQUARE_SDK) assert.ok(csp.get(directive)?.includes(origin), `${source} ${directive} ${origin}`);
     }
+    // The card fields are frames on the SDK host, covered by frame-src https:.
+    assert.ok(csp.get('frame-src')?.includes('https:'), `${source} frame-src`);
     for (const origin of SQUARE_FONTS) assert.ok(csp.get('font-src')?.includes(origin), `${source} font-src ${origin}`);
     // Square's payment API calls need no entry of their own.
     assert.ok(csp.get('connect-src')?.includes('https:'));
   }
 });
 
-test('Square 3-D Secure challenge frames are allowed in sandbox and production', async () => {
-  // The real sandbox challenge was blocked by frame-src on 14 October 2026.
+test('the bank’s 3-D Secure pages can be framed, wherever the card issuer hosts them', async () => {
+  // Square's SDK adds the challenge frame to our own document and posts into
+  // it at the issuer's address (square.js, read 2026-11-21), so frame-src must
+  // allow any https: host. Only the sandbox simulator sits on a Square host:
+  // a production challenge was refused before it reached us (2026-11-19).
   for (const source of ['/(.*)', '/harbour-hair-3d.html']) {
     const csp = await documentPolicy(source);
-    for (const origin of ['https://api.squareupsandbox.com', 'https://api.squareup.com']) {
-      assert.ok(csp.get('frame-src')?.includes(origin), `${source} must allow the challenge at ${origin}`);
-      for (const directive of ['script-src', 'script-src-elem', 'style-src', 'font-src']) {
-        assert.equal(csp.get(directive)?.includes(origin), false, `${origin} is only a frame source`);
-      }
+    assert.deepEqual(csp.get('frame-src'), ["'self'", 'https:'], source);
+    // The challenge form posts to the bank: no form-action may narrow that.
+    assert.equal(csp.has('form-action'), false, `${source} must not restrict form-action`);
+    // Frames only: the scheme opens nothing else.
+    for (const directive of ['script-src', 'script-src-elem', 'style-src', 'font-src', 'default-src']) {
+      assert.equal(csp.get(directive)?.includes('https:'), false, `${source} ${directive} stays narrow`);
     }
   }
 });
